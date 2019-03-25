@@ -1,8 +1,12 @@
 package ice
 
 import (
+	"fmt"
+	"math/rand"
 	"net"
+	"strings"
 	"sync/atomic"
+	"time"
 )
 
 func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
@@ -94,4 +98,32 @@ func isZeros(ip net.IP) bool {
 		}
 	}
 	return true
+}
+
+// RandSeq generates a random alpha numeric sequence of the requested length
+func randSeq(n int) string {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[r.Intn(len(letters))]
+	}
+	return string(b)
+}
+
+// flattenErrs flattens multiple errors into one
+func flattenErrs(errs []error) error {
+	var errstrings []string
+
+	for _, err := range errs {
+		if err != nil {
+			errstrings = append(errstrings, err.Error())
+		}
+	}
+
+	if len(errstrings) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf(strings.Join(errstrings, "\n"))
 }

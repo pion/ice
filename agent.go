@@ -15,7 +15,6 @@ import (
 	"github.com/pions/logging"
 	"github.com/pions/stun"
 	"github.com/pions/transport/packetio"
-	"github.com/pions/webrtc/internal/util"
 )
 
 const (
@@ -139,8 +138,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localCandidates:  make(map[NetworkType][]*Candidate),
 		remoteCandidates: make(map[NetworkType][]*Candidate),
 
-		localUfrag:  util.RandSeq(16),
-		localPwd:    util.RandSeq(32),
+		localUfrag:  randSeq(16),
+		localPwd:    randSeq(32),
 		taskChan:    make(chan task),
 		onConnected: make(chan struct{}),
 		buffer:      packetio.NewBuffer(),
@@ -294,7 +293,7 @@ func allocateUDP(network string, url *URL) (*net.UDPAddr, *stun.XorAddress, erro
 	// TODO Do we want the timeout to be configurable?
 	client, err := stun.NewClient(network, fmt.Sprintf("%s:%d", url.Host, url.Port), time.Second*5)
 	if err != nil {
-		return nil, nil, util.FlattenErrs([]error{errors.New("failed to create STUN client"), err})
+		return nil, nil, flattenErrs([]error{errors.New("failed to create STUN client"), err})
 	}
 	localAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	if !ok {
@@ -303,11 +302,11 @@ func allocateUDP(network string, url *URL) (*net.UDPAddr, *stun.XorAddress, erro
 
 	resp, err := client.Request()
 	if err != nil {
-		return nil, nil, util.FlattenErrs([]error{errors.New("failed to make STUN request"), err})
+		return nil, nil, flattenErrs([]error{errors.New("failed to make STUN request"), err})
 	}
 
 	if err = client.Close(); err != nil {
-		return nil, nil, util.FlattenErrs([]error{errors.New("failed to close STUN client"), err})
+		return nil, nil, flattenErrs([]error{errors.New("failed to close STUN client"), err})
 	}
 
 	attr, ok := resp.GetOneAttribute(stun.AttrXORMappedAddress)
@@ -317,7 +316,7 @@ func allocateUDP(network string, url *URL) (*net.UDPAddr, *stun.XorAddress, erro
 
 	var addr stun.XorAddress
 	if err = addr.Unpack(resp, attr); err != nil {
-		return nil, nil, util.FlattenErrs([]error{errors.New("failed to unpack STUN XorAddress response"), err})
+		return nil, nil, flattenErrs([]error{errors.New("failed to unpack STUN XorAddress response"), err})
 	}
 
 	return localAddr, &addr, nil
@@ -732,7 +731,7 @@ func (a *Agent) handleNewPeerReflexiveCandidate(local *Candidate, remote net.Add
 	)
 
 	if err != nil {
-		return util.FlattenErrs([]error{fmt.Errorf("failed to create peer-reflexive candidate: %v", remote), err})
+		return flattenErrs([]error{fmt.Errorf("failed to create peer-reflexive candidate: %v", remote), err})
 	}
 
 	// Add pflxCandidate to the remote candidate list
