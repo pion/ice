@@ -57,6 +57,8 @@ type Agent struct {
 	portmin uint16
 	portmax uint16
 
+	tcpport uint16
+
 	//How long should a pair stay quiet before we declare it dead?
 	//0 means never timeout
 	connectionTimeout time.Duration
@@ -111,6 +113,10 @@ type AgentConfig struct {
 	PortMin uint16
 	PortMax uint16
 
+	// TCPPort are optional,  Leave them 0 for the default TCP port allocation strategy.
+	// usefull for "only http" firewall
+	TCPPort uint16
+
 	// ConnectionTimeout defaults to 30 seconds when this property is nil.
 	// If the duration is 0, we will never timeout this connection.
 	ConnectionTimeout *time.Duration
@@ -146,6 +152,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		done:        make(chan struct{}),
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
+		tcpport:     config.TCPPort,
 		log:         logging.NewScopedLogger("ice"),
 	}
 
@@ -222,16 +229,35 @@ func (a *Agent) listenUDP(network string, laddr *net.UDPAddr) (*net.UDPConn, err
 }
 
 func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
+	var conn net.PacketConn
+	var err error
 	localIPs := localInterfaces(networkTypes)
+	port := 0
 	for _, ip := range localIPs {
 		for _, network := range supportedNetworks {
-			conn, err := a.listenUDP(network, &net.UDPAddr{IP: ip, Port: 0})
-			if err != nil {
-				a.log.Warnf("could not listen %s %s\n", network, ip)
+			switch network {
+			case "udp":
+				conn, err = a.listenUDP(network, &net.UDPAddr{IP: ip, Port: 0})
+				if err != nil {
+					a.log.Warnf("could not listen %s %s\n", network, ip)
+					continue
+				}
+				port = conn.LocalAddr().(*net.UDPAddr).Port
+			case "tcp":
+				if a.isControlling == false {
+					conn, err = a.listenTCP(network, &net.TCPAddr{IP: ip, Port: 0})
+					if err != nil {
+						a.log.Warnf("could not listen %s %s\n", network, ip)
+						continue
+					}
+					port = conn.LocalAddr().(*net.TCPAddr).Port
+				} else {
+					continue // tcp-active not supported yet
+				}
+			default:
 				continue
 			}
 
-			port := conn.LocalAddr().(*net.UDPAddr).Port
 			c, err := NewCandidateHost(network, ip, port, ComponentRTP)
 			if err != nil {
 				a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)

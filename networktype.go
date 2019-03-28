@@ -13,14 +13,14 @@ const (
 
 var supportedNetworks = []string{
 	udp,
-	// tcp, // Not supported yet
+	tcp, // only tcp-passive (server side) supported yet
 }
 
 var supportedNetworkTypes = []NetworkType{
 	NetworkTypeUDP4,
 	NetworkTypeUDP6,
-	// NetworkTypeTCP4, // Not supported yet
-	// NetworkTypeTCP6, // Not supported yet
+	NetworkTypeTCP4, // Not supported yet
+	NetworkTypeTCP6, // Not supported yet
 }
 
 // NetworkType represents the type of network
