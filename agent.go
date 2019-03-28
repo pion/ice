@@ -228,13 +228,36 @@ func (a *Agent) listenUDP(network string, laddr *net.UDPAddr) (*net.UDPConn, err
 	return nil, ErrPort
 }
 
+// networksSupported - intersect needed and supported network types
+func (a *Agent) networksSupported(networkTypes []NetworkType) []string {
+	m := map[string]bool{}
+	for _, network := range supportedNetworks {
+		m[network] = false
+	}
+	for _, network3 := range networkTypes {
+		net := network3.NetworkShort()
+		if _, ok := m[net]; ok {
+			m[net] = true
+		}
+	}
+	netIntersect := []string{}
+	for k, v := range m {
+		if v {
+			netIntersect = append(netIntersect, k)
+		}
+	}
+	return netIntersect
+}
+
 func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	var conn net.PacketConn
 	var err error
+	networks := a.networksSupported(networkTypes)
 	localIPs := localInterfaces(networkTypes)
 	port := 0
 	for _, ip := range localIPs {
-		for _, network := range supportedNetworks {
+		for _, network := range networks {
+
 			switch network {
 			case "udp":
 				conn, err = a.listenUDP(network, &net.UDPAddr{IP: ip, Port: 0})

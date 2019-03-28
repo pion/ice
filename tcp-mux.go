@@ -72,7 +72,6 @@ var portsMapLock = &sync.Mutex{}
 //getMuxerTCP binds listener to muxer lufrag:rufrag
 func (a *Agent) getMuxerTCP(network string, laddr *net.TCPAddr) (*muxerTCP, error) {
 	// checks muxing listener already armed
-	laddr.Port = int(a.tcpport)
 	if laddr.Port != 0 {
 		if mux, ok := portsMap[laddr.String()]; ok {
 			return mux, nil
@@ -80,6 +79,7 @@ func (a *Agent) getMuxerTCP(network string, laddr *net.TCPAddr) (*muxerTCP, erro
 	}
 	listener, err := net.ListenTCP(network, laddr)
 	if err != nil {
+		a.log.Error(err.Error())
 		return nil, ErrPort
 	}
 	bindToAddr := listener.Addr().String()
@@ -110,6 +110,7 @@ func (mux *muxerTCP) freePacketConn(ufrag string) {
 
 //listen - listen connection(s) on port
 func (mux *muxerTCP) listen() {
+	mux.log.Debugf("listen TCP @%v", mux.listener.Addr().String())
 	for {
 		c, err := mux.listener.Accept()
 		if err != nil {
@@ -178,14 +179,12 @@ func (mux *muxerTCP) bridgeWorker(c net.Conn) {
 
 //findPacketConn returns the corresponding port by the value of the attribute stun.AttrUsername
 func (mux *muxerTCP) findPacketConn(b []byte) (socket *packetTCP, username string) {
-	// if username = usernameHelper(b); username == "" {
-	// 	return nil, ""
-	// }
 	m, _ := stun.NewMessage(b)
 	if m == nil || m.Method != stun.MethodBinding { // not a stun
 		return nil, ""
 	}
-	attr, _ := m.GetOneAttribute(stun.AttrIceControlled) // only TCP passive
+	// ICE-TCP-PASSIVE is always server (offerer), but Agent can't
+	attr, _ := m.GetOneAttribute(stun.AttrIceControlled)
 	if attr == nil {
 		return nil, ""
 	}
@@ -206,6 +205,8 @@ func (mux *muxerTCP) findPacketConn(b []byte) (socket *packetTCP, username strin
 func (a *Agent) listenTCP(network string, laddr *net.TCPAddr) (*packetTCP, error) {
 	portsMapLock.Lock()
 	defer portsMapLock.Unlock()
+
+	laddr.Port = int(a.tcpport)
 	mux, err := a.getMuxerTCP(network, laddr)
 	if err != nil {
 		return nil, err
