@@ -845,7 +845,7 @@ func (a *Agent) getBestPair() (*candidatePair, error) {
 	out := <-res
 
 	if out == nil {
-		return nil, errors.New("no Valid Candidate Pairs Available")
+		return nil, ErrNoCandidatePairs
 	}
 
 	return out, nil

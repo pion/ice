@@ -26,4 +26,7 @@ var (
 
 	// ErrClosed indicates the agent is closed
 	ErrClosed = errors.New("the agent is closed")
+
+	// ErrNoCandidatePairs indicates agent does not have a valid candidate pair
+	ErrNoCandidatePairs = errors.New("no candidate pairs available")
 )
