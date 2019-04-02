@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -29,7 +28,6 @@ type packetTCP struct {
 	linked     bool
 	validator  ConnValidator
 	sync.Mutex
-	uniq  int
 	local net.Addr
 }
 
@@ -39,7 +37,6 @@ func newPacketTCP(local net.Addr) *packetTCP {
 		upstream:   make(chan *[]byte, queueLen),
 		downstream: make(chan *incomingPacket, queueLen),
 		linked:     false,
-		uniq:       rand.Int(),
 		local:      local,
 	}
 }

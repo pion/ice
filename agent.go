@@ -114,7 +114,7 @@ type AgentConfig struct {
 	PortMax uint16
 
 	// TCPPort are optional,  Leave them 0 for the default TCP port allocation strategy.
-	// usefull for "only http" firewall
+	// useful for "only http" firewall
 	TCPPort uint16
 
 	// ConnectionTimeout defaults to 30 seconds when this property is nil.
@@ -259,15 +259,15 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 		for _, network := range networks {
 
 			switch network {
-			case "udp":
+			case udp:
 				conn, err = a.listenUDP(network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {
 					a.log.Warnf("could not listen %s %s\n", network, ip)
 					continue
 				}
 				port = conn.LocalAddr().(*net.UDPAddr).Port
-			case "tcp":
-				if a.isControlling == false {
+			case tcp:
+				if !a.isControlling {
 					conn, err = a.listenTCP(network, &net.TCPAddr{IP: ip, Port: 0})
 					if err != nil {
 						a.log.Warnf("could not listen %s %s\n", network, ip)
