@@ -55,7 +55,7 @@ type muxerTCP struct {
 	packetConns map[string]*packetTCP
 	listener    net.Listener
 	sync.Mutex
-	log *logging.LeveledLogger
+	log logging.LeveledLogger
 }
 
 // listeners are global!
@@ -79,7 +79,7 @@ func (a *Agent) getMuxerTCP(network string, laddr *net.TCPAddr) (*muxerTCP, erro
 	mux := &muxerTCP{
 		listener:    listener,
 		packetConns: make(map[string]*packetTCP),
-		log:         logging.NewScopedLogger("ice"),
+		log:         logging.NewDefaultLoggerFactory().NewLogger("ice"), // detach from agent
 	}
 	portsMap[bindToAddr] = mux
 	go mux.listen()
