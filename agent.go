@@ -84,7 +84,7 @@ type Agent struct {
 	done chan struct{}
 	err  atomicError
 
-	log *logging.LeveledLogger
+	log logging.LeveledLogger
 }
 
 func (a *Agent) ok() error {
@@ -129,12 +129,18 @@ type AgentConfig struct {
 	// NetworkTypes is an optional configuration for disabling or enablding
 	// support for specific network types.
 	NetworkTypes []NetworkType
+
+	LoggerFactory logging.LoggerFactory
 }
 
 // NewAgent creates a new Agent
 func NewAgent(config *AgentConfig) (*Agent, error) {
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
+	}
+
+	if config.LoggerFactory == nil {
+		config.LoggerFactory = logging.NewDefaultLoggerFactory()
 	}
 
 	a := &Agent{
@@ -153,7 +159,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
 		tcpport:     config.TCPPort,
-		log:         logging.NewScopedLogger("ice"),
+		log:         config.LoggerFactory.NewLogger("ice"),
 	}
 
 	// Make sure the buffer doesn't grow indefinitely.
