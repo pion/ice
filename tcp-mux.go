@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -15,41 +14,35 @@ import (
 
 // ConnReadPacket read 1 packet from stream
 // read packet  bytes https://tools.ietf.org/html/rfc4571#section-2
-// 2-byte lenght header prepends each packet:
+// 2-byte length header prepends each packet:
 //     0                   1                   2                   3
 //     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //     ---------------------------------------------------------------
 //    |             LENGTH            |  RTP or RTCP packet ...       |
 //     ---------------------------------------------------------------
 func ConnReadPacket(c net.Conn, b []byte) (int, error) {
-	tmplen := []byte{0, 0}
-	n1, err := c.Read(tmplen)
-	if err != nil {
-		return 0, err
-	}
-
-	if n1 != len(tmplen) {
-		n1, err = c.Read(tmplen[1:])
-		if err != nil {
+	const headerLen = 2
+	var tmplen = make([]byte, headerLen)
+	var readed, n int
+	var err error
+	for readed < headerLen {
+		if n, err = c.Read(tmplen[readed:headerLen]); err != nil {
 			return 0, err
 		}
+		readed += n
 	}
-
 	pktLen := int(binary.BigEndian.Uint16(tmplen))
 	if pktLen > cap(b) {
 		return pktLen, io.ErrShortBuffer
 	}
-	readed := 0
+	readed = 0
 	for readed < pktLen {
-		n, err := c.Read(b[readed:pktLen])
-		if err != nil {
-			log.Print(err)
-			break
+		if n, err = c.Read(b[readed:pktLen]); err != nil {
+			return 0, err
 		}
 		readed += n
-		b = b[0:readed]
 	}
-	return readed, err
+	return readed, nil
 }
 
 // one port for all connections.
@@ -102,7 +95,9 @@ func (mux *muxerTCP) freePacketConn(ufrag string) {
 	// if listener []packetConns empty - close it
 	if len(mux.packetConns) == 0 {
 		addr := mux.listener.Addr().String()
-		mux.listener.Close()
+		if err := mux.listener.Close(); err != nil {
+			mux.log.Warn(err.Error())
+		}
 		delete(portsMap, addr)
 	}
 	portsMapLock.Unlock()
@@ -123,7 +118,11 @@ func (mux *muxerTCP) listen() {
 
 //bridgeWorker conn->packet
 func (mux *muxerTCP) bridgeWorker(c net.Conn) {
-	defer c.Close()
+	defer func() {
+		if err := c.Close(); err != nil {
+			mux.log.Warn(err.Error())
+		}
+	}()
 	mux.log.Warnf("bridge packetConn for conn %v", c.RemoteAddr().String())
 	b := make([]byte, receiveMTU)
 	// read & parce first packet from Conn
@@ -158,20 +157,20 @@ func (mux *muxerTCP) bridgeWorker(c net.Conn) {
 				continue
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				mux.log.Warnf("Error: %v :\"%v\"", c.RemoteAddr().String(), err.Error())
+				mux.log.Errorf(" %v :\"%v\"", c.RemoteAddr().String(), err.Error())
 			}
 			break
 		}
 	}()
 	// packet->tcp
-	toConn := &[]byte{}
+	var toConn *[]byte
 	for {
-		if toConn, _ = <-tpc.upstream; toConn == nil { // slave closed
+		if toConn = <-tpc.upstream; toConn == nil { // slave closed
 			mux.freePacketConn(ufrag) // free muxer ufrag ref
 			break
 		}
 		if _, err := c.Write(*toConn); err != nil {
-			mux.log.Warnf("Error: %v :\"%v\"", c.RemoteAddr().String(), err.Error())
+			mux.log.Errorf("%v :\"%v\"", c.RemoteAddr().String(), err.Error())
 		}
 	}
 	tpc.linked = false
@@ -215,7 +214,7 @@ func (a *Agent) listenTCP(network string, laddr *net.TCPAddr) (*packetTCP, error
 	mux.Lock()
 	defer mux.Unlock()
 	if _, ok := mux.packetConns[a.localUfrag]; ok {
-		return nil, fmt.Errorf("Duplicate ufrag %v", a.localUfrag)
+		return nil, fmt.Errorf("duplicate ufrag %v", a.localUfrag)
 	}
 
 	conn := newPacketTCP(mux.listener.Addr())
