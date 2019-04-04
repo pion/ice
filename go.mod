@@ -1,11 +1,10 @@
-module github.com/pions/ice
+module github.com/pion/ice
 
 go 1.12
 
 require (
-	github.com/pions/logging v0.2.0
-	github.com/pions/stun v0.2.0
-	github.com/pions/transport v0.5.0
-	github.com/pions/webrtc v1.2.0
+	github.com/pion/logging v0.2.1
+	github.com/pion/stun v0.2.1
+	github.com/pion/transport v0.6.0
 	github.com/stretchr/testify v1.3.0
 )

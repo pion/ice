@@ -12,9 +12,9 @@ import (
 
 	"errors"
 
-	"github.com/pions/logging"
-	"github.com/pions/stun"
-	"github.com/pions/transport/packetio"
+	"github.com/pion/logging"
+	"github.com/pion/stun"
+	"github.com/pion/transport/packetio"
 )
 
 const (
