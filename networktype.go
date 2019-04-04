@@ -16,13 +16,6 @@ var supportedNetworks = []string{
 	tcp, // only tcp-passive (server side) supported yet
 }
 
-var supportedNetworkTypes = []NetworkType{
-	NetworkTypeUDP4,
-	NetworkTypeUDP6,
-	NetworkTypeTCP4,
-	NetworkTypeTCP6,
-}
-
 // NetworkType represents the type of network
 type NetworkType int
 
