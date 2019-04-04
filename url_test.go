@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pions/webrtc/pkg/rtcerr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,19 +48,19 @@ func TestParseURL(t *testing.T) {
 			rawURL      string
 			expectedErr error
 		}{
-			{"", &rtcerr.SyntaxError{Err: ErrSchemeType}},
-			{":::", &rtcerr.UnknownError{Err: errors.New("parse :::: missing protocol scheme")}},
-			{"stun:[::1]:123:", &rtcerr.UnknownError{Err: errors.New("address [::1]:123:: too many colons in address")}},
-			{"stun:[::1]:123a", &rtcerr.SyntaxError{Err: ErrPort}},
-			{"google.de", &rtcerr.SyntaxError{Err: ErrSchemeType}},
-			{"stun:", &rtcerr.SyntaxError{Err: ErrHost}},
-			{"stun:google.de:abc", &rtcerr.SyntaxError{Err: ErrPort}},
-			{"stun:google.de?transport=udp", &rtcerr.SyntaxError{Err: ErrSTUNQuery}},
-			{"stuns:google.de?transport=udp", &rtcerr.SyntaxError{Err: ErrSTUNQuery}},
-			{"turn:google.de?trans=udp", &rtcerr.SyntaxError{Err: ErrInvalidQuery}},
-			{"turns:google.de?trans=udp", &rtcerr.SyntaxError{Err: ErrInvalidQuery}},
-			{"turns:google.de?transport=udp&another=1", &rtcerr.SyntaxError{Err: ErrInvalidQuery}},
-			{"turn:google.de?transport=ip", &rtcerr.NotSupportedError{Err: ErrProtoType}},
+			{"", ErrSchemeType},
+			{":::", errors.New("parse :::: missing protocol scheme")},
+			{"stun:[::1]:123:", errors.New("address [::1]:123:: too many colons in address")},
+			{"stun:[::1]:123a", ErrPort},
+			{"google.de", ErrSchemeType},
+			{"stun:", ErrHost},
+			{"stun:google.de:abc", ErrPort},
+			{"stun:google.de?transport=udp", ErrSTUNQuery},
+			{"stuns:google.de?transport=udp", ErrSTUNQuery},
+			{"turn:google.de?trans=udp", ErrInvalidQuery},
+			{"turns:google.de?trans=udp", ErrInvalidQuery},
+			{"turns:google.de?transport=udp&another=1", ErrInvalidQuery},
+			{"turn:google.de?transport=ip", ErrProtoType},
 		}
 
 		for i, testCase := range testCases {

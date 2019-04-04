@@ -4,8 +4,6 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-
-	"github.com/pions/webrtc/pkg/rtcerr"
 )
 
 // TODO: Migrate address parsing to STUN/TURN
@@ -113,13 +111,13 @@ type URL struct {
 func ParseURL(raw string) (*URL, error) {
 	rawParts, err := url.Parse(raw)
 	if err != nil {
-		return nil, &rtcerr.UnknownError{Err: err}
+		return nil, err
 	}
 
 	var u URL
 	u.Scheme = NewSchemeType(rawParts.Scheme)
 	if u.Scheme == SchemeType(Unknown) {
-		return nil, &rtcerr.SyntaxError{Err: ErrSchemeType}
+		return nil, ErrSchemeType
 	}
 
 	var rawPort string
@@ -143,28 +141,28 @@ func ParseURL(raw string) (*URL, error) {
 				}
 			}
 		}
-		return nil, &rtcerr.UnknownError{Err: err}
+		return nil, err
 	}
 
 	if u.Host == "" {
-		return nil, &rtcerr.SyntaxError{Err: ErrHost}
+		return nil, ErrHost
 	}
 
 	if u.Port, err = strconv.Atoi(rawPort); err != nil {
-		return nil, &rtcerr.SyntaxError{Err: ErrPort}
+		return nil, ErrPort
 	}
 
 	switch {
 	case u.Scheme == SchemeTypeSTUN:
 		qArgs, err := url.ParseQuery(rawParts.RawQuery)
 		if err != nil || (err == nil && len(qArgs) > 0) {
-			return nil, &rtcerr.SyntaxError{Err: ErrSTUNQuery}
+			return nil, ErrSTUNQuery
 		}
 		u.Proto = ProtoTypeUDP
 	case u.Scheme == SchemeTypeSTUNS:
 		qArgs, err := url.ParseQuery(rawParts.RawQuery)
 		if err != nil || (err == nil && len(qArgs) > 0) {
-			return nil, &rtcerr.SyntaxError{Err: ErrSTUNQuery}
+			return nil, ErrSTUNQuery
 		}
 		u.Proto = ProtoTypeTCP
 	case u.Scheme == SchemeTypeTURN:
@@ -195,19 +193,19 @@ func ParseURL(raw string) (*URL, error) {
 func parseProto(raw string) (ProtoType, error) {
 	qArgs, err := url.ParseQuery(raw)
 	if err != nil || len(qArgs) > 1 {
-		return ProtoType(Unknown), &rtcerr.SyntaxError{Err: ErrInvalidQuery}
+		return ProtoType(Unknown), ErrInvalidQuery
 	}
 
 	var proto ProtoType
 	if rawProto := qArgs.Get("transport"); rawProto != "" {
 		if proto = NewProtoType(rawProto); proto == ProtoType(0) {
-			return ProtoType(Unknown), &rtcerr.NotSupportedError{Err: ErrProtoType}
+			return ProtoType(Unknown), ErrProtoType
 		}
 		return proto, nil
 	}
 
 	if len(qArgs) > 0 {
-		return ProtoType(Unknown), &rtcerr.SyntaxError{Err: ErrInvalidQuery}
+		return ProtoType(Unknown), ErrInvalidQuery
 	}
 
 	return proto, nil
