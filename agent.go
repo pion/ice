@@ -131,6 +131,10 @@ type AgentConfig struct {
 	NetworkTypes []NetworkType
 
 	LoggerFactory logging.LoggerFactory
+
+	// IsControlling
+	// Determine the type of agent is important for TCP candidates
+	IsControlling bool
 }
 
 // NewAgent creates a new Agent
@@ -150,16 +154,17 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localCandidates:  make(map[NetworkType][]*Candidate),
 		remoteCandidates: make(map[NetworkType][]*Candidate),
 
-		localUfrag:  randSeq(16),
-		localPwd:    randSeq(32),
-		taskChan:    make(chan task),
-		onConnected: make(chan struct{}),
-		buffer:      packetio.NewBuffer(),
-		done:        make(chan struct{}),
-		portmin:     config.PortMin,
-		portmax:     config.PortMax,
-		tcpport:     config.TCPPort,
-		log:         config.LoggerFactory.NewLogger("ice"),
+		localUfrag:    randSeq(16),
+		localPwd:      randSeq(32),
+		taskChan:      make(chan task),
+		onConnected:   make(chan struct{}),
+		buffer:        packetio.NewBuffer(),
+		done:          make(chan struct{}),
+		portmin:       config.PortMin,
+		portmax:       config.PortMax,
+		tcpport:       config.TCPPort,
+		log:           config.LoggerFactory.NewLogger("ice"),
+		isControlling: config.IsControlling,
 	}
 
 	// Make sure the buffer doesn't grow indefinitely.

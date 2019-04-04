@@ -185,6 +185,11 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
+var onlyUDPNetworks = []NetworkType{
+	NetworkTypeUDP4,
+	NetworkTypeUDP6,
+}
+
 func pipe() (*Conn, *Conn) {
 	var urls []*URL
 
@@ -193,7 +198,7 @@ func pipe() (*Conn, *Conn) {
 
 	aAgent, err := NewAgent(&AgentConfig{
 		Urls:         urls,
-		NetworkTypes: supportedNetworkTypes,
+		NetworkTypes: onlyUDPNetworks,
 	})
 	if err != nil {
 		panic(err)
@@ -204,8 +209,9 @@ func pipe() (*Conn, *Conn) {
 	}
 
 	bAgent, err := NewAgent(&AgentConfig{
-		Urls:         urls,
-		NetworkTypes: supportedNetworkTypes,
+		Urls:          urls,
+		NetworkTypes:  onlyUDPNetworks,
+		IsControlling: true,
 	})
 	if err != nil {
 		panic(err)
@@ -235,7 +241,7 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 		Urls:              urls,
 		ConnectionTimeout: &iceTimeout,
 		KeepaliveInterval: &iceKeepalive,
-		NetworkTypes:      supportedNetworkTypes,
+		NetworkTypes:      onlyUDPNetworks,
 	})
 	if err != nil {
 		panic(err)
@@ -249,7 +255,7 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 		Urls:              urls,
 		ConnectionTimeout: &iceTimeout,
 		KeepaliveInterval: &iceKeepalive,
-		NetworkTypes:      supportedNetworkTypes,
+		NetworkTypes:      onlyUDPNetworks,
 	})
 	if err != nil {
 		panic(err)
