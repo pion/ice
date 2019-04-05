@@ -144,35 +144,8 @@ func (mux *muxerTCP) bridgeWorker(c net.Conn) {
 	tpc.linked = true
 	srcAddr := c.RemoteAddr()
 	tpc.downstream <- &incomingPacket{buffer: b, srcAddr: &srcAddr}
-	// tcp->packet
-	go func() {
-		for {
-			b := make([]byte, receiveMTU)
-			if n, err = ConnReadPacket(c, b); err == nil {
-				b = b[0:n]
-				select {
-				case tpc.downstream <- &incomingPacket{buffer: b, srcAddr: &srcAddr}:
-				default:
-				}
-				continue
-			}
-			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
-				mux.log.Errorf(" %v :\"%v\"", c.RemoteAddr().String(), err.Error())
-			}
-			break
-		}
-	}()
-	// packet->tcp
-	var toConn *[]byte
-	for {
-		if toConn = <-tpc.upstream; toConn == nil { // slave closed
-			mux.freePacketConn(ufrag) // free muxer ufrag ref
-			break
-		}
-		if _, err := c.Write(*toConn); err != nil {
-			mux.log.Errorf("%v :\"%v\"", c.RemoteAddr().String(), err.Error())
-		}
-	}
+	tpc.attachConn(c)
+
 	tpc.linked = false
 }
 

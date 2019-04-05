@@ -23,10 +23,13 @@ type incomingPacket struct {
 
 //packetTCP paket over tcp conn
 type packetTCP struct {
-	upstream   chan *[]byte
-	downstream chan *incomingPacket
-	linked     bool
-	validator  ConnValidator
+	upstream       chan *[]byte
+	downstream     chan *incomingPacket
+	upstreamDone   chan bool
+	downstreamDone chan bool
+	errorChan      chan error
+	linked         bool
+	validator      ConnValidator
 	sync.Mutex
 	local net.Addr
 }
@@ -34,10 +37,13 @@ type packetTCP struct {
 //newPacketTCP new connection
 func newPacketTCP(local net.Addr) *packetTCP {
 	return &packetTCP{
-		upstream:   make(chan *[]byte, queueLen),
-		downstream: make(chan *incomingPacket, queueLen),
-		linked:     false,
-		local:      local,
+		upstream:       make(chan *[]byte, queueLen),
+		downstream:     make(chan *incomingPacket, queueLen),
+		linked:         false,
+		local:          local,
+		upstreamDone:   make(chan bool),
+		downstreamDone: make(chan bool),
+		errorChan:      make(chan error),
 	}
 }
 
@@ -107,4 +113,55 @@ func (t *packetTCP) SetReadDeadline(tm time.Time) error {
 // SetWriteDeadline ...
 func (t *packetTCP) SetWriteDeadline(tm time.Time) error {
 	return nil
+}
+
+func (t *packetTCP) attachConn(c net.Conn) error {
+	go t.fromPacketConn(c)
+	t.toPacketConn(c)
+	select {
+	case err := <-t.errorChan:
+		return err
+	default:
+	}
+	return nil
+}
+
+func (t *packetTCP) fromPacketConn(c net.Conn) {
+loop:
+	for {
+		select {
+		case p := <-t.upstream:
+			if p == nil {
+				break loop
+			}
+			if _, err := c.Write(*p); err != nil {
+				t.errorChan <- err
+				break loop
+			}
+		}
+	}
+	_ = c.Close() // signalling to .ReadFrom pipe
+	t.upstreamDone <- true
+}
+
+func (t *packetTCP) toPacketConn(c net.Conn) {
+	b := make([]byte, receiveMTU)
+	addr := c.LocalAddr()
+	for {
+		n, err := ConnReadPacket(c, b)
+		if n == 0 {
+			break
+		}
+		if err != nil {
+			t.errorChan <- err
+			break
+		}
+		p := &incomingPacket{
+			srcAddr: &addr,
+			buffer:  make([]byte, n),
+		}
+		copy(p.buffer, b[:n])
+		t.downstream <- p
+	}
+	t.downstreamDone <- true
 }
