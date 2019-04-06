@@ -133,8 +133,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, ErrPort
 	}
 
-	if config.LoggerFactory == nil {
-		config.LoggerFactory = logging.NewDefaultLoggerFactory()
+	loggerFactory := config.LoggerFactory
+	if loggerFactory == nil {
+		loggerFactory = logging.NewDefaultLoggerFactory()
 	}
 
 	a := &Agent{
@@ -152,7 +153,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		done:        make(chan struct{}),
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
-		log:         config.LoggerFactory.NewLogger("ice"),
+		log:         loggerFactory.NewLogger("ice"),
 	}
 
 	// Make sure the buffer doesn't grow indefinitely.
