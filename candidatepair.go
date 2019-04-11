@@ -41,39 +41,38 @@ func (p *candidatePair) Equal(other *candidatePair) bool {
 // agent.  Let D be the priority for the candidate provided by the
 // controlled agent.
 // pair priority = 2^32*MIN(G,D) + 2*MAX(G,D) + (G>D?1:0)
-func (p *candidatePair) Priority() uint32 {
-	var g uint32
-	var d uint32
+func (p *candidatePair) Priority() uint64 {
+	var g, d uint64
 	if p.iceRoleControlling {
-		g = uint32(p.local.Priority())
-		d = uint32(p.remote.Priority())
+		g = uint64(p.local.Priority())
+		d = uint64(p.remote.Priority())
 	} else {
-		g = uint32(p.remote.Priority())
-		d = uint32(p.local.Priority())
+		g = uint64(p.remote.Priority())
+		d = uint64(p.local.Priority())
 	}
 
 	// Just implement these here rather
 	// than fooling around with the math package
-	min := func(x, y uint32) uint32 {
+	min := func(x, y uint64) uint64 {
 		if x < y {
 			return x
 		}
 		return y
 	}
-	max := func(x, y uint32) uint32 {
+	max := func(x, y uint64) uint64 {
 		if x > y {
 			return x
 		}
 		return y
 	}
-	cmp := func(x, y uint32) uint32 {
+	cmp := func(x, y uint64) uint64 {
 		if x > y {
 			return 1
 		}
 		return 0
 	}
 
-	return (2^32)*min(g, d) + 2*max(g, d) + cmp(g, d)
+	return min(g, d)<<32 + 2*max(g, d) + cmp(g, d)
 }
 
 func (p *candidatePair) Write(b []byte) (int, error) {
