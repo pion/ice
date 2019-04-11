@@ -368,7 +368,7 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
 			&stun.UseCandidate{},
 			&stun.IceControlling{TieBreaker: a.tieBreaker},
-			&stun.Priority{Priority: uint32(local.Priority())},
+			&stun.Priority{Priority: local.Priority()},
 			&stun.MessageIntegrity{
 				Key: []byte(a.remotePwd),
 			},
@@ -378,7 +378,7 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
 			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
 			&stun.IceControlled{TieBreaker: a.tieBreaker},
-			&stun.Priority{Priority: uint32(local.Priority())},
+			&stun.Priority{Priority: local.Priority()},
 			&stun.MessageIntegrity{
 				Key: []byte(a.remotePwd),
 			},
