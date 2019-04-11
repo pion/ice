@@ -41,39 +41,41 @@ func (p *candidatePair) Equal(other *candidatePair) bool {
 // agent.  Let D be the priority for the candidate provided by the
 // controlled agent.
 // pair priority = 2^32*MIN(G,D) + 2*MAX(G,D) + (G>D?1:0)
-func (p *candidatePair) Priority() uint32 {
+func (p *candidatePair) Priority() uint64 {
 	var g uint32
 	var d uint32
 	if p.iceRoleControlling {
-		g = uint32(p.local.Priority())
-		d = uint32(p.remote.Priority())
+		g = p.local.Priority()
+		d = p.remote.Priority()
 	} else {
-		g = uint32(p.remote.Priority())
-		d = uint32(p.local.Priority())
+		g = p.remote.Priority()
+		d = p.local.Priority()
 	}
 
 	// Just implement these here rather
 	// than fooling around with the math package
-	min := func(x, y uint32) uint32 {
+	min := func(x, y uint32) uint64 {
 		if x < y {
-			return x
+			return uint64(x)
 		}
-		return y
+		return uint64(y)
 	}
-	max := func(x, y uint32) uint32 {
+	max := func(x, y uint32) uint64 {
 		if x > y {
-			return x
+			return uint64(x)
 		}
-		return y
+		return uint64(y)
 	}
-	cmp := func(x, y uint32) uint32 {
+	cmp := func(x, y uint32) uint64 {
 		if x > y {
-			return 1
+			return uint64(1)
 		}
-		return 0
+		return uint64(0)
 	}
 
-	return (2^32)*min(g, d) + 2*max(g, d) + cmp(g, d)
+	// 1<<32 overflows uint32; and if both g && d are
+	// maxUint32, this result would overflow uint64
+	return (1<<32-1)*min(g, d) + 2*max(g, d) + cmp(g, d)
 }
 
 func (p *candidatePair) Write(b []byte) (int, error) {
