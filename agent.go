@@ -19,7 +19,7 @@ import (
 
 const (
 	// taskLoopInterval is the interval at which the agent performs checks
-	taskLoopInterval = 2 * time.Second
+	defaultTaskLoopInterval = 2 * time.Second
 
 	// keepaliveInterval used to keep candidates alive
 	defaultKeepaliveInterval = 10 * time.Second
@@ -44,8 +44,9 @@ type Agent struct {
 	onConnected     chan struct{}
 	onConnectedOnce sync.Once
 
-	connectivityTicker *time.Ticker
-	connectivityChan   <-chan time.Time
+	connectivityChan <-chan time.Time
+	// force candidate to be contacted immediately (instead of waiting for connectivityChan)
+	forceCandidateContact chan bool
 
 	tieBreaker      uint64
 	connectionState ConnectionState
@@ -64,6 +65,9 @@ type Agent struct {
 	//How often should we send keepalive packets?
 	//0 means never
 	keepaliveInterval time.Duration
+
+	// How after should we run our internal taskLoop
+	taskLoopInterval time.Duration
 
 	localUfrag      string
 	localPwd        string
@@ -125,6 +129,11 @@ type AgentConfig struct {
 	NetworkTypes []NetworkType
 
 	LoggerFactory logging.LoggerFactory
+
+	// taskLoopInterval controls how often our internal task loop runs, this
+	// task loop handles things like sending keepAlives. This is only value for testing
+	// keepAlive behavior should be modified with KeepaliveInterval and ConnectionTimeout
+	taskLoopInterval time.Duration
 }
 
 // NewAgent creates a new Agent
@@ -154,6 +163,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
 		log:         loggerFactory.NewLogger("ice"),
+
+		forceCandidateContact: make(chan bool, 1),
 	}
 
 	// Make sure the buffer doesn't grow indefinitely.
@@ -172,6 +183,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.keepaliveInterval = defaultKeepaliveInterval
 	} else {
 		a.keepaliveInterval = *config.KeepaliveInterval
+	}
+
+	if config.taskLoopInterval == 0 {
+		a.taskLoopInterval = defaultTaskLoopInterval
+	} else {
+		a.taskLoopInterval = config.taskLoopInterval
 	}
 
 	// Initialize local candidates
@@ -345,12 +362,12 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
 
-		// TODO this should be dynamic, and grow when the connection is stable
-		t := time.NewTicker(taskLoopInterval)
-		agent.connectivityTicker = t
-		agent.connectivityChan = t.C
-
 		agent.updateConnectionState(ConnectionStateChecking)
+
+		// TODO this should be dynamic, and grow when the connection is stable
+		agent.forceCandidateContact <- true
+		t := time.NewTicker(a.taskLoopInterval)
+		agent.connectivityChan = t.C
 	})
 }
 
@@ -465,17 +482,22 @@ func (a *Agent) run(t task) error {
 }
 
 func (a *Agent) taskLoop() {
+	contactCandidates := func() {
+		if a.validateSelectedPair() {
+			a.log.Trace("checking keepalive")
+			a.checkKeepalive()
+		} else {
+			a.log.Trace("pinging all candidates")
+			a.pingAllCandidates()
+		}
+	}
+
 	for {
 		select {
+		case <-a.forceCandidateContact:
+			contactCandidates()
 		case <-a.connectivityChan:
-			if a.validateSelectedPair() {
-				a.log.Trace("checking keepalive")
-				a.checkKeepalive()
-			} else {
-				a.log.Trace("pinging all candidates")
-				a.pingAllCandidates()
-			}
-
+			contactCandidates()
 		case t := <-a.taskChan:
 			// Run the task
 			t(a)

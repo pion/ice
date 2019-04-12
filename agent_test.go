@@ -312,3 +312,42 @@ func TestHandlePeerReflexive(t *testing.T) {
 		}
 	})
 }
+
+// Assert that Agent on startup sends message, and doesn't wait for taskloop to start
+// github.com/pion/ice/issues/15
+func TestConnectivityOnStartup(t *testing.T) {
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	cfg := &AgentConfig{
+		Urls:             []*URL{},
+		NetworkTypes:     supportedNetworkTypes,
+		taskLoopInterval: time.Hour,
+	}
+
+	aNotifier, aConnected := onConnected()
+	bNotifier, bConnected := onConnected()
+
+	aAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+	err = aAgent.OnConnectionStateChange(aNotifier)
+	if err != nil {
+		panic(err)
+	}
+
+	bAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+	err = bAgent.OnConnectionStateChange(bNotifier)
+	if err != nil {
+		panic(err)
+	}
+
+	connect(aAgent, bAgent)
+
+	<-aConnected
+	<-bConnected
+}
