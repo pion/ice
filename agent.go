@@ -3,6 +3,8 @@
 package ice
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -29,6 +31,8 @@ const (
 
 	// the number of bytes that can be buffered before we start to error
 	maxBufferSize = 1000 * 1000 // 1MB
+
+	stunAttrHeaderLength = 4
 )
 
 // Agent represents the ICE agent
@@ -768,9 +772,88 @@ func (a *Agent) handleNewPeerReflexiveCandidate(local *Candidate, remote net.Add
 	return nil
 }
 
+func (a *Agent) assertInboundUsername(m *stun.Message) error {
+	usernameAttr := &stun.Username{}
+	usernameRawAttr, usernameFound := m.GetOneAttribute(stun.AttrUsername)
+
+	if !usernameFound {
+		return fmt.Errorf("inbound packet missing Username")
+	} else if err := usernameAttr.Unpack(m, usernameRawAttr); err != nil {
+		return err
+	}
+
+	expectedUsername := a.localUfrag + ":" + a.remoteUfrag
+	if usernameAttr.Username != expectedUsername {
+		return fmt.Errorf("username mismatch expected(%x) actual(%x)", expectedUsername, usernameAttr.Username)
+	}
+
+	return nil
+}
+
+func (a *Agent) assertInboundMessageIntegrity(m *stun.Message, key []byte) error {
+	messageIntegrityAttr := &stun.MessageIntegrity{}
+	messageIntegrityRawAttr, messageIntegrityAttrFound := m.GetOneAttribute(stun.AttrMessageIntegrity)
+
+	if !messageIntegrityAttrFound {
+		return fmt.Errorf("inbound packet missing MessageIntegrity")
+	} else if err := messageIntegrityAttr.Unpack(m, messageIntegrityRawAttr); err != nil {
+		return err
+	}
+
+	tailLength := messageIntegrityRawAttr.Length + stunAttrHeaderLength
+	rawCopy := make([]byte, len(m.Raw))
+	copy(rawCopy, m.Raw)
+
+	// If we have a fingerprint we need to exclude it from the MessageIntegrity computation
+	if rawFingerprint, hasFingerprint := m.GetOneAttribute(stun.AttrFingerprint); hasFingerprint {
+		fingerprintLength := rawFingerprint.Length + stunAttrHeaderLength
+		tailLength += fingerprintLength
+
+		// Rewrite the packet header to be new length (excluding values we don't care about)
+		currLength := binary.BigEndian.Uint16(rawCopy[2:4])
+		binary.BigEndian.PutUint16(rawCopy[2:], currLength-fingerprintLength)
+	}
+
+	lengthToHash := len(rawCopy) - int(tailLength)
+	if lengthToHash < 1 {
+		return fmt.Errorf("unable to assert MessageIntegrity, length calculation failed (%d)", lengthToHash)
+	}
+
+	computedMessageIntegrity, err := stun.MessageIntegrityCalculateHMAC(key, rawCopy[:lengthToHash])
+	if err != nil {
+		return err
+	} else if !bytes.Equal(computedMessageIntegrity, messageIntegrityRawAttr.Value) {
+		return fmt.Errorf("messageIntegrity mismatch expected(%x) actual(%x)", computedMessageIntegrity, messageIntegrityRawAttr.Value)
+	}
+
+	return nil
+}
+
 // handleInbound processes STUN traffic from a remote candidate
 func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr) {
+	if m == nil || local == nil {
+		return
+	}
 	a.log.Tracef("inbound STUN from %s to %s", remote.String(), local.String())
+
+	switch {
+	case m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse:
+		if err := a.assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		}
+	case m.Method == stun.MethodBinding && m.Class == stun.ClassRequest:
+		if err := a.assertInboundUsername(m); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		} else if err := a.assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		}
+	default:
+		return
+	}
+
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
 	if remoteCandidate == nil {
 		a.log.Debugf("detected a new peer-reflexive candiate: %s ", remote)
@@ -781,12 +864,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		}
 		return
 	}
-
 	remoteCandidate.seen(false)
-
-	if m.Class == stun.ClassIndication {
-		return
-	}
 
 	if a.isControlling {
 		a.handleInboundControlling(m, local, remoteCandidate)

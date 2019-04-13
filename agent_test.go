@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 )
 
@@ -199,7 +200,21 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 
-		a.handleInbound(nil, local, remote)
+		msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+			&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
+			&stun.UseCandidate{},
+			&stun.IceControlling{TieBreaker: a.tieBreaker},
+			&stun.Priority{Priority: local.Priority()},
+			&stun.MessageIntegrity{
+				Key: []byte(a.localPwd),
+			},
+			&stun.Fingerprint{},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		a.handleInbound(msg, local, remote)
 
 		// length of remote candidate list must be one now
 		if len(a.remoteCandidates) != 1 {
@@ -350,4 +365,102 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 	<-aConnected
 	<-bConnected
+}
+
+func TestInboundValidity(t *testing.T) {
+	buildMsg := func(class stun.MessageClass, username, key string) *stun.Message {
+		msg, err := stun.Build(class, stun.MethodBinding, stun.GenerateTransactionID(),
+			&stun.Username{Username: username},
+			&stun.MessageIntegrity{
+				Key: []byte(key),
+			},
+			&stun.Fingerprint{},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return msg
+	}
+
+	remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+	local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+	if err != nil {
+		t.Fatalf("failed to create a new candidate: %v", err)
+	}
+
+	t.Run("Invalid Binding requests should be discarded", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		a.handleInbound(buildMsg(stun.ClassRequest, "invalid", a.localPwd), local, remote)
+		if len(a.remoteCandidates) == 1 {
+			t.Fatal("Binding with invalid Username was able to create prflx candidate")
+		}
+
+		a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
+		if len(a.remoteCandidates) == 1 {
+			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
+		}
+	})
+
+	t.Run("Invalid Binding success responses should be discarded", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		a.handleInbound(buildMsg(stun.ClassSuccessResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
+		if len(a.remoteCandidates) == 1 {
+			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
+		}
+	})
+
+	t.Run("Discard non-binding messages", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		a.handleInbound(buildMsg(stun.ClassErrorResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
+		if len(a.remoteCandidates) == 1 {
+			t.Fatal("non-binding message was able to create prflxRemote")
+		}
+	})
+
+	t.Run("Valid bind request", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
+		if len(a.remoteCandidates) != 1 {
+			t.Fatal("Binding with valid values was unable to create prflx candidate")
+		}
+	})
+
+	t.Run("Valid bind without fingerprint", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+			&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
+			&stun.MessageIntegrity{
+				Key: []byte(a.localPwd),
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		a.handleInbound(msg, local, remote)
+		if len(a.remoteCandidates) != 1 {
+			t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
+		}
+	})
 }
