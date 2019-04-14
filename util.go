@@ -9,65 +9,6 @@ import (
 	"time"
 )
 
-func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return ips
-	}
-
-	var IPv4Requested, IPv6Requested bool
-	for _, typ := range networkTypes {
-		if typ.IsIPv4() {
-			IPv4Requested = true
-		}
-
-		if typ.IsIPv6() {
-			IPv6Requested = true
-		}
-	}
-
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
-		}
-
-		addrs, err := iface.Addrs()
-		if err != nil {
-			return ips
-		}
-
-		for _, addr := range addrs {
-			var ip net.IP
-			switch addr := addr.(type) {
-			case *net.IPNet:
-				ip = addr.IP
-			case *net.IPAddr:
-				ip = addr.IP
-
-			}
-			if ip == nil || ip.IsLoopback() {
-				continue
-			}
-
-			if ipv4 := ip.To4(); ipv4 == nil {
-				if !IPv6Requested {
-					continue
-				} else if !isSupportedIPv6(ip) {
-					continue
-				}
-			} else if !IPv4Requested {
-				continue
-			}
-
-			ips = append(ips, ip)
-		}
-	}
-	return ips
-}
-
 type atomicError struct{ v atomic.Value }
 
 func (a *atomicError) Store(err error) {

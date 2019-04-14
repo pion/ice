@@ -3,16 +3,12 @@
 package ice
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
 	"sort"
 	"sync"
 	"time"
-
-	"errors"
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
@@ -34,6 +30,18 @@ const (
 
 	stunAttrHeaderLength = 4
 )
+
+type candidatePairs []*candidatePair
+
+func (cp candidatePairs) Len() int      { return len(cp) }
+func (cp candidatePairs) Swap(i, j int) { cp[i], cp[j] = cp[j], cp[i] }
+
+type byPairPriority struct{ candidatePairs }
+
+// NB: Reverse sort so our candidates start at highest priority
+func (bp byPairPriority) Less(i, j int) bool {
+	return bp.candidatePairs[i].Priority() > bp.candidatePairs[j].Priority()
+}
 
 // Agent represents the ICE agent
 type Agent struct {
@@ -196,8 +204,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	}
 
 	// Initialize local candidates
-	a.gatherCandidatesLocal(config.NetworkTypes)
-	a.gatherCandidatesReflective(config.Urls, config.NetworkTypes)
+	gatherCandidatesLocal(a, config.NetworkTypes)
+	gatherCandidatesReflective(a, config.Urls, config.NetworkTypes)
 
 	go a.taskLoop()
 	return a, nil
@@ -224,130 +232,6 @@ func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
 			a.onSelectedCandidatePairChangeHdlr(p.local, p.remote)
 		}
 	}
-}
-
-func (a *Agent) listenUDP(network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
-	if (laddr.Port != 0) || ((a.portmin == 0) && (a.portmax == 0)) {
-		return net.ListenUDP(network, laddr)
-	}
-	var i, j int
-	i = int(a.portmin)
-	if i == 0 {
-		i = 1
-	}
-	j = int(a.portmax)
-	if j == 0 {
-		j = 0xFFFF
-	}
-	for i <= j {
-		c, e := net.ListenUDP(network, &net.UDPAddr{IP: laddr.IP, Port: i})
-		if e == nil {
-			return c, e
-		}
-		i++
-	}
-	return nil, ErrPort
-}
-
-func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
-	localIPs := localInterfaces(networkTypes)
-	for _, ip := range localIPs {
-		for _, network := range supportedNetworks {
-			conn, err := a.listenUDP(network, &net.UDPAddr{IP: ip, Port: 0})
-			if err != nil {
-				a.log.Warnf("could not listen %s %s\n", network, ip)
-				continue
-			}
-
-			port := conn.LocalAddr().(*net.UDPAddr).Port
-			c, err := NewCandidateHost(network, ip, port, ComponentRTP)
-			if err != nil {
-				a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
-				continue
-			}
-
-			networkType := c.NetworkType
-			set := a.localCandidates[networkType]
-			set = append(set, c)
-			a.localCandidates[networkType] = set
-
-			c.start(a, conn)
-		}
-	}
-}
-
-func (a *Agent) gatherCandidatesReflective(urls []*URL, networkTypes []NetworkType) {
-	for _, networkType := range networkTypes {
-		network := networkType.String()
-		for _, url := range urls {
-			switch url.Scheme {
-			case SchemeTypeSTUN:
-				laddr, xoraddr, err := allocateUDP(network, url)
-				if err != nil {
-					a.log.Warnf("could not allocate %s %s: %v\n", network, url, err)
-					continue
-				}
-				conn, err := net.ListenUDP(network, laddr)
-				if err != nil {
-					a.log.Warnf("could not listen %s %s: %v\n", network, laddr, err)
-				}
-
-				ip := xoraddr.IP
-				port := xoraddr.Port
-				relIP := laddr.IP.String()
-				relPort := laddr.Port
-				c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
-				if err != nil {
-					a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
-					continue
-				}
-
-				networkType := c.NetworkType
-				set := a.localCandidates[networkType]
-				set = append(set, c)
-				a.localCandidates[networkType] = set
-
-				c.start(a, conn)
-
-			default:
-				a.log.Warnf("scheme %s is not implemented\n", url.Scheme)
-				continue
-			}
-		}
-	}
-}
-
-func allocateUDP(network string, url *URL) (*net.UDPAddr, *stun.XorAddress, error) {
-	// TODO Do we want the timeout to be configurable?
-	client, err := stun.NewClient(network, fmt.Sprintf("%s:%d", url.Host, url.Port), time.Second*5)
-	if err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to create STUN client"), err})
-	}
-	localAddr, ok := client.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to cast STUN client to UDPAddr")
-	}
-
-	resp, err := client.Request()
-	if err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to make STUN request"), err})
-	}
-
-	if err = client.Close(); err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to close STUN client"), err})
-	}
-
-	attr, ok := resp.GetOneAttribute(stun.AttrXORMappedAddress)
-	if !ok {
-		return nil, nil, fmt.Errorf("got response from STUN server that did not contain XORAddress")
-	}
-
-	var addr stun.XorAddress
-	if err = addr.Unpack(resp, attr); err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to unpack STUN XorAddress response"), err})
-	}
-
-	return localAddr, &addr, nil
 }
 
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
@@ -427,18 +311,6 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 			go hdlr(newState)
 		}
 	}
-}
-
-type candidatePairs []*candidatePair
-
-func (cp candidatePairs) Len() int      { return len(cp) }
-func (cp candidatePairs) Swap(i, j int) { cp[i], cp[j] = cp[j], cp[i] }
-
-type byPairPriority struct{ candidatePairs }
-
-// NB: Reverse sort so our candidates start at highest priority
-func (bp byPairPriority) Less(i, j int) bool {
-	return bp.candidatePairs[i].Priority() > bp.candidatePairs[j].Priority()
 }
 
 func (a *Agent) setValidPair(local, remote *Candidate, selected, controlling bool) {
@@ -737,98 +609,6 @@ func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remote
 	}
 }
 
-// handleNewPeerReflexiveCandidate adds an unseen remote transport address
-// to the remote candidate list as a peer-reflexive candidate.
-func (a *Agent) handleNewPeerReflexiveCandidate(local *Candidate, remote net.Addr) error {
-	var ip net.IP
-	var port int
-
-	switch addr := remote.(type) {
-	case *net.UDPAddr:
-		ip = addr.IP
-		port = addr.Port
-	case *net.TCPAddr:
-		ip = addr.IP
-		port = addr.Port
-	default:
-		return fmt.Errorf("unsupported address type %T", addr)
-	}
-
-	pflxCandidate, err := NewCandidatePeerReflexive(
-		local.NetworkType.String(), // assume, same as that of local
-		ip,
-		port,
-		local.Component,
-		"", // unknown at this moment. TODO: need a review
-		0,  // unknown at this moment. TODO: need a review
-	)
-
-	if err != nil {
-		return flattenErrs([]error{fmt.Errorf("failed to create peer-reflexive candidate: %v", remote), err})
-	}
-
-	// Add pflxCandidate to the remote candidate list
-	a.addRemoteCandidate(pflxCandidate)
-	return nil
-}
-
-func (a *Agent) assertInboundUsername(m *stun.Message) error {
-	usernameAttr := &stun.Username{}
-	usernameRawAttr, usernameFound := m.GetOneAttribute(stun.AttrUsername)
-
-	if !usernameFound {
-		return fmt.Errorf("inbound packet missing Username")
-	} else if err := usernameAttr.Unpack(m, usernameRawAttr); err != nil {
-		return err
-	}
-
-	expectedUsername := a.localUfrag + ":" + a.remoteUfrag
-	if usernameAttr.Username != expectedUsername {
-		return fmt.Errorf("username mismatch expected(%x) actual(%x)", expectedUsername, usernameAttr.Username)
-	}
-
-	return nil
-}
-
-func (a *Agent) assertInboundMessageIntegrity(m *stun.Message, key []byte) error {
-	messageIntegrityAttr := &stun.MessageIntegrity{}
-	messageIntegrityRawAttr, messageIntegrityAttrFound := m.GetOneAttribute(stun.AttrMessageIntegrity)
-
-	if !messageIntegrityAttrFound {
-		return fmt.Errorf("inbound packet missing MessageIntegrity")
-	} else if err := messageIntegrityAttr.Unpack(m, messageIntegrityRawAttr); err != nil {
-		return err
-	}
-
-	tailLength := messageIntegrityRawAttr.Length + stunAttrHeaderLength
-	rawCopy := make([]byte, len(m.Raw))
-	copy(rawCopy, m.Raw)
-
-	// If we have a fingerprint we need to exclude it from the MessageIntegrity computation
-	if rawFingerprint, hasFingerprint := m.GetOneAttribute(stun.AttrFingerprint); hasFingerprint {
-		fingerprintLength := rawFingerprint.Length + stunAttrHeaderLength
-		tailLength += fingerprintLength
-
-		// Rewrite the packet header to be new length (excluding values we don't care about)
-		currLength := binary.BigEndian.Uint16(rawCopy[2:4])
-		binary.BigEndian.PutUint16(rawCopy[2:], currLength-fingerprintLength)
-	}
-
-	lengthToHash := len(rawCopy) - int(tailLength)
-	if lengthToHash < 1 {
-		return fmt.Errorf("unable to assert MessageIntegrity, length calculation failed (%d)", lengthToHash)
-	}
-
-	computedMessageIntegrity, err := stun.MessageIntegrityCalculateHMAC(key, rawCopy[:lengthToHash])
-	if err != nil {
-		return err
-	} else if !bytes.Equal(computedMessageIntegrity, messageIntegrityRawAttr.Value) {
-		return fmt.Errorf("messageIntegrity mismatch expected(%x) actual(%x)", computedMessageIntegrity, messageIntegrityRawAttr.Value)
-	}
-
-	return nil
-}
-
 // handleInbound processes STUN traffic from a remote candidate
 func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr) {
 	if m == nil || local == nil {
@@ -838,15 +618,15 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 
 	switch {
 	case m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse:
-		if err := a.assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
+		if err := assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
 		}
 	case m.Method == stun.MethodBinding && m.Class == stun.ClassRequest:
-		if err := a.assertInboundUsername(m); err != nil {
+		if err := assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
-		} else if err := a.assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
+		} else if err := assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
 		}
@@ -857,11 +637,12 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
 	if remoteCandidate == nil {
 		a.log.Debugf("detected a new peer-reflexive candiate: %s ", remote)
-		err := a.handleNewPeerReflexiveCandidate(local, remote)
+		pflxCandidate, err := handleNewPeerReflexiveCandidate(local, remote)
 		if err != nil {
-			// Log warning, then move on..
 			a.log.Warn(err.Error())
 		}
+
+		a.addRemoteCandidate(pflxCandidate)
 		return
 	}
 	remoteCandidate.seen(false)

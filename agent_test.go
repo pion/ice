@@ -291,10 +291,11 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 		remote := &net.TCPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 
-		err = a.handleNewPeerReflexiveCandidate(local, remote)
+		candidate, err := handleNewPeerReflexiveCandidate(local, remote)
 		if err != nil {
 			t.Fatalf("handleNewPeerReflexiveCandidate() should not fail: %v", err)
 		}
+		a.addRemoteCandidate(candidate)
 
 		// length of remote candidate list must be one now
 		if len(a.remoteCandidates) != 1 {
