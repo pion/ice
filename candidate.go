@@ -188,13 +188,17 @@ func (c *Candidate) recvLoop() {
 			}
 
 			continue
-		} else {
-			err = c.agent.run(func(agent *Agent) {
-				agent.noSTUNSeen(c, srcAddr)
-			})
-			if err != nil {
-				log.Warnf("Failed to handle message: %v", err)
-			}
+		}
+
+		isValidRemoteCandidate := make(chan bool, 1)
+		err = c.agent.run(func(agent *Agent) {
+			isValidRemoteCandidate <- agent.noSTUNSeen(c, srcAddr)
+		})
+
+		if err != nil {
+			log.Warnf("Failed to handle message: %v", err)
+		} else if !<-isValidRemoteCandidate {
+			log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
 		}
 
 		// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
