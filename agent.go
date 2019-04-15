@@ -654,12 +654,16 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 	}
 }
 
-// noSTUNSeen processes non STUN traffic from a remote candidate
-func (a *Agent) noSTUNSeen(local *Candidate, remote net.Addr) {
+// noSTUNSeen processes non STUN traffic from a remote candidate,
+// and returns true if it is an actual remote candidate
+func (a *Agent) noSTUNSeen(local *Candidate, remote net.Addr) bool {
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
-	if remoteCandidate != nil {
-		remoteCandidate.seen(false)
+	if remoteCandidate == nil {
+		return false
 	}
+
+	remoteCandidate.seen(false)
+	return true
 }
 
 func (a *Agent) getBestPair() (*candidatePair, error) {
