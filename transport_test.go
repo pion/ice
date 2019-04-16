@@ -63,7 +63,7 @@ func TestTimeout(t *testing.T) {
 		panic(err)
 	}
 
-	testTimeout(t, ca, 30*time.Second)
+	testTimeout(t, ca, defaultConnectionTimeout)
 
 	ca, cb = pipeWithTimeout(5*time.Second, 3*time.Second)
 	err = cb.Close()
