@@ -3,6 +3,7 @@
 package ice
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"net"
@@ -27,6 +28,9 @@ const (
 
 	// the number of bytes that can be buffered before we start to error
 	maxBufferSize = 1000 * 1000 // 1MB
+
+	// the number of outbound binding requests we cache
+	maxPendingBindingRequests = 50
 
 	stunAttrHeaderLength = 4
 )
@@ -94,6 +98,9 @@ type Agent struct {
 
 	buffer *packetio.Buffer
 
+	// LRU of outbound Binding request Transaction IDs
+	pendingBindingRequests [][]byte
+
 	// State for closing
 	done chan struct{}
 	err  atomicError
@@ -160,11 +167,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	}
 
 	a := &Agent{
-		tieBreaker:       rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
-		gatheringState:   GatheringStateComplete, // TODO trickle-ice
-		connectionState:  ConnectionStateNew,
-		localCandidates:  make(map[NetworkType][]*Candidate),
-		remoteCandidates: make(map[NetworkType][]*Candidate),
+		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
+		gatheringState:         GatheringStateComplete, // TODO trickle-ice
+		connectionState:        ConnectionStateNew,
+		localCandidates:        make(map[NetworkType][]*Candidate),
+		remoteCandidates:       make(map[NetworkType][]*Candidate),
+		pendingBindingRequests: make([][]byte, 0, maxPendingBindingRequests),
 
 		localUfrag:  randSeq(16),
 		localPwd:    randSeq(32),
@@ -268,8 +276,9 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 	// agent MUST NOT include the USE-CANDIDATE attribute in a Binding
 	// request.
 
+	transactionID := stun.GenerateTransactionID()
 	if a.isControlling {
-		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
 			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
 			&stun.UseCandidate{},
 			&stun.IceControlling{TieBreaker: a.tieBreaker},
@@ -280,7 +289,7 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 			&stun.Fingerprint{},
 		)
 	} else {
-		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
 			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
 			&stun.IceControlled{TieBreaker: a.tieBreaker},
 			&stun.Priority{Priority: local.Priority()},
@@ -297,6 +306,12 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 	}
 
 	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
+	if overflow := len(a.pendingBindingRequests) - maxPendingBindingRequests; overflow > 1 {
+		a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
+		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
+	}
+
+	a.pendingBindingRequests = append(a.pendingBindingRequests, transactionID)
 	a.sendSTUN(msg, local, remote)
 }
 
@@ -575,12 +590,11 @@ func (a *Agent) handleInboundControlled(m *stun.Message, localCandidate, remoteC
 	}
 
 	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	_, usepair := m.GetOneAttribute(stun.AttrUseCandidate)
-	a.log.Tracef("got controlled message (success? %t, usepair? %t)", successResponse, usepair)
-	// Remember the working pair and select it when marked with usepair
-	a.setValidPair(localCandidate, remoteCandidate, usepair, false)
-
-	if !successResponse {
+	a.log.Tracef("got controlled message (success? %t)", successResponse)
+	if successResponse {
+		// Remember the working pair and select it when marked with usepair
+		a.setValidPair(localCandidate, remoteCandidate, true, false)
+	} else {
 		// Send success response
 		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
 	}
@@ -594,19 +608,27 @@ func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remote
 		a.log.Debug("useCandidate && a.isControlling == true")
 		return
 	}
-	a.log.Tracef("got controlling message: %#v", m)
 
 	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	// Remember the working pair and select it when receiving a success response
-	a.setValidPair(localCandidate, remoteCandidate, successResponse, true)
-
-	if !successResponse {
+	a.log.Tracef("got controlled message (success? %t)", successResponse)
+	if successResponse {
+		// Remember the working pair and select it when receiving a success response
+		a.setValidPair(localCandidate, remoteCandidate, true, true)
+	} else {
 		// Send success response
 		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
-
-		// We received a ping from the controlled agent. We know the pair works so now we ping with use-candidate set:
-		a.pingCandidate(localCandidate, remoteCandidate)
 	}
+}
+
+// Assert that the passed TransactionID is in our pendingBindingRequests and remove if it is
+func (a *Agent) handleInboundBindingSuccess(id []byte) bool {
+	for i := range a.pendingBindingRequests {
+		if bytes.Equal(a.pendingBindingRequests[i], id) {
+			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[:i+1]...)
+			return true
+		}
+	}
+	return false
 }
 
 // handleInbound processes STUN traffic from a remote candidate
@@ -620,6 +642,9 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 	case m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse:
 		if err := assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		} else if !a.handleInboundBindingSuccess(m.TransactionID) {
+			a.log.Warnf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
 			return
 		}
 	case m.Method == stun.MethodBinding && m.Class == stun.ClassRequest:
