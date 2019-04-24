@@ -624,7 +624,7 @@ func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remote
 func (a *Agent) handleInboundBindingSuccess(id []byte) bool {
 	for i := range a.pendingBindingRequests {
 		if bytes.Equal(a.pendingBindingRequests[i], id) {
-			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[:i+1]...)
+			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
 			return true
 		}
 	}
