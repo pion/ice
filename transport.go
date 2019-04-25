@@ -44,7 +44,7 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 	select {
 	case <-ctx.Done():
 		// TODO: Stop connectivity checks?
-		return nil, errors.New("connecting canceled by caller")
+		return nil, ErrCanceledByCaller
 	case <-a.onConnected:
 	}
 

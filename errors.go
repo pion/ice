@@ -29,4 +29,16 @@ var (
 
 	// ErrNoCandidatePairs indicates agent does not have a valid candidate pair
 	ErrNoCandidatePairs = errors.New("no candidate pairs available")
+
+	// ErrCanceledByCaller indicates agent connection was canceled by the caller
+	ErrCanceledByCaller = errors.New("connecting canceled by caller")
+
+	// ErrMultipleStart indicates agent was started twice
+	ErrMultipleStart = errors.New("attempted to start agent twice")
+
+	// ErrRemoteUfragEmpty indicates agent was started with an empty remote ufrag
+	ErrRemoteUfragEmpty = errors.New("remote ufrag is empty")
+
+	// ErrRemotePwdEmpty indicates agent was started with an empty remote pwd
+	ErrRemotePwdEmpty = errors.New("remote pwd is empty")
 )

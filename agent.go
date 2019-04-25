@@ -4,11 +4,11 @@ package ice
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 	"net"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
@@ -68,7 +68,7 @@ type Agent struct {
 	connectionState ConnectionState
 	gatheringState  GatheringState
 
-	haveStarted   bool
+	haveStarted   atomic.Value
 	isControlling bool
 
 	portmin uint16
@@ -186,6 +186,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 		forceCandidateContact: make(chan bool, 1),
 	}
+	a.haveStarted.Store(false)
 
 	// Make sure the buffer doesn't grow indefinitely.
 	// NOTE: We actually won't get anywhere close to this limit.
@@ -244,13 +245,14 @@ func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
 
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
 	switch {
-	case a.haveStarted:
-		return fmt.Errorf("attempted to start agent twice")
+	case a.haveStarted.Load():
+		return ErrMultipleStart
 	case remoteUfrag == "":
-		return fmt.Errorf("remoteUfrag is empty")
+		return ErrRemoteUfragEmpty
 	case remotePwd == "":
-		return fmt.Errorf("remotePwd is empty")
+		return ErrRemotePwdEmpty
 	}
+	a.haveStarted.Store(true)
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.run(func(agent *Agent) {
