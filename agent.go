@@ -590,11 +590,12 @@ func (a *Agent) handleInboundControlled(m *stun.Message, localCandidate, remoteC
 	}
 
 	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	a.log.Tracef("got controlled message (success? %t)", successResponse)
-	if successResponse {
-		// Remember the working pair and select it when marked with usepair
-		a.setValidPair(localCandidate, remoteCandidate, true, false)
-	} else {
+	_, usepair := m.GetOneAttribute(stun.AttrUseCandidate)
+	a.log.Tracef("got controlled message (success? %t, usepair? %t)", successResponse, usepair)
+	// Remember the working pair and select it when marked with usepair
+	a.setValidPair(localCandidate, remoteCandidate, usepair, false)
+
+	if !successResponse {
 		// Send success response
 		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
 	}
@@ -608,15 +609,18 @@ func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remote
 		a.log.Debug("useCandidate && a.isControlling == true")
 		return
 	}
+	a.log.Tracef("got controlling message: %#v", m)
 
 	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	a.log.Tracef("got controlled message (success? %t)", successResponse)
-	if successResponse {
-		// Remember the working pair and select it when receiving a success response
-		a.setValidPair(localCandidate, remoteCandidate, true, true)
-	} else {
+	// Remember the working pair and select it when receiving a success response
+	a.setValidPair(localCandidate, remoteCandidate, successResponse, true)
+
+	if !successResponse {
 		// Send success response
 		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
+
+		// We received a ping from the controlled agent. We know the pair works so now we ping with use-candidate set:
+		a.pingCandidate(localCandidate, remoteCandidate)
 	}
 }
 
