@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -464,4 +465,31 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
 		}
 	})
+}
+
+func TestInvalidAgentStarts(t *testing.T) {
+	a, err := NewAgent(&AgentConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+
+	if _, err = a.Dial(ctx, "", "bar"); err != nil && err != ErrRemoteUfragEmpty {
+		t.Fatal(err)
+	}
+
+	if _, err = a.Dial(ctx, "foo", ""); err != nil && err != ErrRemotePwdEmpty {
+		t.Fatal(err)
+	}
+
+	if _, err = a.Dial(ctx, "foo", "bar"); err != nil && err != ErrCanceledByCaller {
+		t.Fatal(err)
+	}
+
+	if _, err = a.Dial(context.TODO(), "foo", "bar"); err != nil && err != ErrMultipleStart {
+		t.Fatal(err)
+	}
 }
