@@ -10,6 +10,17 @@ import (
 	"github.com/pion/transport/test"
 )
 
+type mockPacketConn struct {
+}
+
+func (m *mockPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
+func (m *mockPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error)  { return 0, nil }
+func (m *mockPacketConn) Close() error                                        { return nil }
+func (m *mockPacketConn) LocalAddr() net.Addr                                 { return nil }
+func (m *mockPacketConn) SetDeadline(t time.Time) error                       { return nil }
+func (m *mockPacketConn) SetReadDeadline(t time.Time) error                   { return nil }
+func (m *mockPacketConn) SetWriteDeadline(t time.Time) error                  { return nil }
+
 func TestPairSearch(t *testing.T) {
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 10)
@@ -185,7 +196,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 	lim := test.TimeOut(time.Second * 2)
 	defer lim.Stop()
 
-	t.Run("UDP pflx candidate from handleInboud()", func(t *testing.T) {
+	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
 		a, err := NewAgent(&config)
 
@@ -195,6 +206,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 		ip := net.ParseIP("192.168.0.2")
 		local, err := NewCandidateHost("udp", ip, 777, 1)
+		local.conn = &mockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)
 		}
@@ -276,56 +288,36 @@ func TestHandlePeerReflexive(t *testing.T) {
 		}
 	})
 
-	t.Run("TCP prflx with handleNewPeerReflexiveCandidate()", func(t *testing.T) {
-		var config AgentConfig
-		a, err := NewAgent(&config)
-
+	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
 		if err != nil {
-			t.Fatal("Error constructing ice.Agent")
+			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		ip := net.ParseIP("192.168.0.2")
-		local, err := NewCandidateHost("tcp", ip, 777, 1)
+		a.pendingBindingRequests = []bindingRequest{
+			{[]byte("ABC"), &net.UDPAddr{}},
+		}
+
+		local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+		local.conn = &mockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)
 		}
 
-		remote := &net.TCPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-
-		candidate, err := handleNewPeerReflexiveCandidate(local, remote)
+		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
+			&stun.MessageIntegrity{
+				Key: []byte(a.remotePwd),
+			},
+			&stun.Fingerprint{},
+		)
 		if err != nil {
-			t.Fatalf("handleNewPeerReflexiveCandidate() should not fail: %v", err)
-		}
-		a.addRemoteCandidate(candidate)
-
-		// length of remote candidate list must be one now
-		if len(a.remoteCandidates) != 1 {
-			t.Fatal("failed to add a network type to the remote candidate list")
+			t.Fatal(err)
 		}
 
-		// length of remote candidate list for a network type must be 1
-		set := a.remoteCandidates[local.NetworkType]
-		if len(set) != 1 {
-			t.Fatal("failed to add prflx candidate to remote candidate list")
-		}
-
-		c := set[0]
-
-		if c.Type != CandidateTypePeerReflexive {
-			t.Fatal("candidate type must be prflx")
-		}
-
-		if !c.IP.Equal(net.ParseIP("172.17.0.3")) {
-			t.Fatal("IP address mismatch")
-		}
-
-		if c.Port != 999 {
-			t.Fatal("Port number mismatch")
-		}
-
-		err = a.Close()
-		if err != nil {
-			t.Fatalf("Close agent emits error %v", err)
+		a.handleInbound(msg, local, remote)
+		if len(a.remoteCandidates) != 0 {
+			t.Fatal("unknown remote was able to create a candidate")
 		}
 	})
 }
@@ -387,6 +379,7 @@ func TestInboundValidity(t *testing.T) {
 
 	remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 	local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+	local.conn = &mockPacketConn{}
 	if err != nil {
 		t.Fatalf("failed to create a new candidate: %v", err)
 	}
@@ -465,6 +458,36 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
 		}
 	})
+
+	t.Run("Success with invalid TransactionID", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+		local.conn = &mockPacketConn{}
+		if err != nil {
+			t.Fatalf("failed to create a new candidate: %v", err)
+		}
+
+		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
+			&stun.MessageIntegrity{
+				Key: []byte(a.remotePwd),
+			},
+			&stun.Fingerprint{},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		a.handleInbound(msg, local, remote)
+		if len(a.remoteCandidates) != 0 {
+			t.Fatal("unknown remote was able to create a candidate")
+		}
+	})
+
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
