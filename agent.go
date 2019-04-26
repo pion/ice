@@ -47,6 +47,11 @@ func (bp byPairPriority) Less(i, j int) bool {
 	return bp.candidatePairs[i].Priority() > bp.candidatePairs[j].Priority()
 }
 
+type bindingRequest struct {
+	transactionID []byte
+	destination   net.Addr
+}
+
 // Agent represents the ICE agent
 type Agent struct {
 	onConnectionStateChangeHdlr       func(ConnectionState)
@@ -99,7 +104,7 @@ type Agent struct {
 	buffer *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
-	pendingBindingRequests [][]byte
+	pendingBindingRequests []bindingRequest
 
 	// State for closing
 	done chan struct{}
@@ -172,7 +177,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		connectionState:        ConnectionStateNew,
 		localCandidates:        make(map[NetworkType][]*Candidate),
 		remoteCandidates:       make(map[NetworkType][]*Candidate),
-		pendingBindingRequests: make([][]byte, 0, maxPendingBindingRequests),
+		pendingBindingRequests: make([]bindingRequest, 0, maxPendingBindingRequests),
 
 		localUfrag:  randSeq(16),
 		localPwd:    randSeq(32),
@@ -313,7 +318,10 @@ func (a *Agent) pingCandidate(local, remote *Candidate) {
 		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
 	}
 
-	a.pendingBindingRequests = append(a.pendingBindingRequests, transactionID)
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		transactionID: transactionID,
+		destination:   remote.addr(),
+	})
 	a.sendSTUN(msg, local, remote)
 }
 
@@ -622,58 +630,82 @@ func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remote
 	}
 }
 
-// Assert that the passed TransactionID is in our pendingBindingRequests and remove if it is
-func (a *Agent) handleInboundBindingSuccess(id []byte) bool {
+// Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
+// If the bindingRequest was valid remove it from our pending cache
+func (a *Agent) handleInboundBindingSuccess(id []byte) (bool, net.Addr) {
 	for i := range a.pendingBindingRequests {
-		if bytes.Equal(a.pendingBindingRequests[i], id) {
-			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
-			return true
+		if bytes.Equal(a.pendingBindingRequests[i].transactionID, id) {
+			defer func() {
+				a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
+			}()
+			return true, a.pendingBindingRequests[i].destination
 		}
 	}
-	return false
+	return false, nil
 }
 
 // handleInbound processes STUN traffic from a remote candidate
 func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr) {
+	var err error
 	if m == nil || local == nil {
 		return
-	}
-	a.log.Tracef("inbound STUN from %s to %s", remote.String(), local.String())
-
-	switch {
-	case m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse:
-		if err := assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
-			return
-		} else if !a.handleInboundBindingSuccess(m.TransactionID) {
-			a.log.Warnf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
-			return
-		}
-	case m.Method == stun.MethodBinding && m.Class == stun.ClassRequest:
-		if err := assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
-			return
-		} else if err := assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
-			return
-		}
-	default:
+	} else if m.Method != stun.MethodBinding || !(m.Class == stun.ClassSuccessResponse || m.Class == stun.ClassRequest) {
+		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote.String(), local.String(), m.Method.String(), m.Class.String())
 		return
 	}
 
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
-	if remoteCandidate == nil {
-		a.log.Debugf("detected a new peer-reflexive candiate: %s ", remote)
-		pflxCandidate, err := handleNewPeerReflexiveCandidate(local, remote)
-		if err != nil {
-			a.log.Warn(err.Error())
+	if m.Class == stun.ClassSuccessResponse {
+		if err = assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
 		}
 
-		a.addRemoteCandidate(pflxCandidate)
-		return
-	}
-	remoteCandidate.seen(false)
+		ok, transactionAddr := a.handleInboundBindingSuccess(m.TransactionID)
+		if !ok {
+			a.log.Errorf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
+			return
+		}
 
+		// Assert that NAT is not symmetric
+		// https://tools.ietf.org/html/rfc8445#section-7.2.5.2.1
+		if !addrEqual(transactionAddr, remote) {
+			a.log.Debugf("discard message: transaction source and destination does not match expected(%s), actual(%s)", transactionAddr, remote)
+			return
+		} else if remoteCandidate == nil { // Should fail previous check, better to be safe though
+			a.log.Warnf("discard success message from (%s), no such remote", remote)
+			return
+		}
+	} else {
+		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		} else if err = assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
+			a.log.Warnf("discard message from (%s), %v", remote, err)
+			return
+		}
+
+		if remoteCandidate == nil {
+			ip, port, networkType, ok := parseAddr(remote)
+			if !ok {
+				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate")
+				return
+			}
+
+			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip, port, local.Component, "", 0)
+			if err != nil {
+				a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
+				return
+			}
+			remoteCandidate = prflxCandidate
+
+			a.log.Debugf("adding a new peer-reflexive candiate: %s ", remote)
+			a.addRemoteCandidate(remoteCandidate)
+		}
+	}
+
+	a.log.Tracef("inbound STUN from %s to %s", remote.String(), local.String())
+	remoteCandidate.seen(false)
 	if a.isControlling {
 		a.handleInboundControlling(m, local, remoteCandidate)
 	} else {

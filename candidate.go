@@ -117,39 +117,6 @@ func NewCandidateRelay(network string, ip net.IP, port int, component uint16, re
 	}, nil
 }
 
-// handleNewPeerReflexiveCandidate creates a ReflexiveCandidate from a remote transport address
-func handleNewPeerReflexiveCandidate(local *Candidate, remote net.Addr) (*Candidate, error) {
-	var ip net.IP
-	var port int
-
-	switch addr := remote.(type) {
-	case *net.UDPAddr:
-		ip = addr.IP
-		port = addr.Port
-	case *net.TCPAddr:
-		ip = addr.IP
-		port = addr.Port
-	default:
-		return nil, fmt.Errorf("unsupported address type %T", addr)
-	}
-
-	pflxCandidate, err := NewCandidatePeerReflexive(
-		local.NetworkType.String(), // assume, same as that of local
-		ip,
-		port,
-		local.Component,
-		"", // unknown at this moment. TODO: need a review
-		0,  // unknown at this moment. TODO: need a review
-	)
-
-	if err != nil {
-		return nil, flattenErrs([]error{fmt.Errorf("failed to create peer-reflexive candidate: %v", remote), err})
-	}
-
-	// Add pflxCandidate to the remote candidate list
-	return pflxCandidate, nil
-}
-
 // start runs the candidate using the provided connection
 func (c *Candidate) start(a *Agent, conn net.PacketConn) {
 	c.agent = a

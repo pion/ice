@@ -68,3 +68,27 @@ func flattenErrs(errs []error) error {
 
 	return fmt.Errorf(strings.Join(errstrings, "\n"))
 }
+
+func parseAddr(in net.Addr) (net.IP, int, NetworkType, bool) {
+	switch addr := in.(type) {
+	case *net.UDPAddr:
+		return addr.IP, addr.Port, NetworkTypeUDP4, true
+	case *net.TCPAddr:
+		return addr.IP, addr.Port, NetworkTypeTCP4, true
+	}
+	return nil, 0, 0, false
+}
+
+func addrEqual(a, b net.Addr) bool {
+	aIP, aPort, aType, aOk := parseAddr(a)
+	if !aOk {
+		return false
+	}
+
+	bIP, bPort, bType, bOk := parseAddr(b)
+	if !bOk {
+		return false
+	}
+
+	return aType == bType && aIP.Equal(bIP) && aPort == bPort
+}
