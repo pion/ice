@@ -37,14 +37,10 @@ func TestPairSearch(t *testing.T) {
 		t.Fatalf("TestPairSearch is only a valid test if a.validPairs is empty on construction")
 	}
 
-	cp, err := a.getBestPair()
+	cp := a.getBestValidPair()
 
 	if cp != nil {
 		t.Fatalf("No Candidate pairs should exist")
-	}
-
-	if err == nil {
-		t.Fatalf("An error should have been reported (with no available candidate pairs)")
 	}
 
 	err = a.Close()
@@ -112,11 +108,8 @@ func TestPairPriority(t *testing.T) {
 	}
 
 	for _, remote := range []*Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote} {
-		a.setValidPair(hostLocal, remote, false, false)
-		bestPair, err := a.getBestPair()
-		if err != nil {
-			t.Fatalf("Failed to get best candidate pair: %s", err)
-		}
+		a.addValidPair(hostLocal, remote)
+		bestPair := a.getBestValidPair()
 		if bestPair.String() != (&candidatePair{remote: remote, local: hostLocal}).String() {
 			t.Fatalf("Unexpected bestPair %s (expected remote: %s)", bestPair, remote)
 		}
@@ -163,23 +156,14 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 
 	// select the pair
 	if err = a.run(func(agent *Agent) {
-		agent.setValidPair(hostLocal, relayRemote, true, false)
+		p := newCandidatePair(hostLocal, relayRemote, false)
+		agent.setSelectedPair(p)
 	}); err != nil {
 		t.Fatalf("Failed to setValidPair(): %s", err)
 	}
+
 	// ensure that the callback fired on setting the pair
 	<-callbackCalled
-	// set the same pair; this should not invoke the callback
-	// if the callback is invoked now it will panic due
-	// to second close of the channel
-	if err = a.run(func(agent *Agent) {
-		agent.setValidPair(hostLocal, relayRemote, true, false)
-	}); err != nil {
-		t.Fatalf("Failed to setValidPair(): %s", err)
-	}
-	if err := a.Close(); err != nil {
-		t.Fatalf("Error on agent.Close(): %s", err)
-	}
 }
 
 type BadAddr struct{}
@@ -191,6 +175,18 @@ func (ba *BadAddr) String() string {
 	return "yyy"
 }
 
+func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
+	a, err := NewAgent(config)
+
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent")
+	}
+
+	if err := a.run(task); err != nil {
+		t.Fatalf("Agent run failure: %v", err)
+	}
+}
+
 func TestHandlePeerReflexive(t *testing.T) {
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 2)
@@ -198,127 +194,120 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		a, err := NewAgent(&config)
+		runAgentTest(t, &config, func(a *Agent) {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+			ip := net.ParseIP("192.168.0.2")
+			local, err := NewCandidateHost("udp", ip, 777, 1)
+			local.conn = &mockPacketConn{}
+			if err != nil {
+				t.Fatalf("failed to create a new candidate: %v", err)
+			}
 
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 
-		ip := net.ParseIP("192.168.0.2")
-		local, err := NewCandidateHost("udp", ip, 777, 1)
-		local.conn = &mockPacketConn{}
-		if err != nil {
-			t.Fatalf("failed to create a new candidate: %v", err)
-		}
+			msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+				&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
+				&stun.UseCandidate{},
+				&stun.IceControlling{TieBreaker: a.tieBreaker},
+				&stun.Priority{Priority: local.Priority()},
+				&stun.MessageIntegrity{
+					Key: []byte(a.localPwd),
+				},
+				&stun.Fingerprint{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			a.handleInbound(msg, local, remote)
 
-		msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
-			&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
-			&stun.UseCandidate{},
-			&stun.IceControlling{TieBreaker: a.tieBreaker},
-			&stun.Priority{Priority: local.Priority()},
-			&stun.MessageIntegrity{
-				Key: []byte(a.localPwd),
-			},
-			&stun.Fingerprint{},
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+			// length of remote candidate list must be one now
+			if len(a.remoteCandidates) != 1 {
+				t.Fatal("failed to add a network type to the remote candidate list")
+			}
 
-		a.handleInbound(msg, local, remote)
+			// length of remote candidate list for a network type must be 1
+			set := a.remoteCandidates[local.NetworkType]
+			if len(set) != 1 {
+				t.Fatal("failed to add prflx candidate to remote candidate list")
+			}
 
-		// length of remote candidate list must be one now
-		if len(a.remoteCandidates) != 1 {
-			t.Fatal("failed to add a network type to the remote candidate list")
-		}
+			c := set[0]
 
-		// length of remote candidate list for a network type must be 1
-		set := a.remoteCandidates[local.NetworkType]
-		if len(set) != 1 {
-			t.Fatal("failed to add prflx candidate to remote candidate list")
-		}
+			if c.Type != CandidateTypePeerReflexive {
+				t.Fatal("candidate type must be prflx")
+			}
 
-		c := set[0]
+			if !c.IP.Equal(net.ParseIP("172.17.0.3")) {
+				t.Fatal("IP address mismatch")
+			}
 
-		if c.Type != CandidateTypePeerReflexive {
-			t.Fatal("candidate type must be prflx")
-		}
+			if c.Port != 999 {
+				t.Fatal("Port number mismatch")
+			}
 
-		if !c.IP.Equal(net.ParseIP("172.17.0.3")) {
-			t.Fatal("IP address mismatch")
-		}
-
-		if c.Port != 999 {
-			t.Fatal("Port number mismatch")
-		}
-
-		err = a.Close()
-		if err != nil {
-			t.Fatalf("Close agent emits error %v", err)
-		}
+			err = a.Close()
+			if err != nil {
+				t.Fatalf("Close agent emits error %v", err)
+			}
+		})
 	})
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		a, err := NewAgent(&config)
+		runAgentTest(t, &config, func(a *Agent) {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+			ip := net.ParseIP("192.168.0.2")
+			local, err := NewCandidateHost("tcp", ip, 777, 1)
+			if err != nil {
+				t.Fatalf("failed to create a new candidate: %v", err)
+			}
 
-		if err != nil {
-			t.Fatal("Error constructing ice.Agent")
-		}
+			remote := &BadAddr{}
 
-		ip := net.ParseIP("192.168.0.2")
-		local, err := NewCandidateHost("tcp", ip, 777, 1)
-		if err != nil {
-			t.Fatalf("failed to create a new candidate: %v", err)
-		}
+			a.handleInbound(nil, local, remote)
 
-		remote := &BadAddr{}
+			if len(a.remoteCandidates) != 0 {
+				t.Fatal("bad address should not be added to the remote candidate list")
+			}
 
-		a.handleInbound(nil, local, remote)
-
-		if len(a.remoteCandidates) != 0 {
-			t.Fatal("bad address should not be added to the remote candidate list")
-		}
-
-		err = a.Close()
-		if err != nil {
-			t.Fatalf("Close agent emits error %v", err)
-		}
+			err = a.Close()
+			if err != nil {
+				t.Fatalf("Close agent emits error %v", err)
+			}
+		})
 	})
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		var config AgentConfig
+		runAgentTest(t, &config, func(a *Agent) {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.pendingBindingRequests = []bindingRequest{
+				{[]byte("ABC"), &net.UDPAddr{}, false},
+			}
 
-		a.pendingBindingRequests = []bindingRequest{
-			{[]byte("ABC"), &net.UDPAddr{}},
-		}
+			local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+			local.conn = &mockPacketConn{}
+			if err != nil {
+				t.Fatalf("failed to create a new candidate: %v", err)
+			}
 
-		local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
-		local.conn = &mockPacketConn{}
-		if err != nil {
-			t.Fatalf("failed to create a new candidate: %v", err)
-		}
+			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
+				&stun.MessageIntegrity{
+					Key: []byte(a.remotePwd),
+				},
+				&stun.Fingerprint{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-		msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
-			&stun.MessageIntegrity{
-				Key: []byte(a.remotePwd),
-			},
-			&stun.Fingerprint{},
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		a.handleInbound(msg, local, remote)
-		if len(a.remoteCandidates) != 0 {
-			t.Fatal("unknown remote was able to create a candidate")
-		}
+			a.handleInbound(msg, local, remote)
+			if len(a.remoteCandidates) != 0 {
+				t.Fatal("unknown remote was able to create a candidate")
+			}
+		})
 	})
 }
 
@@ -431,32 +420,38 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
-		if len(a.remoteCandidates) != 1 {
-			t.Fatal("Binding with valid values was unable to create prflx candidate")
+		err = a.run(func(a *Agent) {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
+			if len(a.remoteCandidates) != 1 {
+				t.Fatal("Binding with valid values was unable to create prflx candidate")
+			}
+		})
+
+		if err != nil {
+			t.Fatalf("Agent run failure: %v", err)
 		}
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		var config AgentConfig
+		runAgentTest(t, &config, func(a *Agent) {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+			msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
+				&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
+				&stun.MessageIntegrity{
+					Key: []byte(a.localPwd),
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
-			&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
-			&stun.MessageIntegrity{
-				Key: []byte(a.localPwd),
-			},
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		a.handleInbound(msg, local, remote)
-		if len(a.remoteCandidates) != 1 {
-			t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
-		}
+			a.handleInbound(msg, local, remote)
+			if len(a.remoteCandidates) != 1 {
+				t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
+			}
+		})
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {

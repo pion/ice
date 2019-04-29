@@ -48,8 +48,9 @@ func (bp byPairPriority) Less(i, j int) bool {
 }
 
 type bindingRequest struct {
-	transactionID []byte
-	destination   net.Addr
+	transactionID  []byte
+	destination    net.Addr
+	isUseCandidate bool
 }
 
 // Agent represents the ICE agent
@@ -98,6 +99,7 @@ type Agent struct {
 	remotePwd        string
 	remoteCandidates map[NetworkType][]*Candidate
 
+	selector     pairCandidateSelector
 	selectedPair *candidatePair
 	validPairs   []*candidatePair
 
@@ -222,6 +224,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	gatherCandidatesReflective(a, config.Urls, config.NetworkTypes)
 
 	go a.taskLoop()
+
 	return a, nil
 }
 
@@ -257,10 +260,18 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 	case remotePwd == "":
 		return ErrRemotePwdEmpty
 	}
+
 	a.haveStarted.Store(true)
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.run(func(agent *Agent) {
+		if isControlling {
+			a.selector = &controllingSelector{agent: a, log: a.log}
+		} else {
+			a.selector = &controlledSelector{agent: a, log: a.log}
+		}
+		a.selector.Start()
+
 		agent.isControlling = isControlling
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
@@ -272,57 +283,6 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		t := time.NewTicker(a.taskLoopInterval)
 		agent.connectivityChan = t.C
 	})
-}
-
-func (a *Agent) pingCandidate(local, remote *Candidate) {
-	var msg *stun.Message
-	var err error
-
-	// The controlling agent MUST include the USE-CANDIDATE attribute in
-	// order to nominate a candidate pair (Section 8.1.1).  The controlled
-	// agent MUST NOT include the USE-CANDIDATE attribute in a Binding
-	// request.
-
-	transactionID := stun.GenerateTransactionID()
-	if a.isControlling {
-		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
-			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
-			&stun.UseCandidate{},
-			&stun.IceControlling{TieBreaker: a.tieBreaker},
-			&stun.Priority{Priority: local.Priority()},
-			&stun.MessageIntegrity{
-				Key: []byte(a.remotePwd),
-			},
-			&stun.Fingerprint{},
-		)
-	} else {
-		msg, err = stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
-			&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
-			&stun.IceControlled{TieBreaker: a.tieBreaker},
-			&stun.Priority{Priority: local.Priority()},
-			&stun.MessageIntegrity{
-				Key: []byte(a.remotePwd),
-			},
-			&stun.Fingerprint{},
-		)
-	}
-
-	if err != nil {
-		a.log.Debug(err.Error())
-		return
-	}
-
-	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
-	if overflow := len(a.pendingBindingRequests) - maxPendingBindingRequests; overflow > 1 {
-		a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
-		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
-	}
-
-	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		transactionID: transactionID,
-		destination:   remote.addr(),
-	})
-	a.sendSTUN(msg, local, remote)
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
@@ -338,31 +298,50 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 	}
 }
 
-func (a *Agent) setValidPair(local, remote *Candidate, selected, controlling bool) {
-	// TODO: avoid duplicates
-	p := newCandidatePair(local, remote, controlling)
-	a.log.Tracef("Found valid candidate pair: %s (selected? %t)", p, selected)
-
-	if selected {
-		// Notify when the selected pair changes
-		if !a.selectedPair.Equal(p) {
-			a.onSelectedCandidatePairChange(p)
+func (a *Agent) findValidPair(local, remote *Candidate) *candidatePair {
+	for _, p := range a.validPairs {
+		if p.local == local && p.remote == remote {
+			return p
 		}
-		a.selectedPair = p
-		a.validPairs = nil
-		// TODO: only set state to connected on selecting final pair?
-		a.updateConnectionState(ConnectionStateConnected)
-	} else {
-		// keep track of pairs with succesfull bindings since any of them
-		// can be used for communication until the final pair is selected:
-		// https://tools.ietf.org/html/draft-ietf-ice-rfc5245bis-20#section-12
-		a.validPairs = append(a.validPairs, p)
-		// Sort the candidate pairs by priority of the remotes
-		sort.Sort(byPairPriority{a.validPairs})
 	}
+	return nil
+}
+
+func (a *Agent) addValidPair(local, remote *Candidate) *candidatePair {
+	p := a.findValidPair(local, remote)
+	if p != nil {
+		a.log.Tracef("Candidate pair is already valid: %s", p)
+		return p
+	}
+
+	p = newCandidatePair(local, remote, a.isControlling)
+	a.log.Tracef("Found valid candidate pair: %s", p)
+
+	// keep track of pairs with succesfull bindings since any of them
+	// can be used for communication until the final pair is selected:
+	// https://tools.ietf.org/html/draft-ietf-ice-rfc5245bis-20#section-12
+	a.validPairs = append(a.validPairs, p)
+	return p
+}
+
+func (a *Agent) setSelectedPair(p *candidatePair) {
+	a.log.Tracef("Set selected candidate pair: %s", p)
+	// Notify when the selected pair changes
+	a.onSelectedCandidatePairChange(p)
+
+	a.selectedPair = p
+	a.updateConnectionState(ConnectionStateConnected)
 
 	// Signal connected
 	a.onConnectedOnce.Do(func() { close(a.onConnected) })
+}
+
+func (a *Agent) getBestValidPair() *candidatePair {
+	if len(a.validPairs) == 0 {
+		return nil
+	}
+	sort.Sort(byPairPriority{a.validPairs})
+	return a.validPairs[0]
 }
 
 // A task is a
@@ -383,28 +362,29 @@ func (a *Agent) run(t task) error {
 }
 
 func (a *Agent) taskLoop() {
-	contactCandidates := func() {
-		if a.validateSelectedPair() {
-			a.log.Trace("checking keepalive")
-			a.checkKeepalive()
-		} else {
-			a.log.Trace("pinging all candidates")
-			a.pingAllCandidates()
-		}
-	}
-
 	for {
-		select {
-		case <-a.forceCandidateContact:
-			contactCandidates()
-		case <-a.connectivityChan:
-			contactCandidates()
-		case t := <-a.taskChan:
-			// Run the task
-			t(a)
+		if a.selector != nil {
+			select {
+			case <-a.forceCandidateContact:
+				a.selector.ContactCandidates()
+			case <-a.connectivityChan:
+				a.selector.ContactCandidates()
+			case t := <-a.taskChan:
+				// Run the task
+				t(a)
 
-		case <-a.done:
-			return
+			case <-a.done:
+				return
+			}
+		} else {
+			select {
+			case t := <-a.taskChan:
+				// Run the task
+				t(a)
+
+			case <-a.done:
+				return
+			}
 		}
 	}
 }
@@ -449,7 +429,7 @@ func (a *Agent) pingAllCandidates() {
 
 			for _, localCandidate := range localCandidates {
 				for _, remoteCandidate := range remoteCandidates {
-					a.pingCandidate(localCandidate, remoteCandidate)
+					a.selector.PingCandidate(localCandidate, remoteCandidate)
 				}
 			}
 
@@ -573,6 +553,25 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) *Can
 	return nil
 }
 
+func (a *Agent) sendBindingRequest(m *stun.Message, local, remote *Candidate) {
+	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
+
+	if overflow := len(a.pendingBindingRequests) - (maxPendingBindingRequests - 1); overflow > 0 {
+		a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
+		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
+	}
+
+	_, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate)
+
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		transactionID:  m.TransactionID,
+		destination:    remote.addr(),
+		isUseCandidate: useCandidate,
+	})
+
+	a.sendSTUN(m, local, remote)
+}
+
 func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
 	base := remote
 	if out, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, m.TransactionID,
@@ -595,13 +594,12 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
 
 // Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
 // If the bindingRequest was valid remove it from our pending cache
-func (a *Agent) handleInboundBindingSuccess(id []byte) (bool, net.Addr) {
+func (a *Agent) handleInboundBindingSuccess(id []byte) (bool, *bindingRequest) {
 	for i := range a.pendingBindingRequests {
 		if bytes.Equal(a.pendingBindingRequests[i].transactionID, id) {
-			defer func() {
-				a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
-			}()
-			return true, a.pendingBindingRequests[i].destination
+			validBindingRequest := a.pendingBindingRequests[i]
+			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
+			return true, &validBindingRequest
 		}
 	}
 	return false, nil
@@ -612,7 +610,9 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 	var err error
 	if m == nil || local == nil {
 		return
-	} else if m.Method != stun.MethodBinding || !(m.Class == stun.ClassSuccessResponse || m.Class == stun.ClassRequest) {
+	}
+
+	if m.Method != stun.MethodBinding || !(m.Class == stun.ClassSuccessResponse || m.Class == stun.ClassRequest) {
 		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote.String(), local.String(), m.Method.String(), m.Class.String())
 		return
 	}
@@ -639,26 +639,12 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 			return
 		}
 
-		ok, transactionAddr := a.handleInboundBindingSuccess(m.TransactionID)
-		if !ok {
-			a.log.Errorf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
-			return
-		}
-
-		// Assert that NAT is not symmetric
-		// https://tools.ietf.org/html/rfc8445#section-7.2.5.2.1
-		if !addrEqual(transactionAddr, remote) {
-			a.log.Debugf("discard message: transaction source and destination does not match expected(%s), actual(%s)", transactionAddr, remote)
-			return
-		} else if remoteCandidate == nil { // Should fail previous check, better to be safe though
+		if remoteCandidate == nil {
 			a.log.Warnf("discard success message from (%s), no such remote", remote)
 			return
 		}
 
-		a.log.Tracef("inbound STUN (SuccessResponse) from %s to %s", remote.String(), local.String())
-
-		// Remember the working pair and select it when receiving a success response
-		a.setValidPair(local, remoteCandidate, true, true)
+		a.selector.HandleSucessResponse(m, local, remoteCandidate, remote)
 	} else {
 		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
@@ -688,8 +674,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 
 		a.log.Tracef("inbound STUN (Request) from %s to %s", remote.String(), local.String())
 
-		// Send success response
-		a.sendBindingSuccess(m, local, remoteCandidate)
+		a.selector.HandleBindingRequest(m, local, remoteCandidate)
 	}
 
 	remoteCandidate.seen(false)
@@ -707,16 +692,12 @@ func (a *Agent) noSTUNSeen(local *Candidate, remote net.Addr) bool {
 	return true
 }
 
-func (a *Agent) getBestPair() (*candidatePair, error) {
+func (a *Agent) getSelectedPair() (*candidatePair, error) {
 	res := make(chan *candidatePair)
 
 	err := a.run(func(agent *Agent) {
 		if agent.selectedPair != nil {
 			res <- agent.selectedPair
-			return
-		}
-		for _, p := range agent.validPairs {
-			res <- p
 			return
 		}
 		res <- nil
