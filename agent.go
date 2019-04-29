@@ -593,43 +593,6 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
 	}
 }
 
-func (a *Agent) handleInboundControlled(m *stun.Message, localCandidate, remoteCandidate *Candidate) {
-	if _, isControlled := m.GetOneAttribute(stun.AttrIceControlled); isControlled && !a.isControlling {
-		a.log.Debug("inbound isControlled && a.isControlling == false")
-		return
-	}
-
-	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	a.log.Tracef("got controlled message (success? %t)", successResponse)
-	if successResponse {
-		// Remember the working pair and select it when marked with usepair
-		a.setValidPair(localCandidate, remoteCandidate, true, false)
-	} else {
-		// Send success response
-		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
-	}
-}
-
-func (a *Agent) handleInboundControlling(m *stun.Message, localCandidate, remoteCandidate *Candidate) {
-	if _, isControlling := m.GetOneAttribute(stun.AttrIceControlling); isControlling && a.isControlling {
-		a.log.Debug("inbound isControlling && a.isControlling == true")
-		return
-	} else if _, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate); useCandidate && a.isControlling {
-		a.log.Debug("useCandidate && a.isControlling == true")
-		return
-	}
-
-	successResponse := m.Method == stun.MethodBinding && m.Class == stun.ClassSuccessResponse
-	a.log.Tracef("got controlled message (success? %t)", successResponse)
-	if successResponse {
-		// Remember the working pair and select it when receiving a success response
-		a.setValidPair(localCandidate, remoteCandidate, true, true)
-	} else {
-		// Send success response
-		a.sendBindingSuccess(m, localCandidate, remoteCandidate)
-	}
-}
-
 // Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
 // If the bindingRequest was valid remove it from our pending cache
 func (a *Agent) handleInboundBindingSuccess(id []byte) (bool, net.Addr) {
@@ -654,6 +617,21 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		return
 	}
 
+	if a.isControlling {
+		if _, isControlling := m.GetOneAttribute(stun.AttrIceControlling); isControlling {
+			a.log.Debug("inbound isControlling && a.isControlling == true")
+			return
+		} else if _, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate); useCandidate {
+			a.log.Debug("useCandidate && a.isControlling == true")
+			return
+		}
+	} else {
+		if _, isControlled := m.GetOneAttribute(stun.AttrIceControlled); isControlled {
+			a.log.Debug("inbound isControlled && a.isControlling == false")
+			return
+		}
+	}
+
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
 	if m.Class == stun.ClassSuccessResponse {
 		if err = assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
@@ -676,6 +654,11 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 			a.log.Warnf("discard success message from (%s), no such remote", remote)
 			return
 		}
+
+		a.log.Tracef("inbound STUN (SuccessResponse) from %s to %s", remote.String(), local.String())
+
+		// Remember the working pair and select it when receiving a success response
+		a.setValidPair(local, remoteCandidate, true, true)
 	} else {
 		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
@@ -702,15 +685,14 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 			a.log.Debugf("adding a new peer-reflexive candiate: %s ", remote)
 			a.addRemoteCandidate(remoteCandidate)
 		}
+
+		a.log.Tracef("inbound STUN (Request) from %s to %s", remote.String(), local.String())
+
+		// Send success response
+		a.sendBindingSuccess(m, local, remoteCandidate)
 	}
 
-	a.log.Tracef("inbound STUN from %s to %s", remote.String(), local.String())
 	remoteCandidate.seen(false)
-	if a.isControlling {
-		a.handleInboundControlling(m, local, remoteCandidate)
-	} else {
-		a.handleInboundControlled(m, local, remoteCandidate)
-	}
 }
 
 // noSTUNSeen processes non STUN traffic from a remote candidate,
