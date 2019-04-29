@@ -75,7 +75,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, errors.New("the ICE conn can't write STUN messages")
 	}
 
-	pair, err := c.agent.getBestPair()
+	pair, err := c.agent.getSelectedPair()
 	if err != nil {
 		return 0, err
 	}
