@@ -612,8 +612,11 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		return
 	}
 
-	if m.Method != stun.MethodBinding || !(m.Class == stun.ClassSuccessResponse || m.Class == stun.ClassRequest) {
-		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote.String(), local.String(), m.Method.String(), m.Class.String())
+	if m.Method != stun.MethodBinding ||
+		!(m.Class == stun.ClassSuccessResponse ||
+			m.Class == stun.ClassRequest ||
+			m.Class == stun.ClassIndication) {
+		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote.String(), local.String(), m.Class.String(), m.Method.String())
 		return
 	}
 
@@ -645,7 +648,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		}
 
 		a.selector.HandleSucessResponse(m, local, remoteCandidate, remote)
-	} else {
+	} else if m.Class == stun.ClassRequest {
 		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
@@ -677,7 +680,9 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		a.selector.HandleBindingRequest(m, local, remoteCandidate)
 	}
 
-	remoteCandidate.seen(false)
+	if remoteCandidate != nil {
+		remoteCandidate.seen(false)
+	}
 }
 
 // noSTUNSeen processes non STUN traffic from a remote candidate,

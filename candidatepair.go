@@ -93,7 +93,7 @@ func (a *Agent) keepaliveCandidate(local, remote *Candidate) {
 	)
 
 	if err != nil {
-		a.log.Warn(err.Error())
+		a.log.Error(err.Error())
 		return
 	}
 
