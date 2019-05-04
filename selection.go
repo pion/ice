@@ -95,7 +95,7 @@ func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remot
 	s.log.Tracef("inbound STUN (SuccessResponse) from %s to %s", remote.String(), local.String())
 	p := s.agent.addValidPair(local, remote)
 
-	if pendingRequest.isUseCandidate {
+	if pendingRequest.isUseCandidate && s.agent.selectedPair == nil {
 		s.agent.setSelectedPair(p)
 	}
 }
@@ -200,7 +200,9 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 			// previously sent by this pair produced a successful response and
 			// generated a valid pair (Section 7.2.5.3.2).  The agent sets the
 			// nominated flag value of the valid pair to true.
-			s.agent.setSelectedPair(p)
+			if s.agent.selectedPair == nil {
+				s.agent.setSelectedPair(p)
+			}
 			s.agent.sendBindingSuccess(m, local, remote)
 		} else {
 			// If the received Binding request triggered a new check to be
