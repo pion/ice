@@ -36,6 +36,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Konstantin Itskov](https://github.com/trivigy) - *Original Author*
 * [Luke Curley](https://github.com/kixelated)
 * [Hugo Arregui](https://github.com/hugoArregui)
+* [Adam Kiss](https://github.com/masterada)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text

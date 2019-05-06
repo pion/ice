@@ -42,6 +42,8 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 
 	// block until pair selected
 	select {
+	case <-a.done:
+		return nil, a.getErr()
 	case <-ctx.Done():
 		// TODO: Stop connectivity checks?
 		return nil, ErrCanceledByCaller
