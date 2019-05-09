@@ -511,3 +511,64 @@ func TestInvalidAgentStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Assert that Agent emits Connecting/Connected/Disconnected/Closed messages
+func TestConnectionStateCallback(t *testing.T) {
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	timeoutDuration := time.Second
+	KeepaliveInterval := time.Duration(0)
+	cfg := &AgentConfig{
+		Urls:              []*URL{},
+		NetworkTypes:      supportedNetworkTypes,
+		ConnectionTimeout: &timeoutDuration,
+		KeepaliveInterval: &KeepaliveInterval,
+		taskLoopInterval:  500 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+
+	bAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+
+	isChecking := make(chan interface{})
+	isConnected := make(chan interface{})
+	isDisconnected := make(chan interface{})
+	isClosed := make(chan interface{})
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		switch c {
+		case ConnectionStateChecking:
+			close(isChecking)
+		case ConnectionStateConnected:
+			close(isConnected)
+		case ConnectionStateDisconnected:
+			close(isDisconnected)
+		case ConnectionStateClosed:
+			close(isClosed)
+		}
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	connect(aAgent, bAgent)
+
+	<-isChecking
+	<-isConnected
+	<-isDisconnected
+	if err = aAgent.Close(); err != nil {
+		t.Error(err)
+	}
+
+	if err = bAgent.Close(); err != nil {
+		t.Error(err)
+	}
+
+	<-isClosed
+}
