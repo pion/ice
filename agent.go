@@ -522,6 +522,7 @@ func (a *Agent) Close() error {
 	}
 
 	<-done
+	a.updateConnectionState(ConnectionStateClosed)
 
 	return nil
 }
