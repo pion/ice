@@ -1,6 +1,12 @@
 package ice
 
-import "net"
+import (
+	"fmt"
+	"net"
+	"time"
+
+	"github.com/pion/stun"
+)
 
 func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
 	ifaces, err := net.Interfaces()
@@ -112,41 +118,53 @@ func gatherCandidatesLocal(a *Agent, networkTypes []NetworkType) {
 }
 
 func gatherCandidatesReflective(a *Agent, urls []*URL, networkTypes []NetworkType) {
+	localIPs := localInterfaces(networkTypes)
 	for _, networkType := range networkTypes {
 		network := networkType.String()
 		for _, url := range urls {
-			switch url.Scheme {
-			case SchemeTypeSTUN:
-				laddr, xoraddr, err := allocateUDP(network, url)
-				if err != nil {
-					a.log.Warnf("could not allocate %s %s: %v\n", network, url, err)
-					continue
-				}
-				conn, err := net.ListenUDP(network, laddr)
-				if err != nil {
-					a.log.Warnf("could not listen %s %s: %v\n", network, laddr, err)
-				}
-
-				ip := xoraddr.IP
-				port := xoraddr.Port
-				relIP := laddr.IP.String()
-				relPort := laddr.Port
-				c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
-				if err != nil {
-					a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
-					continue
-				}
-
-				networkType := c.NetworkType
-				set := a.localCandidates[networkType]
-				set = append(set, c)
-				a.localCandidates[networkType] = set
-
-				c.start(a, conn)
-
-			default:
-				a.log.Warnf("scheme %s is not implemented\n", url.Scheme)
+			hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
+			serverAddr, err := net.ResolveUDPAddr(network, hostPort)
+			if err != nil {
+				a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
 				continue
+			}
+			for _, ip := range localIPs {
+				switch url.Scheme {
+				case SchemeTypeSTUN:
+					conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+					if err != nil {
+						a.log.Warnf("could not listen %s %s\n", network, ip)
+						continue
+					}
+
+					xoraddr, err := stun.GetMappedAddressUDP(conn, serverAddr, time.Second*5)
+					if err != nil {
+						a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
+						continue
+					}
+
+					laddr := conn.LocalAddr().(*net.UDPAddr)
+					ip := xoraddr.IP
+					port := xoraddr.Port
+					relIP := laddr.IP.String()
+					relPort := laddr.Port
+					c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
+					if err != nil {
+						a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
+						continue
+					}
+
+					networkType := c.NetworkType
+					set := a.localCandidates[networkType]
+					set = append(set, c)
+					a.localCandidates[networkType] = set
+
+					c.start(a, conn)
+
+				default:
+					a.log.Warnf("scheme %s is not implemented\n", url.Scheme)
+					continue
+				}
 			}
 		}
 	}

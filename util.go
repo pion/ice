@@ -1,10 +1,8 @@
 package ice
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -50,23 +48,6 @@ func randSeq(n int) string {
 		b[i] = letters[r.Intn(len(letters))]
 	}
 	return string(b)
-}
-
-// flattenErrs flattens multiple errors into one
-func flattenErrs(errs []error) error {
-	var errstrings []string
-
-	for _, err := range errs {
-		if err != nil {
-			errstrings = append(errstrings, err.Error())
-		}
-	}
-
-	if len(errstrings) == 0 {
-		return nil
-	}
-
-	return fmt.Errorf(strings.Join(errstrings, "\n"))
 }
 
 func parseAddr(in net.Addr) (net.IP, int, NetworkType, bool) {
