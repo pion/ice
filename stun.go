@@ -3,10 +3,7 @@ package ice
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"net"
-	"time"
 
 	"github.com/pion/stun"
 )
@@ -65,37 +62,4 @@ func assertInboundMessageIntegrity(m *stun.Message, key []byte) error {
 	}
 
 	return nil
-}
-
-func allocateUDP(network string, url *URL) (*net.UDPAddr, *stun.XorAddress, error) {
-	// TODO Do we want the timeout to be configurable?
-	client, err := stun.NewClient(network, fmt.Sprintf("%s:%d", url.Host, url.Port), time.Second*5)
-	if err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to create STUN client"), err})
-	}
-	localAddr, ok := client.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to cast STUN client to UDPAddr")
-	}
-
-	resp, err := client.Request()
-	if err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to make STUN request"), err})
-	}
-
-	if err = client.Close(); err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to close STUN client"), err})
-	}
-
-	attr, ok := resp.GetOneAttribute(stun.AttrXORMappedAddress)
-	if !ok {
-		return nil, nil, fmt.Errorf("got response from STUN server that did not contain XORAddress")
-	}
-
-	var addr stun.XorAddress
-	if err = addr.Unpack(resp, attr); err != nil {
-		return nil, nil, flattenErrs([]error{errors.New("failed to unpack STUN XorAddress response"), err})
-	}
-
-	return localAddr, &addr, nil
 }

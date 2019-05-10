@@ -10,6 +10,7 @@ linters:
     - lll
     - maligned
     - gochecknoglobals
+    - interfacer
 
 issues:
   exclude-use-default: false
