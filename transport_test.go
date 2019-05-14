@@ -334,10 +334,11 @@ func copyCandidate(o Candidate) Candidate {
 	case *CandidateHost:
 		return &CandidateHost{
 			candidateBase{
-				networkType: orig.networkType,
-				ip:          orig.ip,
-				port:        orig.port,
-				component:   orig.component,
+				candidateType: orig.candidateType,
+				networkType:   orig.networkType,
+				ip:            orig.ip,
+				port:          orig.port,
+				component:     orig.component,
 			},
 		}
 	default:

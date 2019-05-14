@@ -35,11 +35,11 @@ func TestPairSearch(t *testing.T) {
 		t.Fatalf("Error constructing ice.Agent")
 	}
 
-	if len(a.validPairs) != 0 {
+	if len(a.checklist) != 0 {
 		t.Fatalf("TestPairSearch is only a valid test if a.validPairs is empty on construction")
 	}
 
-	cp := a.getBestValidPair()
+	cp := a.getBestAvailableCandidatePair()
 
 	if cp != nil {
 		t.Fatalf("No Candidate pairs should exist")
@@ -110,8 +110,14 @@ func TestPairPriority(t *testing.T) {
 	}
 
 	for _, remote := range []Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote} {
-		a.addValidPair(hostLocal, remote)
-		bestPair := a.getBestValidPair()
+		p := a.findPair(hostLocal, remote)
+
+		if p == nil {
+			p = a.addPair(hostLocal, remote)
+		}
+
+		p.state = candidatePairStateValid
+		bestPair := a.getBestValidCandidatePair()
 		if bestPair.String() != (&candidatePair{remote: remote, local: hostLocal}).String() {
 			t.Fatalf("Unexpected bestPair %s (expected remote: %s)", bestPair, remote)
 		}
