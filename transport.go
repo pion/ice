@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/pion/stun"
+	"github.com/gortc/stun"
 )
 
 // Dial connects to the remote agent, acting as the controlling ice agent.
@@ -73,7 +73,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, err
 	}
 
-	if stun.IsSTUN(p) {
+	if stun.IsMessage(p) {
 		return 0, errors.New("the ICE conn can't write STUN messages")
 	}
 

@@ -3,7 +3,7 @@
 package ice
 
 import (
-	"bytes"
+	"fmt"
 	"math/rand"
 	"net"
 	"sort"
@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gortc/stun"
 	"github.com/pion/logging"
-	"github.com/pion/stun"
 	"github.com/pion/transport/packetio"
 )
 
@@ -31,8 +31,6 @@ const (
 
 	// the number of outbound binding requests we cache
 	maxPendingBindingRequests = 50
-
-	stunAttrHeaderLength = 4
 )
 
 type candidatePairs []*candidatePair
@@ -48,7 +46,7 @@ func (bp byPairPriority) Less(i, j int) bool {
 }
 
 type bindingRequest struct {
-	transactionID  []byte
+	transactionID  [stun.TransactionIDSize]byte
 	destination    net.Addr
 	isUseCandidate bool
 }
@@ -562,7 +560,7 @@ func (a *Agent) sendBindingRequest(m *stun.Message, local, remote *Candidate) {
 		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
 	}
 
-	_, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate)
+	useCandidate := m.Contains(stun.AttrUseCandidate)
 
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
 		transactionID:  m.TransactionID,
@@ -575,17 +573,13 @@ func (a *Agent) sendBindingRequest(m *stun.Message, local, remote *Candidate) {
 
 func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
 	base := remote
-	if out, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, m.TransactionID,
-		&stun.XorMappedAddress{
-			XorAddress: stun.XorAddress{
-				IP:   base.IP,
-				Port: base.Port,
-			},
+	if out, err := stun.Build(m, stun.BindingSuccess,
+		&stun.XORMappedAddress{
+			IP:   base.IP,
+			Port: base.Port,
 		},
-		&stun.MessageIntegrity{
-			Key: []byte(a.localPwd),
-		},
-		&stun.Fingerprint{},
+		stun.NewShortTermIntegrity(a.localPwd),
+		stun.Fingerprint,
 	); err != nil {
 		a.log.Warnf("Failed to handle inbound ICE from: %s to: %s error: %s", local, remote, err)
 	} else {
@@ -595,9 +589,9 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
 
 // Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
 // If the bindingRequest was valid remove it from our pending cache
-func (a *Agent) handleInboundBindingSuccess(id []byte) (bool, *bindingRequest) {
+func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bool, *bindingRequest) {
 	for i := range a.pendingBindingRequests {
-		if bytes.Equal(a.pendingBindingRequests[i].transactionID, id) {
+		if a.pendingBindingRequests[i].transactionID == id {
 			validBindingRequest := a.pendingBindingRequests[i]
 			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
 			return true, &validBindingRequest
@@ -613,31 +607,31 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		return
 	}
 
-	if m.Method != stun.MethodBinding ||
-		!(m.Class == stun.ClassSuccessResponse ||
-			m.Class == stun.ClassRequest ||
-			m.Class == stun.ClassIndication) {
-		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote.String(), local.String(), m.Class.String(), m.Method.String())
+	if m.Type.Method != stun.MethodBinding ||
+		!(m.Type.Class == stun.ClassSuccessResponse ||
+			m.Type.Class == stun.ClassRequest ||
+			m.Type.Class == stun.ClassIndication) {
+		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote, local, m.Type.Class, m.Type.Method)
 		return
 	}
 
 	if a.isControlling {
-		if _, isControlling := m.GetOneAttribute(stun.AttrIceControlling); isControlling {
+		if m.Contains(stun.AttrICEControlling) {
 			a.log.Debug("inbound isControlling && a.isControlling == true")
 			return
-		} else if _, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate); useCandidate {
+		} else if m.Contains(stun.AttrUseCandidate) {
 			a.log.Debug("useCandidate && a.isControlling == true")
 			return
 		}
 	} else {
-		if _, isControlled := m.GetOneAttribute(stun.AttrIceControlled); isControlled {
+		if m.Contains(stun.AttrICEControlled) {
 			a.log.Debug("inbound isControlled && a.isControlling == false")
 			return
 		}
 	}
 
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
-	if m.Class == stun.ClassSuccessResponse {
+	if m.Type.Class == stun.ClassSuccessResponse {
 		if err = assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
@@ -649,7 +643,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		}
 
 		a.selector.HandleSucessResponse(m, local, remoteCandidate, remote)
-	} else if m.Class == stun.ClassRequest {
+	} else if m.Type.Class == stun.ClassRequest {
 		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
@@ -721,3 +715,41 @@ func (a *Agent) getSelectedPair() (*candidatePair, error) {
 
 	return out, nil
 }
+
+// Role represents ICE agent role, which can be controlling or controlled.
+type Role byte
+
+// UnmarshalText implements TextUnmarshaler.
+func (r *Role) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "controlling":
+		*r = Controlling
+	case "controlled":
+		*r = Controlled
+	default:
+		return fmt.Errorf("unknown role %q", text)
+	}
+	return nil
+}
+
+// MarshalText implements TextMarshaler.
+func (r Role) MarshalText() (text []byte, err error) {
+	return []byte(r.String()), nil
+}
+
+func (r Role) String() string {
+	switch r {
+	case Controlling:
+		return "controlling"
+	case Controlled:
+		return "controlled"
+	default:
+		return "unknown"
+	}
+}
+
+// Possible ICE agent roles.
+const (
+	Controlling Role = iota
+	Controlled
+)

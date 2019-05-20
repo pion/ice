@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/stun"
+	"github.com/gortc/stun"
+	"github.com/pion/logging"
 	"github.com/pion/transport/test"
 )
 
@@ -205,15 +206,13 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 
-			msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
-				&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
-				&stun.UseCandidate{},
-				&stun.IceControlling{TieBreaker: a.tieBreaker},
-				&stun.Priority{Priority: local.Priority()},
-				&stun.MessageIntegrity{
-					Key: []byte(a.localPwd),
-				},
-				&stun.Fingerprint{},
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
+				UseCandidate,
+				AttrControlling(a.tieBreaker),
+				PriorityAttr(local.Priority()),
+				stun.NewShortTermIntegrity(a.localPwd),
+				stun.Fingerprint,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -282,8 +281,10 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			tID := [stun.TransactionIDSize]byte{}
+			copy(tID[:], []byte("ABC"))
 			a.pendingBindingRequests = []bindingRequest{
-				{[]byte("ABC"), &net.UDPAddr{}, false},
+				{tID, &net.UDPAddr{}, false},
 			}
 
 			local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
@@ -293,11 +294,9 @@ func TestHandlePeerReflexive(t *testing.T) {
 			}
 
 			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-			msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
-				&stun.MessageIntegrity{
-					Key: []byte(a.remotePwd),
-				},
-				&stun.Fingerprint{},
+			msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
+				stun.NewShortTermIntegrity(a.remotePwd),
+				stun.Fingerprint,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -321,6 +320,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 		Urls:             []*URL{},
 		NetworkTypes:     supportedNetworkTypes,
 		taskLoopInterval: time.Hour,
+		LoggerFactory:    logging.NewDefaultLoggerFactory(),
 	}
 
 	aNotifier, aConnected := onConnected()
@@ -352,12 +352,10 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 func TestInboundValidity(t *testing.T) {
 	buildMsg := func(class stun.MessageClass, username, key string) *stun.Message {
-		msg, err := stun.Build(class, stun.MethodBinding, stun.GenerateTransactionID(),
-			&stun.Username{Username: username},
-			&stun.MessageIntegrity{
-				Key: []byte(key),
-			},
-			&stun.Fingerprint{},
+		msg, err := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
+			stun.NewUsername(username),
+			stun.NewShortTermIntegrity(key),
+			stun.Fingerprint,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -437,11 +435,9 @@ func TestInboundValidity(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, stun.GenerateTransactionID(),
-				&stun.Username{Username: a.localUfrag + ":" + a.remoteUfrag},
-				&stun.MessageIntegrity{
-					Key: []byte(a.localPwd),
-				},
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
+				stun.NewShortTermIntegrity(a.localPwd),
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -467,11 +463,11 @@ func TestInboundValidity(t *testing.T) {
 		}
 
 		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-		msg, err := stun.Build(stun.ClassSuccessResponse, stun.MethodBinding, []byte("ABC"),
-			&stun.MessageIntegrity{
-				Key: []byte(a.remotePwd),
-			},
-			&stun.Fingerprint{},
+		tID := [stun.TransactionIDSize]byte{}
+		copy(tID[:], []byte("ABC"))
+		msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
+			stun.NewShortTermIntegrity(a.remotePwd),
+			stun.Fingerprint,
 		)
 		if err != nil {
 			t.Fatal(err)
