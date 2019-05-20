@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/stun"
+	"github.com/gortc/stun"
 )
 
 const (
@@ -140,10 +140,13 @@ func (c *Candidate) recvLoop() {
 			return
 		}
 
-		if stun.IsSTUN(buffer[:n]) {
-			var m *stun.Message
-			m, err = stun.NewMessage(buffer[:n])
-			if err != nil {
+		if stun.IsMessage(buffer[:n]) {
+			m := &stun.Message{
+				Raw: make([]byte, n),
+			}
+			// Explicitly copy raw buffer so Message can own the memory.
+			copy(m.Raw, buffer[:n])
+			if err := m.Decode(); err != nil {
 				log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
 				continue
 			}

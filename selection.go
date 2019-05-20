@@ -3,8 +3,8 @@ package ice
 import (
 	"net"
 
+	"github.com/gortc/stun"
 	"github.com/pion/logging"
-	"github.com/pion/stun"
 )
 
 type pairCandidateSelector interface {
@@ -40,21 +40,17 @@ func (s *controllingSelector) ContactCandidates() {
 }
 
 func (s *controllingSelector) nominatePair(pair *candidatePair) {
-	transactionID := stun.GenerateTransactionID()
-
 	// The controlling agent MUST include the USE-CANDIDATE attribute in
 	// order to nominate a candidate pair (Section 8.1.1).  The controlled
 	// agent MUST NOT include the USE-CANDIDATE attribute in a Binding
 	// request.
-	msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
-		&stun.Username{Username: s.agent.remoteUfrag + ":" + s.agent.localUfrag},
-		&stun.UseCandidate{},
-		&stun.IceControlling{TieBreaker: s.agent.tieBreaker},
-		&stun.Priority{Priority: pair.local.Priority()},
-		&stun.MessageIntegrity{
-			Key: []byte(s.agent.remotePwd),
-		},
-		&stun.Fingerprint{},
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+		UseCandidate,
+		AttrControlling(s.agent.tieBreaker),
+		PriorityAttr(pair.local.Priority()),
+		stun.NewShortTermIntegrity(s.agent.remotePwd),
+		stun.Fingerprint,
 	)
 
 	if err != nil {
@@ -101,16 +97,12 @@ func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remot
 }
 
 func (s *controllingSelector) PingCandidate(local, remote *Candidate) {
-	transactionID := stun.GenerateTransactionID()
-
-	msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
-		&stun.Username{Username: s.agent.remoteUfrag + ":" + s.agent.localUfrag},
-		&stun.IceControlling{TieBreaker: s.agent.tieBreaker},
-		&stun.Priority{Priority: local.Priority()},
-		&stun.MessageIntegrity{
-			Key: []byte(s.agent.remotePwd),
-		},
-		&stun.Fingerprint{},
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+		AttrControlling(s.agent.tieBreaker),
+		PriorityAttr(local.Priority()),
+		stun.NewShortTermIntegrity(s.agent.remotePwd),
+		stun.Fingerprint,
 	)
 
 	if err != nil {
@@ -141,16 +133,12 @@ func (s *controlledSelector) ContactCandidates() {
 }
 
 func (s *controlledSelector) PingCandidate(local, remote *Candidate) {
-	transactionID := stun.GenerateTransactionID()
-
-	msg, err := stun.Build(stun.ClassRequest, stun.MethodBinding, transactionID,
-		&stun.Username{Username: s.agent.remoteUfrag + ":" + s.agent.localUfrag},
-		&stun.IceControlled{TieBreaker: s.agent.tieBreaker},
-		&stun.Priority{Priority: local.Priority()},
-		&stun.MessageIntegrity{
-			Key: []byte(s.agent.remotePwd),
-		},
-		&stun.Fingerprint{},
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+		AttrControlled(s.agent.tieBreaker),
+		PriorityAttr(local.Priority()),
+		stun.NewShortTermIntegrity(s.agent.remotePwd),
+		stun.Fingerprint,
 	)
 
 	if err != nil {
@@ -189,9 +177,7 @@ func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote
 }
 
 func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote *Candidate) {
-	_, useCandidate := m.GetOneAttribute(stun.AttrUseCandidate)
-
-	if useCandidate {
+	if m.Contains(stun.AttrUseCandidate) {
 		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 		p := s.agent.findValidPair(local, remote)
 

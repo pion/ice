@@ -3,7 +3,7 @@ package ice
 import (
 	"fmt"
 
-	"github.com/pion/stun"
+	"github.com/gortc/stun"
 )
 
 func newCandidatePair(local, remote *Candidate, controlling bool) *candidatePair {
@@ -84,12 +84,10 @@ func (p *candidatePair) Write(b []byte) (int, error) {
 
 // keepaliveCandidate sends a STUN Binding Indication to the remote candidate
 func (a *Agent) keepaliveCandidate(local, remote *Candidate) {
-	msg, err := stun.Build(stun.ClassIndication, stun.MethodBinding, stun.GenerateTransactionID(),
-		&stun.Username{Username: a.remoteUfrag + ":" + a.localUfrag},
-		&stun.MessageIntegrity{
-			Key: []byte(a.remotePwd),
-		},
-		&stun.Fingerprint{},
+	msg, err := stun.Build(stun.NewType(stun.MethodBinding, stun.ClassIndication), stun.TransactionID,
+		stun.NewUsername(a.remoteUfrag+":"+a.localUfrag),
+		stun.NewShortTermIntegrity(a.remotePwd),
+		stun.Fingerprint,
 	)
 
 	if err != nil {
@@ -101,7 +99,7 @@ func (a *Agent) keepaliveCandidate(local, remote *Candidate) {
 }
 
 func (a *Agent) sendSTUN(msg *stun.Message, local, remote *Candidate) {
-	_, err := local.writeTo(msg.Pack(), remote)
+	_, err := local.writeTo(msg.Raw, remote)
 	if err != nil {
 		a.log.Tracef("failed to send STUN message: %s", err)
 	}
