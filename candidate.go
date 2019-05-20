@@ -146,7 +146,7 @@ func (c *Candidate) recvLoop() {
 			}
 			// Explicitly copy raw buffer so Message can own the memory.
 			copy(m.Raw, buffer[:n])
-			if err := m.Decode(); err != nil {
+			if err = m.Decode(); err != nil {
 				log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
 				continue
 			}
