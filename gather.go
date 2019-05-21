@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/gortc/stun"
+	"github.com/pion/stun"
 )
 
 func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {

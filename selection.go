@@ -3,8 +3,8 @@ package ice
 import (
 	"net"
 
-	"github.com/gortc/stun"
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 )
 
 type pairCandidateSelector interface {

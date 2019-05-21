@@ -1,6 +1,6 @@
 package ice
 
-import "github.com/gortc/stun"
+import "github.com/pion/stun"
 
 // PriorityAttr represents PRIORITY attribute.
 type PriorityAttr uint32

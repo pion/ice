@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/gortc/stun"
+	"github.com/pion/stun"
 )
 
 // Dial connects to the remote agent, acting as the controlling ice agent.
