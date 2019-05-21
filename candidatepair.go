@@ -3,7 +3,7 @@ package ice
 import (
 	"fmt"
 
-	"github.com/gortc/stun"
+	"github.com/pion/stun"
 )
 
 func newCandidatePair(local, remote *Candidate, controlling bool) *candidatePair {

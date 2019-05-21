@@ -3,7 +3,7 @@ package ice
 import (
 	"testing"
 
-	"github.com/gortc/stun"
+	"github.com/pion/stun"
 )
 
 func TestControlled_GetFrom(t *testing.T) {

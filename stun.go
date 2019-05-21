@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/gortc/stun"
+	"github.com/pion/stun"
 )
 
 // bin is shorthand for BigEndian.
