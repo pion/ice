@@ -10,7 +10,7 @@
   <br>
   <a href="https://travis-ci.org/pion/ice"><img src="https://travis-ci.org/pion/ice.svg?branch=master" alt="Build Status"></a>
   <a href="https://godoc.org/github.com/pion/ice"><img src="https://godoc.org/github.com/pion/ice?status.svg" alt="GoDoc"></a>
-  <a href="https://coveralls.io/github/pion/ice"><img src="https://coveralls.io/repos/github/pion/ice/badge.svg" alt="Coverage Status"></a>
+  <a href="https://codecov.io/gh/pion/ice"><img src="https://codecov.io/gh/pion/ice/branch/master/graph/badge.svg" alt="Coverage Status"></a>
   <a href="https://goreportcard.com/report/github.com/pion/ice"><img src="https://goreportcard.com/badge/github.com/pion/ice" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
