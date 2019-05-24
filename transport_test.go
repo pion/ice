@@ -269,22 +269,20 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	return aConn, bConn
 }
 
-func copyCandidate(orig *Candidate) *Candidate {
-	c := &Candidate{
-		Type:        orig.Type,
-		NetworkType: orig.NetworkType,
-		IP:          orig.IP,
-		Port:        orig.Port,
-	}
-
-	if orig.RelatedAddress != nil {
-		c.RelatedAddress = &CandidateRelatedAddress{
-			Address: orig.RelatedAddress.Address,
-			Port:    orig.RelatedAddress.Port,
+func copyCandidate(o Candidate) Candidate {
+	switch orig := o.(type) {
+	case *CandidateHost:
+		return &CandidateHost{
+			candidateBase{
+				networkType: orig.networkType,
+				ip:          orig.ip,
+				port:        orig.port,
+				component:   orig.component,
+			},
 		}
+	default:
+		return nil
 	}
-
-	return c
 }
 
 func onConnected() (func(ConnectionState), chan struct{}) {

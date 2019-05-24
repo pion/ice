@@ -108,7 +108,7 @@ func TestPairPriority(t *testing.T) {
 		t.Fatalf("Failed to construct remote host candidate: %s", err)
 	}
 
-	for _, remote := range []*Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote} {
+	for _, remote := range []Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote} {
 		a.addValidPair(hostLocal, remote)
 		bestPair := a.getBestValidPair()
 		if bestPair.String() != (&candidatePair{remote: remote, local: hostLocal}).String() {
@@ -130,7 +130,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 	callbackCalled := make(chan struct{}, 1)
-	if err = a.OnSelectedCandidatePairChange(func(local, remote *Candidate) {
+	if err = a.OnSelectedCandidatePairChange(func(local, remote Candidate) {
 		close(callbackCalled)
 	}); err != nil {
 		t.Fatalf("Failed to set agent OnCandidatePairChange callback: %s", err)
@@ -226,22 +226,22 @@ func TestHandlePeerReflexive(t *testing.T) {
 			}
 
 			// length of remote candidate list for a network type must be 1
-			set := a.remoteCandidates[local.NetworkType]
+			set := a.remoteCandidates[local.NetworkType()]
 			if len(set) != 1 {
 				t.Fatal("failed to add prflx candidate to remote candidate list")
 			}
 
 			c := set[0]
 
-			if c.Type != CandidateTypePeerReflexive {
+			if c.Type() != CandidateTypePeerReflexive {
 				t.Fatal("candidate type must be prflx")
 			}
 
-			if !c.IP.Equal(net.ParseIP("172.17.0.3")) {
+			if !c.IP().Equal(net.ParseIP("172.17.0.3")) {
 				t.Fatal("IP address mismatch")
 			}
 
-			if c.Port != 999 {
+			if c.Port() != 999 {
 				t.Fatal("Port number mismatch")
 			}
 

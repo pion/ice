@@ -107,10 +107,9 @@ func gatherCandidatesLocal(a *Agent, networkTypes []NetworkType) {
 				continue
 			}
 
-			networkType := c.NetworkType
-			set := a.localCandidates[networkType]
+			set := a.localCandidates[c.NetworkType()]
 			set = append(set, c)
-			a.localCandidates[networkType] = set
+			a.localCandidates[c.NetworkType()] = set
 
 			c.start(a, conn)
 		}
@@ -154,10 +153,9 @@ func gatherCandidatesReflective(a *Agent, urls []*URL, networkTypes []NetworkTyp
 						continue
 					}
 
-					networkType := c.NetworkType
-					set := a.localCandidates[networkType]
+					set := a.localCandidates[c.NetworkType()]
 					set = append(set, c)
-					a.localCandidates[networkType] = set
+					a.localCandidates[c.NetworkType()] = set
 
 					c.start(a, conn)
 
