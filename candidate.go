@@ -17,25 +17,23 @@ const (
 
 // Candidate represents an ICE candidate
 type Candidate interface {
-	start(a *Agent, conn net.PacketConn)
+	Component() uint16
+	IP() net.IP
+	LastReceived() time.Time
+	LastSent() time.Time
+	NetworkType() NetworkType
+	Port() int
+	Priority() uint32
+	RelatedAddress() *CandidateRelatedAddress
+	String() string
+	Type() CandidateType
+
+	Equal(other Candidate) bool
+
 	addr() net.Addr
 
-	setLastSent(t time.Time)
-	seen(outbound bool)
-	LastSent() time.Time
-	setLastReceived(t time.Time)
-	LastReceived() time.Time
-	String() string
-	Equal(other Candidate) bool
-	Priority() uint32
-	writeTo(raw []byte, dst Candidate) (int, error)
 	close() error
-
-	IP() net.IP
-	Port() int
-	Component() uint16
-	NetworkType() NetworkType
-
-	Type() CandidateType
-	RelatedAddress() *CandidateRelatedAddress
+	seen(outbound bool)
+	start(a *Agent, conn net.PacketConn)
+	writeTo(raw []byte, dst Candidate) (int, error)
 }
