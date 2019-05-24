@@ -54,7 +54,7 @@ type bindingRequest struct {
 // Agent represents the ICE agent
 type Agent struct {
 	onConnectionStateChangeHdlr       func(ConnectionState)
-	onSelectedCandidatePairChangeHdlr func(*Candidate, *Candidate)
+	onSelectedCandidatePairChangeHdlr func(Candidate, Candidate)
 
 	// Used to block double Dial/Accept
 	opened bool
@@ -91,15 +91,15 @@ type Agent struct {
 
 	localUfrag      string
 	localPwd        string
-	localCandidates map[NetworkType][]*Candidate
+	localCandidates map[NetworkType][]Candidate
 
 	remoteUfrag      string
 	remotePwd        string
-	remoteCandidates map[NetworkType][]*Candidate
+	remoteCandidates map[NetworkType][]Candidate
 
 	selector     pairCandidateSelector
 	selectedPair *candidatePair
-	validPairs   []*candidatePair
+	validPairs   candidatePairs
 
 	buffer *packetio.Buffer
 
@@ -175,8 +175,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
 		gatheringState:         GatheringStateComplete, // TODO trickle-ice
 		connectionState:        ConnectionStateNew,
-		localCandidates:        make(map[NetworkType][]*Candidate),
-		remoteCandidates:       make(map[NetworkType][]*Candidate),
+		localCandidates:        make(map[NetworkType][]Candidate),
+		remoteCandidates:       make(map[NetworkType][]Candidate),
 		pendingBindingRequests: make([]bindingRequest, 0, maxPendingBindingRequests),
 
 		localUfrag:  randSeq(16),
@@ -235,7 +235,7 @@ func (a *Agent) OnConnectionStateChange(f func(ConnectionState)) error {
 
 // OnSelectedCandidatePairChange sets a handler that is fired when the final candidate
 // pair is selected
-func (a *Agent) OnSelectedCandidatePairChange(f func(*Candidate, *Candidate)) error {
+func (a *Agent) OnSelectedCandidatePairChange(f func(Candidate, Candidate)) error {
 	return a.run(func(agent *Agent) {
 		agent.onSelectedCandidatePairChangeHdlr = f
 	})
@@ -296,7 +296,7 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 	}
 }
 
-func (a *Agent) findValidPair(local, remote *Candidate) *candidatePair {
+func (a *Agent) findValidPair(local, remote Candidate) *candidatePair {
 	for _, p := range a.validPairs {
 		if p.local == local && p.remote == remote {
 			return p
@@ -305,7 +305,7 @@ func (a *Agent) findValidPair(local, remote *Candidate) *candidatePair {
 	return nil
 }
 
-func (a *Agent) addValidPair(local, remote *Candidate) *candidatePair {
+func (a *Agent) addValidPair(local, remote Candidate) *candidatePair {
 	p := a.findValidPair(local, remote)
 	if p != nil {
 		a.log.Tracef("Candidate pair is already valid: %s", p)
@@ -436,16 +436,15 @@ func (a *Agent) pingAllCandidates() {
 }
 
 // AddRemoteCandidate adds a new remote candidate
-func (a *Agent) AddRemoteCandidate(c *Candidate) error {
+func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	return a.run(func(agent *Agent) {
 		agent.addRemoteCandidate(c)
 	})
 }
 
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run)
-func (a *Agent) addRemoteCandidate(c *Candidate) {
-	networkType := c.NetworkType
-	set := a.remoteCandidates[networkType]
+func (a *Agent) addRemoteCandidate(c Candidate) {
+	set := a.remoteCandidates[c.NetworkType()]
 
 	for _, candidate := range set {
 		if candidate.Equal(c) {
@@ -454,15 +453,15 @@ func (a *Agent) addRemoteCandidate(c *Candidate) {
 	}
 
 	set = append(set, c)
-	a.remoteCandidates[networkType] = set
+	a.remoteCandidates[c.NetworkType()] = set
 }
 
 // GetLocalCandidates returns the local candidates
-func (a *Agent) GetLocalCandidates() ([]*Candidate, error) {
-	res := make(chan []*Candidate)
+func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
+	res := make(chan []Candidate)
 
 	err := a.run(func(agent *Agent) {
-		var candidates []*Candidate
+		var candidates []Candidate
 		for _, set := range agent.localCandidates {
 			candidates = append(candidates, set...)
 		}
@@ -525,7 +524,7 @@ func (a *Agent) Close() error {
 	return nil
 }
 
-func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) *Candidate {
+func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
 	var ip net.IP
 	var port int
 
@@ -543,16 +542,14 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) *Can
 
 	set := a.remoteCandidates[networkType]
 	for _, c := range set {
-		base := c
-		if base.IP.Equal(ip) &&
-			base.Port == port {
+		if c.IP().Equal(ip) && c.Port() == port {
 			return c
 		}
 	}
 	return nil
 }
 
-func (a *Agent) sendBindingRequest(m *stun.Message, local, remote *Candidate) {
+func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
 	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
 
 	if overflow := len(a.pendingBindingRequests) - (maxPendingBindingRequests - 1); overflow > 0 {
@@ -571,12 +568,12 @@ func (a *Agent) sendBindingRequest(m *stun.Message, local, remote *Candidate) {
 	a.sendSTUN(m, local, remote)
 }
 
-func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote *Candidate) {
+func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	base := remote
 	if out, err := stun.Build(m, stun.BindingSuccess,
 		&stun.XORMappedAddress{
-			IP:   base.IP,
-			Port: base.Port,
+			IP:   base.IP(),
+			Port: base.Port(),
 		},
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint,
@@ -601,7 +598,7 @@ func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bo
 }
 
 // handleInbound processes STUN traffic from a remote candidate
-func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) {
 	var err error
 	if m == nil || local == nil {
 		return
@@ -630,7 +627,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 		}
 	}
 
-	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
+	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 	if m.Type.Class == stun.ClassSuccessResponse {
 		if err = assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
@@ -659,7 +656,7 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 				return
 			}
 
-			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip, port, local.Component, "", 0)
+			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip, port, local.Component(), "", 0)
 			if err != nil {
 				a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
 				return
@@ -682,8 +679,8 @@ func (a *Agent) handleInbound(m *stun.Message, local *Candidate, remote net.Addr
 
 // noSTUNSeen processes non STUN traffic from a remote candidate,
 // and returns true if it is an actual remote candidate
-func (a *Agent) noSTUNSeen(local *Candidate, remote net.Addr) bool {
-	remoteCandidate := a.findRemoteCandidate(local.NetworkType, remote)
+func (a *Agent) noSTUNSeen(local Candidate, remote net.Addr) bool {
+	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 	if remoteCandidate == nil {
 		return false
 	}

@@ -3,25 +3,29 @@ package ice
 import "testing"
 
 var (
-	hostCandidate = &Candidate{
-		Type:            CandidateTypeHost,
-		LocalPreference: defaultLocalPreference,
-		Component:       ComponentRTP,
+	hostCandidate = &CandidateHost{
+		candidateBase: candidateBase{
+			candidateType: CandidateTypeHost,
+			component:     ComponentRTP,
+		},
 	}
-	prflxCandidate = &Candidate{
-		Type:            CandidateTypePeerReflexive,
-		LocalPreference: defaultLocalPreference,
-		Component:       ComponentRTP,
+	prflxCandidate = &CandidatePeerReflexive{
+		candidateBase: candidateBase{
+			candidateType: CandidateTypePeerReflexive,
+			component:     ComponentRTP,
+		},
 	}
-	srflxCandidate = &Candidate{
-		Type:            CandidateTypeServerReflexive,
-		LocalPreference: defaultLocalPreference,
-		Component:       ComponentRTP,
+	srflxCandidate = &CandidateServerReflexive{
+		candidateBase: candidateBase{
+			candidateType: CandidateTypeServerReflexive,
+			component:     ComponentRTP,
+		},
 	}
-	relayCandidate = &Candidate{
-		Type:            CandidateTypeRelay,
-		LocalPreference: defaultLocalPreference,
-		Component:       ComponentRTP,
+	relayCandidate = &CandidateRelay{
+		candidateBase: candidateBase{
+			candidateType: CandidateTypeRelay,
+			component:     ComponentRTP,
+		},
 	}
 )
 

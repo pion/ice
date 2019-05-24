@@ -4,38 +4,42 @@ import "testing"
 
 func TestCandidatePriority(t *testing.T) {
 	for _, test := range []struct {
-		Candidate    *Candidate
+		Candidate    Candidate
 		WantPriority uint32
 	}{
 		{
-			Candidate: &Candidate{
-				Type:            CandidateTypeHost,
-				LocalPreference: defaultLocalPreference,
-				Component:       ComponentRTP,
+			Candidate: &CandidateHost{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeHost,
+					component:     ComponentRTP,
+				},
 			},
 			WantPriority: 2130706431,
 		},
 		{
-			Candidate: &Candidate{
-				Type:            CandidateTypePeerReflexive,
-				LocalPreference: defaultLocalPreference,
-				Component:       ComponentRTP,
+			Candidate: &CandidatePeerReflexive{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypePeerReflexive,
+					component:     ComponentRTP,
+				},
 			},
 			WantPriority: 1862270975,
 		},
 		{
-			Candidate: &Candidate{
-				Type:            CandidateTypeServerReflexive,
-				LocalPreference: defaultLocalPreference,
-				Component:       ComponentRTP,
+			Candidate: &CandidateServerReflexive{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeServerReflexive,
+					component:     ComponentRTP,
+				},
 			},
 			WantPriority: 1694498815,
 		},
 		{
-			Candidate: &Candidate{
-				Type:            CandidateTypeRelay,
-				LocalPreference: defaultLocalPreference,
-				Component:       ComponentRTP,
+			Candidate: &CandidateRelay{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeRelay,
+					component:     ComponentRTP,
+				},
 			},
 			WantPriority: 16777215,
 		},

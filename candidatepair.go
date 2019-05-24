@@ -6,7 +6,7 @@ import (
 	"github.com/pion/stun"
 )
 
-func newCandidatePair(local, remote *Candidate, controlling bool) *candidatePair {
+func newCandidatePair(local, remote Candidate, controlling bool) *candidatePair {
 	return &candidatePair{
 		iceRoleControlling: controlling,
 		remote:             remote,
@@ -17,8 +17,8 @@ func newCandidatePair(local, remote *Candidate, controlling bool) *candidatePair
 // candidatePair represents a combination of a local and remote candidate
 type candidatePair struct {
 	iceRoleControlling bool
-	remote             *Candidate
-	local              *Candidate
+	remote             Candidate
+	local              Candidate
 }
 
 func (p *candidatePair) String() string {
@@ -83,7 +83,7 @@ func (p *candidatePair) Write(b []byte) (int, error) {
 }
 
 // keepaliveCandidate sends a STUN Binding Indication to the remote candidate
-func (a *Agent) keepaliveCandidate(local, remote *Candidate) {
+func (a *Agent) keepaliveCandidate(local, remote Candidate) {
 	msg, err := stun.Build(stun.NewType(stun.MethodBinding, stun.ClassIndication), stun.TransactionID,
 		stun.NewUsername(a.remoteUfrag+":"+a.localUfrag),
 		stun.NewShortTermIntegrity(a.remotePwd),
@@ -98,7 +98,7 @@ func (a *Agent) keepaliveCandidate(local, remote *Candidate) {
 	a.sendSTUN(msg, local, remote)
 }
 
-func (a *Agent) sendSTUN(msg *stun.Message, local, remote *Candidate) {
+func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
 	_, err := local.writeTo(msg.Raw, remote)
 	if err != nil {
 		a.log.Tracef("failed to send STUN message: %s", err)

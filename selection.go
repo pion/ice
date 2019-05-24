@@ -10,9 +10,9 @@ import (
 type pairCandidateSelector interface {
 	Start()
 	ContactCandidates()
-	PingCandidate(local, remote *Candidate)
-	HandleSucessResponse(m *stun.Message, local, remote *Candidate, remoteAddr net.Addr)
-	HandleBindingRequest(m *stun.Message, local, remote *Candidate)
+	PingCandidate(local, remote Candidate)
+	HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr)
+	HandleBindingRequest(m *stun.Message, local, remote Candidate)
 }
 
 type controllingSelector struct {
@@ -62,7 +62,7 @@ func (s *controllingSelector) nominatePair(pair *candidatePair) {
 	s.agent.sendBindingRequest(msg, pair.local, pair.remote)
 }
 
-func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remote *Candidate) {
+func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
 	s.agent.sendBindingSuccess(m, local, remote)
 
 	p := s.agent.findValidPair(local, remote)
@@ -72,7 +72,7 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 	}
 }
 
-func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remote *Candidate, remoteAddr net.Addr) {
+func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
 	ok, pendingRequest := s.agent.handleInboundBindingSuccess(m.TransactionID)
 	if !ok {
 		s.log.Errorf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
@@ -96,7 +96,7 @@ func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remot
 	}
 }
 
-func (s *controllingSelector) PingCandidate(local, remote *Candidate) {
+func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
 		AttrControlling(s.agent.tieBreaker),
@@ -132,7 +132,7 @@ func (s *controlledSelector) ContactCandidates() {
 	}
 }
 
-func (s *controlledSelector) PingCandidate(local, remote *Candidate) {
+func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
 		AttrControlled(s.agent.tieBreaker),
@@ -149,7 +149,7 @@ func (s *controlledSelector) PingCandidate(local, remote *Candidate) {
 	s.agent.sendBindingRequest(msg, local, remote)
 }
 
-func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote *Candidate, remoteAddr net.Addr) {
+func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 	// If the controlled agent does not accept the request from the
@@ -176,7 +176,7 @@ func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote
 	s.agent.addValidPair(local, remote)
 }
 
-func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote *Candidate) {
+func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
 	if m.Contains(stun.AttrUseCandidate) {
 		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 		p := s.agent.findValidPair(local, remote)
