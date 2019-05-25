@@ -41,4 +41,10 @@ var (
 
 	// ErrRemotePwdEmpty indicates agent was started with an empty remote pwd
 	ErrRemotePwdEmpty = errors.New("remote pwd is empty")
+
+	// ErrUsernameEmpty indicates agent was give TURN URL with an empty Username
+	ErrUsernameEmpty = errors.New("username is empty")
+
+	// ErrPasswordEmpty indicates agent was give TURN URL with an empty Password
+	ErrPasswordEmpty = errors.New("password is empty")
 )
