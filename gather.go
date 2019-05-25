@@ -90,7 +90,38 @@ func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.U
 	return nil, ErrPort
 }
 
-func gatherCandidatesLocal(a *Agent, networkTypes []NetworkType) {
+// GatherCandidates initiates the trickle based gathering process.
+func (a *Agent) GatherCandidates(urls []*URL, networkTypes []NetworkType) error {
+	return a.run(func(agent *Agent) {
+		if a.gatheringState == GatheringStateGathering {
+			a.log.Warnf("Attempting to gather candidates during gathering state\n")
+			return
+		}
+
+		go a.gatherCandidates(&AgentConfig{
+			Urls:         urls,
+			NetworkTypes: networkTypes,
+		})
+	})
+}
+
+func (a *Agent) gatherCandidates(config *AgentConfig) {
+	a.gatheringState = GatheringStateGathering
+	a.gatherCandidatesLocal(config.NetworkTypes)
+	a.gatherCandidatesSrflx(config.Urls, config.NetworkTypes)
+	if err := a.run(func(agent *Agent) {
+		if a.onCandidateHdlr != nil {
+			go a.onCandidateHdlr(nil)
+		}
+	}); err != nil {
+		a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+		return
+	}
+	a.gatheringState = GatheringStateComplete
+
+}
+
+func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	localIPs := localInterfaces(networkTypes)
 	for _, ip := range localIPs {
 		for _, network := range supportedNetworks {
@@ -107,16 +138,30 @@ func gatherCandidatesLocal(a *Agent, networkTypes []NetworkType) {
 				continue
 			}
 
-			set := a.localCandidates[c.NetworkType()]
-			set = append(set, c)
-			a.localCandidates[c.NetworkType()] = set
+			if err := a.run(func(agent *Agent) {
+				set := a.localCandidates[c.NetworkType()]
+				set = append(set, c)
+				a.localCandidates[c.NetworkType()] = set
+			}); err != nil {
+				a.log.Warnf("Failed to append to localCandidates: %v\n", err)
+				continue
+			}
 
 			c.start(a, conn)
+
+			if err := a.run(func(agent *Agent) {
+				if a.onCandidateHdlr != nil {
+					go a.onCandidateHdlr(c)
+				}
+			}); err != nil {
+				a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+				continue
+			}
 		}
 	}
 }
 
-func gatherCandidatesReflective(a *Agent, urls []*URL, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 	localIPs := localInterfaces(networkTypes)
 	for _, networkType := range networkTypes {
 		network := networkType.String()
@@ -153,11 +198,25 @@ func gatherCandidatesReflective(a *Agent, urls []*URL, networkTypes []NetworkTyp
 						continue
 					}
 
-					set := a.localCandidates[c.NetworkType()]
-					set = append(set, c)
-					a.localCandidates[c.NetworkType()] = set
+					if err := a.run(func(agent *Agent) {
+						set := a.localCandidates[c.NetworkType()]
+						set = append(set, c)
+						a.localCandidates[c.NetworkType()] = set
+					}); err != nil {
+						a.log.Warnf("Failed to append to localCandidates: %v\n", err)
+						continue
+					}
 
 					c.start(a, conn)
+
+					if err := a.run(func(agent *Agent) {
+						if a.onCandidateHdlr != nil {
+							go a.onCandidateHdlr(c)
+						}
+					}); err != nil {
+						a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+						continue
+					}
 
 				default:
 					a.log.Warnf("scheme %s is not implemented\n", url.Scheme)

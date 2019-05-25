@@ -3,6 +3,7 @@ package ice
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -318,6 +319,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 	cfg := &AgentConfig{
 		Urls:             []*URL{},
+		Trickle:          false,
 		NetworkTypes:     supportedNetworkTypes,
 		taskLoopInterval: time.Hour,
 		LoggerFactory:    logging.NewDefaultLoggerFactory(),
@@ -513,10 +515,14 @@ func TestConnectionStateCallback(t *testing.T) {
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
 
+	var wg sync.WaitGroup
+	wg.Add(2)
+
 	timeoutDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 	cfg := &AgentConfig{
 		Urls:              []*URL{},
+		Trickle:           true,
 		NetworkTypes:      supportedNetworkTypes,
 		ConnectionTimeout: &timeoutDuration,
 		KeepaliveInterval: &KeepaliveInterval,
@@ -527,10 +533,34 @@ func TestConnectionStateCallback(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	err = aAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	})
+	if err != nil {
+		panic(err)
+	}
+	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
+	}
 
 	bAgent, err := NewAgent(cfg)
 	if err != nil {
 		t.Error(err)
+	}
+	err = bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	})
+	if err != nil {
+		panic(err)
+	}
+	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
 	}
 
 	isChecking := make(chan interface{})
@@ -553,6 +583,7 @@ func TestConnectionStateCallback(t *testing.T) {
 		t.Error(err)
 	}
 
+	wg.Wait()
 	connect(aAgent, bAgent)
 
 	<-isChecking
