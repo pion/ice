@@ -99,10 +99,12 @@ func (t ProtoType) String() string {
 
 // URL represents a STUN (rfc7064) or TURN (rfc7065) URL
 type URL struct {
-	Scheme SchemeType
-	Host   string
-	Port   int
-	Proto  ProtoType
+	Scheme   SchemeType
+	Host     string
+	Port     int
+	Username string
+	Password string
+	Proto    ProtoType
 }
 
 // ParseURL parses a STUN or TURN urls following the ABNF syntax described in
