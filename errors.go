@@ -42,6 +42,10 @@ var (
 	// ErrRemotePwdEmpty indicates agent was started with an empty remote pwd
 	ErrRemotePwdEmpty = errors.New("remote pwd is empty")
 
+	// ErrNoOnCandidateHandler indicates agent was started without OnCandidate
+	// while running in trickle mode.
+	ErrNoOnCandidateHandler = errors.New("no OnCandidate provided")
+
 	// ErrUsernameEmpty indicates agent was give TURN URL with an empty Username
 	ErrUsernameEmpty = errors.New("username is empty")
 

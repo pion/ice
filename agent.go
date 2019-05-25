@@ -55,6 +55,7 @@ type bindingRequest struct {
 type Agent struct {
 	onConnectionStateChangeHdlr       func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr func(Candidate, Candidate)
+	onCandidateHdlr                   func(Candidate)
 
 	// Used to block double Dial/Accept
 	opened bool
@@ -68,6 +69,7 @@ type Agent struct {
 	// force candidate to be contacted immediately (instead of waiting for connectivityChan)
 	forceCandidateContact chan bool
 
+	trickle         bool
 	tieBreaker      uint64
 	connectionState ConnectionState
 	gatheringState  GatheringState
@@ -78,12 +80,12 @@ type Agent struct {
 	portmin uint16
 	portmax uint16
 
-	//How long should a pair stay quiet before we declare it dead?
-	//0 means never timeout
+	// How long should a pair stay quiet before we declare it dead?
+	// 0 means never timeout
 	connectionTimeout time.Duration
 
-	//How often should we send keepalive packets?
-	//0 means never
+	// How often should we send keepalive packets?
+	// 0 means never
 	keepaliveInterval time.Duration
 
 	// How after should we run our internal taskLoop
@@ -139,6 +141,10 @@ type AgentConfig struct {
 	PortMin uint16
 	PortMax uint16
 
+	// Trickle specifies whether or not ice agent should trickle candidates or
+	// work perform synchronous gathering.
+	Trickle bool
+
 	// ConnectionTimeout defaults to 30 seconds when this property is nil.
 	// If the duration is 0, we will never timeout this connection.
 	ConnectionTimeout *time.Duration
@@ -177,7 +183,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 	a := &Agent{
 		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
-		gatheringState:         GatheringStateComplete, // TODO trickle-ice
+		gatheringState:         GatheringStateNew,
 		connectionState:        ConnectionStateNew,
 		localCandidates:        make(map[NetworkType][]Candidate),
 		remoteCandidates:       make(map[NetworkType][]Candidate),
@@ -191,6 +197,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		done:        make(chan struct{}),
 		portmin:     config.PortMin,
 		portmax:     config.PortMax,
+		trickle:     config.Trickle,
 		log:         loggerFactory.NewLogger("ice"),
 
 		forceCandidateContact: make(chan bool, 1),
@@ -221,12 +228,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.taskLoopInterval = config.taskLoopInterval
 	}
 
-	// Initialize local candidates
-	gatherCandidatesLocal(a, config.NetworkTypes)
-	gatherCandidatesReflective(a, config.Urls, config.NetworkTypes)
-
 	go a.taskLoop()
 
+	// Initialize local candidates
+	if !a.trickle {
+		a.gatherCandidates(config)
+	}
 	return a, nil
 }
 
@@ -242,6 +249,14 @@ func (a *Agent) OnConnectionStateChange(f func(ConnectionState)) error {
 func (a *Agent) OnSelectedCandidatePairChange(f func(Candidate, Candidate)) error {
 	return a.run(func(agent *Agent) {
 		agent.onSelectedCandidatePairChangeHdlr = f
+	})
+}
+
+// OnCandidate sets a handler that is fired when new candidates gathered. When
+// the gathering process complete the last candidate is nil.
+func (a *Agent) OnCandidate(f func(Candidate)) error {
+	return a.run(func(agent *Agent) {
+		agent.onCandidateHdlr = f
 	})
 }
 

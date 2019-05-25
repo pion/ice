@@ -2,6 +2,7 @@ package ice
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -196,10 +197,16 @@ func pipe() (*Conn, *Conn) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	aAgent, err := NewAgent(&AgentConfig{
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	cfg := &AgentConfig{
 		Urls:         urls,
+		Trickle:      true,
 		NetworkTypes: supportedNetworkTypes,
-	})
+	}
+
+	aAgent, err := NewAgent(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -207,11 +214,20 @@ func pipe() (*Conn, *Conn) {
 	if err != nil {
 		panic(err)
 	}
-
-	bAgent, err := NewAgent(&AgentConfig{
-		Urls:         urls,
-		NetworkTypes: supportedNetworkTypes,
+	err = aAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
 	})
+	if err != nil {
+		panic(err)
+	}
+	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
+	}
+
+	bAgent, err := NewAgent(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -219,7 +235,20 @@ func pipe() (*Conn, *Conn) {
 	if err != nil {
 		panic(err)
 	}
+	err = bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	})
+	if err != nil {
+		panic(err)
+	}
+	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
+	}
 
+	wg.Wait()
 	aConn, bConn := connect(aAgent, bAgent)
 
 	// Ensure pair selected
@@ -236,12 +265,18 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	aAgent, err := NewAgent(&AgentConfig{
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	cfg := &AgentConfig{
 		Urls:              urls,
+		Trickle:           true,
 		ConnectionTimeout: &iceTimeout,
 		KeepaliveInterval: &iceKeepalive,
 		NetworkTypes:      supportedNetworkTypes,
-	})
+	}
+
+	aAgent, err := NewAgent(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -249,13 +284,20 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	if err != nil {
 		panic(err)
 	}
-
-	bAgent, err := NewAgent(&AgentConfig{
-		Urls:              urls,
-		ConnectionTimeout: &iceTimeout,
-		KeepaliveInterval: &iceKeepalive,
-		NetworkTypes:      supportedNetworkTypes,
+	err = aAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
 	})
+	if err != nil {
+		panic(err)
+	}
+	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
+	}
+
+	bAgent, err := NewAgent(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -263,7 +305,20 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	if err != nil {
 		panic(err)
 	}
+	err = bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	})
+	if err != nil {
+		panic(err)
+	}
+	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	if err != nil {
+		panic(err)
+	}
 
+	wg.Wait()
 	aConn, bConn := connect(aAgent, bAgent)
 
 	// Ensure pair selected
