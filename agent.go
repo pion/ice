@@ -148,9 +148,13 @@ type AgentConfig struct {
 	// A keepalive interval of 0 means we never send keepalive packets
 	KeepaliveInterval *time.Duration
 
-	// NetworkTypes is an optional configuration for disabling or enablding
+	// NetworkTypes is an optional configuration for disabling or enabling
 	// support for specific network types.
 	NetworkTypes []NetworkType
+
+	// CandidateTypes is an optional configuration for disabling or enabling
+	// support for specific candidate types.
+	CandidateTypes []CandidateType
 
 	LoggerFactory logging.LoggerFactory
 
