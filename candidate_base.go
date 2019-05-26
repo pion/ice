@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun"
 )
 
@@ -22,10 +23,10 @@ type candidateBase struct {
 	lastSent     time.Time
 	lastReceived time.Time
 
-	agent    *Agent
-	conn     net.PacketConn
-	closeCh  chan struct{}
-	closedCh chan struct{}
+	currAgent *Agent
+	conn      net.PacketConn
+	closeCh   chan struct{}
+	closedCh  chan struct{}
 }
 
 // IP returns Candidate IP
@@ -65,7 +66,7 @@ func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 
 // start runs the candidate using the provided connection
 func (c *candidateBase) start(a *Agent, conn net.PacketConn) {
-	c.agent = a
+	c.currAgent = a
 	c.conn = conn
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
@@ -78,7 +79,7 @@ func (c *candidateBase) recvLoop() {
 		close(c.closedCh)
 	}()
 
-	log := c.agent.log
+	log := c.agent().log
 	buffer := make([]byte, receiveMTU)
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buffer)
@@ -86,43 +87,47 @@ func (c *candidateBase) recvLoop() {
 			return
 		}
 
-		if stun.IsMessage(buffer[:n]) {
-			m := &stun.Message{
-				Raw: make([]byte, n),
-			}
-			// Explicitly copy raw buffer so Message can own the memory.
-			copy(m.Raw, buffer[:n])
-			if err = m.Decode(); err != nil {
-				log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
-				continue
-			}
-			err = c.agent.run(func(agent *Agent) {
-				agent.handleInbound(m, c, srcAddr)
-			})
-			if err != nil {
-				log.Warnf("Failed to handle message: %v", err)
-			}
+		handleInboundCandidateMsg(c, buffer[:n], srcAddr, log)
+	}
+}
 
-			continue
+func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log logging.LeveledLogger) {
+	if stun.IsMessage(buffer) {
+		m := &stun.Message{
+			Raw: make([]byte, len(buffer)),
 		}
-
-		isValidRemoteCandidate := make(chan bool, 1)
-		err = c.agent.run(func(agent *Agent) {
-			isValidRemoteCandidate <- agent.noSTUNSeen(c, srcAddr)
+		// Explicitly copy raw buffer so Message can own the memory.
+		copy(m.Raw, buffer)
+		if err := m.Decode(); err != nil {
+			log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+			return
+		}
+		err := c.agent().run(func(agent *Agent) {
+			agent.handleInbound(m, c, srcAddr)
 		})
-
 		if err != nil {
 			log.Warnf("Failed to handle message: %v", err)
-		} else if !<-isValidRemoteCandidate {
-			log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
 		}
 
-		// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
-		_, err = c.agent.buffer.Write(buffer[:n])
-		if err != nil {
-			log.Warnf("failed to write packet")
-		}
+		return
 	}
+
+	isValidRemoteCandidate := make(chan bool, 1)
+	err := c.agent().run(func(agent *Agent) {
+		isValidRemoteCandidate <- agent.noSTUNSeen(c, srcAddr)
+	})
+
+	if err != nil {
+		log.Warnf("Failed to handle message: %v", err)
+	} else if !<-isValidRemoteCandidate {
+		log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+	}
+
+	// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
+	if _, err := c.agent().buffer.Write(buffer); err != nil {
+		log.Warnf("failed to write packet")
+	}
+
 }
 
 // close stops the recvLoop
@@ -222,4 +227,8 @@ func (c *candidateBase) addr() net.Addr {
 		IP:   c.IP(),
 		Port: c.Port(),
 	}
+}
+
+func (c *candidateBase) agent() *Agent {
+	return c.currAgent
 }
