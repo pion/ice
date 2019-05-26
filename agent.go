@@ -33,6 +33,10 @@ const (
 	maxPendingBindingRequests = 50
 )
 
+var (
+	defaultCandidateTypes = []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+)
+
 type candidatePairs []*candidatePair
 
 func (cp candidatePairs) Len() int      { return len(cp) }
@@ -79,6 +83,8 @@ type Agent struct {
 
 	portmin uint16
 	portmax uint16
+
+	candidateTypes []CandidateType
 
 	// How long should a pair stay quiet before we declare it dead?
 	// 0 means never timeout
@@ -231,6 +237,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.taskLoopInterval = defaultTaskLoopInterval
 	} else {
 		a.taskLoopInterval = config.taskLoopInterval
+	}
+
+	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
+		a.candidateTypes = defaultCandidateTypes
+	} else {
+		a.candidateTypes = config.CandidateTypes
 	}
 
 	go a.taskLoop()
@@ -478,6 +490,14 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 
 	set = append(set, c)
 	a.remoteCandidates[c.NetworkType()] = set
+
+	for _, l := range a.localCandidates[NetworkTypeUDP4] {
+		if localRelay, ok := l.(*CandidateRelay); ok {
+			if err := localRelay.addPermission(c); err != nil {
+				a.log.Errorf("Failed to create TURN permission %v", err)
+			}
+		}
+	}
 }
 
 // GetLocalCandidates returns the local candidates

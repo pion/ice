@@ -31,6 +31,7 @@ type Candidate interface {
 	Equal(other Candidate) bool
 
 	addr() net.Addr
+	agent() *Agent
 
 	close() error
 	seen(outbound bool)
