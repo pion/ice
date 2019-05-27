@@ -541,7 +541,7 @@ func TestConnectionStateCallback(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = aAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}
@@ -558,7 +558,7 @@ func TestConnectionStateCallback(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = bAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}

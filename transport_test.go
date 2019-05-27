@@ -222,7 +222,7 @@ func pipe() (*Conn, *Conn) {
 	if err != nil {
 		panic(err)
 	}
-	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = aAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}
@@ -243,7 +243,7 @@ func pipe() (*Conn, *Conn) {
 	if err != nil {
 		panic(err)
 	}
-	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = bAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}
@@ -292,7 +292,7 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	if err != nil {
 		panic(err)
 	}
-	err = aAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = aAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}
@@ -313,7 +313,7 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	if err != nil {
 		panic(err)
 	}
-	err = bAgent.GatherCandidates(cfg.Urls, cfg.NetworkTypes)
+	err = bAgent.GatherCandidates()
 	if err != nil {
 		panic(err)
 	}
