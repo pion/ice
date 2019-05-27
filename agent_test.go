@@ -599,3 +599,17 @@ func TestConnectionStateCallback(t *testing.T) {
 
 	<-isClosed
 }
+
+func TestInvalidGather(t *testing.T) {
+	t.Run("Gather with Trickle enable and no OnCandidate should error", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{Trickle: true})
+		if err != nil {
+			t.Fatalf("Error constructing ice.Agent")
+		}
+
+		err = a.GatherCandidates()
+		if err != ErrNoOnCandidateHandler {
+			t.Fatal("trickle GatherCandidates succeeded without OnCandidate")
+		}
+	})
+}
