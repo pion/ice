@@ -92,17 +92,38 @@ func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.U
 
 // GatherCandidates initiates the trickle based gathering process.
 func (a *Agent) GatherCandidates() error {
+	gatherErrChan := make(chan error, 1)
+
+	runErr := a.run(func(agent *Agent) {
 		if a.gatheringState == GatheringStateGathering {
-			a.log.Warnf("Attempting to gather candidates during gathering state\n")
+			gatherErrChan <- ErrMultipleGatherAttempted
+			return
+		} else if a.onCandidateHdlr == nil {
+			gatherErrChan <- ErrNoOnCandidateHandler
 			return
 		}
 
 		go a.gatherCandidates()
+
+		gatherErrChan <- nil
 	})
+	if runErr != nil {
+		return runErr
+	}
+	return <-gatherErrChan
 }
 
 func (a *Agent) gatherCandidates() {
-	a.gatheringState = GatheringStateGathering
+	gatherStateUpdated := make(chan bool)
+	if err := a.run(func(agent *Agent) {
+		a.gatheringState = GatheringStateGathering
+		close(gatherStateUpdated)
+	}); err != nil {
+		a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
+		return
+	}
+	<-gatherStateUpdated
+
 	a.gatherCandidatesLocal(a.networkTypes)
 	a.gatherCandidatesSrflx(a.urls, a.networkTypes)
 	if err := a.run(func(agent *Agent) {

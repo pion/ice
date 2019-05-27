@@ -46,6 +46,9 @@ var (
 	// while running in trickle mode.
 	ErrNoOnCandidateHandler = errors.New("no OnCandidate provided")
 
+	// ErrMultipleGatherAttempted indicates GatherCandidates has been called multiple times
+	ErrMultipleGatherAttempted = errors.New("attempting to gather candidates during gathering state")
+
 	// ErrUsernameEmpty indicates agent was give TURN URL with an empty Username
 	ErrUsernameEmpty = errors.New("username is empty")
 
