@@ -103,6 +103,9 @@ type Agent struct {
 	selectedPair *candidatePair
 	validPairs   candidatePairs
 
+	urls         []*URL
+	networkTypes []NetworkType
+
 	buffer *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
@@ -188,6 +191,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localCandidates:        make(map[NetworkType][]Candidate),
 		remoteCandidates:       make(map[NetworkType][]Candidate),
 		pendingBindingRequests: make([]bindingRequest, 0, maxPendingBindingRequests),
+		urls:                   config.Urls,
+		networkTypes:           config.NetworkTypes,
 
 		localUfrag:  randSeq(16),
 		localPwd:    randSeq(32),
@@ -232,7 +237,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 	// Initialize local candidates
 	if !a.trickle {
-		a.gatherCandidates(config)
+		a.gatherCandidates()
 	}
 	return a, nil
 }
