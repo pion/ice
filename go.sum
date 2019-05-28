@@ -1,11 +1,15 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/gortc/turn v0.7.1 h1:+DKoYXx8d2syTplmZ0Q3BaoTKsgClkoUzT2HpoAeK1c=
+github.com/gortc/turn v0.7.1/go.mod h1:3FZ+LvCZKCKu6YYgwuYPqEi3FqCtdjfSFnFqVQNwfjk=
 github.com/pion/logging v0.2.1 h1:LwASkBKZ+2ysGJ+jLv1E/9H1ge0k1nTfi1X+5zirkDk=
 github.com/pion/logging v0.2.1/go.mod h1:k0/tDVsRCX2Mb2ZEmTqNa7CWsQPc+YYCB7Q+5pahoms=
 github.com/pion/stun v0.3.0 h1:hKadT0I+ijxKkVXqU+rPHKLt+Sw6dQ8D+HhvuoYMoxQ=
 github.com/pion/stun v0.3.0/go.mod h1:xrCld6XM+6GWDZdvjPlLMsTU21rNxnO6UO8XsAvHr/M=
 github.com/pion/transport v0.7.0 h1:EsXN8TglHMlKZMo4ZGqwK6QgXBu0WYg7wfGMWIXsS+w=
 github.com/pion/transport v0.7.0/go.mod h1:iWZ07doqOosSLMhZ+FXUTq+TamDoXSllxpbGcfkCmbE=
+github.com/pion/turnc v0.0.3 h1:T2Kkp1vN6sCYg6EXBKGiRqC6vynNgIhTwuQFejmknl8=
+github.com/pion/turnc v0.0.3/go.mod h1:8s1tmJIdIplzByNIABvDjFtQJCTL8c0QRdnHZVWOuU0=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
