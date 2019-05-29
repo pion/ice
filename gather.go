@@ -3,6 +3,7 @@ package ice
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/pion/stun"
@@ -146,46 +147,58 @@ func (a *Agent) gatherCandidates() {
 		a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
 		return
 	}
-	a.gatheringState = GatheringStateComplete
 
+	if err := a.run(func(agent *Agent) {
+		a.gatheringState = GatheringStateComplete
+	}); err != nil {
+		a.log.Warnf("Failed to update gatheringState: %v\n", err)
+		return
+	}
 }
 
 func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	localIPs := localInterfaces(networkTypes)
+	wg.Add(len(localIPs) * len(supportedNetworks))
 	for _, ip := range localIPs {
 		for _, network := range supportedNetworks {
-			conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-			if err != nil {
-				a.log.Warnf("could not listen %s %s\n", network, ip)
-				continue
-			}
-
-			port := conn.LocalAddr().(*net.UDPAddr).Port
-			c, err := NewCandidateHost(network, ip, port, ComponentRTP)
-			if err != nil {
-				a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
-				continue
-			}
-
-			if err := a.run(func(agent *Agent) {
-				set := a.localCandidates[c.NetworkType()]
-				set = append(set, c)
-				a.localCandidates[c.NetworkType()] = set
-			}); err != nil {
-				a.log.Warnf("Failed to append to localCandidates: %v\n", err)
-				continue
-			}
-
-			c.start(a, conn)
-
-			if err := a.run(func(agent *Agent) {
-				if a.onCandidateHdlr != nil {
-					go a.onCandidateHdlr(c)
+			go func(network string, ip net.IP) {
+				defer wg.Done()
+				conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				if err != nil {
+					a.log.Warnf("could not listen %s %s\n", network, ip)
+					return
 				}
-			}); err != nil {
-				a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-				continue
-			}
+
+				port := conn.LocalAddr().(*net.UDPAddr).Port
+				c, err := NewCandidateHost(network, ip, port, ComponentRTP)
+				if err != nil {
+					a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
+					return
+				}
+
+				if err := a.run(func(agent *Agent) {
+					set := a.localCandidates[c.NetworkType()]
+					set = append(set, c)
+					a.localCandidates[c.NetworkType()] = set
+				}); err != nil {
+					a.log.Warnf("Failed to append to localCandidates: %v\n", err)
+					return
+				}
+
+				c.start(a, conn)
+
+				if err := a.run(func(agent *Agent) {
+					if a.onCandidateHdlr != nil {
+						go a.onCandidateHdlr(c)
+					}
+				}); err != nil {
+					a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+					return
+				}
+			}(network, ip)
 		}
 	}
 }
@@ -206,50 +219,56 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 				continue
 			}
 
+			var wg sync.WaitGroup
+			wg.Add(len(localIPs))
 			for _, ip := range localIPs {
-				conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-				if err != nil {
-					a.log.Warnf("could not listen %s %s\n", network, ip)
-					continue
-				}
-
-				xoraddr, err := getXORMappedAddr(conn, serverAddr, time.Second*5)
-				if err != nil {
-					a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
-					continue
-				}
-
-				laddr := conn.LocalAddr().(*net.UDPAddr)
-				ip := xoraddr.IP
-				port := xoraddr.Port
-				relIP := laddr.IP.String()
-				relPort := laddr.Port
-				c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
-				if err != nil {
-					a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
-					continue
-				}
-
-				if err := a.run(func(agent *Agent) {
-					set := a.localCandidates[c.NetworkType()]
-					set = append(set, c)
-					a.localCandidates[c.NetworkType()] = set
-				}); err != nil {
-					a.log.Warnf("Failed to append to localCandidates: %v\n", err)
-					continue
-				}
-
-				c.start(a, conn)
-
-				if err := a.run(func(agent *Agent) {
-					if a.onCandidateHdlr != nil {
-						go a.onCandidateHdlr(c)
+				go func(network string, url *URL, ip net.IP) {
+					defer wg.Done()
+					conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+					if err != nil {
+						a.log.Warnf("could not listen %s %s\n", network, ip)
+						return
 					}
-				}); err != nil {
-					a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-					continue
-				}
+
+					xoraddr, err := getXORMappedAddr(conn, serverAddr, time.Second*5)
+					if err != nil {
+						a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
+						return
+					}
+
+					laddr := conn.LocalAddr().(*net.UDPAddr)
+					ip = xoraddr.IP
+					port := xoraddr.Port
+					relIP := laddr.IP.String()
+					relPort := laddr.Port
+					c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
+					if err != nil {
+						a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
+						return
+					}
+
+					if err := a.run(func(agent *Agent) {
+						set := a.localCandidates[c.NetworkType()]
+						set = append(set, c)
+						a.localCandidates[c.NetworkType()] = set
+					}); err != nil {
+						a.log.Warnf("Failed to append to localCandidates: %v\n", err)
+						return
+					}
+
+					c.start(a, conn)
+
+					if err := a.run(func(agent *Agent) {
+						if a.onCandidateHdlr != nil {
+							go a.onCandidateHdlr(c)
+						}
+					}); err != nil {
+						a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+						return
+					}
+				}(network, url, ip)
 			}
+			wg.Wait()
 		}
 	}
 }
