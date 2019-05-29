@@ -97,7 +97,7 @@ func (a *Agent) GatherCandidates() error {
 	gatherErrChan := make(chan error, 1)
 
 	runErr := a.run(func(agent *Agent) {
-		if a.gatheringState == GatheringStateGathering {
+		if a.gatheringState != GatheringStateNew {
 			gatherErrChan <- ErrMultipleGatherAttempted
 			return
 		} else if a.onCandidateHdlr == nil {
