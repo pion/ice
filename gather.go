@@ -180,9 +180,7 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 				}
 
 				if err := a.run(func(agent *Agent) {
-					set := a.localCandidates[c.NetworkType()]
-					set = append(set, c)
-					a.localCandidates[c.NetworkType()] = set
+					a.addCandidate(c)
 				}); err != nil {
 					a.log.Warnf("Failed to append to localCandidates: %v\n", err)
 					return
@@ -248,9 +246,7 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 					}
 
 					if err := a.run(func(agent *Agent) {
-						set := a.localCandidates[c.NetworkType()]
-						set = append(set, c)
-						a.localCandidates[c.NetworkType()] = set
+						a.addCandidate(c)
 					}); err != nil {
 						a.log.Warnf("Failed to append to localCandidates: %v\n", err)
 						return
@@ -317,9 +313,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 		}
 		candidate.setAllocation(allocation)
 
-		set := a.localCandidates[candidate.NetworkType()]
-		set = append(set, candidate)
-		a.localCandidates[candidate.NetworkType()] = set
+		a.addCandidate(candidate)
 		candidate.start(a, nil)
 	}
 

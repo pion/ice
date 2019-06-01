@@ -228,6 +228,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localCandidates:        make(map[NetworkType][]Candidate),
 		remoteCandidates:       make(map[NetworkType][]Candidate),
 		pendingBindingRequests: make([]bindingRequest, 0, maxPendingBindingRequests),
+		checklist:              make([]*candidatePair, 0),
 		urls:                   config.Urls,
 		networkTypes:           config.NetworkTypes,
 
@@ -370,19 +371,6 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
 
-		a.checklist = make([]*candidatePair, 0)
-		for networkType, localCandidates := range a.localCandidates {
-			if remoteCandidates, ok := a.remoteCandidates[networkType]; ok {
-
-				for _, localCandidate := range localCandidates {
-					for _, remoteCandidate := range remoteCandidates {
-						a.addPair(localCandidate, remoteCandidate)
-					}
-				}
-
-			}
-		}
-
 		if isControlling {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 		} else {
@@ -481,7 +469,7 @@ func (a *Agent) addPair(local, remote Candidate) *candidatePair {
 
 func (a *Agent) findPair(local, remote Candidate) *candidatePair {
 	for _, p := range a.checklist {
-		if p.local == local && p.remote == remote {
+		if p.local.Equal(local) && p.remote.Equal(remote) {
 			return p
 		}
 	}
@@ -596,6 +584,25 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 	if localCandidates, ok := a.localCandidates[c.NetworkType()]; ok {
 		for _, localCandidate := range localCandidates {
 			a.addPair(localCandidate, c)
+		}
+	}
+}
+
+// addCandidate assumes you are holding the lock (must be execute using a.run)
+func (a *Agent) addCandidate(c Candidate) {
+	set := a.localCandidates[c.NetworkType()]
+	for _, candidate := range set {
+		if candidate.Equal(c) {
+			return
+		}
+	}
+
+	set = append(set, c)
+	a.localCandidates[c.NetworkType()] = set
+
+	if remoteCandidates, ok := a.remoteCandidates[c.NetworkType()]; ok {
+		for _, remoteCandidate := range remoteCandidates {
+			a.addPair(c, remoteCandidate)
 		}
 	}
 }
