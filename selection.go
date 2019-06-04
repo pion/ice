@@ -142,7 +142,7 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
 	ok, pendingRequest := s.agent.handleInboundBindingSuccess(m.TransactionID)
 	if !ok {
-		s.log.Errorf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
+		s.log.Warnf("discard message from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote
 
 	ok, pendingRequest := s.agent.handleInboundBindingSuccess(m.TransactionID)
 	if !ok {
-		s.log.Errorf("discard message from (%s), invalid TransactionID %s", remote, m.TransactionID)
+		s.log.Warnf("discard message from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
 		return
 	}
 
