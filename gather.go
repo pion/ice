@@ -10,6 +10,10 @@ import (
 	"github.com/pion/turnc"
 )
 
+const (
+	stunGatherTimeout = time.Second * 5
+)
+
 func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -84,6 +88,29 @@ func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.U
 	}
 	for i <= j {
 		c, e := net.ListenUDP(network, &net.UDPAddr{IP: laddr.IP, Port: i})
+		if e == nil {
+			return c, e
+		}
+		i++
+	}
+	return nil, ErrPort
+}
+
+func dialUDP(portMax, portMin int, serverAddr *net.UDPAddr, network string) (*net.UDPConn, error) {
+	if (portMin == 0) && (portMax == 0) {
+		return net.DialUDP(network, nil, serverAddr)
+	}
+	var i, j int
+	i = portMin
+	if i == 0 {
+		i = 1
+	}
+	j = portMax
+	if j == 0 {
+		j = 0xFFFF
+	}
+	for i <= j {
+		c, e := net.DialUDP(network, &net.UDPAddr{IP: nil, Port: i}, serverAddr)
 		if e == nil {
 			return c, e
 		}
@@ -202,7 +229,6 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 }
 
 func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
-	localIPs := localInterfaces(networkTypes)
 	for _, networkType := range networkTypes {
 		network := networkType.String()
 		for _, url := range urls {
@@ -217,56 +243,60 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 				continue
 			}
 
-			var wg sync.WaitGroup
-			wg.Add(len(localIPs))
-			for _, ip := range localIPs {
-				go func(network string, url *URL, ip net.IP) {
-					defer wg.Done()
-					conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-					if err != nil {
-						a.log.Warnf("could not listen %s %s\n", network, ip)
-						return
-					}
-
-					xoraddr, err := getXORMappedAddr(conn, serverAddr, time.Second*5)
-					if err != nil {
-						a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
-						return
-					}
-
-					laddr := conn.LocalAddr().(*net.UDPAddr)
-					ip = xoraddr.IP
-					port := xoraddr.Port
-					relIP := laddr.IP.String()
-					relPort := laddr.Port
-					c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
-					if err != nil {
-						a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
-						return
-					}
-
-					if err := a.run(func(agent *Agent) {
-						a.addCandidate(c)
-					}); err != nil {
-						a.log.Warnf("Failed to append to localCandidates: %v\n", err)
-						return
-					}
-
-					c.start(a, conn)
-
-					if err := a.run(func(agent *Agent) {
-						if a.onCandidateHdlr != nil {
-							go a.onCandidateHdlr(c)
-						}
-					}); err != nil {
-						a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-						return
-					}
-				}(network, url, ip)
+			conn, err := dialUDP(int(a.portmax), int(a.portmin), serverAddr, network)
+			if err != nil {
+				a.log.Warnf("could not dial %s %s\n", serverAddr.String())
+				continue
 			}
-			wg.Wait()
+
+			xoraddr, err := getXORMappedAddr(conn, stunGatherTimeout)
+			if err != nil {
+				a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
+				continue
+			}
+
+			if err = conn.Close(); err != nil {
+				a.log.Warnf("Failed to close dialer for %s: %v\n", serverAddr.String(), err)
+				continue
+			}
+
+			conn, err = listenUDP(0, 0, network, conn.LocalAddr().(*net.UDPAddr))
+			if err != nil {
+				a.log.Warnf("Failed to listen on %s for %s: %v\n", conn.LocalAddr().String(), serverAddr.String(), err)
+				continue
+			}
+
+			laddr := conn.LocalAddr().(*net.UDPAddr)
+			ip := xoraddr.IP
+			port := xoraddr.Port
+			relIP := laddr.IP.String()
+			relPort := laddr.Port
+			c, err := NewCandidateServerReflexive(network, ip, port, ComponentRTP, relIP, relPort)
+			if err != nil {
+				a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
+				continue
+			}
+
+			if err := a.run(func(agent *Agent) {
+				a.addCandidate(c)
+			}); err != nil {
+				a.log.Warnf("Failed to append to localCandidates: %v\n", err)
+				continue
+			}
+
+			c.start(a, conn)
+
+			if err := a.run(func(agent *Agent) {
+				if a.onCandidateHdlr != nil {
+					go a.onCandidateHdlr(c)
+				}
+			}); err != nil {
+				a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
+				continue
+			}
 		}
 	}
+
 }
 
 func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
@@ -324,7 +354,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 // the XORMappedAddress returned by the stun server.
 //
 // Adapted from stun v0.2.
-func getXORMappedAddr(conn *net.UDPConn, serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func getXORMappedAddr(conn *net.UDPConn, deadline time.Duration) (*stun.XORMappedAddress, error) {
 	if deadline > 0 {
 		if err := conn.SetReadDeadline(time.Now().Add(deadline)); err != nil {
 			return nil, err
@@ -335,12 +365,7 @@ func getXORMappedAddr(conn *net.UDPConn, serverAddr net.Addr, deadline time.Dura
 			_ = conn.SetReadDeadline(time.Time{})
 		}
 	}()
-	resp, err := stunRequest(
-		conn.Read,
-		func(b []byte) (int, error) {
-			return conn.WriteTo(b, serverAddr)
-		},
-	)
+	resp, err := stunRequest(conn.Read, conn.Write)
 	if err != nil {
 		return nil, err
 	}
