@@ -96,29 +96,6 @@ func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.U
 	return nil, ErrPort
 }
 
-func dialUDP(portMax, portMin int, serverAddr *net.UDPAddr, network string) (*net.UDPConn, error) {
-	if (portMin == 0) && (portMax == 0) {
-		return net.DialUDP(network, nil, serverAddr)
-	}
-	var i, j int
-	i = portMin
-	if i == 0 {
-		i = 1
-	}
-	j = portMax
-	if j == 0 {
-		j = 0xFFFF
-	}
-	for i <= j {
-		c, e := net.DialUDP(network, &net.UDPAddr{IP: nil, Port: i}, serverAddr)
-		if e == nil {
-			return c, e
-		}
-		i++
-	}
-	return nil, ErrPort
-}
-
 // GatherCandidates initiates the trickle based gathering process.
 func (a *Agent) GatherCandidates() error {
 	gatherErrChan := make(chan error, 1)
@@ -243,26 +220,15 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 				continue
 			}
 
-			conn, err := dialUDP(int(a.portmax), int(a.portmin), serverAddr, network)
-			if err != nil {
-				a.log.Warnf("could not dial %s %s\n", serverAddr.String())
-				continue
-			}
-
-			xoraddr, err := getXORMappedAddr(conn, stunGatherTimeout)
-			if err != nil {
-				a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
-				continue
-			}
-
-			if err = conn.Close(); err != nil {
-				a.log.Warnf("Failed to close dialer for %s: %v\n", serverAddr.String(), err)
-				continue
-			}
-
-			conn, err = listenUDP(0, 0, network, conn.LocalAddr().(*net.UDPAddr))
+			conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
 				a.log.Warnf("Failed to listen on %s for %s: %v\n", conn.LocalAddr().String(), serverAddr.String(), err)
+				continue
+			}
+
+			xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
+			if err != nil {
+				a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
 				continue
 			}
 
@@ -354,7 +320,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 // the XORMappedAddress returned by the stun server.
 //
 // Adapted from stun v0.2.
-func getXORMappedAddr(conn *net.UDPConn, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func getXORMappedAddr(conn *net.UDPConn, serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
 	if deadline > 0 {
 		if err := conn.SetReadDeadline(time.Now().Add(deadline)); err != nil {
 			return nil, err
@@ -365,7 +331,12 @@ func getXORMappedAddr(conn *net.UDPConn, deadline time.Duration) (*stun.XORMappe
 			_ = conn.SetReadDeadline(time.Time{})
 		}
 	}()
-	resp, err := stunRequest(conn.Read, conn.Write)
+	resp, err := stunRequest(
+		conn.Read,
+		func(b []byte) (int, error) {
+			return conn.WriteTo(b, serverAddr)
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
