@@ -2,6 +2,7 @@ package ice
 
 import (
 	"errors"
+	"io"
 	"net"
 
 	"github.com/pion/turnc"
@@ -12,6 +13,7 @@ type CandidateRelay struct {
 	candidateBase
 
 	allocation  *turnc.Allocation
+	client      io.Closer
 	permissions map[string]*turnc.Permission
 }
 
@@ -38,8 +40,9 @@ func NewCandidateRelay(network string, ip net.IP, port int, component uint16, re
 	}, nil
 }
 
-func (c *CandidateRelay) setAllocation(a *turnc.Allocation) {
+func (c *CandidateRelay) setAllocation(client io.Closer, a *turnc.Allocation) {
 	c.allocation = a
+	c.client = client
 }
 
 func (c *CandidateRelay) start(a *Agent, conn net.PacketConn) {
@@ -54,7 +57,10 @@ func (c *CandidateRelay) close() error {
 			return err
 		}
 	}
-	return nil
+	if c.client == nil {
+		return nil
+	}
+	return c.client.Close()
 }
 
 func (c *CandidateRelay) addPermission(dst Candidate) error {
