@@ -307,7 +307,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
 			continue
 		}
-		candidate.setAllocation(allocation)
+		candidate.setAllocation(client, allocation)
 
 		a.addCandidate(candidate)
 		candidate.start(a, nil)
