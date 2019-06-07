@@ -364,7 +364,7 @@ func copyCandidate(o Candidate) Candidate {
 				component:      orig.component,
 				relatedAddress: orig.relatedAddress,
 			},
-			nil, nil,
+			nil, nil, nil,
 		}
 	default:
 		return nil
