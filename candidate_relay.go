@@ -47,6 +47,13 @@ func (c *CandidateRelay) start(a *Agent, conn net.PacketConn) {
 }
 
 func (c *CandidateRelay) close() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for _, p := range c.permissions {
+		if err := p.Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

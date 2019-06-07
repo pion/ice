@@ -2,6 +2,7 @@ package ice
 
 import (
 	"context"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -341,6 +342,30 @@ func copyCandidate(o Candidate) Candidate {
 				component:     orig.component,
 			},
 		}
+	case *CandidateServerReflexive:
+		return &CandidateServerReflexive{
+			candidateBase{
+				candidateType:  orig.candidateType,
+				networkType:    orig.networkType,
+				ip:             orig.ip,
+				port:           orig.port,
+				component:      orig.component,
+				relatedAddress: orig.relatedAddress,
+			},
+		}
+
+	case *CandidateRelay:
+		return &CandidateRelay{
+			candidateBase{
+				candidateType:  orig.candidateType,
+				networkType:    orig.networkType,
+				ip:             orig.ip,
+				port:           orig.port,
+				component:      orig.component,
+				relatedAddress: orig.relatedAddress,
+			},
+			nil, nil,
+		}
 	default:
 		return nil
 	}
@@ -353,4 +378,22 @@ func onConnected() (func(ConnectionState), chan struct{}) {
 			close(done)
 		}
 	}, done
+}
+
+func randomPort(t testing.TB) int {
+	t.Helper()
+	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to pickPort: %v", err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+	switch addr := conn.LocalAddr().(type) {
+	case *net.UDPAddr:
+		return addr.Port
+	default:
+		t.Fatalf("unknown addr type %T", addr)
+		return 0
+	}
 }
