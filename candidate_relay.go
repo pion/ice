@@ -71,6 +71,9 @@ func (c *CandidateRelay) addPermission(dst Candidate) error {
 
 	c.lock.Lock()
 	c.permissions[dst.String()] = permission
+	if err = c.permissions[dst.String()].Bind(); err != nil {
+		c.agent().log.Warnf("Failed to Create ChannelBind for %v: %v", dst.String, err)
+	}
 	c.lock.Unlock()
 
 	go func(remoteAddr net.Addr) {
