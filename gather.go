@@ -7,15 +7,16 @@ import (
 	"time"
 
 	"github.com/pion/stun"
-	"github.com/pion/turnc"
+	"github.com/pion/transport/vnet"
+	"github.com/pion/turn"
 )
 
 const (
 	stunGatherTimeout = time.Second * 5
 )
 
-func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
-	ifaces, err := net.Interfaces()
+func (a *Agent) localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
+	ifaces, err := a.net.Interfaces()
 	if err != nil {
 		return ips
 	}
@@ -73,9 +74,9 @@ func localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
 	return ips
 }
 
-func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
+func (a *Agent) listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
 	if (laddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
-		return net.ListenUDP(network, laddr)
+		return a.net.ListenUDP(network, laddr)
 	}
 	var i, j int
 	i = portMin
@@ -87,10 +88,12 @@ func listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (*net.U
 		j = 0xFFFF
 	}
 	for i <= j {
-		c, e := net.ListenUDP(network, &net.UDPAddr{IP: laddr.IP, Port: i})
+		laddr = &net.UDPAddr{IP: laddr.IP, Port: i}
+		c, e := a.net.ListenUDP(network, laddr)
 		if e == nil {
 			return c, e
 		}
+		a.log.Debugf("failed to listen %s: %v", laddr.String(), e)
 		i++
 	}
 	return nil, ErrPort
@@ -164,13 +167,13 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	localIPs := localInterfaces(networkTypes)
+	localIPs := a.localInterfaces(networkTypes)
 	wg.Add(len(localIPs) * len(supportedNetworks))
 	for _, ip := range localIPs {
 		for _, network := range supportedNetworks {
 			go func(network string, ip net.IP) {
 				defer wg.Done()
-				conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {
 					a.log.Warnf("could not listen %s %s\n", network, ip)
 					return
@@ -234,13 +237,13 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 			}
 
 			hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
-			serverAddr, err := net.ResolveUDPAddr(network, hostPort)
+			serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 			if err != nil {
 				a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
 				continue
 			}
 
-			conn, err := listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+			conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
 				a.log.Warnf("Failed to listen on %s for %s: %v\n", conn.LocalAddr().String(), serverAddr.String(), err)
 				continue
@@ -306,48 +309,58 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			return ErrPasswordEmpty
 		}
 
-		raddr, err := net.ResolveUDPAddr(network, fmt.Sprintf("%s:%d", url.Host, url.Port))
+		locConn, err := a.net.ListenPacket(network, "0.0.0.0:0")
 		if err != nil {
 			return err
-		}
-		c, err := net.DialUDP(network, nil, raddr)
-		if err != nil {
-			return err
-		}
-		client, clientErr := turnc.New(turnc.Options{
-			Conn:     c,
-			Username: url.Username,
-			Password: url.Password,
-		})
-		if clientErr != nil {
-			return clientErr
-		}
-		allocation, allocErr := client.Allocate()
-		if allocErr != nil {
-			return allocErr
 		}
 
-		laddr := c.LocalAddr().(*net.UDPAddr)
-		ip := allocation.Relayed().IP
-		port := allocation.Relayed().Port
+		client, err := turn.NewClient(&turn.ClientConfig{
+			TURNServerAddr: fmt.Sprintf("%s:%d", url.Host, url.Port),
+			Conn:           locConn,
+			Username:       url.Username,
+			Password:       url.Password,
+			LoggerFactory:  a.loggerFactory,
+			Net:            a.net,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = client.Listen()
+		if err != nil {
+			return err
+		}
+
+		relayConn, err := client.Allocate()
+		if err != nil {
+			return err
+		}
+
+		laddr := locConn.LocalAddr().(*net.UDPAddr)
+		raddr := relayConn.LocalAddr().(*net.UDPAddr)
 
 		relayConfig := CandidateRelayConfig{
 			Network:   network,
-			Address:   ip.String(),
-			Port:      port,
 			Component: ComponentRTP,
+			Address:   raddr.IP.String(),
+			Port:      raddr.Port,
 			RelAddr:   laddr.IP.String(),
 			RelPort:   laddr.Port,
+			OnClose: func() error {
+				err2 := relayConn.Close()
+				client.Close()
+				return err2
+			},
 		}
 		candidate, err := NewCandidateRelay(&relayConfig)
 		if err != nil {
-			a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
+			a.log.Warnf("Failed to create relay candidate: %s %s: %v\n",
+				network, raddr.String(), err)
 			continue
 		}
-		candidate.setAllocation(client, allocation)
 
 		a.addCandidate(candidate)
-		candidate.start(a, nil)
+		candidate.start(a, relayConn)
 	}
 
 	return nil
@@ -357,7 +370,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 // the XORMappedAddress returned by the stun server.
 //
 // Adapted from stun v0.2.
-func getXORMappedAddr(conn *net.UDPConn, serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func getXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
 	if deadline > 0 {
 		if err := conn.SetReadDeadline(time.Now().Add(deadline)); err != nil {
 			return nil, err
@@ -369,7 +382,10 @@ func getXORMappedAddr(conn *net.UDPConn, serverAddr net.Addr, deadline time.Dura
 		}
 	}()
 	resp, err := stunRequest(
-		conn.Read,
+		func(p []byte) (int, error) {
+			n, _, errr := conn.ReadFrom(p)
+			return n, errr
+		},
 		func(b []byte) (int, error) {
 			return conn.WriteTo(b, serverAddr)
 		},

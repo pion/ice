@@ -16,6 +16,7 @@ import (
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
 	"github.com/pion/transport/packetio"
+	"github.com/pion/transport/vnet"
 	"golang.org/x/net/ipv4"
 )
 
@@ -141,7 +142,10 @@ type Agent struct {
 	done chan struct{}
 	err  atomicError
 
-	log logging.LeveledLogger
+	loggerFactory logging.LoggerFactory
+	log           logging.LeveledLogger
+
+	net *vnet.Net
 }
 
 func (a *Agent) ok() error {
@@ -219,6 +223,10 @@ type AgentConfig struct {
 	PrflxAcceptanceMinWait *time.Duration
 	// HostAcceptanceMinWait specify a minimum wait time before selecting relay candidates
 	RelayAcceptanceMinWait *time.Duration
+
+	// Net is the our abstracted network interface for internal development purpose only
+	// (see github.com/pion/transport/vnet)
+	Net *vnet.Net
 }
 
 // NewAgent creates a new Agent
@@ -278,16 +286,18 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		urls:                   config.Urls,
 		networkTypes:           config.NetworkTypes,
 
-		localUfrag:  randSeq(16),
-		localPwd:    randSeq(32),
-		taskChan:    make(chan task),
-		onConnected: make(chan struct{}),
-		buffer:      packetio.NewBuffer(),
-		done:        make(chan struct{}),
-		portmin:     config.PortMin,
-		portmax:     config.PortMax,
-		trickle:     config.Trickle,
-		log:         loggerFactory.NewLogger("ice"),
+		localUfrag:    randSeq(16),
+		localPwd:      randSeq(32),
+		taskChan:      make(chan task),
+		onConnected:   make(chan struct{}),
+		buffer:        packetio.NewBuffer(),
+		done:          make(chan struct{}),
+		portmin:       config.PortMin,
+		portmax:       config.PortMax,
+		trickle:       config.Trickle,
+		loggerFactory: loggerFactory,
+		log:           loggerFactory.NewLogger("ice"),
+		net:           config.Net,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -296,6 +306,15 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		forceCandidateContact: make(chan bool, 1),
 	}
 	a.haveStarted.Store(false)
+
+	if a.net == nil {
+		a.net = vnet.NewNet(nil)
+	} else {
+		a.log.Warn("vnet is enabled")
+		if a.mDNSMode != MulticastDNSModeDisabled {
+			a.log.Warn("vnet does not support mDNS yet")
+		}
+	}
 
 	if config.MaxBindingRequests == nil {
 		a.maxBindingRequests = defaultMaxBindingRequests
@@ -674,14 +693,6 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 
 	set = append(set, c)
 	a.remoteCandidates[c.NetworkType()] = set
-
-	for _, l := range a.localCandidates[NetworkTypeUDP4] {
-		if localRelay, ok := l.(*CandidateRelay); ok {
-			if err := localRelay.addPermission(c); err != nil {
-				a.log.Errorf("Failed to create TURN permission %v", err)
-			}
-		}
-	}
 
 	if localCandidates, ok := a.localCandidates[c.NetworkType()]; ok {
 		for _, localCandidate := range localCandidates {
