@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/transport/test"
 	"github.com/pion/turn"
 )
@@ -16,16 +17,25 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	serverPort := randomPort(t)
-	server := turn.Create(turn.StartArguments{
-		Server: &mockTURNServer{},
-		Realm:  "localhost",
-	})
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	//log := loggerFactory.NewLogger("test")
 
-	serverChan := make(chan error, 1)
-	go func() {
-		serverChan <- server.Listen("0.0.0.0", serverPort)
-	}()
+	serverPort := randomPort(t)
+	server := turn.NewServer(&turn.ServerConfig{
+		Realm:         "pion.ly",
+		AuthHandler:   optimisticAuthHandler,
+		ListeningPort: serverPort,
+		LoggerFactory: loggerFactory,
+	})
+	err := server.AddListeningIPAddr("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = server.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &AgentConfig{
 		NetworkTypes: []NetworkType{NetworkTypeUDP4},
@@ -72,5 +82,4 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	if err = server.Close(); err != nil {
 		t.Fatal(err)
 	}
-	<-serverChan
 }
