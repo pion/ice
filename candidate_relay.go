@@ -18,7 +18,12 @@ type CandidateRelay struct {
 }
 
 // NewCandidateRelay creates a new relay candidate
-func NewCandidateRelay(network string, ip net.IP, port int, component uint16, relAddr string, relPort int) (*CandidateRelay, error) {
+func NewCandidateRelay(network string, address string, port int, component uint16, relAddr string, relPort int) (*CandidateRelay, error) {
+	ip := net.ParseIP(address)
+	if ip == nil {
+		return nil, ErrAddressParseFailed
+	}
+
 	networkType, err := determineNetworkType(network, ip)
 	if err != nil {
 		return nil, err
@@ -28,8 +33,9 @@ func NewCandidateRelay(network string, ip net.IP, port int, component uint16, re
 		candidateBase: candidateBase{
 			networkType:   networkType,
 			candidateType: CandidateTypeRelay,
-			ip:            ip,
+			address:       address,
 			port:          port,
+			resolvedAddr:  &net.UDPAddr{IP: ip, Port: port},
 			component:     component,
 			relatedAddress: &CandidateRelatedAddress{
 				Address: relAddr,

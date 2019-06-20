@@ -337,7 +337,7 @@ func copyCandidate(o Candidate) Candidate {
 			candidateBase{
 				candidateType: orig.candidateType,
 				networkType:   orig.networkType,
-				ip:            orig.ip,
+				address:       orig.address,
 				port:          orig.port,
 				component:     orig.component,
 			},
@@ -347,7 +347,7 @@ func copyCandidate(o Candidate) Candidate {
 			candidateBase{
 				candidateType:  orig.candidateType,
 				networkType:    orig.networkType,
-				ip:             orig.ip,
+				address:        orig.address,
 				port:           orig.port,
 				component:      orig.component,
 				relatedAddress: orig.relatedAddress,
@@ -359,7 +359,7 @@ func copyCandidate(o Candidate) Candidate {
 			candidateBase{
 				candidateType:  orig.candidateType,
 				networkType:    orig.networkType,
-				ip:             orig.ip,
+				address:        orig.address,
 				port:           orig.port,
 				component:      orig.component,
 				relatedAddress: orig.relatedAddress,

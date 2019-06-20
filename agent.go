@@ -695,7 +695,7 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 
 	set := a.remoteCandidates[networkType]
 	for _, c := range set {
-		if c.IP().Equal(ip) && c.Port() == port {
+		if c.Address() == ip.String() && c.Port() == port {
 			return c
 		}
 	}
@@ -725,8 +725,8 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	base := remote
 	if out, err := stun.Build(m, stun.BindingSuccess,
 		&stun.XORMappedAddress{
-			IP:   base.IP(),
-			Port: base.Port(),
+			IP:   base.addr().IP,
+			Port: base.addr().Port,
 		},
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint,
@@ -809,7 +809,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				return
 			}
 
-			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip, port, local.Component(), "", 0)
+			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip.String(), port, local.Component(), "", 0)
 			if err != nil {
 				a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
 				return

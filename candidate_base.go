@@ -15,9 +15,11 @@ type candidateBase struct {
 	candidateType CandidateType
 
 	component      uint16
-	ip             net.IP
+	address        string
 	port           int
 	relatedAddress *CandidateRelatedAddress
+
+	resolvedAddr *net.UDPAddr
 
 	lock         sync.RWMutex
 	lastSent     time.Time
@@ -29,9 +31,9 @@ type candidateBase struct {
 	closedCh  chan struct{}
 }
 
-// IP returns Candidate IP
-func (c *candidateBase) IP() net.IP {
-	return c.ip
+// Address returns Candidate Address
+func (c *candidateBase) Address() string {
+	return c.address
 }
 
 // Port returns Candidate Port
@@ -176,14 +178,14 @@ func (c *candidateBase) Priority() uint32 {
 func (c *candidateBase) Equal(other Candidate) bool {
 	return c.NetworkType() == other.NetworkType() &&
 		c.Type() == other.Type() &&
-		c.IP().Equal(other.IP()) &&
+		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
 
 // String makes the candidateBase printable
 func (c *candidateBase) String() string {
-	return fmt.Sprintf("%s %s:%d%s", c.Type(), c.IP(), c.Port(), c.relatedAddress)
+	return fmt.Sprintf("%s %s:%d%s", c.Type(), c.Address(), c.Port(), c.relatedAddress)
 }
 
 // LastReceived returns a time.Time indicating the last time
@@ -222,11 +224,10 @@ func (c *candidateBase) seen(outbound bool) {
 	}
 }
 
-func (c *candidateBase) addr() net.Addr {
-	return &net.UDPAddr{
-		IP:   c.IP(),
-		Port: c.Port(),
-	}
+func (c *candidateBase) addr() *net.UDPAddr {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.resolvedAddr
 }
 
 func (c *candidateBase) agent() *Agent {
