@@ -19,8 +19,14 @@ func NewCandidateServerReflexive(network string, address string, port int, compo
 		return nil, err
 	}
 
+	candidateID, err := generateCandidateID()
+	if err != nil {
+		return nil, err
+	}
+
 	return &CandidateServerReflexive{
 		candidateBase: candidateBase{
+			id:            candidateID,
 			networkType:   networkType,
 			candidateType: CandidateTypeServerReflexive,
 			address:       address,

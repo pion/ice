@@ -29,8 +29,14 @@ func NewCandidateRelay(network string, address string, port int, component uint1
 		return nil, err
 	}
 
+	candidateID, err := generateCandidateID()
+	if err != nil {
+		return nil, err
+	}
+
 	return &CandidateRelay{
 		candidateBase: candidateBase{
+			id:            candidateID,
 			networkType:   networkType,
 			candidateType: CandidateTypeRelay,
 			address:       address,
