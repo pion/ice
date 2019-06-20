@@ -63,7 +63,7 @@ func TestPairPriority(t *testing.T) {
 
 	hostLocal, err := NewCandidateHost(
 		"udp",
-		net.ParseIP("192.168.1.1"), 19216,
+		"192.168.1.1", 19216,
 		1,
 	)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestPairPriority(t *testing.T) {
 
 	relayRemote, err := NewCandidateRelay(
 		"udp",
-		net.ParseIP("1.2.3.4"), 12340,
+		"1.2.3.4", 12340,
 		1,
 		"4.3.2.1", 43210,
 	)
@@ -82,7 +82,7 @@ func TestPairPriority(t *testing.T) {
 
 	srflxRemote, err := NewCandidateServerReflexive(
 		"udp",
-		net.ParseIP("10.10.10.2"), 19218,
+		"10.10.10.2", 19218,
 		1,
 		"4.3.2.1", 43212,
 	)
@@ -92,7 +92,7 @@ func TestPairPriority(t *testing.T) {
 
 	prflxRemote, err := NewCandidatePeerReflexive(
 		"udp",
-		net.ParseIP("10.10.10.2"), 19217,
+		"10.10.10.2", 19217,
 		1,
 		"4.3.2.1", 43211,
 	)
@@ -102,7 +102,7 @@ func TestPairPriority(t *testing.T) {
 
 	hostRemote, err := NewCandidateHost(
 		"udp",
-		net.ParseIP("1.2.3.5"), 12350,
+		"1.2.3.5", 12350,
 		1,
 	)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 
 	hostLocal, err := NewCandidateHost(
 		"udp",
-		net.ParseIP("192.168.1.1"), 19216,
+		"192.168.1.1", 19216,
 		1,
 	)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 
 	relayRemote, err := NewCandidateRelay(
 		"udp",
-		net.ParseIP("1.2.3.4"), 12340,
+		"1.2.3.4", 12340,
 		1,
 		"4.3.2.1", 43210,
 	)
@@ -204,8 +204,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			ip := net.ParseIP("192.168.0.2")
-			local, err := NewCandidateHost("udp", ip, 777, 1)
+			local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
 			local.conn = &mockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
@@ -244,7 +243,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				t.Fatal("candidate type must be prflx")
 			}
 
-			if !c.IP().Equal(net.ParseIP("172.17.0.3")) {
+			if c.Address() != "172.17.0.3" {
 				t.Fatal("IP address mismatch")
 			}
 
@@ -263,8 +262,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			ip := net.ParseIP("192.168.0.2")
-			local, err := NewCandidateHost("tcp", ip, 777, 1)
+			local, err := NewCandidateHost("tcp", "192.168.0.2", 777, 1)
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -294,7 +292,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				{tID, &net.UDPAddr{}, false},
 			}
 
-			local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+			local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
 			local.conn = &mockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
@@ -373,7 +371,7 @@ func TestInboundValidity(t *testing.T) {
 	}
 
 	remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-	local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+	local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
 	local.conn = &mockPacketConn{}
 	if err != nil {
 		t.Fatalf("failed to create a new candidate: %v", err)
@@ -464,7 +462,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		local, err := NewCandidateHost("udp", net.ParseIP("192.168.0.2"), 777, 1)
+		local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
 		local.conn = &mockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)

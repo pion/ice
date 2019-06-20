@@ -18,7 +18,7 @@ const (
 // Candidate represents an ICE candidate
 type Candidate interface {
 	Component() uint16
-	IP() net.IP
+	Address() string
 	LastReceived() time.Time
 	LastSent() time.Time
 	NetworkType() NetworkType
@@ -30,7 +30,7 @@ type Candidate interface {
 
 	Equal(other Candidate) bool
 
-	addr() net.Addr
+	addr() *net.UDPAddr
 	agent() *Agent
 
 	close() error

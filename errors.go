@@ -54,4 +54,7 @@ var (
 
 	// ErrPasswordEmpty indicates agent was give TURN URL with an empty Password
 	ErrPasswordEmpty = errors.New("password is empty")
+
+	// ErrAddressParseFailed indicates we were unable to parse a candidate address
+	ErrAddressParseFailed = errors.New("failed to parse address")
 )

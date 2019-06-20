@@ -8,7 +8,12 @@ type CandidatePeerReflexive struct {
 }
 
 // NewCandidatePeerReflexive creates a new peer reflective candidate
-func NewCandidatePeerReflexive(network string, ip net.IP, port int, component uint16, relAddr string, relPort int) (*CandidatePeerReflexive, error) {
+func NewCandidatePeerReflexive(network string, address string, port int, component uint16, relAddr string, relPort int) (*CandidatePeerReflexive, error) {
+	ip := net.ParseIP(address)
+	if ip == nil {
+		return nil, ErrAddressParseFailed
+	}
+
 	networkType, err := determineNetworkType(network, ip)
 	if err != nil {
 		return nil, err
@@ -18,8 +23,9 @@ func NewCandidatePeerReflexive(network string, ip net.IP, port int, component ui
 		candidateBase: candidateBase{
 			networkType:   networkType,
 			candidateType: CandidateTypePeerReflexive,
-			ip:            ip,
+			address:       address,
 			port:          port,
+			resolvedAddr:  &net.UDPAddr{IP: ip, Port: port},
 			component:     component,
 			relatedAddress: &CandidateRelatedAddress{
 				Address: relAddr,
