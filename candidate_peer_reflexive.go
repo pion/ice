@@ -19,8 +19,14 @@ func NewCandidatePeerReflexive(network string, address string, port int, compone
 		return nil, err
 	}
 
+	candidateID, err := generateCandidateID()
+	if err != nil {
+		return nil, err
+	}
+
 	return &CandidatePeerReflexive{
 		candidateBase: candidateBase{
+			id:            candidateID,
 			networkType:   networkType,
 			candidateType: CandidateTypePeerReflexive,
 			address:       address,

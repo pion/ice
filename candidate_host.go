@@ -14,8 +14,14 @@ type CandidateHost struct {
 
 // NewCandidateHost creates a new host candidate
 func NewCandidateHost(network string, address string, port int, component uint16) (*CandidateHost, error) {
+	candidateID, err := generateCandidateID()
+	if err != nil {
+		return nil, err
+	}
+
 	c := &CandidateHost{
 		candidateBase: candidateBase{
+			id:            candidateID,
 			address:       address,
 			candidateType: CandidateTypeHost,
 			component:     component,
