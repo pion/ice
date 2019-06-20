@@ -469,13 +469,16 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 
 func (a *Agent) pingAllCandidates() {
 	for _, p := range a.checklist {
-		if p.state != candidatePairStateChecking {
+
+		if p.state == CandidatePairStateWaiting {
+			p.state = CandidatePairStateInProgress
+		} else if p.state != CandidatePairStateInProgress {
 			continue
 		}
 
 		if p.bindingRequestCount > a.maxBindingRequests {
 			a.log.Tracef("max requests reached for pair %s, marking it as failed\n", p)
-			p.state = candidatePairStateFailed
+			p.state = CandidatePairStateFailed
 		} else {
 			a.selector.PingCandidate(p.local, p.remote)
 			p.bindingRequestCount++
@@ -486,7 +489,7 @@ func (a *Agent) pingAllCandidates() {
 func (a *Agent) getBestAvailableCandidatePair() *candidatePair {
 	var best *candidatePair
 	for _, p := range a.checklist {
-		if p.state == candidatePairStateFailed {
+		if p.state == CandidatePairStateFailed {
 			continue
 		}
 
@@ -502,7 +505,7 @@ func (a *Agent) getBestAvailableCandidatePair() *candidatePair {
 func (a *Agent) getBestValidCandidatePair() *candidatePair {
 	var best *candidatePair
 	for _, p := range a.checklist {
-		if p.state != candidatePairStateValid {
+		if p.state != CandidatePairStateSucceeded {
 			continue
 		}
 
