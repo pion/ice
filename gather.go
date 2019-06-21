@@ -176,11 +176,23 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 					return
 				}
 
+				address := ip.String()
+				if a.mDNSMode == MulticastDNSModeQueryAndGather {
+					address = a.mDNSName
+				}
+
 				port := conn.LocalAddr().(*net.UDPAddr).Port
-				c, err := NewCandidateHost(network, ip.String(), port, ComponentRTP)
+				c, err := NewCandidateHost(network, address, port, ComponentRTP)
 				if err != nil {
 					a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
 					return
+				}
+
+				if a.mDNSMode == MulticastDNSModeQueryAndGather {
+					if err = c.setIP(ip); err != nil {
+						a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
+						return
+					}
 				}
 
 				if err := a.run(func(agent *Agent) {

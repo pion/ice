@@ -3,16 +3,20 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/mdns"
 	"github.com/pion/stun"
 	"github.com/pion/transport/packetio"
+	"golang.org/x/net/ipv4"
 )
 
 const (
@@ -82,6 +86,10 @@ type Agent struct {
 	tieBreaker      uint64
 	connectionState ConnectionState
 	gatheringState  GatheringState
+
+	mDNSMode MulticastDNSMode
+	mDNSName string
+	mDNSConn *mdns.Conn
 
 	haveStarted   atomic.Value
 	isControlling bool
@@ -166,6 +174,9 @@ type AgentConfig struct {
 	// work perform synchronous gathering.
 	Trickle bool
 
+	// MulticastDNSMode controls mDNS behavior for the ICE agent
+	MulticastDNSMode MulticastDNSMode
+
 	// ConnectionTimeout defaults to 30 seconds when this property is nil.
 	// If the duration is 0, we will never timeout this connection.
 	ConnectionTimeout *time.Duration
@@ -216,6 +227,41 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, ErrPort
 	}
 
+	mDNSName, err := generateMulticastDNSName()
+	if err != nil {
+		return nil, err
+	}
+
+	mDNSMode := config.MulticastDNSMode
+	if mDNSMode == 0 {
+		mDNSMode = MulticastDNSModeQueryOnly
+	}
+
+	var mDNSConn *mdns.Conn
+	if mDNSMode != MulticastDNSModeDisabled {
+		addr, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		l, err := net.ListenUDP("udp4", addr)
+		if err != nil {
+			return nil, err
+		}
+
+		switch mDNSMode {
+		case MulticastDNSModeQueryOnly:
+			mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
+		case MulticastDNSModeQueryAndGather:
+			mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
+				LocalNames: []string{mDNSName},
+			})
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	loggerFactory := config.LoggerFactory
 	if loggerFactory == nil {
 		loggerFactory = logging.NewDefaultLoggerFactory()
@@ -242,6 +288,10 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		portmax:     config.PortMax,
 		trickle:     config.Trickle,
 		log:         loggerFactory.NewLogger("ice"),
+
+		mDNSMode: mDNSMode,
+		mDNSName: mDNSName,
+		mDNSConn: mDNSConn,
 
 		forceCandidateContact: make(chan bool, 1),
 	}
@@ -557,9 +607,51 @@ func (a *Agent) checkKeepalive() {
 
 // AddRemoteCandidate adds a new remote candidate
 func (a *Agent) AddRemoteCandidate(c Candidate) error {
+	// If we have a mDNS Candidate lets fully resolve it before adding it locally
+	if c.Type() == CandidateTypeHost && strings.HasSuffix(c.Address(), ".local") {
+		if a.mDNSMode == MulticastDNSModeDisabled {
+			return nil
+		}
+
+		hostCandidate, ok := c.(*CandidateHost)
+		if !ok {
+			return ErrAddressParseFailed
+		}
+
+		go a.resolveAndAddMulticastCandidate(hostCandidate)
+		return nil
+	}
+
 	return a.run(func(agent *Agent) {
 		agent.addRemoteCandidate(c)
 	})
+}
+
+func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
+	_, src, err := a.mDNSConn.Query(context.TODO(), c.Address())
+	if err != nil {
+		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
+		return
+	}
+
+	ip, _, _, _ := parseAddr(src)
+	if ip == nil {
+		a.log.Warnf("Failed to discover mDNS candidate %s: failed to parse IP", c.Address())
+		return
+	}
+
+	if err = c.setIP(ip); err != nil {
+		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
+		return
+	}
+
+	if err = a.run(func(agent *Agent) {
+		agent.addRemoteCandidate(c)
+	}); err != nil {
+		a.log.Warnf("Failed to add mDNS candidate %s: %v", c.Address(), err)
+		return
+
+	}
 }
 
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run)
@@ -661,11 +753,16 @@ func (a *Agent) Close() error {
 			}
 			delete(agent.remoteCandidates, net)
 		}
-
-		err := a.buffer.Close()
-		if err != nil {
+		if err := a.buffer.Close(); err != nil {
 			a.log.Warnf("failed to close buffer: %v", err)
 		}
+
+		if a.mDNSConn != nil {
+			if err := a.mDNSConn.Close(); err != nil {
+				a.log.Warnf("failed to close mDNS Conn: %v", err)
+			}
+		}
+
 	})
 	if err != nil {
 		return err

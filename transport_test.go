@@ -330,45 +330,23 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	return aConn, bConn
 }
 
-func copyCandidate(o Candidate) Candidate {
+func copyCandidate(o Candidate) (c Candidate) {
+	var err error
 	switch orig := o.(type) {
 	case *CandidateHost:
-		return &CandidateHost{
-			candidateBase{
-				candidateType: orig.candidateType,
-				networkType:   orig.networkType,
-				address:       orig.address,
-				port:          orig.port,
-				component:     orig.component,
-			},
-		}
+		c, err = NewCandidateHost(udp, orig.address, orig.port, orig.component)
 	case *CandidateServerReflexive:
-		return &CandidateServerReflexive{
-			candidateBase{
-				candidateType:  orig.candidateType,
-				networkType:    orig.networkType,
-				address:        orig.address,
-				port:           orig.port,
-				component:      orig.component,
-				relatedAddress: orig.relatedAddress,
-			},
-		}
-
+		c, err = NewCandidateServerReflexive(udp, orig.address, orig.port, orig.component, orig.relatedAddress.Address, orig.relatedAddress.Port)
 	case *CandidateRelay:
-		return &CandidateRelay{
-			candidateBase{
-				candidateType:  orig.candidateType,
-				networkType:    orig.networkType,
-				address:        orig.address,
-				port:           orig.port,
-				component:      orig.component,
-				relatedAddress: orig.relatedAddress,
-			},
-			nil, nil, nil,
-		}
+		c, err = NewCandidateRelay(udp, orig.address, orig.port, orig.component, orig.relatedAddress.Address, orig.relatedAddress.Port)
 	default:
-		return nil
+		panic("Tried to copy unsupported candidate type")
 	}
+
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 func onConnected() (func(ConnectionState), chan struct{}) {
