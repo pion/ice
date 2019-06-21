@@ -459,6 +459,10 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 	a.selectedPair = p
 	a.updateConnectionState(ConnectionStateConnected)
 
+	// Close mDNS Conn. We don't need to do anymore querying
+	// and no reason to respond to others traffic
+	a.closeMulticastConn()
+
 	// Signal connected
 	a.onConnectedOnce.Do(func() { close(a.onConnected) })
 }
@@ -757,12 +761,7 @@ func (a *Agent) Close() error {
 			a.log.Warnf("failed to close buffer: %v", err)
 		}
 
-		if a.mDNSConn != nil {
-			if err := a.mDNSConn.Close(); err != nil {
-				a.log.Warnf("failed to close mDNS Conn: %v", err)
-			}
-		}
-
+		a.closeMulticastConn()
 	})
 	if err != nil {
 		return err
@@ -961,6 +960,14 @@ func (a *Agent) getSelectedPair() (*candidatePair, error) {
 	}
 
 	return out, nil
+}
+
+func (a *Agent) closeMulticastConn() {
+	if a.mDNSConn != nil {
+		if err := a.mDNSConn.Close(); err != nil {
+			a.log.Warnf("failed to close mDNS Conn: %v", err)
+		}
+	}
 }
 
 // Role represents ICE agent role, which can be controlling or controlled.
