@@ -12,26 +12,40 @@ type CandidateHost struct {
 	network string
 }
 
+// CandidateHostConfig is the config required to create a new CandidateHost
+type CandidateHostConfig struct {
+	CandidateID string
+	Network     string
+	Address     string
+	Port        int
+	Component   uint16
+}
+
 // NewCandidateHost creates a new host candidate
-func NewCandidateHost(network string, address string, port int, component uint16) (*CandidateHost, error) {
-	candidateID, err := generateCandidateID()
-	if err != nil {
-		return nil, err
+func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
+	candidateID := config.CandidateID
+
+	if candidateID == "" {
+		var err error
+		candidateID, err = generateCandidateID()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	c := &CandidateHost{
 		candidateBase: candidateBase{
 			id:            candidateID,
-			address:       address,
+			address:       config.Address,
 			candidateType: CandidateTypeHost,
-			component:     component,
-			port:          port,
+			component:     config.Component,
+			port:          config.Port,
 		},
-		network: network,
+		network: config.Network,
 	}
 
-	if !strings.HasSuffix(address, ".local") {
-		ip := net.ParseIP(address)
+	if !strings.HasSuffix(config.Address, ".local") {
+		ip := net.ParseIP(config.Address)
 		if ip == nil {
 			return nil, ErrAddressParseFailed
 		}

@@ -17,19 +17,35 @@ type CandidateRelay struct {
 	permissions map[string]*turnc.Permission
 }
 
+// CandidateRelayConfig is the config required to create a new CandidateRelay
+type CandidateRelayConfig struct {
+	CandidateID string
+	Network     string
+	Address     string
+	Port        int
+	Component   uint16
+	RelAddr     string
+	RelPort     int
+}
+
 // NewCandidateRelay creates a new relay candidate
-func NewCandidateRelay(network string, address string, port int, component uint16, relAddr string, relPort int) (*CandidateRelay, error) {
-	ip := net.ParseIP(address)
+func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
+	candidateID := config.CandidateID
+
+	if candidateID == "" {
+		var err error
+		candidateID, err = generateCandidateID()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ip := net.ParseIP(config.Address)
 	if ip == nil {
 		return nil, ErrAddressParseFailed
 	}
 
-	networkType, err := determineNetworkType(network, ip)
-	if err != nil {
-		return nil, err
-	}
-
-	candidateID, err := generateCandidateID()
+	networkType, err := determineNetworkType(config.Network, ip)
 	if err != nil {
 		return nil, err
 	}
@@ -39,13 +55,13 @@ func NewCandidateRelay(network string, address string, port int, component uint1
 			id:            candidateID,
 			networkType:   networkType,
 			candidateType: CandidateTypeRelay,
-			address:       address,
-			port:          port,
-			resolvedAddr:  &net.UDPAddr{IP: ip, Port: port},
-			component:     component,
+			address:       config.Address,
+			port:          config.Port,
+			resolvedAddr:  &net.UDPAddr{IP: ip, Port: config.Port},
+			component:     config.Component,
 			relatedAddress: &CandidateRelatedAddress{
-				Address: relAddr,
-				Port:    relPort,
+				Address: config.RelAddr,
+				Port:    config.RelPort,
 			},
 		},
 		permissions: map[string]*turnc.Permission{},

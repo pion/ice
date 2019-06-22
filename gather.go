@@ -182,7 +182,15 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 				}
 
 				port := conn.LocalAddr().(*net.UDPAddr).Port
-				c, err := NewCandidateHost(network, address, port, ComponentRTP)
+
+				hostConfig := CandidateHostConfig{
+					Network:   network,
+					Address:   address,
+					Port:      port,
+					Component: ComponentRTP,
+				}
+
+				c, err := NewCandidateHost(&hostConfig)
 				if err != nil {
 					a.log.Warnf("Failed to create host candidate: %s %s %d: %v\n", network, ip, port, err)
 					return
@@ -249,7 +257,16 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 			port := xoraddr.Port
 			relIP := laddr.IP.String()
 			relPort := laddr.Port
-			c, err := NewCandidateServerReflexive(network, ip.String(), port, ComponentRTP, relIP, relPort)
+
+			srflxConfig := CandidateServerReflexiveConfig{
+				Network:   network,
+				Address:   ip.String(),
+				Port:      port,
+				Component: ComponentRTP,
+				RelAddr:   relIP,
+				RelPort:   relPort,
+			}
+			c, err := NewCandidateServerReflexive(&srflxConfig)
 			if err != nil {
 				a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
 				continue
@@ -314,7 +331,15 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 		ip := allocation.Relayed().IP
 		port := allocation.Relayed().Port
 
-		candidate, err := NewCandidateRelay(network, ip.String(), port, ComponentRTP, laddr.IP.String(), laddr.Port)
+		relayConfig := CandidateRelayConfig{
+			Network:   network,
+			Address:   ip.String(),
+			Port:      port,
+			Component: ComponentRTP,
+			RelAddr:   laddr.IP.String(),
+			RelPort:   laddr.Port,
+		}
+		candidate, err := NewCandidateRelay(&relayConfig)
 		if err != nil {
 			a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
 			continue

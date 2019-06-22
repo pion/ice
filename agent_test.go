@@ -61,50 +61,63 @@ func TestPairPriority(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 
-	hostLocal, err := NewCandidateHost(
-		"udp",
-		"192.168.1.1", 19216,
-		1,
-	)
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19216,
+		Component: 1,
+	}
+	hostLocal, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct local host candidate: %s", err)
 	}
 
-	relayRemote, err := NewCandidateRelay(
-		"udp",
-		"1.2.3.4", 12340,
-		1,
-		"4.3.2.1", 43210,
-	)
+	relayConfig := &CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "1.2.3.4",
+		Port:      12340,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43210,
+	}
+	relayRemote, err := NewCandidateRelay(relayConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote relay candidate: %s", err)
 	}
 
-	srflxRemote, err := NewCandidateServerReflexive(
-		"udp",
-		"10.10.10.2", 19218,
-		1,
-		"4.3.2.1", 43212,
-	)
+	srflxConfig := &CandidateServerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19218,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43212,
+	}
+	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
 	}
 
-	prflxRemote, err := NewCandidatePeerReflexive(
-		"udp",
-		"10.10.10.2", 19217,
-		1,
-		"4.3.2.1", 43211,
-	)
+	prflxConfig := &CandidatePeerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19217,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43211,
+	}
+	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote prflx candidate: %s", err)
 	}
 
-	hostRemote, err := NewCandidateHost(
-		"udp",
-		"1.2.3.5", 12350,
-		1,
-	)
+	hostConfig = &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "1.2.3.5",
+		Port:      12350,
+		Component: 1,
+	}
+	hostRemote, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote host candidate: %s", err)
 	}
@@ -143,21 +156,26 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 		t.Fatalf("Failed to set agent OnCandidatePairChange callback: %s", err)
 	}
 
-	hostLocal, err := NewCandidateHost(
-		"udp",
-		"192.168.1.1", 19216,
-		1,
-	)
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19216,
+		Component: 1,
+	}
+	hostLocal, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct local host candidate: %s", err)
 	}
 
-	relayRemote, err := NewCandidateRelay(
-		"udp",
-		"1.2.3.4", 12340,
-		1,
-		"4.3.2.1", 43210,
-	)
+	relayConfig := &CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "1.2.3.4",
+		Port:      12340,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43210,
+	}
+	relayRemote, err := NewCandidateRelay(relayConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote relay candidate: %s", err)
 	}
@@ -204,7 +222,14 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
+
+			hostConfig := CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			}
+			local, err := NewCandidateHost(&hostConfig)
 			local.conn = &mockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
@@ -262,7 +287,14 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			local, err := NewCandidateHost("tcp", "192.168.0.2", 777, 1)
+
+			hostConfig := CandidateHostConfig{
+				Network:   "tcp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			}
+			local, err := NewCandidateHost(&hostConfig)
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -292,7 +324,13 @@ func TestHandlePeerReflexive(t *testing.T) {
 				{tID, &net.UDPAddr{}, false},
 			}
 
-			local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
+			hostConfig := CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			}
+			local, err := NewCandidateHost(&hostConfig)
 			local.conn = &mockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
@@ -371,7 +409,13 @@ func TestInboundValidity(t *testing.T) {
 	}
 
 	remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
-	local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
+	hostConfig := CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.0.2",
+		Port:      777,
+		Component: 1,
+	}
+	local, err := NewCandidateHost(&hostConfig)
 	local.conn = &mockPacketConn{}
 	if err != nil {
 		t.Fatalf("failed to create a new candidate: %v", err)
@@ -462,7 +506,13 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		local, err := NewCandidateHost("udp", "192.168.0.2", 777, 1)
+		hostConfig := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      777,
+			Component: 1,
+		}
+		local, err := NewCandidateHost(&hostConfig)
 		local.conn = &mockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)
@@ -627,50 +677,63 @@ func TestCandidatePairStats(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 
-	hostLocal, err := NewCandidateHost(
-		"udp",
-		"192.168.1.1", 19216,
-		1,
-	)
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19216,
+		Component: 1,
+	}
+	hostLocal, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct local host candidate: %s", err)
 	}
 
-	relayRemote, err := NewCandidateRelay(
-		"udp",
-		"1.2.3.4", 2340,
-		1,
-		"4.3.2.1", 43210,
-	)
+	relayConfig := &CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "1.2.3.4",
+		Port:      2340,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43210,
+	}
+	relayRemote, err := NewCandidateRelay(relayConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote relay candidate: %s", err)
 	}
 
-	srflxRemote, err := NewCandidateServerReflexive(
-		"udp",
-		"10.10.10.2", 19218,
-		1,
-		"4.3.2.1", 43212,
-	)
+	srflxConfig := &CandidateServerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19218,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43212,
+	}
+	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
 	}
 
-	prflxRemote, err := NewCandidatePeerReflexive(
-		"udp",
-		"10.10.10.2", 19217,
-		1,
-		"4.3.2.1", 43211,
-	)
+	prflxConfig := &CandidatePeerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19217,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43211,
+	}
+	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote prflx candidate: %s", err)
 	}
 
-	hostRemote, err := NewCandidateHost(
-		"udp",
-		"1.2.3.5", 12350,
-		1,
-	)
+	hostConfig = &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "1.2.3.5",
+		Port:      12350,
+		Component: 1,
+	}
+	hostRemote, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote host candidate: %s", err)
 	}
@@ -746,21 +809,26 @@ func TestLocalCandidateStats(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 
-	hostLocal, err := NewCandidateHost(
-		"udp",
-		"192.168.1.1", 19216,
-		1,
-	)
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19216,
+		Component: 1,
+	}
+	hostLocal, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct local host candidate: %s", err)
 	}
 
-	srflxLocal, err := NewCandidateServerReflexive(
-		"udp",
-		"192.168.1.1", 19217,
-		1,
-		"4.3.2.1", 43212,
-	)
+	srflxConfig := &CandidateServerReflexiveConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19217,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43212,
+	}
+	srflxLocal, err := NewCandidateServerReflexive(srflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct local srflx candidate: %s", err)
 	}
@@ -821,41 +889,52 @@ func TestRemoteCandidateStats(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 
-	relayRemote, err := NewCandidateRelay(
-		"udp",
-		"1.2.3.4", 12340,
-		1,
-		"4.3.2.1", 43210,
-	)
+	relayConfig := &CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "1.2.3.4",
+		Port:      12340,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43210,
+	}
+	relayRemote, err := NewCandidateRelay(relayConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote relay candidate: %s", err)
 	}
 
-	srflxRemote, err := NewCandidateServerReflexive(
-		"udp",
-		"10.10.10.2", 19218,
-		1,
-		"4.3.2.1", 43212,
-	)
+	srflxConfig := &CandidateServerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19218,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43212,
+	}
+	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
 	}
 
-	prflxRemote, err := NewCandidatePeerReflexive(
-		"udp",
-		"10.10.10.2", 19217,
-		1,
-		"4.3.2.1", 43211,
-	)
+	prflxConfig := &CandidatePeerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19217,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43211,
+	}
+	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote prflx candidate: %s", err)
 	}
 
-	hostRemote, err := NewCandidateHost(
-		"udp",
-		"1.2.3.5", 12350,
-		1,
-	)
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "1.2.3.5",
+		Port:      12350,
+		Component: 1,
+	}
+	hostRemote, err := NewCandidateHost(hostConfig)
 	if err != nil {
 		t.Fatalf("Failed to construct remote host candidate: %s", err)
 	}
