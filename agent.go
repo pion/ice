@@ -908,7 +908,16 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				return
 			}
 
-			prflxCandidate, err := NewCandidatePeerReflexive(networkType.String(), ip.String(), port, local.Component(), "", 0)
+			prflxCandidateConfig := CandidatePeerReflexiveConfig{
+				Network:   networkType.String(),
+				Address:   ip.String(),
+				Port:      port,
+				Component: local.Component(),
+				RelAddr:   "",
+				RelPort:   0,
+			}
+
+			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
 			if err != nil {
 				a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
 				return
