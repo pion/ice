@@ -457,6 +457,7 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 	a.onSelectedCandidatePairChange(p)
 
 	a.selectedPair = p
+	a.selectedPair.nominated = true
 	a.updateConnectionState(ConnectionStateConnected)
 
 	// Close mDNS Conn. We don't need to do anymore querying
@@ -993,7 +994,7 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 				LocalCandidateID:  cp.local.ID(),
 				RemoteCandidateID: cp.remote.ID(),
 				State:             cp.state,
-				// Nominated bool
+				Nominated:         cp.nominated,
 				// PacketsSent uint32
 				// PacketsReceived uint32
 				// BytesSent uint64
