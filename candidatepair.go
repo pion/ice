@@ -22,6 +22,7 @@ type candidatePair struct {
 	local               Candidate
 	bindingRequestCount uint16
 	state               CandidatePairState
+	nominated           bool
 }
 
 func (p *candidatePair) String() string {

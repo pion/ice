@@ -82,6 +82,7 @@ func (s *controllingSelector) ContactCandidates() {
 		p := s.agent.getBestValidCandidatePair()
 		if p != nil && s.isNominatable(p.local) && s.isNominatable(p.remote) {
 			s.log.Tracef("Nominatable pair found, nominating (%s, %s)", p.local.String(), p.remote.String())
+			p.nominated = true
 			s.nominatedPair = p
 			s.nominatePair(p)
 			return
