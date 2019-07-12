@@ -39,6 +39,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Adam Kiss](https://github.com/masterada)
 * [Aleksandr Razumov](https://github.com/ernado)
 * [Yutaka Takeda](https://github.com/enobufs)
+* [mchlrhw](https://github.com/mchlrhw)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
