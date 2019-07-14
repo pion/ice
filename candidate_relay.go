@@ -66,7 +66,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 func (c *CandidateRelay) close() error {
 	err := c.candidateBase.close()
 	if c.onClose != nil {
-		c.onClose()
+		err = c.onClose()
 		c.onClose = nil
 	}
 	return err
