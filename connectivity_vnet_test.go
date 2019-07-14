@@ -21,8 +21,8 @@ type virtualNet struct {
 }
 
 func (v *virtualNet) close() {
-	v.server.Close() // nolint:errcheck
-	v.wan.Stop()
+	v.server.Close() // nolint:errcheck,gosec
+	v.wan.Stop()     // nolint:errcheck,gosec
 }
 
 func buildVNet(natType *vnet.NATType) (*virtualNet, error) {
@@ -250,10 +250,7 @@ func closePipe(t *testing.T, ca *Conn, cb *Conn) bool {
 		return false
 	}
 	err = cb.Close()
-	if !assert.NoError(t, err, "should succeed") {
-		return false
-	}
-	return true
+	return assert.NoError(t, err, "should succeed")
 }
 
 func TestConnectivityVNet(t *testing.T) {
