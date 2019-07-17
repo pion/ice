@@ -347,9 +347,8 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			RelAddr:   laddr.IP.String(),
 			RelPort:   laddr.Port,
 			OnClose: func() error {
-				err2 := relayConn.Close()
 				client.Close()
-				return err2
+				return locConn.Close()
 			},
 		}
 		candidate, err := NewCandidateRelay(&relayConfig)
