@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/pion/logging v0.2.2
-	github.com/pion/mdns v0.0.2
+	github.com/pion/mdns v0.0.3
 	github.com/pion/stun v0.3.1
 	github.com/pion/transport v0.8.6
 	github.com/pion/turn v1.3.2

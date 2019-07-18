@@ -15,10 +15,11 @@ const (
 	stunGatherTimeout = time.Second * 5
 )
 
-func (a *Agent) localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
+func (a *Agent) localInterfaces(networkTypes []NetworkType) ([]net.IP, error) {
+	ips := []net.IP{}
 	ifaces, err := a.net.Interfaces()
 	if err != nil {
-		return ips
+		return ips, err
 	}
 
 	var IPv4Requested, IPv6Requested bool
@@ -42,7 +43,7 @@ func (a *Agent) localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
 
 		addrs, err := iface.Addrs()
 		if err != nil {
-			return ips
+			continue
 		}
 
 		for _, addr := range addrs {
@@ -71,7 +72,7 @@ func (a *Agent) localInterfaces(networkTypes []NetworkType) (ips []net.IP) {
 			ips = append(ips, ip)
 		}
 	}
-	return ips
+	return ips, nil
 }
 
 func (a *Agent) listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
@@ -167,7 +168,12 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	localIPs := a.localInterfaces(networkTypes)
+	localIPs, err := a.localInterfaces(networkTypes)
+	if err != nil {
+		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
+		return
+	}
+
 	wg.Add(len(localIPs) * len(supportedNetworks))
 	for _, ip := range localIPs {
 		for _, network := range supportedNetworks {

@@ -11,9 +11,11 @@ func TestListenUDP(t *testing.T) {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
 
-	localIPs := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+	localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
 	if len(localIPs) == 0 {
 		t.Fatal("localInterfaces found no interfaces, unable to test")
+	} else if err != nil {
+		t.Fatal(err)
 	}
 
 	ip := localIPs[0]
