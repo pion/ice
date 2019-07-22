@@ -245,34 +245,44 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		mDNSMode = MulticastDNSModeQueryOnly
 	}
 
+	loggerFactory := config.LoggerFactory
+	if loggerFactory == nil {
+		loggerFactory = logging.NewDefaultLoggerFactory()
+	}
+	log := loggerFactory.NewLogger("ice")
+
 	var mDNSConn *mdns.Conn
-	if mDNSMode != MulticastDNSModeDisabled {
-		addr, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddress)
-		if err != nil {
-			return nil, err
+	mDNSConn, err = func() (*mdns.Conn, error) {
+		if mDNSMode == MulticastDNSModeDisabled {
+			return nil, nil
 		}
 
-		l, err := net.ListenUDP("udp4", addr)
-		if err != nil {
-			return nil, err
+		addr, mdnsErr := net.ResolveUDPAddr("udp4", mdns.DefaultAddress)
+		if mdnsErr != nil {
+			return nil, mdnsErr
+		}
+
+		l, mdnsErr := net.ListenUDP("udp4", addr)
+		if mdnsErr != nil {
+			// If ICE fails to start MulticastDNS server just warn the user and continue
+			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+			mDNSMode = MulticastDNSModeDisabled
+			return nil, nil
 		}
 
 		switch mDNSMode {
 		case MulticastDNSModeQueryOnly:
-			mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
+			return mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
 		case MulticastDNSModeQueryAndGather:
-			mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
+			return mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
 				LocalNames: []string{mDNSName},
 			})
+		default:
+			return nil, nil
 		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	loggerFactory := config.LoggerFactory
-	if loggerFactory == nil {
-		loggerFactory = logging.NewDefaultLoggerFactory()
+	}()
+	if err != nil {
+		return nil, err
 	}
 
 	a := &Agent{
@@ -296,7 +306,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		portmax:       config.PortMax,
 		trickle:       config.Trickle,
 		loggerFactory: loggerFactory,
-		log:           loggerFactory.NewLogger("ice"),
+		log:           log,
 		net:           config.Net,
 
 		mDNSMode: mDNSMode,
@@ -637,6 +647,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	// If we have a mDNS Candidate lets fully resolve it before adding it locally
 	if c.Type() == CandidateTypeHost && strings.HasSuffix(c.Address(), ".local") {
 		if a.mDNSMode == MulticastDNSModeDisabled {
+			a.log.Warnf("remote mDNS candidate added, but mDNS is disabled: (%s)", c.Address())
 			return nil
 		}
 
