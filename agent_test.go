@@ -222,6 +222,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
 			hostConfig := CandidateHostConfig{
 				Network:   "udp",
@@ -287,6 +288,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
 			hostConfig := CandidateHostConfig{
 				Network:   "tcp",
@@ -318,6 +320,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], []byte("ABC"))
 			a.pendingBindingRequests = []bindingRequest{
@@ -470,6 +473,7 @@ func TestInboundValidity(t *testing.T) {
 
 		err = a.run(func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values was unable to create prflx candidate")
@@ -485,6 +489,7 @@ func TestInboundValidity(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
 				stun.NewShortTermIntegrity(a.localPwd),
