@@ -461,7 +461,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		agent.updateConnectionState(ConnectionStateChecking)
 
 		// TODO this should be dynamic, and grow when the connection is stable
-		agent.forceCandidateContact <- true
+		a.requestConnectivityCheck()
 		agent.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 	})
 }
@@ -691,6 +691,13 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	}
 }
 
+func (a *Agent) requestConnectivityCheck() {
+	select {
+	case a.forceCandidateContact <- true:
+	default:
+	}
+}
+
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run)
 func (a *Agent) addRemoteCandidate(c Candidate) {
 	set := a.remoteCandidates[c.NetworkType()]
@@ -709,6 +716,8 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 			a.addPair(localCandidate, c)
 		}
 	}
+
+	a.requestConnectivityCheck()
 }
 
 // addCandidate assumes you are holding the lock (must be execute using a.run)
