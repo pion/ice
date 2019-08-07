@@ -213,21 +213,14 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 				}
 
 				if err := a.run(func(agent *Agent) {
+					c.start(a, conn)
 					a.addCandidate(c)
-				}); err != nil {
-					a.log.Warnf("Failed to append to localCandidates: %v\n", err)
-					return
-				}
 
-				c.start(a, conn)
-
-				if err := a.run(func(agent *Agent) {
 					if a.onCandidateHdlr != nil {
 						go a.onCandidateHdlr(c)
 					}
 				}); err != nil {
-					a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-					return
+					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
 				}
 			}(network, ip)
 		}
@@ -282,21 +275,14 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 			}
 
 			if err := a.run(func(agent *Agent) {
+				c.start(a, conn)
 				a.addCandidate(c)
-			}); err != nil {
-				a.log.Warnf("Failed to append to localCandidates: %v\n", err)
-				continue
-			}
 
-			c.start(a, conn)
-
-			if err := a.run(func(agent *Agent) {
 				if a.onCandidateHdlr != nil {
 					go a.onCandidateHdlr(c)
 				}
 			}); err != nil {
-				a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-				continue
+				a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
 			}
 		}
 	}
@@ -364,8 +350,16 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			continue
 		}
 
-		a.addCandidate(candidate)
-		candidate.start(a, relayConn)
+		if err := a.run(func(agent *Agent) {
+			candidate.start(a, relayConn)
+			a.addCandidate(candidate)
+
+			if a.onCandidateHdlr != nil {
+				go a.onCandidateHdlr(candidate)
+			}
+		}); err != nil {
+			a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
+		}
 	}
 
 	return nil
