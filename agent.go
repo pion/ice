@@ -127,9 +127,12 @@ type Agent struct {
 	remotePwd        string
 	remoteCandidates map[NetworkType][]Candidate
 
-	checklist    []*candidatePair
-	selector     pairCandidateSelector
-	selectedPair *candidatePair
+	checklist []*candidatePair
+	selector  pairCandidateSelector
+
+	selectedPairMutex sync.RWMutex
+	selectedPair      *candidatePair
+
 	urls         []*URL
 	networkTypes []NetworkType
 
@@ -484,8 +487,10 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 	// Notify when the selected pair changes
 	a.onSelectedCandidatePairChange(p)
 
+	a.selectedPairMutex.Lock()
 	a.selectedPair = p
 	a.selectedPair.nominated = true
+	a.selectedPairMutex.Unlock()
 	a.updateConnectionState(ConnectionStateConnected)
 
 	// Close mDNS Conn. We don't need to do anymore querying
@@ -610,14 +615,16 @@ func (a *Agent) taskLoop() {
 // validateSelectedPair checks if the selected pair is (still) valid
 // Note: the caller should hold the agent lock.
 func (a *Agent) validateSelectedPair() bool {
-	if a.selectedPair == nil {
-		// Not valid since not selected
+	selectedPair, err := a.getSelectedPair()
+	if err != nil {
 		return false
 	}
 
 	if (a.connectionTimeout != 0) &&
-		(time.Since(a.selectedPair.remote.LastReceived()) > a.connectionTimeout) {
+		(time.Since(selectedPair.remote.LastReceived()) > a.connectionTimeout) {
+		a.selectedPairMutex.Lock()
 		a.selectedPair = nil
+		a.selectedPairMutex.Unlock()
 		a.updateConnectionState(ConnectionStateDisconnected)
 		return false
 	}
@@ -629,15 +636,16 @@ func (a *Agent) validateSelectedPair() bool {
 // if no packet has been sent on that pair in the last keepaliveInterval
 // Note: the caller should hold the agent lock.
 func (a *Agent) checkKeepalive() {
-	if a.selectedPair == nil {
+	selectedPair, err := a.getSelectedPair()
+	if err != nil {
 		return
 	}
 
 	if (a.keepaliveInterval != 0) &&
-		(time.Since(a.selectedPair.local.LastSent()) > a.keepaliveInterval) {
+		(time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) {
 		// we use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
-		a.selector.PingCandidate(a.selectedPair.local, a.selectedPair.remote)
+		a.selector.PingCandidate(selectedPair.local, selectedPair.remote)
 	}
 }
 
@@ -986,27 +994,15 @@ func (a *Agent) noSTUNSeen(local Candidate, remote net.Addr) bool {
 }
 
 func (a *Agent) getSelectedPair() (*candidatePair, error) {
-	res := make(chan *candidatePair)
+	a.selectedPairMutex.RLock()
+	selectedPair := a.selectedPair
+	a.selectedPairMutex.RUnlock()
 
-	err := a.run(func(agent *Agent) {
-		if agent.selectedPair != nil {
-			res <- agent.selectedPair
-			return
-		}
-		res <- nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	out := <-res
-
-	if out == nil {
+	if selectedPair == nil {
 		return nil, ErrNoCandidatePairs
 	}
 
-	return out, nil
+	return selectedPair, nil
 }
 
 func (a *Agent) closeMulticastConn() {
