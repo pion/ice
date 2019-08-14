@@ -231,8 +231,8 @@ func (c *candidateBase) seen(outbound bool) {
 }
 
 func (c *candidateBase) addr() *net.UDPAddr {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	return c.resolvedAddr
 }
 
