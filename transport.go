@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/stun"
@@ -24,7 +25,19 @@ func (a *Agent) Accept(ctx context.Context, remoteUfrag, remotePwd string) (*Con
 // Conn represents the ICE connection.
 // At the moment the lifetime of the Conn is equal to the Agent.
 type Conn struct {
-	agent *Agent
+	agent         *Agent
+	bytesReceived uint64
+	bytesSent     uint64
+}
+
+// BytesSent returns the number of bytes sent
+func (c *Conn) BytesSent() uint64 {
+	return atomic.LoadUint64(&c.bytesSent)
+}
+
+// BytesReceived returns the number of bytes received
+func (c *Conn) BytesReceived() uint64 {
+	return atomic.LoadUint64(&c.bytesReceived)
 }
 
 func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, remotePwd string) (*Conn, error) {
@@ -63,7 +76,9 @@ func (c *Conn) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	return c.agent.buffer.Read(p)
+	n, err := c.agent.buffer.Read(p)
+	atomic.AddUint64(&c.bytesReceived, uint64(n))
+	return n, err
 }
 
 // Write implements the Conn Write method.
@@ -82,6 +97,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, err
 	}
 
+	atomic.AddUint64(&c.bytesSent, uint64(len(p)))
 	return pair.Write(p)
 }
 

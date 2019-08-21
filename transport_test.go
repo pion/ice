@@ -2,6 +2,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -400,4 +401,44 @@ func randomPort(t testing.TB) int {
 		t.Fatalf("unknown addr type %T", addr)
 		return 0
 	}
+}
+
+func TestConnStats(t *testing.T) {
+	ca, cb := pipe()
+	if _, err := ca.Write(make([]byte, 10)); err != nil {
+		t.Fatal("unexpected error trying to write")
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		buf := make([]byte, 10)
+		if _, err := cb.Read(buf); err != nil {
+			panic(errors.New("unexpected error trying to read"))
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	if ca.BytesSent() != 10 {
+		t.Fatal("bytes sent don't match")
+	}
+
+	if cb.BytesReceived() != 10 {
+		t.Fatal("bytes received don't match")
+	}
+
+	err := ca.Close()
+	if err != nil {
+		// we should never get here.
+		panic(err)
+	}
+
+	err = cb.Close()
+	if err != nil {
+		// we should never get here.
+		panic(err)
+	}
+
 }
