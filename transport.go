@@ -25,9 +25,9 @@ func (a *Agent) Accept(ctx context.Context, remoteUfrag, remotePwd string) (*Con
 // Conn represents the ICE connection.
 // At the moment the lifetime of the Conn is equal to the Agent.
 type Conn struct {
-	agent         *Agent
 	bytesReceived uint64
 	bytesSent     uint64
+	agent         *Agent
 }
 
 // BytesSent returns the number of bytes sent
