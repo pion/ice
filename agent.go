@@ -85,6 +85,7 @@ type Agent struct {
 
 	trickle         bool
 	tieBreaker      uint64
+	lite            bool
 	connectionState ConnectionState
 	gatheringState  GatheringState
 
@@ -218,6 +219,9 @@ type AgentConfig struct {
 	// or mark the connection as failed if no valid candidate is available
 	CandidateSelectionTimeout *time.Duration
 
+	// Lite agents do not perform connectivity check and only provide host candidates.
+	Lite bool
+
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
 	// HostAcceptanceMinWait specify a minimum wait time before selecting srflx candidates
@@ -230,6 +234,49 @@ type AgentConfig struct {
 	// Net is the our abstracted network interface for internal development purpose only
 	// (see github.com/pion/transport/vnet)
 	Net *vnet.Net
+}
+
+func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
+	if candidateTypeList == nil {
+		return false
+	}
+	for _, ct := range candidateTypeList {
+		if ct == candidateType {
+			return true
+		}
+	}
+	return false
+}
+
+func createMulticastDNS(mDNSMode MulticastDNSMode, mDNSName string, log logging.LeveledLogger) (*mdns.Conn, MulticastDNSMode, error) {
+	if mDNSMode == MulticastDNSModeDisabled {
+		return nil, mDNSMode, nil
+	}
+
+	addr, mdnsErr := net.ResolveUDPAddr("udp4", mdns.DefaultAddress)
+	if mdnsErr != nil {
+		return nil, mDNSMode, mdnsErr
+	}
+
+	l, mdnsErr := net.ListenUDP("udp4", addr)
+	if mdnsErr != nil {
+		// If ICE fails to start MulticastDNS server just warn the user and continue
+		log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+		return nil, MulticastDNSModeDisabled, nil
+	}
+
+	switch mDNSMode {
+	case MulticastDNSModeQueryOnly:
+		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
+		return conn, mDNSMode, err
+	case MulticastDNSModeQueryAndGather:
+		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
+			LocalNames: []string{mDNSName},
+		})
+		return conn, mDNSMode, err
+	default:
+		return nil, mDNSMode, nil
+	}
 }
 
 // NewAgent creates a new Agent
@@ -255,41 +302,14 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	log := loggerFactory.NewLogger("ice")
 
 	var mDNSConn *mdns.Conn
-	mDNSConn, err = func() (*mdns.Conn, error) {
-		if mDNSMode == MulticastDNSModeDisabled {
-			return nil, nil
-		}
-
-		addr, mdnsErr := net.ResolveUDPAddr("udp4", mdns.DefaultAddress)
-		if mdnsErr != nil {
-			return nil, mdnsErr
-		}
-
-		l, mdnsErr := net.ListenUDP("udp4", addr)
-		if mdnsErr != nil {
-			// If ICE fails to start MulticastDNS server just warn the user and continue
-			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
-			mDNSMode = MulticastDNSModeDisabled
-			return nil, nil
-		}
-
-		switch mDNSMode {
-		case MulticastDNSModeQueryOnly:
-			return mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
-		case MulticastDNSModeQueryAndGather:
-			return mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
-				LocalNames: []string{mDNSName},
-			})
-		default:
-			return nil, nil
-		}
-	}()
+	mDNSConn, mDNSMode, err = createMulticastDNS(mDNSMode, mDNSName, log)
 	if err != nil {
 		return nil, err
 	}
 
 	a := &Agent{
 		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
+		lite:                   config.Lite,
 		gatheringState:         GatheringStateNew,
 		connectionState:        ConnectionStateNew,
 		localCandidates:        make(map[NetworkType][]Candidate),
@@ -395,6 +415,14 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.candidateTypes = config.CandidateTypes
 	}
 
+	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
+		return nil, ErrLiteUsingNonHostCandidates
+	}
+
+	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
+		return nil, ErrUselessUrlsProvided
+	}
+
 	go a.taskLoop()
 
 	// Initialize local candidates
@@ -457,6 +485,10 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 			a.selector = &controllingSelector{agent: a, log: a.log}
 		} else {
 			a.selector = &controlledSelector{agent: a, log: a.log}
+		}
+
+		if a.lite {
+			a.selector = &liteSelector{pairCandidateSelector: a.selector}
 		}
 
 		a.selector.Start()
@@ -967,7 +999,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			}
 			remoteCandidate = prflxCandidate
 
-			a.log.Debugf("adding a new peer-reflexive candiate: %s ", remote)
+			a.log.Debugf("adding a new peer-reflexive candidate: %s ", remote)
 			a.addRemoteCandidate(remoteCandidate)
 		}
 

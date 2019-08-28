@@ -298,3 +298,17 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 		s.PingCandidate(local, remote)
 	}
 }
+
+type liteSelector struct {
+	pairCandidateSelector
+}
+
+// A lite selector should not contact candidates
+func (s *liteSelector) ContactCandidates() {
+	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
+		// pion/ice#96
+		// TODO: implement lite controlling agent. For now falling back to full agent.
+		// This only happens if both peers are lite. See RFC 8445 S6.1.1 and S6.2
+		s.pairCandidateSelector.ContactCandidates()
+	}
+}

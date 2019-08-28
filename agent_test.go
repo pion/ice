@@ -432,6 +432,81 @@ func TestConnectivityOnStartup(t *testing.T) {
 	}
 }
 
+func TestConnectivityLite(t *testing.T) {
+	stunServerURL := &URL{
+		Scheme: SchemeTypeSTUN,
+		Host:   "1.2.3.4",
+		Port:   3478,
+		Proto:  ProtoTypeUDP,
+	}
+
+	v, err := buildVNet(&vnet.NATType{
+		MappingBehavior:   vnet.EndpointIndependent,
+		FilteringBehavior: vnet.EndpointIndependent,
+	})
+	require.NoError(t, err, "should succeed")
+	defer v.close()
+
+	aNotifier, aConnected := onConnected()
+	bNotifier, bConnected := onConnected()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	cfg0 := &AgentConfig{
+		Urls:             []*URL{stunServerURL},
+		Trickle:          true,
+		NetworkTypes:     supportedNetworkTypes,
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              v.net0,
+
+		taskLoopInterval: time.Hour,
+	}
+
+	aAgent, err := NewAgent(cfg0)
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	}))
+	require.NoError(t, aAgent.GatherCandidates())
+
+	cfg1 := &AgentConfig{
+		Urls:             []*URL{},
+		Trickle:          true,
+		Lite:             true,
+		CandidateTypes:   []CandidateType{CandidateTypeHost},
+		NetworkTypes:     supportedNetworkTypes,
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              v.net1,
+		taskLoopInterval: time.Hour,
+	}
+
+	bAgent, err := NewAgent(cfg1)
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	}))
+	require.NoError(t, bAgent.GatherCandidates())
+
+	wg.Wait()
+	aConn, bConn := connectWithVNet(aAgent, bAgent)
+
+	// Ensure pair selected
+	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
+	<-aConnected
+	<-bConnected
+
+	if !closePipe(t, aConn, bConn) {
+		return
+	}
+}
+
 func TestInboundValidity(t *testing.T) {
 	buildMsg := func(class stun.MessageClass, username, key string) *stun.Message {
 		msg, err := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,

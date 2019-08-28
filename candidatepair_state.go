@@ -31,7 +31,7 @@ func (c CandidatePairState) String() string {
 	case CandidatePairStateFailed:
 		return "failed"
 	case CandidatePairStateSucceeded:
-		return "succeded"
+		return "succeeded"
 	}
 	return "Unknown candidate pair state"
 }
