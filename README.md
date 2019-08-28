@@ -41,6 +41,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Yutaka Takeda](https://github.com/enobufs)
 * [Atsushi Watanabe](https://github.com/at-wat)
 * [Robert Eperjesi](https://github.com/epes)
+* [Sebastian Waisbrot](https://github.com/seppo0010)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text

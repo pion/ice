@@ -85,6 +85,7 @@ type Agent struct {
 
 	trickle         bool
 	tieBreaker      uint64
+	lite            bool
 	connectionState ConnectionState
 	gatheringState  GatheringState
 
@@ -218,6 +219,9 @@ type AgentConfig struct {
 	// or mark the connection as failed if no valid candidate is available
 	CandidateSelectionTimeout *time.Duration
 
+	// Lite agents do not perform connectivity check and only provide host candidates.
+	Lite bool
+
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
 	// HostAcceptanceMinWait specify a minimum wait time before selecting srflx candidates
@@ -290,6 +294,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 	a := &Agent{
 		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
+		lite:                   config.Lite,
 		gatheringState:         GatheringStateNew,
 		connectionState:        ConnectionStateNew,
 		localCandidates:        make(map[NetworkType][]Candidate),
@@ -391,6 +396,10 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
 		a.candidateTypes = defaultCandidateTypes
+	} else if config.Lite {
+		// Lite implementations only utilize host candidates.
+		// RFC 8445 S5.2
+		a.candidateTypes = []CandidateType{CandidateTypeHost}
 	} else {
 		a.candidateTypes = config.CandidateTypes
 	}
@@ -457,6 +466,10 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 			a.selector = &controllingSelector{agent: a, log: a.log}
 		} else {
 			a.selector = &controlledSelector{agent: a, log: a.log}
+		}
+
+		if a.lite {
+			a.selector = &liteSelector{pairCandidateSelector: a.selector}
 		}
 
 		a.selector.Start()
