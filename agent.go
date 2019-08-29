@@ -394,13 +394,14 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.taskLoopInterval = config.taskLoopInterval
 	}
 
-	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
+	switch {
+	case config.CandidateTypes == nil || len(config.CandidateTypes) == 0:
 		a.candidateTypes = defaultCandidateTypes
-	} else if config.Lite {
+	case config.Lite:
 		// Lite implementations only utilize host candidates.
 		// RFC 8445 S5.2
 		a.candidateTypes = []CandidateType{CandidateTypeHost}
-	} else {
+	default:
 		a.candidateTypes = config.CandidateTypes
 	}
 
