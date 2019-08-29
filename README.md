@@ -40,6 +40,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Aleksandr Razumov](https://github.com/ernado)
 * [Yutaka Takeda](https://github.com/enobufs)
 * [Atsushi Watanabe](https://github.com/at-wat)
+* [Robert Eperjesi](https://github.com/epes)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
