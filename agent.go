@@ -409,15 +409,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.taskLoopInterval = config.taskLoopInterval
 	}
 
-	switch {
-	case (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && !config.Lite:
-		a.candidateTypes = defaultCandidateTypes
-	case (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && config.Lite:
-		a.candidateTypes = defaultLiteCandidateTypes
-	case (len(config.CandidateTypes) > 1 || config.CandidateTypes[0] != CandidateTypeHost) && config.Lite:
-		return nil, ErrLiteUsingNonHostCandidates
-	default:
-		a.candidateTypes = config.CandidateTypes
+	a.candidateTypes, err = a.getCandidateTypesForConfig(config)
+	if err != nil {
+		return nil, err
 	}
 
 	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
@@ -431,6 +425,19 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.gatherCandidates()
 	}
 	return a, nil
+}
+
+func (a *Agent) getCandidateTypesForConfig(config *AgentConfig) ([]CandidateType, error) {
+	if (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && !config.Lite {
+		return defaultCandidateTypes, nil
+	}
+	if (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && config.Lite {
+		return defaultLiteCandidateTypes, nil
+	}
+	if (len(config.CandidateTypes) > 1 || config.CandidateTypes[0] != CandidateTypeHost) && config.Lite {
+		return nil, ErrLiteUsingNonHostCandidates
+	}
+	return config.CandidateTypes, nil
 }
 
 // OnConnectionStateChange sets a handler that is fired when the connection state changes
