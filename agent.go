@@ -57,6 +57,9 @@ const (
 
 var (
 	defaultCandidateTypes = []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+	// Lite implementations only utilize host candidates.
+	// RFC 8445 S5.2
+	defaultLiteCandidateTypes = []CandidateType{CandidateTypeHost}
 )
 
 type bindingRequest struct {
@@ -236,6 +239,18 @@ type AgentConfig struct {
 	Net *vnet.Net
 }
 
+func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
+	if candidateTypeList == nil {
+		return false
+	}
+	for _, ct := range candidateTypeList {
+		if ct == candidateType {
+			return true
+		}
+	}
+	return false
+}
+
 // NewAgent creates a new Agent
 func NewAgent(config *AgentConfig) (*Agent, error) {
 	if config.PortMax < config.PortMin {
@@ -395,14 +410,18 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	}
 
 	switch {
-	case config.CandidateTypes == nil || len(config.CandidateTypes) == 0:
+	case (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && !config.Lite:
 		a.candidateTypes = defaultCandidateTypes
-	case config.Lite:
-		// Lite implementations only utilize host candidates.
-		// RFC 8445 S5.2
-		a.candidateTypes = []CandidateType{CandidateTypeHost}
+	case (config.CandidateTypes == nil || len(config.CandidateTypes) == 0) && config.Lite:
+		a.candidateTypes = defaultLiteCandidateTypes
+	case (len(config.CandidateTypes) > 1 || config.CandidateTypes[0] != CandidateTypeHost) && config.Lite:
+		return nil, ErrLiteUsingNonHostCandidates
 	default:
 		a.candidateTypes = config.CandidateTypes
+	}
+
+	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
+		return nil, ErrUselessUrlsProvided
 	}
 
 	go a.taskLoop()

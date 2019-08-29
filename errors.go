@@ -57,4 +57,11 @@ var (
 
 	// ErrAddressParseFailed indicates we were unable to parse a candidate address
 	ErrAddressParseFailed = errors.New("failed to parse address")
+
+	// ErrLiteUsingNonHostCandidates indicates non host candidates were selected for a lite agent
+	ErrLiteUsingNonHostCandidates = errors.New("lite agents must only use host candidates")
+
+	// ErrUselessUrlsProvided indicates that one or more URL was provided to the agent but no host
+	// candidate required them
+	ErrUselessUrlsProvided = errors.New("agent does not need URL with selected candidate types")
 )
