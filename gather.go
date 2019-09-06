@@ -244,7 +244,7 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 
 			conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
-				a.log.Warnf("Failed to listen on %s for %s: %v\n", conn.LocalAddr().String(), serverAddr.String(), err)
+				a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
 				continue
 			}
 
