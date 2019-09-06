@@ -966,7 +966,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			return
 		}
 
-		a.selector.HandleSucessResponse(m, local, remoteCandidate, remote)
+		a.selector.HandleSuccessResponse(m, local, remoteCandidate, remote)
 	} else if m.Type.Class == stun.ClassRequest {
 		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)

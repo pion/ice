@@ -12,7 +12,7 @@ type pairCandidateSelector interface {
 	Start()
 	ContactCandidates()
 	PingCandidate(local, remote Candidate)
-	HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr)
+	HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr)
 	HandleBindingRequest(m *stun.Message, local, remote Candidate)
 }
 
@@ -140,7 +140,7 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 	}
 }
 
-func (s *controllingSelector) HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
 	ok, pendingRequest := s.agent.handleInboundBindingSuccess(m.TransactionID)
 	if !ok {
 		s.log.Warnf("discard message from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
@@ -225,7 +225,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 	s.agent.sendBindingRequest(msg, local, remote)
 }
 
-func (s *controlledSelector) HandleSucessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 	// If the controlled agent does not accept the request from the

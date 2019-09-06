@@ -42,6 +42,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Atsushi Watanabe](https://github.com/at-wat)
 * [Robert Eperjesi](https://github.com/epes)
 * [Sebastian Waisbrot](https://github.com/seppo0010)
+* [Zizheng Tai](https://github.com/ZizhengTai)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
