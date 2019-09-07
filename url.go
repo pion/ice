@@ -154,20 +154,20 @@ func ParseURL(raw string) (*URL, error) {
 		return nil, ErrPort
 	}
 
-	switch {
-	case u.Scheme == SchemeTypeSTUN:
+	switch u.Scheme {
+	case SchemeTypeSTUN:
 		qArgs, err := url.ParseQuery(rawParts.RawQuery)
 		if err != nil || len(qArgs) > 0 {
 			return nil, ErrSTUNQuery
 		}
 		u.Proto = ProtoTypeUDP
-	case u.Scheme == SchemeTypeSTUNS:
+	case SchemeTypeSTUNS:
 		qArgs, err := url.ParseQuery(rawParts.RawQuery)
 		if err != nil || len(qArgs) > 0 {
 			return nil, ErrSTUNQuery
 		}
 		u.Proto = ProtoTypeTCP
-	case u.Scheme == SchemeTypeTURN:
+	case SchemeTypeTURN:
 		proto, err := parseProto(rawParts.RawQuery)
 		if err != nil {
 			return nil, err
@@ -177,7 +177,7 @@ func ParseURL(raw string) (*URL, error) {
 		if u.Proto == ProtoType(Unknown) {
 			u.Proto = ProtoTypeUDP
 		}
-	case u.Scheme == SchemeTypeTURNS:
+	case SchemeTypeTURNS:
 		proto, err := parseProto(rawParts.RawQuery)
 		if err != nil {
 			return nil, err
