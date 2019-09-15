@@ -41,6 +41,10 @@ func (a *Agent) localInterfaces(networkTypes []NetworkType) ([]net.IP, error) {
 			continue // loopback interface
 		}
 
+		if a.interfaceFilter != nil && !a.interfaceFilter(iface.Name) {
+			continue
+		}
+
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
