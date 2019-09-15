@@ -150,6 +150,8 @@ type Agent struct {
 	log           logging.LeveledLogger
 
 	net *vnet.Net
+
+	interfaceFilter func(string) bool
 }
 
 func (a *Agent) ok() error {
@@ -234,6 +236,10 @@ type AgentConfig struct {
 	// Net is the our abstracted network interface for internal development purpose only
 	// (see github.com/pion/transport/vnet)
 	Net *vnet.Net
+
+	// InterfaceFilter is a function that you can use in order to  whitelist or blacklist
+	// the interfaces which are used to gather ICE candidates.
+	InterfaceFilter func(string) bool
 }
 
 func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
@@ -337,6 +343,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		mDNSConn: mDNSConn,
 
 		forceCandidateContact: make(chan bool, 1),
+
+		interfaceFilter: config.InterfaceFilter,
 	}
 	a.haveStarted.Store(false)
 
