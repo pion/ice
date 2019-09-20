@@ -5,7 +5,8 @@ type CandidateType byte
 
 // CandidateType enum
 const (
-	CandidateTypeHost CandidateType = iota + 1
+	CandidateTypeUnspecified CandidateType = iota
+	CandidateTypeHost
 	CandidateTypeServerReflexive
 	CandidateTypePeerReflexive
 	CandidateTypeRelay

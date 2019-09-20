@@ -64,4 +64,26 @@ var (
 	// ErrUselessUrlsProvided indicates that one or more URL was provided to the agent but no host
 	// candidate required them
 	ErrUselessUrlsProvided = errors.New("agent does not need URL with selected candidate types")
+
+	// ErrUnsupportedNAT1To1IPCandidateType indicates that the specified NAT1To1IPCandidateType is
+	// unsupported
+	ErrUnsupportedNAT1To1IPCandidateType = errors.New("unsupported 1:1 NAT IP candidate type")
+
+	// ErrInvalidNAT1To1IPMapping indicates that the given 1:1 NAT IP mapping is invalid
+	ErrInvalidNAT1To1IPMapping = errors.New("invalid 1:1 NAT IP mapping")
+
+	// ErrExternalMappedIPNotFound in NAT1To1IPMapping
+	ErrExternalMappedIPNotFound = errors.New("external mapped IP not found")
+
+	// ErrMulticastDNSWithNAT1To1IPMapping indicates that the mDNS gathering cannot be used along
+	// with 1:1 NAT IP mapping for host candidate.
+	ErrMulticastDNSWithNAT1To1IPMapping = errors.New("mDNS gathering cannot be used with 1:1 NAT IP mapping for host candidate")
+
+	// ErrIneffectiveNAT1To1IPMappingHost indicates that 1:1 NAT IP mapping for host candidate is
+	// requested, but the host candidate type is disabled.
+	ErrIneffectiveNAT1To1IPMappingHost = errors.New("1:1 NAT IP mapping for host candidate ineffective")
+
+	// ErrIneffectiveNAT1To1IPMappingSrflx indicates that 1:1 NAT IP mapping for srflx candidate is
+	// requested, but the srflx candidate type is disabled.
+	ErrIneffectiveNAT1To1IPMappingSrflx = errors.New("1:1 NAT IP mapping for srflx candidate ineffective")
 )

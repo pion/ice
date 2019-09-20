@@ -25,7 +25,7 @@ func (v *virtualNet) close() {
 	v.wan.Stop()     // nolint:errcheck,gosec
 }
 
-func buildVNet(natType *vnet.NATType) (*virtualNet, error) {
+func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN
@@ -48,16 +48,27 @@ func buildVNet(natType *vnet.NATType) (*virtualNet, error) {
 
 	// LAN 0
 	lan0, err := vnet.NewRouter(&vnet.RouterConfig{
-		StaticIP:      "27.1.1.1", // this router's external IP on eth0
+		StaticIPs: func() []string {
+			if natType0.Mode == vnet.NATModeNAT1To1 {
+				return []string{
+					"27.1.1.1/192.168.0.1",
+				}
+			}
+			return []string{
+				"27.1.1.1",
+			}
+		}(),
 		CIDR:          "192.168.0.0/24",
-		NATType:       natType,
+		NATType:       natType0,
 		LoggerFactory: loggerFactory,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	net0 := vnet.NewNet(&vnet.NetConfig{})
+	net0 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.1"},
+	})
 	err = lan0.AddNet(net0)
 	if err != nil {
 		return nil, err
@@ -70,16 +81,27 @@ func buildVNet(natType *vnet.NATType) (*virtualNet, error) {
 
 	// LAN 1
 	lan1, err := vnet.NewRouter(&vnet.RouterConfig{
-		StaticIP:      "28.1.1.1", // this router's external IP on eth0
+		StaticIPs: func() []string {
+			if natType1.Mode == vnet.NATModeNAT1To1 {
+				return []string{
+					"28.1.1.1/10.2.0.1",
+				}
+			}
+			return []string{
+				"28.1.1.1",
+			}
+		}(),
 		CIDR:          "10.2.0.0/24",
-		NATType:       natType,
+		NATType:       natType1,
 		LoggerFactory: loggerFactory,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	net1 := vnet.NewNet(&vnet.NetConfig{})
+	net1 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"10.2.0.1"},
+	})
 	err = lan1.AddNet(net1)
 	if err != nil {
 		return nil, err
@@ -168,19 +190,33 @@ func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipeWithVNet(v *virtualNet, urls0, urls1 []*URL) (*Conn, *Conn) {
+type agentTestConfig struct {
+	urls                   []*URL
+	nat1To1IPCandidateType CandidateType
+}
+
+func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var nat1To1IPs []string
+	if a0TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
+		nat1To1IPs = []string{
+			"27.1.1.1",
+		}
+	}
+
 	cfg0 := &AgentConfig{
-		Urls:             urls0,
-		Trickle:          true,
-		NetworkTypes:     supportedNetworkTypes,
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net0,
+		Urls:                   a0TestConfig.urls,
+		Trickle:                true,
+		NetworkTypes:           supportedNetworkTypes,
+		MulticastDNSMode:       MulticastDNSModeDisabled,
+		NAT1To1IPs:             nat1To1IPs,
+		NAT1To1IPCandidateType: a0TestConfig.nat1To1IPCandidateType,
+		Net:                    v.net0,
 	}
 
 	aAgent, err := NewAgent(cfg0)
@@ -204,12 +240,19 @@ func pipeWithVNet(v *virtualNet, urls0, urls1 []*URL) (*Conn, *Conn) {
 		panic(err)
 	}
 
+	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
+		nat1To1IPs = []string{
+			"28.1.1.1",
+		}
+	}
 	cfg1 := &AgentConfig{
-		Urls:             urls1,
-		Trickle:          true,
-		NetworkTypes:     supportedNetworkTypes,
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net1,
+		Urls:                   a1TestConfig.urls,
+		Trickle:                true,
+		NetworkTypes:           supportedNetworkTypes,
+		MulticastDNSMode:       MulticastDNSModeDisabled,
+		NAT1To1IPs:             nat1To1IPs,
+		NAT1To1IPCandidateType: a1TestConfig.nat1To1IPCandidateType,
+		Net:                    v.net1,
 	}
 
 	bAgent, err := NewAgent(cfg1)
@@ -270,15 +313,16 @@ func TestConnectivityVNet(t *testing.T) {
 		Proto:    ProtoTypeUDP,
 	}
 
-	t.Run("Full-cone NATs", func(t *testing.T) {
+	t.Run("Full-cone NATs on both ends", func(t *testing.T) {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		log := loggerFactory.NewLogger("test")
 
-		// buildVNet with Full-cone NATs
-		v, err := buildVNet(&vnet.NATType{
+		// buildVNet with a Full-cone NATs both LANs
+		natType := &vnet.NATType{
 			MappingBehavior:   vnet.EndpointIndependent,
 			FilteringBehavior: vnet.EndpointIndependent,
-		})
+		}
+		v, err := buildVNet(natType, natType)
 
 		if !assert.NoError(t, err, "should succeed") {
 			return
@@ -286,14 +330,17 @@ func TestConnectivityVNet(t *testing.T) {
 		defer v.close()
 
 		log.Debug("Connecting...")
-		urls0 := []*URL{
-			stunServerURL,
+		a0TestConfig := &agentTestConfig{
+			urls: []*URL{
+				stunServerURL,
+			},
 		}
-
-		urls1 := []*URL{
-			stunServerURL,
+		a1TestConfig := &agentTestConfig{
+			urls: []*URL{
+				stunServerURL,
+			},
 		}
-		ca, cb := pipeWithVNet(v, urls0, urls1)
+		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
 
 		time.Sleep(1 * time.Second)
 
@@ -303,15 +350,16 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 	})
 
-	t.Run("Symmetric NATs", func(t *testing.T) {
+	t.Run("Symmetric NATs on both ends", func(t *testing.T) {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		log := loggerFactory.NewLogger("test")
 
-		// buildVNet with Symmetric NATs
-		v, err := buildVNet(&vnet.NATType{
+		// buildVNet with a Symmetric NATs for both LANs
+		natType := &vnet.NATType{
 			MappingBehavior:   vnet.EndpointAddrPortDependent,
 			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		})
+		}
+		v, err := buildVNet(natType, natType)
 
 		if !assert.NoError(t, err, "should succeed") {
 			return
@@ -319,15 +367,90 @@ func TestConnectivityVNet(t *testing.T) {
 		defer v.close()
 
 		log.Debug("Connecting...")
-		urls0 := []*URL{
-			stunServerURL,
-			turnServerURL,
+		a0TestConfig := &agentTestConfig{
+			urls: []*URL{
+				stunServerURL,
+				turnServerURL,
+			},
 		}
+		a1TestConfig := &agentTestConfig{
+			urls: []*URL{
+				stunServerURL,
+			},
+		}
+		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
 
-		urls1 := []*URL{
-			stunServerURL,
+		log.Debug("Closing...")
+		if !closePipe(t, ca, cb) {
+			return
 		}
-		ca, cb := pipeWithVNet(v, urls0, urls1)
+	})
+
+	t.Run("1:1 NAT with host candidate vs Symmetric NATs", func(t *testing.T) {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		log := loggerFactory.NewLogger("test")
+
+		// Agent0 is behind 1:1 NAT
+		natType0 := &vnet.NATType{
+			Mode: vnet.NATModeNAT1To1,
+		}
+		// Agent1 is behind a symmetric NAT
+		natType1 := &vnet.NATType{
+			MappingBehavior:   vnet.EndpointAddrPortDependent,
+			FilteringBehavior: vnet.EndpointAddrPortDependent,
+		}
+		v, err := buildVNet(natType0, natType1)
+
+		if !assert.NoError(t, err, "should succeed") {
+			return
+		}
+		defer v.close()
+
+		log.Debug("Connecting...")
+		a0TestConfig := &agentTestConfig{
+			urls:                   []*URL{},
+			nat1To1IPCandidateType: CandidateTypeHost, // Use 1:1 NAT IP as a host candidate
+		}
+		a1TestConfig := &agentTestConfig{
+			urls: []*URL{},
+		}
+		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
+
+		log.Debug("Closing...")
+		if !closePipe(t, ca, cb) {
+			return
+		}
+	})
+
+	t.Run("1:1 NAT with srflx candidate vs Symmetric NATs", func(t *testing.T) {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		log := loggerFactory.NewLogger("test")
+
+		// Agent0 is behind 1:1 NAT
+		natType0 := &vnet.NATType{
+			Mode: vnet.NATModeNAT1To1,
+		}
+		// Agent1 is behind a symmetric NAT
+		natType1 := &vnet.NATType{
+			MappingBehavior:   vnet.EndpointAddrPortDependent,
+			FilteringBehavior: vnet.EndpointAddrPortDependent,
+		}
+		v, err := buildVNet(natType0, natType1)
+
+		if !assert.NoError(t, err, "should succeed") {
+			return
+		}
+		defer v.close()
+
+		log.Debug("Connecting...")
+		a0TestConfig := &agentTestConfig{
+			urls:                   []*URL{},
+			nat1To1IPCandidateType: CandidateTypeServerReflexive, // Use 1:1 NAT IP as a srflx candidate
+		}
+		a1TestConfig := &agentTestConfig{
+			urls: []*URL{},
+		}
+		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		if !closePipe(t, ca, cb) {

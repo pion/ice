@@ -83,9 +83,10 @@ type Agent struct {
 	// force candidate to be contacted immediately (instead of waiting for connectivityTicker)
 	forceCandidateContact chan bool
 
-	trickle         bool
-	tieBreaker      uint64
-	lite            bool
+	trickle    bool
+	tieBreaker uint64
+	lite       bool
+
 	connectionState ConnectionState
 	gatheringState  GatheringState
 
@@ -141,6 +142,9 @@ type Agent struct {
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
+
+	// 1:1 D-NAT IP address mapping
+	extIPMapper *externalIPMapper
 
 	// State for closing
 	done chan struct{}
@@ -221,6 +225,20 @@ type AgentConfig struct {
 
 	// Lite agents do not perform connectivity check and only provide host candidates.
 	Lite bool
+
+	// NAT1To1IPCandidateType is used along with NAT1To1IPs to specify which candidate type
+	// the 1:1 NAT IP addresses should be mapped to.
+	// If unspecified or CandidateTypeHost, NAT1To1IPs are used to replace host candidate IPs.
+	// If CandidateTypeServerReflexive, it will insert a srflx candidate (as if it was dervied
+	// from a STUN server) with its port number being the one for the actual host candidate.
+	// Other values will result in an error.
+	NAT1To1IPCandidateType CandidateType
+
+	// NAT1To1IPs contains a list of public IP addresses that are to be used as a host
+	// candidate or srflx candidate. This is used typically for servers that are behind
+	// 1:1 D-NAT (e.g. AWS EC2 instances) and to eliminate the need of server reflexisive
+	// candidate gathering.
+	NAT1To1IPs []string
 
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
@@ -342,13 +360,43 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
-	} else {
+	} else if a.net.IsVirtual() {
 		a.log.Warn("vnet is enabled")
 		if a.mDNSMode != MulticastDNSModeDisabled {
 			a.log.Warn("vnet does not support mDNS yet")
 		}
 	}
 
+	a.initWithDefaults(config)
+
+	// Make sure the buffer doesn't grow indefinitely.
+	// NOTE: We actually won't get anywhere close to this limit.
+	// SRTP will constantly read from the endpoint and drop packets if it's full.
+	a.buffer.SetLimitSize(maxBufferSize)
+
+	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
+		return nil, ErrLiteUsingNonHostCandidates
+	}
+
+	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
+		return nil, ErrUselessUrlsProvided
+	}
+
+	if err = a.initExtIPMapping(config); err != nil {
+		return nil, err
+	}
+
+	go a.taskLoop()
+
+	// Initialize local candidates
+	if !a.trickle {
+		a.gatherCandidates()
+	}
+	return a, nil
+}
+
+// a sSeparate init routine called by NewAgent() to overcome gocyclo error with golangci-lint
+func (a *Agent) initWithDefaults(config *AgentConfig) {
 	if config.MaxBindingRequests == nil {
 		a.maxBindingRequests = defaultMaxBindingRequests
 	} else {
@@ -385,11 +433,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
 
-	// Make sure the buffer doesn't grow indefinitely.
-	// NOTE: We actually won't get anywhere close to this limit.
-	// SRTP will constantly read from the endpoint and drop packets if it's full.
-	a.buffer.SetLimitSize(maxBufferSize)
-
 	// connectionTimeout used to declare a connection dead
 	if config.ConnectionTimeout == nil {
 		a.connectionTimeout = defaultConnectionTimeout
@@ -414,22 +457,45 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	} else {
 		a.candidateTypes = config.CandidateTypes
 	}
+}
 
-	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
-		return nil, ErrLiteUsingNonHostCandidates
+func (a *Agent) initExtIPMapping(config *AgentConfig) error {
+	var err error
+	a.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+	if err != nil {
+		return err
 	}
-
-	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
-		return nil, ErrUselessUrlsProvided
+	if a.extIPMapper == nil {
+		return nil // this may happen when config.NAT1To1IPs is an empty array
 	}
+	if a.extIPMapper.candidateType == CandidateTypeHost {
+		if a.mDNSMode == MulticastDNSModeQueryAndGather {
+			return ErrMulticastDNSWithNAT1To1IPMapping
+		}
+		candiHostEnabled := false
+		for _, candiType := range a.candidateTypes {
+			if candiType == CandidateTypeHost {
+				candiHostEnabled = true
+				break
+			}
+		}
+		if !candiHostEnabled {
+			return ErrIneffectiveNAT1To1IPMappingHost
+		}
 
-	go a.taskLoop()
-
-	// Initialize local candidates
-	if !a.trickle {
-		a.gatherCandidates()
+	} else if a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+		candiSrflxEnabled := false
+		for _, candiType := range a.candidateTypes {
+			if candiType == CandidateTypeServerReflexive {
+				candiSrflxEnabled = true
+				break
+			}
+		}
+		if !candiSrflxEnabled {
+			return ErrIneffectiveNAT1To1IPMappingSrflx
+		}
 	}
-	return a, nil
+	return nil
 }
 
 // OnConnectionStateChange sets a handler that is fired when the connection state changes
