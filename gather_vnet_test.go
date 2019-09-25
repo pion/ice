@@ -343,3 +343,63 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		assert.Equal(t, "1.2.3.4", candiSrflx.Address(), "should match")
 	})
 }
+
+func TestVNetGatherWithInterfaceFilter(t *testing.T) {
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	r, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "1.2.3.0/24",
+		LoggerFactory: loggerFactory,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create a router: %s", err)
+	}
+
+	nw := vnet.NewNet(&vnet.NetConfig{})
+	if nw == nil {
+		t.Fatalf("Failed to create a Net: %s", err)
+	}
+
+	if err = r.AddNet(nw); err != nil {
+		t.Fatalf("Failed to add a Net to the router: %s", err)
+	}
+
+	t.Run("InterfaceFilter should exclude the interface", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{
+			Net: nw,
+			InterfaceFilter: func(interfaceName string) bool {
+				assert.Equal(t, "eth0", interfaceName)
+				return false
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to create agent: %s", err)
+		}
+
+		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		if err != nil {
+			t.Fatal(err)
+		} else if len(localIPs) != 0 {
+			t.Fatal("InterfaceFilter should have excluded everything")
+		}
+	})
+
+	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{
+			Net: nw,
+			InterfaceFilter: func(interfaceName string) bool {
+				assert.Equal(t, "eth0", interfaceName)
+				return true
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to create agent: %s", err)
+		}
+
+		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		if err != nil {
+			t.Fatal(err)
+		} else if len(localIPs) == 0 {
+			t.Fatal("InterfaceFilter should not have excluded anything")
+		}
+	})
+}
