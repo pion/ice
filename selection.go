@@ -206,7 +206,7 @@ func (s *controlledSelector) ContactCandidates() {
 			s.agent.checkKeepalive()
 		}
 	} else {
-		if time.Since(s.startTime) > s.agent.connectionTimeout {
+		if time.Since(s.startTime) > s.agent.candidateSelectionTimeout {
 			s.log.Trace("check timeout reached and no valid candidate pair found, marking connection as failed")
 			s.agent.updateConnectionState(ConnectionStateFailed)
 		} else {
