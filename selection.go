@@ -190,11 +190,14 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 }
 
 type controlledSelector struct {
-	agent *Agent
-	log   logging.LeveledLogger
+	startTime time.Time
+	agent     *Agent
+	log       logging.LeveledLogger
 }
 
-func (s *controlledSelector) Start() {}
+func (s *controlledSelector) Start() {
+	s.startTime = time.Now()
+}
 
 func (s *controlledSelector) ContactCandidates() {
 	if s.agent.selectedPair != nil {
@@ -203,8 +206,12 @@ func (s *controlledSelector) ContactCandidates() {
 			s.agent.checkKeepalive()
 		}
 	} else {
-		s.log.Trace("pinging all candidates")
-		s.agent.pingAllCandidates()
+		if time.Since(s.startTime) > s.agent.connectionTimeout {
+			s.agent.updateConnectionState(ConnectionStateFailed)
+		} else {
+			s.log.Trace("pinging all candidates")
+			s.agent.pingAllCandidates()
+		}
 	}
 }
 
