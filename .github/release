@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+./semantic-release -ghr -vf
+export VERSION=$(cat .version)
+ghr $(cat .ghr)
