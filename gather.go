@@ -2,6 +2,7 @@ package ice
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -92,14 +93,26 @@ func (a *Agent) listenUDP(portMax, portMin int, network string, laddr *net.UDPAd
 	if j == 0 {
 		j = 0xFFFF
 	}
-	for i <= j {
-		laddr = &net.UDPAddr{IP: laddr.IP, Port: i}
+	if i > j {
+		return nil, ErrPort
+	}
+
+	portStart := rand.Intn(j-i+1) + i
+	portCurrent := portStart
+	for {
+		laddr = &net.UDPAddr{IP: laddr.IP, Port: portCurrent}
 		c, e := a.net.ListenUDP(network, laddr)
 		if e == nil {
 			return c, e
 		}
 		a.log.Debugf("failed to listen %s: %v", laddr.String(), e)
-		i++
+		portCurrent++
+		if portCurrent > j {
+			portCurrent = i
+		}
+		if portCurrent == portStart {
+			break
+		}
 	}
 	return nil, ErrPort
 }
