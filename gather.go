@@ -378,13 +378,45 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			return ErrPasswordEmpty
 		}
 
-		locConn, err := a.net.ListenPacket(network, "0.0.0.0:0")
-		if err != nil {
-			return err
+		TURNServerAddr := fmt.Sprintf("%s:%d", url.Host, url.Port)
+		var (
+			locConn net.PacketConn
+			err     error
+			RelAddr string
+			RelPort int
+		)
+
+		if url.Proto == ProtoTypeUDP {
+			locConn, err = a.net.ListenPacket(network, "0.0.0.0:0")
+			if err != nil {
+				return err
+			}
+
+			RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
+			RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
+		} else {
+			var (
+				tcpAddr *net.TCPAddr
+				tcpConn *net.TCPConn
+			)
+
+			tcpAddr, err = net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+			if err != nil {
+				return err
+			}
+
+			tcpConn, err = net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
+			if err != nil {
+				return err
+			}
+
+			RelAddr = tcpConn.LocalAddr().(*net.TCPAddr).IP.String()
+			RelPort = tcpConn.LocalAddr().(*net.TCPAddr).Port
+			locConn = turn.NewSTUNConn(tcpConn)
 		}
 
 		client, err := turn.NewClient(&turn.ClientConfig{
-			TURNServerAddr: fmt.Sprintf("%s:%d", url.Host, url.Port),
+			TURNServerAddr: TURNServerAddr,
 			Conn:           locConn,
 			Username:       url.Username,
 			Password:       url.Password,
@@ -405,7 +437,6 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			return err
 		}
 
-		laddr := locConn.LocalAddr().(*net.UDPAddr)
 		raddr := relayConn.LocalAddr().(*net.UDPAddr)
 
 		relayConfig := CandidateRelayConfig{
@@ -413,8 +444,8 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 			Component: ComponentRTP,
 			Address:   raddr.IP.String(),
 			Port:      raddr.Port,
-			RelAddr:   laddr.IP.String(),
-			RelPort:   laddr.Port,
+			RelAddr:   RelAddr,
+			RelPort:   RelPort,
 			OnClose: func() error {
 				client.Close()
 				return locConn.Close()

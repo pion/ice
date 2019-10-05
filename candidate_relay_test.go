@@ -45,6 +45,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 				Username: "username",
 				Password: "password",
 				Port:     serverPort,
+				Proto:    ProtoTypeUDP,
 			},
 		},
 		CandidateTypes: []CandidateType{CandidateTypeRelay},
