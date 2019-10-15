@@ -325,7 +325,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], []byte("ABC"))
 			a.pendingBindingRequests = []bindingRequest{
-				{tID, &net.UDPAddr{}, false},
+				{time.Now(), tID, &net.UDPAddr{}, false},
 			}
 
 			hostConfig := CandidateHostConfig{
@@ -550,6 +550,18 @@ func TestInboundValidity(t *testing.T) {
 		a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
 		if len(a.remoteCandidates) == 1 {
 			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
+		}
+
+		// Add 500 binding requests
+		for i := 0; i < 500; i++ {
+			a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+				timestamp: time.Now(),
+			})
+		}
+		time.Sleep(maxBindingRequestTimeout)
+		a.invalidatePendingBindingRequests()
+		if len(a.pendingBindingRequests) != 0 {
+			t.Fatal("Binding invalidation due to timeout did not remove the correct number of binding requests")
 		}
 	})
 
