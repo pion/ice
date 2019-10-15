@@ -52,7 +52,10 @@ const (
 	maxBufferSize = 1000 * 1000 // 1MB
 
 	// the number of outbound binding requests we cache
-	maxPendingBindingRequests = 50
+	maxPendingBindingRequests = 500
+
+	// wait time before binding requests can be deleted
+	maxBindingRequestTimeout = 500 * time.Millisecond
 )
 
 var (
@@ -60,6 +63,7 @@ var (
 )
 
 type bindingRequest struct {
+	timestamp      time.Time
 	transactionID  [stun.TransactionIDSize]byte
 	destination    net.Addr
 	isUseCandidate bool
@@ -950,17 +954,39 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 	return nil
 }
 
+// Removes pending binding requests that are over maxBindingRequestTimeout old
+func (a *Agent) invalidatePendingBindingRequests() int {
+	nRemoved := 0
+	temp := a.pendingBindingRequests[:0]
+	for _, bindingRequest := range a.pendingBindingRequests {
+		if time.Now().Sub(bindingRequest.timestamp) < maxBindingRequestTimeout {
+			temp = append(temp, bindingRequest)
+		} else {
+			nRemoved++
+		}
+	}
+	// Garbage collect removed elements
+	for i := len(temp); i < len(a.pendingBindingRequests); i++ {
+		a.pendingBindingRequests[i] = bindingRequest{}
+	}
+	a.pendingBindingRequests = temp
+	return nRemoved
+}
+
 func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
 	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
 
 	if overflow := len(a.pendingBindingRequests) - (maxPendingBindingRequests - 1); overflow > 0 {
-		a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
-		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
+		if nRemoved := a.invalidatePendingBindingRequests(); nRemoved == 0 {
+			a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
+			a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
+		}
 	}
 
 	useCandidate := m.Contains(stun.AttrUseCandidate)
 
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp:      time.Now(),
 		transactionID:  m.TransactionID,
 		destination:    remote.addr(),
 		isUseCandidate: useCandidate,
