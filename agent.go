@@ -51,8 +51,8 @@ const (
 	// the number of bytes that can be buffered before we start to error
 	maxBufferSize = 1000 * 1000 // 1MB
 
-	// the number of outbound binding requests we cache
-	maxPendingBindingRequests = 50
+	// wait time before binding requests can be deleted
+	maxBindingRequestTimeout = 500 * time.Millisecond
 )
 
 var (
@@ -60,6 +60,7 @@ var (
 )
 
 type bindingRequest struct {
+	timestamp      time.Time
 	transactionID  [stun.TransactionIDSize]byte
 	destination    net.Addr
 	isUseCandidate bool
@@ -338,7 +339,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		connectionState:        ConnectionStateNew,
 		localCandidates:        make(map[NetworkType][]Candidate),
 		remoteCandidates:       make(map[NetworkType][]Candidate),
-		pendingBindingRequests: make([]bindingRequest, 0, maxPendingBindingRequests),
+		pendingBindingRequests: make([]bindingRequest, 0),
 		checklist:              make([]*candidatePair, 0),
 		urls:                   config.Urls,
 		networkTypes:           config.NetworkTypes,
@@ -953,17 +954,12 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
 	a.log.Tracef("ping STUN from %s to %s\n", local.String(), remote.String())
 
-	if overflow := len(a.pendingBindingRequests) - (maxPendingBindingRequests - 1); overflow > 0 {
-		a.log.Debugf("Discarded %d pending binding requests, pendingBindingRequests is full", overflow)
-		a.pendingBindingRequests = a.pendingBindingRequests[overflow:]
-	}
-
-	useCandidate := m.Contains(stun.AttrUseCandidate)
-
+	a.invalidatePendingBindingRequests(time.Now())
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp:      time.Now(),
 		transactionID:  m.TransactionID,
 		destination:    remote.addr(),
-		isUseCandidate: useCandidate,
+		isUseCandidate: m.Contains(stun.AttrUseCandidate),
 	})
 
 	a.sendSTUN(m, local, remote)
@@ -985,9 +981,32 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	}
 }
 
+/* Removes pending binding requests that are over maxBindingRequestTimeout old
+
+   Let HTO be the transaction timeout, which SHOULD be 2*RTT if
+   RTT is known or 500 ms otherwise.
+   https://tools.ietf.org/html/rfc8445#appendix-B.1
+*/
+func (a *Agent) invalidatePendingBindingRequests(filterTime time.Time) {
+	initialSize := len(a.pendingBindingRequests)
+
+	temp := a.pendingBindingRequests[:0]
+	for _, bindingRequest := range a.pendingBindingRequests {
+		if filterTime.Sub(bindingRequest.timestamp) < maxBindingRequestTimeout {
+			temp = append(temp, bindingRequest)
+		}
+	}
+
+	a.pendingBindingRequests = temp
+	if bindRequestsRemoved := initialSize - len(a.pendingBindingRequests); bindRequestsRemoved > 0 {
+		a.log.Tracef("Discarded %d binding requests because they expired", bindRequestsRemoved)
+	}
+}
+
 // Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
 // If the bindingRequest was valid remove it from our pending cache
 func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bool, *bindingRequest) {
+	a.invalidatePendingBindingRequests(time.Now())
 	for i := range a.pendingBindingRequests {
 		if a.pendingBindingRequests[i].transactionID == id {
 			validBindingRequest := a.pendingBindingRequests[i]

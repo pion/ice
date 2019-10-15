@@ -10,6 +10,7 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -325,7 +326,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], []byte("ABC"))
 			a.pendingBindingRequests = []bindingRequest{
-				{tID, &net.UDPAddr{}, false},
+				{time.Now(), tID, &net.UDPAddr{}, false},
 			}
 
 			hostConfig := CandidateHostConfig{
@@ -551,6 +552,7 @@ func TestInboundValidity(t *testing.T) {
 		if len(a.remoteCandidates) == 1 {
 			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
 		}
+
 	})
 
 	t.Run("Invalid Binding success responses should be discarded", func(t *testing.T) {
@@ -1199,4 +1201,28 @@ func TestInitExtIPMapping(t *testing.T) {
 	if err != ErrInvalidNAT1To1IPMapping {
 		t.Fatalf("Unexpected error: %v", err)
 	}
+}
+
+func TestBindingRequestTimeout(t *testing.T) {
+	const expectedRemovalCount = 2
+
+	a, err := NewAgent(&AgentConfig{})
+	assert.NoError(t, err)
+
+	now := time.Now()
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp: now,
+	})
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp: now.Add(-25 * time.Millisecond),
+	})
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp: now.Add(-750 * time.Millisecond),
+	})
+	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+		timestamp: now.Add(-75 * time.Hour),
+	})
+
+	a.invalidatePendingBindingRequests(now)
+	assert.Equal(t, len(a.pendingBindingRequests), expectedRemovalCount, "Binding invalidation due to timeout did not remove the correct number of binding requests")
 }
