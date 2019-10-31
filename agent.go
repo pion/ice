@@ -331,6 +331,13 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	closeMDNSConn := func() {
+		if mDNSConn != nil {
+			if mdnsCloseErr := mDNSConn.Close(); mdnsCloseErr != nil {
+				log.Warnf("Failed to close mDNS: %v", mdnsCloseErr)
+			}
+		}
+	}
 
 	a := &Agent{
 		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
@@ -384,14 +391,17 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	a.buffer.SetLimitSize(maxBufferSize)
 
 	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
+		closeMDNSConn()
 		return nil, ErrLiteUsingNonHostCandidates
 	}
 
 	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
+		closeMDNSConn()
 		return nil, ErrUselessUrlsProvided
 	}
 
 	if err = a.initExtIPMapping(config); err != nil {
+		closeMDNSConn()
 		return nil, err
 	}
 

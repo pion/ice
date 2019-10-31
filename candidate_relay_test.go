@@ -8,6 +8,7 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/transport/test"
 	"github.com/pion/turn"
+	"github.com/stretchr/testify/assert"
 )
 
 func optimisticAuthHandler(username string, srcAddr net.Addr) (password string, ok bool) {
@@ -80,13 +81,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	if err = aAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = bAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = server.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
+	assert.NoError(t, server.Close())
 }

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestListenUDP(t *testing.T) {
@@ -90,4 +92,6 @@ func TestListenUDP(t *testing.T) {
 	if err != ErrPort {
 		t.Fatalf("listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 	}
+
+	assert.NoError(t, a.Close())
 }

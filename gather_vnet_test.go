@@ -6,11 +6,15 @@ import (
 	"testing"
 
 	"github.com/pion/logging"
+	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestVNetGather(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	//log := loggerFactory.NewLogger("test")
 
@@ -18,9 +22,7 @@ func TestVNetGather(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			Net: vnet.NewNet(&vnet.NetConfig{}),
 		})
-		if err != nil {
-			t.Fatalf("Failed to create agent: %s", err)
-		}
+		assert.NoError(t, err)
 
 		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
 		if len(localIPs) > 0 {
@@ -28,6 +30,8 @@ func TestVNetGather(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		}
+
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Gather a dynamic IP address", func(t *testing.T) {
@@ -58,9 +62,7 @@ func TestVNetGather(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create agent: %s", err)
-		}
+		assert.NoError(t, err)
 
 		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
 		if len(localIPs) == 0 {
@@ -77,6 +79,8 @@ func TestVNetGather(t *testing.T) {
 				t.Fatal("should be contained in the CIDR")
 			}
 		}
+
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("listenUDP", func(t *testing.T) {
@@ -141,14 +145,16 @@ func TestVNetGather(t *testing.T) {
 		} else if port != "5000" {
 			t.Fatalf("listenUDP with port restriction of 5000 listened on incorrect port (%s)", port)
 		}
-		err = conn.Close()
-		if err != nil {
-			t.Fatalf("failed to close conn")
-		}
+
+		assert.NoError(t, conn.Close())
+		assert.NoError(t, a.Close())
 	})
 }
 
 func TestVNetGatherWithNAT1To1(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	log := loggerFactory.NewLogger("test")
 
@@ -345,6 +351,9 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 }
 
 func TestVNetGatherWithInterfaceFilter(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	r, err := vnet.NewRouter(&vnet.RouterConfig{
 		CIDR:          "1.2.3.0/24",
@@ -371,9 +380,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 				return false
 			},
 		})
-		if err != nil {
-			t.Fatalf("Failed to create agent: %s", err)
-		}
+		assert.NoError(t, err)
 
 		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
 		if err != nil {
@@ -381,6 +388,8 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		} else if len(localIPs) != 0 {
 			t.Fatal("InterfaceFilter should have excluded everything")
 		}
+
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
@@ -391,9 +400,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 				return true
 			},
 		})
-		if err != nil {
-			t.Fatalf("Failed to create agent: %s", err)
-		}
+		assert.NoError(t, err)
 
 		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
 		if err != nil {
@@ -401,5 +408,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		} else if len(localIPs) == 0 {
 			t.Fatal("InterfaceFilter should not have excluded anything")
 		}
+
+		assert.NoError(t, a.Close())
 	})
 }
