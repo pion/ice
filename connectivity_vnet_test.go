@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
 	"github.com/pion/turn"
 	"github.com/stretchr/testify/assert"
@@ -297,6 +298,9 @@ func closePipe(t *testing.T, ca *Conn, cb *Conn) bool {
 }
 
 func TestConnectivityVNet(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	stunServerURL := &URL{
 		Scheme: SchemeTypeSTUN,
 		Host:   "1.2.3.4",

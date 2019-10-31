@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/pion/transport/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
@@ -45,12 +46,8 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	if err = aAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = bAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
 }
 
 func TestMulticastDNSMixedConnection(t *testing.T) {
@@ -93,10 +90,6 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	if err = aAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err = bAgent.Close(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
 }
