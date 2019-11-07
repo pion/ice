@@ -46,6 +46,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Aaron France](https://github.com/AeroNotix)
 * [Chao Yuan](https://github.com/yuanchao0310)
 * [Jason Maldonis](https://github.com/jjmaldonis)
+* [Nevio Vesic](https://github.com/0x19)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
