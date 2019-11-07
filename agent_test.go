@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
@@ -1230,4 +1231,33 @@ func TestBindingRequestTimeout(t *testing.T) {
 	a.invalidatePendingBindingRequests(now)
 	assert.Equal(t, len(a.pendingBindingRequests), expectedRemovalCount, "Binding invalidation due to timeout did not remove the correct number of binding requests")
 	assert.NoError(t, a.Close())
+}
+
+// TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
+// and ensure it's backwards compatible with previous versions of the pion/ice
+func TestAgentCredentials(t *testing.T) {
+
+	// Make sure to pass travis check by disabling the logs
+	log := logging.NewDefaultLoggerFactory()
+	log.DefaultLogLevel = logging.LogLevelDisabled
+
+	// Agent should not require any of the usernames and password to be set
+	// If set, they should follow the default 16/128 bits random number generator strategy
+
+	agent, err := NewAgent(&AgentConfig{Trickle: true, LoggerFactory: log})
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
+	assert.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
+	assert.NoError(t, agent.Close())
+
+	// Should honor RFC standards
+	// Local values MUST be unguessable, with at least 128 bits of
+	// random number generator output used to generate the password, and
+	// at least 24 bits of output to generate the username fragment.
+
+	_, err = NewAgent(&AgentConfig{Trickle: true, LocalUfrag: "xx", LoggerFactory: log})
+	assert.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
+
+	_, err = NewAgent(&AgentConfig{Trickle: true, LocalPwd: "xxxxxx", LoggerFactory: log})
+	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
 }

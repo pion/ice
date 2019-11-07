@@ -185,6 +185,13 @@ type AgentConfig struct {
 	PortMin uint16
 	PortMax uint16
 
+	// LocalUfrag and LocalPwd values used to perform connectivity
+	// checks.  The values MUST be unguessable, with at least 128 bits of
+	// random number generator output used to generate the password, and
+	// at least 24 bits of output to generate the username fragment.
+	LocalUfrag string
+	LocalPwd   string
+
 	// Trickle specifies whether or not ice agent should trickle candidates or
 	// work perform synchronous gathering.
 	Trickle bool
@@ -310,6 +317,26 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, ErrPort
 	}
 
+	// local username fragment and password
+	localUfrag := randSeq(16)
+	localPwd := randSeq(32)
+
+	if config.LocalUfrag != "" {
+		if len([]rune(config.LocalUfrag))*8 < 24 {
+			return nil, ErrLocalUfragInsufficientBits
+		}
+
+		localUfrag = config.LocalUfrag
+	}
+
+	if config.LocalPwd != "" {
+		if len([]rune(config.LocalPwd))*8 < 128 {
+			return nil, ErrLocalPwdInsufficientBits
+		}
+
+		localPwd = config.LocalPwd
+	}
+
 	mDNSName, err := generateMulticastDNSName()
 	if err != nil {
 		return nil, err
@@ -350,19 +377,18 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		checklist:              make([]*candidatePair, 0),
 		urls:                   config.Urls,
 		networkTypes:           config.NetworkTypes,
-
-		localUfrag:    randSeq(16),
-		localPwd:      randSeq(32),
-		taskChan:      make(chan task),
-		onConnected:   make(chan struct{}),
-		buffer:        packetio.NewBuffer(),
-		done:          make(chan struct{}),
-		portmin:       config.PortMin,
-		portmax:       config.PortMax,
-		trickle:       config.Trickle,
-		loggerFactory: loggerFactory,
-		log:           log,
-		net:           config.Net,
+		localUfrag:             localUfrag,
+		localPwd:               localPwd,
+		taskChan:               make(chan task),
+		onConnected:            make(chan struct{}),
+		buffer:                 packetio.NewBuffer(),
+		done:                   make(chan struct{}),
+		portmin:                config.PortMin,
+		portmax:                config.PortMax,
+		trickle:                config.Trickle,
+		loggerFactory:          loggerFactory,
+		log:                    log,
+		net:                    config.Net,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
