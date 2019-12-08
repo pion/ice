@@ -1,9 +1,5 @@
 package ice
 
-import (
-	"crypto/rand"
-)
-
 // MulticastDNSMode represents the different Multicast modes ICE can run in
 type MulticastDNSMode byte
 
@@ -20,12 +16,5 @@ const (
 )
 
 func generateMulticastDNSName() (string, error) {
-	b := make([]byte, 16)
-	_, err := rand.Read(b) //nolint
-
-	if err != nil {
-		return "", err
-	}
-
 	return generateRandString("", ".local")
 }
