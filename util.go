@@ -81,9 +81,7 @@ func generateCandidateID() (string, error) {
 
 func generateRandString(prefix, sufix string) (string, error) {
 	b := make([]byte, 16)
-	_, err := rand.Read(b) //nolint
-
-	if err != nil {
+	if _, err := rand.New(rand.NewSource(time.Now().UnixNano())).Read(b); err != nil {
 		return "", err
 	}
 
