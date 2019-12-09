@@ -121,7 +121,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 
 	correctHostName, resolveFunc := context.WithCancel(context.Background())
 	assert.NoError(t, agent.OnCandidate(func(c Candidate) {
-		if c.Address() == "validName.local" {
+		if c != nil && c.Address() == "validName.local" {
 			resolveFunc()
 		}
 	}))
