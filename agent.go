@@ -199,6 +199,9 @@ type AgentConfig struct {
 	// MulticastDNSMode controls mDNS behavior for the ICE agent
 	MulticastDNSMode MulticastDNSMode
 
+	// MulticastDNSHostName controls the hostname for this agent. If none is specified a random one will be generated
+	MulticastDNSHostName string
+
 	// ConnectionTimeout defaults to 30 seconds when this property is nil.
 	// If the duration is 0, we will never timeout this connection.
 	ConnectionTimeout *time.Duration
@@ -313,6 +316,7 @@ func createMulticastDNS(mDNSMode MulticastDNSMode, mDNSName string, log logging.
 
 // NewAgent creates a new Agent
 func NewAgent(config *AgentConfig) (*Agent, error) {
+	var err error
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
 	}
@@ -337,9 +341,15 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		localPwd = config.LocalPwd
 	}
 
-	mDNSName, err := generateMulticastDNSName()
-	if err != nil {
-		return nil, err
+	mDNSName := config.MulticastDNSHostName
+	if mDNSName == "" {
+		if mDNSName, err = generateMulticastDNSName(); err != nil {
+			return nil, err
+		}
+	}
+
+	if !strings.HasSuffix(mDNSName, ".local") || len(strings.Split(mDNSName, ".")) != 2 {
+		return nil, ErrInvalidMulticastDNSHostName
 	}
 
 	mDNSMode := config.MulticastDNSMode

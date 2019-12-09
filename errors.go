@@ -94,4 +94,7 @@ var (
 	// ErrIneffectiveNAT1To1IPMappingSrflx indicates that 1:1 NAT IP mapping for srflx candidate is
 	// requested, but the srflx candidate type is disabled.
 	ErrIneffectiveNAT1To1IPMappingSrflx = errors.New("1:1 NAT IP mapping for srflx candidate ineffective")
+
+	// ErrInvalidMulticastDNSHostName indicates an invalid MulticastDNSHostName
+	ErrInvalidMulticastDNSHostName = errors.New("invalid mDNS HostName, must end with .local and can only contain a single '.'")
 )
