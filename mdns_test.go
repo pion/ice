@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -92,4 +93,40 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 	assert.NoError(t, aAgent.Close())
 	assert.NoError(t, bAgent.Close())
+}
+
+func TestMulticastDNSStaticHostName(t *testing.T) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	_, err := NewAgent(&AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		CandidateTypes:    []CandidateType{CandidateTypeHost},
+		MulticastDNSMode:  MulticastDNSModeQueryAndGather,
+		MulticastHostName: "invalidHostName",
+	})
+	assert.Equal(t, err, ErrInvalidMulticastHostName)
+
+	agent, err := NewAgent(&AgentConfig{
+		Trickle:           true,
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		CandidateTypes:    []CandidateType{CandidateTypeHost},
+		MulticastDNSMode:  MulticastDNSModeQueryAndGather,
+		MulticastHostName: "validName.local",
+	})
+	assert.NoError(t, err)
+
+	correctHostName, resolveFunc := context.WithCancel(context.Background())
+	assert.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c.Address() == "validName.local" {
+			resolveFunc()
+		}
+	}))
+
+	assert.NoError(t, agent.GatherCandidates())
+	<-correctHostName.Done()
+	assert.NoError(t, agent.Close())
 }
