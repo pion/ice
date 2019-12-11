@@ -194,7 +194,11 @@ func (c *candidateBase) String() string {
 // LastReceived returns a time.Time indicating the last time
 // this candidate was received
 func (c *candidateBase) LastReceived() time.Time {
-	return c.lastReceived.Load().(time.Time)
+	lastReceived := c.lastReceived.Load()
+	if lastReceived == nil {
+		return time.Time{}
+	}
+	return lastReceived.(time.Time)
 }
 
 func (c *candidateBase) setLastReceived(t time.Time) {
@@ -204,7 +208,11 @@ func (c *candidateBase) setLastReceived(t time.Time) {
 // LastSent returns a time.Time indicating the last time
 // this candidate was sent
 func (c *candidateBase) LastSent() time.Time {
-	return c.lastSent.Load().(time.Time)
+	lastSent := c.lastSent.Load()
+	if lastSent == nil {
+		return time.Time{}
+	}
+	return lastSent.(time.Time)
 }
 
 func (c *candidateBase) setLastSent(t time.Time) {
