@@ -1,6 +1,11 @@
 package ice
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestCandidatePriority(t *testing.T) {
 	for _, test := range []struct {
@@ -48,4 +53,20 @@ func TestCandidatePriority(t *testing.T) {
 			t.Fatalf("Candidate(%v).Priority() = %d, want %d", test.Candidate, got, want)
 		}
 	}
+}
+
+func TestCandidateLastSent(t *testing.T) {
+	candidate := candidateBase{}
+	assert.Equal(t, candidate.LastSent(), time.Time{})
+	now := time.Now()
+	candidate.setLastSent(now)
+	assert.Equal(t, candidate.LastSent(), now)
+}
+
+func TestCandidateLastReceived(t *testing.T) {
+	candidate := candidateBase{}
+	assert.Equal(t, candidate.LastReceived(), time.Time{})
+	now := time.Now()
+	candidate.setLastReceived(now)
+	assert.Equal(t, candidate.LastReceived(), now)
 }
