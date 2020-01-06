@@ -92,8 +92,6 @@ func (s *controllingSelector) ContactCandidates() {
 			s.nominatePair(p)
 			return
 		}
-
-		s.log.Trace("pinging all candidates")
 		s.agent.pingAllCandidates()
 	}
 }
@@ -215,7 +213,6 @@ func (s *controlledSelector) ContactCandidates() {
 			s.log.Trace("check timeout reached and no valid candidate pair found, marking connection as failed")
 			s.agent.updateConnectionState(ConnectionStateFailed)
 		} else {
-			s.log.Trace("pinging all candidates")
 			s.agent.pingAllCandidates()
 		}
 	}
