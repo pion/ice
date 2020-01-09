@@ -1,12 +1,14 @@
 package ice
 
 import (
+	"net"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/pion/logging"
 	"github.com/pion/transport/test"
-	"github.com/pion/turn"
+	"github.com/pion/turn/v2"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestServerReflexiveOnlyConnection(t *testing.T) {
@@ -17,25 +19,21 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	//log := loggerFactory.NewLogger("test")
-
 	serverPort := randomPort(t)
-	server := turn.NewServer(&turn.ServerConfig{
-		Realm:         "pion.ly",
-		AuthHandler:   optimisticAuthHandler,
-		ListeningPort: serverPort,
-		LoggerFactory: loggerFactory,
-	})
-	err := server.AddListeningIPAddr("127.0.0.1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	assert.NoError(t, err)
 
-	err = server.Start()
-	if err != nil {
-		t.Fatal(err)
-	}
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			},
+		},
+	})
+	assert.NoError(t, err)
 
 	cfg := &AgentConfig{
 		NetworkTypes: []NetworkType{NetworkTypeUDP4},

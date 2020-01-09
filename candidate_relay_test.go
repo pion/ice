@@ -2,17 +2,17 @@ package ice
 
 import (
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/pion/logging"
 	"github.com/pion/transport/test"
-	"github.com/pion/turn"
+	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 )
 
-func optimisticAuthHandler(username string, srcAddr net.Addr) (password string, ok bool) {
-	return "password", true
+func optimisticAuthHandler(username string, realm string, srcAddr net.Addr) (key []byte, ok bool) {
+	return turn.GenerateAuthKey("username", "pion.ly", "password"), true
 }
 
 func TestRelayOnlyConnection(t *testing.T) {
@@ -23,19 +23,21 @@ func TestRelayOnlyConnection(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-
 	serverPort := randomPort(t)
-	server := turn.NewServer(&turn.ServerConfig{
-		Realm:         "pion.ly",
-		AuthHandler:   optimisticAuthHandler,
-		ListeningPort: serverPort,
-		LoggerFactory: loggerFactory,
+	serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
+	assert.NoError(t, err)
+
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			},
+		},
 	})
-	err := server.AddListeningIPAddr("127.0.0.1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes,
@@ -50,11 +52,6 @@ func TestRelayOnlyConnection(t *testing.T) {
 			},
 		},
 		CandidateTypes: []CandidateType{CandidateTypeRelay},
-	}
-
-	err = server.Start()
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	aAgent, err := NewAgent(cfg)
