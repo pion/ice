@@ -537,7 +537,6 @@ func (a *Agent) initExtIPMapping(config *AgentConfig) error {
 		if !candiHostEnabled {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-
 	} else if a.extIPMapper.candidateType == CandidateTypeServerReflexive {
 		candiSrflxEnabled := false
 		for _, candiType := range a.candidateTypes {
@@ -656,7 +655,6 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 
 func (a *Agent) pingAllCandidates() {
 	for _, p := range a.checklist {
-
 		if p.state == CandidatePairStateWaiting {
 			p.state = CandidatePairStateInProgress
 		} else if p.state != CandidatePairStateInProgress {
@@ -848,7 +846,6 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	}); err != nil {
 		a.log.Warnf("Failed to add mDNS candidate %s: %v", c.Address(), err)
 		return
-
 	}
 }
 

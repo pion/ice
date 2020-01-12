@@ -58,7 +58,6 @@ func (a *Agent) localInterfaces(networkTypes []NetworkType) ([]net.IP, error) {
 				ip = addr.IP
 			case *net.IPAddr:
 				ip = addr.IP
-
 			}
 			if ip == nil || ip.IsLoopback() {
 				continue
@@ -363,7 +362,6 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 			}
 		}
 	}
-
 }
 
 func (a *Agent) gatherCandidatesRelay(urls []*URL) error {

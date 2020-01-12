@@ -66,7 +66,6 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 	return &Conn{
 		agent: a,
 	}, nil
-
 }
 
 // Read implements the Conn Read method.

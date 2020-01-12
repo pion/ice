@@ -134,7 +134,6 @@ func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log
 	if _, err := c.agent().buffer.Write(buffer); err != nil {
 		log.Warnf("failed to write packet")
 	}
-
 }
 
 // close stops the recvLoop

@@ -7,11 +7,13 @@ linters-settings:
 linters:
   enable-all: true
   disable:
+    - dogsled
+    - funlen
+    - gochecknoglobals
+    - godox
+    - interfacer
     - lll
     - maligned
-    - gochecknoglobals
-    - interfacer
-    - funlen
 
 issues:
   exclude-use-default: false

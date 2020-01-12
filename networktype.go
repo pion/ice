@@ -117,7 +117,6 @@ func determineNetworkType(network string, ip net.IP) (NetworkType, error) {
 			return NetworkTypeTCP4, nil
 		}
 		return NetworkTypeTCP6, nil
-
 	}
 
 	return NetworkType(0), fmt.Errorf("unable to determine networkType from %s %s", network, ip)

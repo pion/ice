@@ -55,7 +55,6 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 		}
 	}
 	t.Fatalf("Connection failed to time out in time.")
-
 }
 
 func TestTimeout(t *testing.T) {
@@ -104,7 +103,6 @@ func TestReadClosed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Reading from a closed channel should return an error")
 	}
-
 }
 
 func stressDuplex(t *testing.T) {
@@ -440,5 +438,4 @@ func TestConnStats(t *testing.T) {
 		// we should never get here.
 		panic(err)
 	}
-
 }
