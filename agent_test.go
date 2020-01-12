@@ -657,7 +657,6 @@ func TestInboundValidity(t *testing.T) {
 
 		assert.NoError(t, a.Close())
 	})
-
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
@@ -1236,7 +1235,6 @@ func TestBindingRequestTimeout(t *testing.T) {
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
 // and ensure it's backwards compatible with previous versions of the pion/ice
 func TestAgentCredentials(t *testing.T) {
-
 	// Make sure to pass travis check by disabling the logs
 	log := logging.NewDefaultLoggerFactory()
 	log.DefaultLogLevel = logging.LogLevelDisabled
