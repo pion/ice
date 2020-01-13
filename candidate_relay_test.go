@@ -46,7 +46,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 		Urls: []*URL{
 			{
 				Scheme:   SchemeTypeTURN,
-				Host:     "localhost",
+				Host:     "127.0.0.1",
 				Username: "username",
 				Password: "password",
 				Port:     serverPort,

@@ -42,7 +42,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 		Urls: []*URL{
 			{
 				Scheme: SchemeTypeSTUN,
-				Host:   "localhost",
+				Host:   "127.0.0.1",
 				Port:   serverPort,
 			},
 		},
