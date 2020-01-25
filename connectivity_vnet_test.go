@@ -12,7 +12,7 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
-	"github.com/pion/turn"
+	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -124,23 +124,30 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	// Run TURN(STUN) server
 	credMap := map[string]string{}
 	credMap["user"] = "pass"
-	server := turn.NewServer(&turn.ServerConfig{
-		AuthHandler: func(username string, srcAddr net.Addr) (password string, ok bool) {
-			if pw, ok := credMap[username]; ok {
-				return pw, true
-			}
-			return "", false
-		},
-		Realm:         "pion.ly",
-		Net:           wanNet,
-		LoggerFactory: loggerFactory,
-	})
-	err = server.AddListeningIPAddr("1.2.3.4")
+	wanNetPacketConn, err := wanNet.ListenPacket("udp", "1.2.3.4:3478")
 	if err != nil {
 		return nil, err
 	}
-
-	err = server.Start()
+	server, err := turn.NewServer(turn.ServerConfig{
+		AuthHandler: func(username, realm string, srcAddr net.Addr) (key []byte, ok bool) {
+			if pw, ok := credMap[username]; ok {
+				return turn.GenerateAuthKey(username, realm, pw), true
+			}
+			return nil, false
+		},
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn: wanNetPacketConn,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
+					RelayAddress: net.ParseIP("1.2.3.4"),
+					Address:      "0.0.0.0",
+					Net:          wanNet,
+				},
+			},
+		},
+		Realm:         "pion.ly",
+		LoggerFactory: loggerFactory,
+	})
 	if err != nil {
 		return nil, err
 	}
