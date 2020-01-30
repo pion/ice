@@ -752,6 +752,7 @@ func (a *Agent) taskLoop() {
 			}
 		} else {
 			select {
+			case <-a.forceCandidateContact:
 			case t := <-a.taskChan:
 				// Run the task
 				t(a)
@@ -895,6 +896,8 @@ func (a *Agent) addCandidate(c Candidate) {
 			a.addPair(c, remoteCandidate)
 		}
 	}
+
+	a.requestConnectivityCheck()
 }
 
 // GetLocalCandidates returns the local candidates
