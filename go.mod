@@ -8,6 +8,6 @@ require (
 	github.com/pion/stun v0.3.3
 	github.com/pion/transport v0.8.10
 	github.com/pion/turn/v2 v2.0.3
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa
 )
