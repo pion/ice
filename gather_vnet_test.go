@@ -26,7 +26,7 @@ func TestVNetGather(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 		if len(localIPs) > 0 {
 			t.Fatal("should return no local IP")
 		} else if err != nil {
@@ -66,7 +66,7 @@ func TestVNetGather(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 		if len(localIPs) == 0 {
 			t.Fatal("should have one local IP")
 		} else if err != nil {
@@ -109,7 +109,7 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create agent: %s", err)
 		}
 
-		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 		if len(localIPs) == 0 {
 			t.Fatal("localInterfaces found no interfaces, unable to test")
 		} else if err != nil {
@@ -118,7 +118,7 @@ func TestVNetGather(t *testing.T) {
 
 		ip := localIPs[0]
 
-		conn, err := a.listenUDP(0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != nil {
 			t.Fatalf("listenUDP error with no port restriction %v", err)
 		} else if conn == nil {
@@ -129,12 +129,12 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("failed to close conn")
 		}
 
-		_, err = a.listenUDP(4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != ErrPort {
 			t.Fatal("listenUDP with invalid port range did not return ErrPort")
 		}
 
-		conn, err = a.listenUDP(5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != nil {
 			t.Fatalf("listenUDP error with no port restriction %v", err)
 		} else if conn == nil {
@@ -384,7 +384,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 		if err != nil {
 			t.Fatal(err)
 		} else if len(localIPs) != 0 {
@@ -404,7 +404,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 		if err != nil {
 			t.Fatal(err)
 		} else if len(localIPs) == 0 {

@@ -2,118 +2,16 @@ package ice
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/pion/transport/vnet"
 	"github.com/pion/turn/v2"
 )
 
 const (
 	stunGatherTimeout = time.Second * 5
 )
-
-func (a *Agent) localInterfaces(networkTypes []NetworkType) ([]net.IP, error) {
-	ips := []net.IP{}
-	ifaces, err := a.net.Interfaces()
-	if err != nil {
-		return ips, err
-	}
-
-	var IPv4Requested, IPv6Requested bool
-	for _, typ := range networkTypes {
-		if typ.IsIPv4() {
-			IPv4Requested = true
-		}
-
-		if typ.IsIPv6() {
-			IPv6Requested = true
-		}
-	}
-
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue // interface down
-		}
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue // loopback interface
-		}
-
-		if a.interfaceFilter != nil && !a.interfaceFilter(iface.Name) {
-			continue
-		}
-
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-
-		for _, addr := range addrs {
-			var ip net.IP
-			switch addr := addr.(type) {
-			case *net.IPNet:
-				ip = addr.IP
-			case *net.IPAddr:
-				ip = addr.IP
-			}
-			if ip == nil || ip.IsLoopback() {
-				continue
-			}
-
-			if ipv4 := ip.To4(); ipv4 == nil {
-				if !IPv6Requested {
-					continue
-				} else if !isSupportedIPv6(ip) {
-					continue
-				}
-			} else if !IPv4Requested {
-				continue
-			}
-
-			ips = append(ips, ip)
-		}
-	}
-	return ips, nil
-}
-
-func (a *Agent) listenUDP(portMax, portMin int, network string, laddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
-	if (laddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
-		return a.net.ListenUDP(network, laddr)
-	}
-	var i, j int
-	i = portMin
-	if i == 0 {
-		i = 1
-	}
-	j = portMax
-	if j == 0 {
-		j = 0xFFFF
-	}
-	if i > j {
-		return nil, ErrPort
-	}
-
-	portStart := rand.Intn(j-i+1) + i
-	portCurrent := portStart
-	for {
-		laddr = &net.UDPAddr{IP: laddr.IP, Port: portCurrent}
-		c, e := a.net.ListenUDP(network, laddr)
-		if e == nil {
-			return c, e
-		}
-		a.log.Debugf("failed to listen %s: %v", laddr.String(), e)
-		portCurrent++
-		if portCurrent > j {
-			portCurrent = i
-		}
-		if portCurrent == portStart {
-			break
-		}
-	}
-	return nil, ErrPort
-}
 
 // GatherCandidates initiates the trickle based gathering process.
 func (a *Agent) GatherCandidates() error {
@@ -183,7 +81,7 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	localIPs, err := a.localInterfaces(networkTypes)
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, networkTypes)
 	if err != nil {
 		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
 		return
@@ -203,7 +101,7 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 		for _, network := range supportedNetworks {
 			go func(network string, ip, mappedIP net.IP) {
 				defer wg.Done()
-				conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {
 					a.log.Warnf("could not listen %s %s\n", network, ip)
 					return
@@ -274,7 +172,7 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 					continue
 				}
 
-				conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 				if err != nil {
 					a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
 					continue
@@ -318,7 +216,7 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 				}
 			}
 		} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
-			conn, err := a.listenUDP(int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
 				a.log.Warnf("Failed to listen %s: %v\n", network, err)
 				continue
