@@ -7,7 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun"
+	"github.com/pion/transport/vnet"
 )
 
 type atomicError struct{ v atomic.Value }
@@ -143,4 +145,104 @@ func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)
 		return nil, err
 	}
 	return res, nil
+}
+
+func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkTypes []NetworkType) ([]net.IP, error) {
+	ips := []net.IP{}
+	ifaces, err := vnet.Interfaces()
+	if err != nil {
+		return ips, err
+	}
+
+	var IPv4Requested, IPv6Requested bool
+	for _, typ := range networkTypes {
+		if typ.IsIPv4() {
+			IPv4Requested = true
+		}
+
+		if typ.IsIPv6() {
+			IPv6Requested = true
+		}
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+
+		if interfaceFilter != nil && !interfaceFilter(iface.Name) {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range addrs {
+			var ip net.IP
+			switch addr := addr.(type) {
+			case *net.IPNet:
+				ip = addr.IP
+			case *net.IPAddr:
+				ip = addr.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+
+			if ipv4 := ip.To4(); ipv4 == nil {
+				if !IPv6Requested {
+					continue
+				} else if !isSupportedIPv6(ip) {
+					continue
+				}
+			} else if !IPv4Requested {
+				continue
+			}
+
+			ips = append(ips, ip)
+		}
+	}
+	return ips, nil
+}
+
+func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, portMin int, network string, laddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
+	if (laddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
+		return vnet.ListenUDP(network, laddr)
+	}
+	var i, j int
+	i = portMin
+	if i == 0 {
+		i = 1
+	}
+	j = portMax
+	if j == 0 {
+		j = 0xFFFF
+	}
+	if i > j {
+		return nil, ErrPort
+	}
+
+	portStart := rand.Intn(j-i+1) + i
+	portCurrent := portStart
+	for {
+		laddr = &net.UDPAddr{IP: laddr.IP, Port: portCurrent}
+		c, e := vnet.ListenUDP(network, laddr)
+		if e == nil {
+			return c, e
+		}
+		log.Debugf("failed to listen %s: %v", laddr.String(), e)
+		portCurrent++
+		if portCurrent > j {
+			portCurrent = i
+		}
+		if portCurrent == portStart {
+			break
+		}
+	}
+	return nil, ErrPort
 }

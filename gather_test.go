@@ -16,20 +16,20 @@ func TestListenUDP(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
 
-	localIPs, err := a.localInterfaces([]NetworkType{NetworkTypeUDP4})
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
 	assert.NotEqual(t, len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
 	assert.NoError(t, err)
 
 	ip := localIPs[0]
 
-	conn, err := a.listenUDP(0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.NoError(t, err, "listenUDP error with no port restriction")
 	assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
-	_, err = a.listenUDP(4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.Equal(t, err, ErrPort, "listenUDP with invalid port range did not return ErrPort")
 
-	conn, err = a.listenUDP(5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.NoError(t, err, "listenUDP error with no port restriction")
 	assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
@@ -43,7 +43,7 @@ func TestListenUDP(t *testing.T) {
 	result := make([]int, 0, total)
 	portRange := make([]int, 0, total)
 	for i := 0; i < total; i++ {
-		conn, err = a.listenUDP(portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 		assert.NoError(t, err, "listenUDP error with no port restriction")
 		assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
@@ -65,7 +65,7 @@ func TestListenUDP(t *testing.T) {
 	if !reflect.DeepEqual(result, portRange) {
 		t.Fatalf("listenUDP with port restriction [%d, %d], got:%v, want:%v", portMin, portMax, result, portRange)
 	}
-	_, err = a.listenUDP(portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
 	assert.NoError(t, a.Close())
