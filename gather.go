@@ -53,6 +53,9 @@ func (a *Agent) gatherCandidates() {
 			a.gatherCandidatesLocal(a.networkTypes)
 		case CandidateTypeServerReflexive:
 			a.gatherCandidatesSrflx(a.urls, a.networkTypes)
+			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+				a.gatherCandidatesSrflxMapped(a.networkTypes)
+			}
 		case CandidateTypeRelay:
 			if err := a.gatherCandidatesRelay(a.urls); err != nil {
 				a.log.Errorf("Failed to gather relay candidates: %v\n", err)
@@ -142,6 +145,47 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	}
 }
 
+func (a *Agent) gatherCandidatesSrflxMapped(networkTypes []NetworkType) {
+	for _, networkType := range networkTypes {
+		network := networkType.String()
+
+		conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+		if err != nil {
+			a.log.Warnf("Failed to listen %s: %v\n", network, err)
+			continue
+		}
+
+		laddr := conn.LocalAddr().(*net.UDPAddr)
+		mappedIP, err := a.extIPMapper.findExternalIP(laddr.IP.String())
+		if err != nil {
+			a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s\n", laddr.IP.String())
+			continue
+		}
+
+		srflxConfig := CandidateServerReflexiveConfig{
+			Network:   network,
+			Address:   mappedIP.String(),
+			Port:      laddr.Port,
+			Component: ComponentRTP,
+			RelAddr:   laddr.IP.String(),
+			RelPort:   laddr.Port,
+		}
+		c, err := NewCandidateServerReflexive(&srflxConfig)
+		if err != nil {
+			a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n",
+				network,
+				mappedIP.String(),
+				laddr.Port,
+				err)
+			continue
+		}
+
+		if err := a.addCandidate(c, conn); err != nil {
+			a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
+		}
+	}
+}
+
 func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 	var stunURLs []*URL
 	for _, url := range urls {
@@ -152,84 +196,45 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType) {
 
 	for _, networkType := range networkTypes {
 		network := networkType.String()
-		if len(stunURLs) > 0 {
-			for _, url := range stunURLs {
-				if url.Scheme != SchemeTypeSTUN {
-					continue
-				}
-
-				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
-				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
-				if err != nil {
-					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
-					continue
-				}
-
-				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
-				if err != nil {
-					a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
-					continue
-				}
-
-				xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
-				if err != nil {
-					a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
-					continue
-				}
-
-				laddr := conn.LocalAddr().(*net.UDPAddr)
-				ip := xoraddr.IP
-				port := xoraddr.Port
-				relIP := laddr.IP.String()
-				relPort := laddr.Port
-
-				srflxConfig := CandidateServerReflexiveConfig{
-					Network:   network,
-					Address:   ip.String(),
-					Port:      port,
-					Component: ComponentRTP,
-					RelAddr:   relIP,
-					RelPort:   relPort,
-				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
-				if err != nil {
-					a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
-					continue
-				}
-
-				if err := a.addCandidate(c, conn); err != nil {
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
-				}
+		for _, url := range stunURLs {
+			if url.Scheme != SchemeTypeSTUN {
+				continue
 			}
-		} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+
+			hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
+			serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
+			if err != nil {
+				a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
+				continue
+			}
+
 			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
-				a.log.Warnf("Failed to listen %s: %v\n", network, err)
+				a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
 				continue
 			}
+
+			xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
+			if err != nil {
+				a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
+				continue
+			}
+
+			ip := xoraddr.IP
+			port := xoraddr.Port
 
 			laddr := conn.LocalAddr().(*net.UDPAddr)
-			mappedIP, err := a.extIPMapper.findExternalIP(laddr.IP.String())
-			if err != nil {
-				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s\n", laddr.IP.String())
-				continue
-			}
-
 			srflxConfig := CandidateServerReflexiveConfig{
 				Network:   network,
-				Address:   mappedIP.String(),
-				Port:      laddr.Port,
+				Address:   ip.String(),
+				Port:      port,
 				Component: ComponentRTP,
 				RelAddr:   laddr.IP.String(),
 				RelPort:   laddr.Port,
 			}
 			c, err := NewCandidateServerReflexive(&srflxConfig)
 			if err != nil {
-				a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n",
-					network,
-					mappedIP.String(),
-					laddr.Port,
-					err)
+				a.log.Warnf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err)
 				continue
 			}
 
