@@ -885,25 +885,32 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 	a.requestConnectivityCheck()
 }
 
-// addCandidate assumes you are holding the lock (must be execute using a.run)
-func (a *Agent) addCandidate(c Candidate) {
-	set := a.localCandidates[c.NetworkType()]
-	for _, candidate := range set {
-		if candidate.Equal(c) {
-			return
+func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
+	return a.run(func(agent *Agent) {
+		c.start(a, candidateConn)
+
+		set := a.localCandidates[c.NetworkType()]
+		for _, candidate := range set {
+			if candidate.Equal(c) {
+				return
+			}
 		}
-	}
 
-	set = append(set, c)
-	a.localCandidates[c.NetworkType()] = set
+		set = append(set, c)
+		a.localCandidates[c.NetworkType()] = set
 
-	if remoteCandidates, ok := a.remoteCandidates[c.NetworkType()]; ok {
-		for _, remoteCandidate := range remoteCandidates {
-			a.addPair(c, remoteCandidate)
+		if remoteCandidates, ok := a.remoteCandidates[c.NetworkType()]; ok {
+			for _, remoteCandidate := range remoteCandidates {
+				a.addPair(c, remoteCandidate)
+			}
 		}
-	}
 
-	a.requestConnectivityCheck()
+		a.requestConnectivityCheck()
+
+		if a.onCandidateHdlr != nil {
+			go a.onCandidateHdlr(c)
+		}
+	})
 }
 
 // GetLocalCandidates returns the local candidates
