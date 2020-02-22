@@ -4,7 +4,6 @@ package ice
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"net"
 	"strings"
@@ -1303,41 +1302,3 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	}
 	return <-resultChan
 }
-
-// Role represents ICE agent role, which can be controlling or controlled.
-type Role byte
-
-// UnmarshalText implements TextUnmarshaler.
-func (r *Role) UnmarshalText(text []byte) error {
-	switch string(text) {
-	case "controlling":
-		*r = Controlling
-	case "controlled":
-		*r = Controlled
-	default:
-		return fmt.Errorf("unknown role %q", text)
-	}
-	return nil
-}
-
-// MarshalText implements TextMarshaler.
-func (r Role) MarshalText() (text []byte, err error) {
-	return []byte(r.String()), nil
-}
-
-func (r Role) String() string {
-	switch r {
-	case Controlling:
-		return "controlling"
-	case Controlled:
-		return "controlled"
-	default:
-		return "unknown"
-	}
-}
-
-// Possible ICE agent roles.
-const (
-	Controlling Role = iota
-	Controlled
-)
