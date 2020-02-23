@@ -891,6 +891,9 @@ func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
 		set := a.localCandidates[c.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(c) {
+				if err := c.close(); err != nil {
+					a.log.Warnf("Failed to close duplicate candidate: %v", err)
+				}
 				return
 			}
 		}
