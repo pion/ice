@@ -1,11 +1,13 @@
 package ice
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/pion/dtls/v2"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
 )
@@ -24,6 +26,25 @@ func closeConnAndLog(c closeable, log logging.LeveledLogger, msg string) {
 	if err := c.Close(); err != nil {
 		log.Warnf("Failed to close conn: %v", err)
 	}
+}
+
+// fakePacketConn wraps a net.Conn and emulates net.PacketConn
+type fakePacketConn struct {
+	nextConn net.Conn
+}
+
+func (f *fakePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, err = f.nextConn.Read(p)
+	addr = f.nextConn.RemoteAddr()
+	return
+}
+func (f *fakePacketConn) Close() error                       { return f.nextConn.Close() }
+func (f *fakePacketConn) LocalAddr() net.Addr                { return f.nextConn.LocalAddr() }
+func (f *fakePacketConn) SetDeadline(t time.Time) error      { return f.nextConn.SetDeadline(t) }
+func (f *fakePacketConn) SetReadDeadline(t time.Time) error  { return f.nextConn.SetReadDeadline(t) }
+func (f *fakePacketConn) SetWriteDeadline(t time.Time) error { return f.nextConn.SetWriteDeadline(t) }
+func (f *fakePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	return f.nextConn.Write(p)
 }
 
 // GatherCandidates initiates the trickle based gathering process.
@@ -264,7 +285,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 	network := NetworkTypeUDP4.String() // TODO IPv6
 	for i := range urls {
 		switch {
-		case urls[i].Scheme != SchemeTypeTURN:
+		case urls[i].Scheme != SchemeTypeTURN && urls[i].Scheme != SchemeTypeTURNS:
 			continue
 		case urls[i].Username == "":
 			return ErrUsernameEmpty
@@ -283,36 +304,63 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL) error {
 				RelPort int
 			)
 
-			if url.Proto == ProtoTypeUDP {
-				locConn, err = a.net.ListenPacket(network, "0.0.0.0:0")
-				if err != nil {
+			switch {
+			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURN:
+				if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
 					a.log.Warnf("Failed to listen %s: %v\n", network, err)
 					return
 				}
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
-			} else {
-				var (
-					tcpAddr *net.TCPAddr
-					tcpConn *net.TCPConn
-				)
-
-				tcpAddr, err = net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
-				if err != nil {
-					a.log.Warnf("Failed to resolve TCP Addr %s: %v\n", TURNServerAddr, err)
+			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
+				tcpAddr, connectErr := net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to resolve TCP Addr %s: %v\n", TURNServerAddr, connectErr)
 					return
 				}
 
-				tcpConn, err = net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
-				if err != nil {
-					a.log.Warnf("Failed to Dial TCP Addr %s: %v\n", TURNServerAddr, err)
+				conn, connectErr := net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
 					return
 				}
 
-				RelAddr = tcpConn.LocalAddr().(*net.TCPAddr).IP.String()
-				RelPort = tcpConn.LocalAddr().(*net.TCPAddr).Port
-				locConn = turn.NewSTUNConn(tcpConn)
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				locConn = turn.NewSTUNConn(conn)
+			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
+				udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to resolve UDP Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
+				conn, connectErr := dtls.Dial(network, udpAddr, &dtls.Config{
+					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
+				})
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial DTLS Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
+				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String()
+				RelPort = conn.LocalAddr().(*net.UDPAddr).Port
+				locConn = &fakePacketConn{conn}
+			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
+				conn, connectErr := tls.Dial(NetworkTypeTCP4.String(), TURNServerAddr, &tls.Config{
+					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
+				})
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TLS Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				locConn = turn.NewSTUNConn(conn)
+			default:
+				a.log.Warnf("Unable to handle URL in gatherCandidatesRelay %v\n", url)
+				return
 			}
 
 			client, err := turn.NewClient(&turn.ClientConfig{

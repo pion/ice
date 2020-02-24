@@ -156,6 +156,8 @@ type Agent struct {
 	net *vnet.Net
 
 	interfaceFilter func(string) bool
+
+	insecureSkipVerify bool
 }
 
 func (a *Agent) ok() error {
@@ -268,6 +270,10 @@ type AgentConfig struct {
 	// InterfaceFilter is a function that you can use in order to  whitelist or blacklist
 	// the interfaces which are used to gather ICE candidates.
 	InterfaceFilter func(string) bool
+
+	// InsecureSkipVerify controls if self-signed certificates are accepted when connecting
+	// to TURN servers via TLS or DTLS
+	InsecureSkipVerify bool
 }
 
 func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
@@ -406,6 +412,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		forceCandidateContact: make(chan bool, 1),
 
 		interfaceFilter: config.InterfaceFilter,
+
+		insecureSkipVerify: config.InsecureSkipVerify,
 	}
 	a.haveStarted.Store(false)
 
