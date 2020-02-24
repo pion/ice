@@ -3,12 +3,16 @@
 package ice
 
 import (
+	"context"
 	"net"
 	"reflect"
 	"sort"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/pion/transport/test"
+	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -69,4 +73,156 @@ func TestListenUDP(t *testing.T) {
 	assert.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
 	assert.NoError(t, a.Close())
+}
+
+// Assert that STUN gathering is done concurrently
+func TestSTUNConcurrency(t *testing.T) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	serverPort := randomPort(t)
+	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	assert.NoError(t, err)
+
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			},
+		},
+	})
+	assert.NoError(t, err)
+
+	urls := []*URL{}
+	for i := 0; i <= 10; i++ {
+		urls = append(urls, &URL{
+			Scheme: SchemeTypeSTUN,
+			Host:   "127.0.0.1",
+			Port:   serverPort + 1,
+		})
+	}
+	urls = append(urls, &URL{
+		Scheme: SchemeTypeSTUN,
+		Host:   "127.0.0.1",
+		Port:   serverPort,
+	})
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes,
+		Trickle:        true,
+		Urls:           urls,
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+	})
+	assert.NoError(t, err)
+
+	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c != nil {
+			candidateGatheredFunc()
+		}
+	}))
+	assert.NoError(t, a.GatherCandidates())
+
+	<-candidateGathered.Done()
+
+	assert.NoError(t, a.Close())
+	assert.NoError(t, server.Close())
+}
+
+// Assert that TURN gathering is done concurrently
+func TestTURNConcurrency(t *testing.T) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	runTest := func(protocol ProtoType, scheme SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
+		packetConnConfigs := []turn.PacketConnConfig{}
+		if packetConn != nil {
+			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
+				PacketConn:            packetConn,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			})
+		}
+
+		listenerConfigs := []turn.ListenerConfig{}
+		if listener != nil {
+			listenerConfigs = append(listenerConfigs, turn.ListenerConfig{
+				Listener:              listener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			})
+		}
+
+		server, err := turn.NewServer(turn.ServerConfig{
+			Realm:             "pion.ly",
+			AuthHandler:       optimisticAuthHandler,
+			PacketConnConfigs: packetConnConfigs,
+			ListenerConfigs:   listenerConfigs,
+		})
+		assert.NoError(t, err)
+
+		urls := []*URL{}
+		for i := 0; i <= 10; i++ {
+			urls = append(urls, &URL{
+				Scheme:   scheme,
+				Host:     "127.0.0.1",
+				Username: "username",
+				Password: "password",
+				Proto:    protocol,
+				Port:     serverPort + 1,
+			})
+		}
+		urls = append(urls, &URL{
+			Scheme:   scheme,
+			Host:     "127.0.0.1",
+			Username: "username",
+			Password: "password",
+			Proto:    protocol,
+			Port:     serverPort,
+		})
+
+		a, err := NewAgent(&AgentConfig{
+			NetworkTypes:   supportedNetworkTypes,
+			Trickle:        true,
+			Urls:           urls,
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+		})
+		assert.NoError(t, err)
+
+		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+		assert.NoError(t, a.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateGatheredFunc()
+			}
+		}))
+		assert.NoError(t, a.GatherCandidates())
+
+		<-candidateGathered.Done()
+
+		assert.NoError(t, a.Close())
+		assert.NoError(t, server.Close())
+	}
+
+	t.Run("UDP Relay", func(t *testing.T) {
+		serverPort := randomPort(t)
+		serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
+		assert.NoError(t, err)
+
+		runTest(ProtoTypeUDP, SchemeTypeTURN, serverListener, nil, serverPort)
+	})
+
+	t.Run("TURN Relay", func(t *testing.T) {
+		serverPort := randomPort(t)
+		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
+		assert.NoError(t, err)
+
+		runTest(ProtoTypeTCP, SchemeTypeTURN, nil, serverListener, serverPort)
+	})
 }
