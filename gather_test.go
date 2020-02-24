@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"reflect"
 	"sort"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/dtls/v2"
+	"github.com/pion/dtls/v2/pkg/crypto/selfsign"
 	"github.com/pion/transport/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
@@ -189,10 +192,11 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 
 		a, err := NewAgent(&AgentConfig{
-			NetworkTypes:   supportedNetworkTypes,
-			Trickle:        true,
-			Urls:           urls,
-			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			CandidateTypes:     []CandidateType{CandidateTypeRelay},
+			InsecureSkipVerify: true,
+			NetworkTypes:       supportedNetworkTypes,
+			Trickle:            true,
+			Urls:               urls,
 		})
 		assert.NoError(t, err)
 
@@ -218,11 +222,37 @@ func TestTURNConcurrency(t *testing.T) {
 		runTest(ProtoTypeUDP, SchemeTypeTURN, serverListener, nil, serverPort)
 	})
 
-	t.Run("TURN Relay", func(t *testing.T) {
+	t.Run("TCP Relay", func(t *testing.T) {
 		serverPort := randomPort(t)
 		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
 		runTest(ProtoTypeTCP, SchemeTypeTURN, nil, serverListener, serverPort)
+	})
+
+	t.Run("TLS Relay", func(t *testing.T) {
+		certificate, genErr := selfsign.GenerateSelfSigned()
+		assert.NoError(t, genErr)
+
+		serverPort := randomPort(t)
+		serverListener, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort), &tls.Config{
+			Certificates: []tls.Certificate{certificate},
+		})
+		assert.NoError(t, err)
+
+		runTest(ProtoTypeTCP, SchemeTypeTURNS, nil, serverListener, serverPort)
+	})
+
+	t.Run("DTLS Relay", func(t *testing.T) {
+		certificate, genErr := selfsign.GenerateSelfSigned()
+		assert.NoError(t, genErr)
+
+		serverPort := randomPort(t)
+		serverListener, err := dtls.Listen("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: serverPort}, &dtls.Config{
+			Certificates: []tls.Certificate{certificate},
+		})
+		assert.NoError(t, err)
+
+		runTest(ProtoTypeUDP, SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 }
