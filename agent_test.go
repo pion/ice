@@ -431,6 +431,9 @@ func TestConnectivityOnStartup(t *testing.T) {
 }
 
 func TestConnectivityLite(t *testing.T) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -461,8 +464,6 @@ func TestConnectivityLite(t *testing.T) {
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net0,
-
-		taskLoopInterval: time.Hour,
 	}
 
 	aAgent, err := NewAgent(cfg0)
@@ -483,7 +484,6 @@ func TestConnectivityLite(t *testing.T) {
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net1,
-		taskLoopInterval: time.Hour,
 	}
 
 	bAgent, err := NewAgent(cfg1)
