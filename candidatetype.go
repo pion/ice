@@ -44,3 +44,15 @@ func (c CandidateType) Preference() uint16 {
 	}
 	return 0
 }
+
+func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
+	if candidateTypeList == nil {
+		return false
+	}
+	for _, ct := range candidateTypeList {
+		if ct == candidateType {
+			return true
+		}
+	}
+	return false
+}

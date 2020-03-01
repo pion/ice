@@ -95,7 +95,6 @@ func (a *Agent) gatherCandidates() {
 			}
 		}
 	}
-
 	if err := a.run(func(agent *Agent) {
 		if a.onCandidateHdlr != nil {
 			go a.onCandidateHdlr(nil)

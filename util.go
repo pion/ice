@@ -246,3 +246,14 @@ func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, po
 	}
 	return nil, ErrPort
 }
+
+func addrIPAndPort(addr net.Addr) (net.IP, int, error) {
+	switch casted := addr.(type) {
+	case *net.UDPAddr:
+		return casted.IP, casted.Port, nil
+	case *net.TCPAddr:
+		return casted.IP, casted.Port, nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported address type %T", addr)
+	}
+}

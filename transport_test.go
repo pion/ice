@@ -29,7 +29,7 @@ func TestStressDuplex(t *testing.T) {
 func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	const pollrate = 100 * time.Millisecond
 	const margin = 20 * time.Millisecond // allow 20msec error in time
-	statechan := make(chan ConnectionState)
+	statechan := make(chan ConnectionState, 1)
 	ticker := time.NewTicker(pollrate)
 
 	startedAt := time.Now()

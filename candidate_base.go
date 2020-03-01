@@ -119,15 +119,9 @@ func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log
 		return
 	}
 
-	isValidRemoteCandidate := make(chan bool, 1)
-	err := c.agent().run(func(agent *Agent) {
-		isValidRemoteCandidate <- agent.noSTUNSeen(c, srcAddr)
-	})
-
-	if err != nil {
-		log.Warnf("Failed to handle message: %v", err)
-	} else if !<-isValidRemoteCandidate {
+	if !c.agent().validateNonSTUNTraffic(c, srcAddr) {
 		log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+		return
 	}
 
 	// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
