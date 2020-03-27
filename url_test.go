@@ -2,6 +2,9 @@ package ice
 
 import (
 	"errors"
+	"fmt"
+	"net"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,8 +52,8 @@ func TestParseURL(t *testing.T) {
 			expectedErr error
 		}{
 			{"", ErrSchemeType},
-			{":::", errors.New("parse :::: missing protocol scheme")},
-			{"stun:[::1]:123:", errors.New("address [::1]:123:: too many colons in address")},
+			{":::", errors.New("missing protocol scheme")},
+			{"stun:[::1]:123:", errors.New("too many colons in address")},
 			{"stun:[::1]:123a", ErrPort},
 			{"google.de", ErrSchemeType},
 			{"stun:", ErrHost},
@@ -65,6 +68,12 @@ func TestParseURL(t *testing.T) {
 
 		for i, testCase := range testCases {
 			_, err := ParseURL(testCase.rawURL)
+			switch e := err.(type) {
+			case *url.Error:
+				err = e.Err
+			case *net.AddrError:
+				err = fmt.Errorf("%v", e.Err)
+			}
 			assert.EqualError(t, err, testCase.expectedErr.Error(), "testCase: %d %v", i, testCase)
 		}
 	})
