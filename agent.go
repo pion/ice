@@ -151,6 +151,9 @@ type Agent struct {
 	done chan struct{}
 	err  atomicError
 
+	chanCandidateCallback chan func()
+	chanStateCallback     chan func()
+
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
@@ -372,6 +375,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		onConnected:            make(chan struct{}),
 		buffer:                 packetio.NewBuffer(),
 		done:                   make(chan struct{}),
+		chanCandidateCallback:  make(chan func(), 1),
+		chanStateCallback:      make(chan func(), 1),
 		portmin:                config.PortMin,
 		portmax:                config.PortMax,
 		trickle:                config.Trickle,
@@ -422,6 +427,17 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		closeMDNSConn()
 		return nil, err
 	}
+
+	go func() {
+		for f := range a.chanCandidateCallback {
+			f()
+		}
+	}()
+	go func() {
+		for f := range a.chanStateCallback {
+			f()
+		}
+	}()
 
 	// Initialize local candidates
 	if !a.trickle {
@@ -628,9 +644,9 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 		a.connectionState = newState
 		hdlr := a.onConnectionStateChangeHdlr
 		if hdlr != nil {
-			// Call handler async since we may be holding the agent lock
+			// Call handler in different routine since we may be holding the agent lock
 			// and the handler may also require it
-			go hdlr(newState)
+			a.chanStateCallback <- func() { hdlr(newState) }
 		}
 	}
 }
@@ -868,7 +884,7 @@ func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
 		a.requestConnectivityCheck()
 
 		if a.onCandidateHdlr != nil {
-			go a.onCandidateHdlr(c)
+			a.chanCandidateCallback <- func() { a.onCandidateHdlr(c) }
 		}
 	})
 }
@@ -901,6 +917,8 @@ func (a *Agent) Close() error {
 	done := make(chan struct{})
 	err := a.run(func(agent *Agent) {
 		defer func() {
+			close(agent.chanCandidateCallback)
+			close(agent.chanStateCallback)
 			close(done)
 		}()
 		agent.err.Store(ErrClosed)
