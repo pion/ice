@@ -790,9 +790,15 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 		return nil
 	}
 
-	return a.run(func(agent *Agent) {
-		agent.addRemoteCandidate(c)
-	})
+	go func() {
+		if err := a.run(func(agent *Agent) {
+			agent.addRemoteCandidate(c)
+		}); err != nil {
+			a.log.Warnf("Failed to add remote candidate %s: %v", c.Address(), err)
+			return
+		}
+	}()
+	return nil
 }
 
 func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
