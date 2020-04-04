@@ -55,12 +55,12 @@ func (a *Agent) GatherCandidates() error {
 		if a.gatheringState != GatheringStateNew {
 			gatherErrChan <- ErrMultipleGatherAttempted
 			return
-		} else if a.onCandidateHdlr == nil {
+		} else if a.onCandidateHdlr.Load() == nil {
 			gatherErrChan <- ErrNoOnCandidateHandler
 			return
 		}
 
-		go a.gatherCandidates()
+		a.gatherCandidates()
 		gatherErrChan <- nil
 	})
 	if runErr != nil {
@@ -69,47 +69,68 @@ func (a *Agent) GatherCandidates() error {
 	return <-gatherErrChan
 }
 
-func (a *Agent) gatherCandidates() {
+func (a *Agent) gatherCandidates() <-chan struct{} {
 	gatherStateUpdated := make(chan bool)
-	if err := a.run(func(agent *Agent) {
-		a.gatheringState = GatheringStateGathering
-		close(gatherStateUpdated)
-	}); err != nil {
-		a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
-		return
-	}
-	<-gatherStateUpdated
 
-	for _, t := range a.candidateTypes {
-		switch t {
-		case CandidateTypeHost:
-			a.gatherCandidatesLocal(a.networkTypes)
-		case CandidateTypeServerReflexive:
-			a.gatherCandidatesSrflx(a.urls, a.networkTypes)
-			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
-				a.gatherCandidatesSrflxMapped(a.networkTypes)
-			}
-		case CandidateTypeRelay:
-			if err := a.gatherCandidatesRelay(a.urls); err != nil {
-				a.log.Errorf("Failed to gather relay candidates: %v\n", err)
+	a.chanCandidate = make(chan Candidate, 1)
+	var closeChanCandidateOnce sync.Once
+	go func() {
+		for c := range a.chanCandidate {
+			if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
+				onCandidateHdlr(c)
 			}
 		}
-	}
-	if err := a.run(func(agent *Agent) {
-		if a.onCandidateHdlr != nil {
-			a.chanCandidateCallback <- func() { a.onCandidateHdlr(nil) }
+		if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
+			onCandidateHdlr(nil)
 		}
-	}); err != nil {
-		a.log.Warnf("Failed to run onCandidateHdlr task: %v\n", err)
-		return
-	}
+	}()
 
-	if err := a.run(func(agent *Agent) {
-		a.gatheringState = GatheringStateComplete
-	}); err != nil {
-		a.log.Warnf("Failed to update gatheringState: %v\n", err)
-		return
-	}
+	done := make(chan struct{})
+
+	go func() {
+		defer func() {
+			closeChanCandidateOnce.Do(func() {
+				close(a.chanCandidate)
+			})
+			close(done)
+		}()
+
+		if err := a.run(func(agent *Agent) {
+			a.gatheringState = GatheringStateGathering
+			close(gatherStateUpdated)
+		}); err != nil {
+			a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
+			return
+		}
+		<-gatherStateUpdated
+
+		for _, t := range a.candidateTypes {
+			switch t {
+			case CandidateTypeHost:
+				a.gatherCandidatesLocal(a.networkTypes)
+			case CandidateTypeServerReflexive:
+				a.gatherCandidatesSrflx(a.urls, a.networkTypes)
+				if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+					a.gatherCandidatesSrflxMapped(a.networkTypes)
+				}
+			case CandidateTypeRelay:
+				if err := a.gatherCandidatesRelay(a.urls); err != nil {
+					a.log.Errorf("Failed to gather relay candidates: %v\n", err)
+				}
+			}
+		}
+		if err := a.run(func(agent *Agent) {
+			closeChanCandidateOnce.Do(func() {
+				close(agent.chanCandidate)
+			})
+			a.gatheringState = GatheringStateComplete
+		}); err != nil {
+			a.log.Warnf("Failed to stop OnCandidate handler routine and update gatheringState: %v\n", err)
+			return
+		}
+	}()
+
+	return done
 }
 
 func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
