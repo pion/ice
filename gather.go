@@ -22,6 +22,11 @@ type closeable interface {
 
 // Close a net.Conn and log if we have a failure
 func closeConnAndLog(c closeable, log logging.LeveledLogger, msg string) {
+	if c == nil {
+		log.Warnf("Conn is not allocated")
+		return
+	}
+
 	log.Warnf(msg)
 	if err := c.Close(); err != nil {
 		log.Warnf("Failed to close conn: %v", err)
