@@ -26,7 +26,7 @@ func (a *atomicError) Load() error {
 // https://tools.ietf.org/html/rfc8445#section-5.1.1.1
 func isSupportedIPv6(ip net.IP) bool {
 	if len(ip) != net.IPv6len ||
-		!isZeros(ip[0:12]) || // !(IPv4-compatible IPv6)
+		isZeros(ip[0:12]) || // !(IPv4-compatible IPv6)
 		ip[0] == 0xfe && ip[1]&0xc0 == 0xc0 || // !(IPv6 site-local unicast)
 		ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() {
