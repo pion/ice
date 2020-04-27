@@ -52,6 +52,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Ori Bernstein](https://eigenstate.org)
 * [Sam Lancia](https://github.com/nerd2)
 * [Lander Noterman](https://github.com/LanderN)
+* [BUPTCZQ](https://github.com/buptczq)
 * [Henry](https://github.com/cryptix)
 
 ### License
