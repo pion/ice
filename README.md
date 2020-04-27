@@ -49,6 +49,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Nevio Vesic](https://github.com/0x19)
 * [David Hamilton](https://github.com/dihamilton)
 * [adwpc](https://github.com/adwpc)
+* [BUPTCZQ](https://github.com/buptczq)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
