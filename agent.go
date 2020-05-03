@@ -191,10 +191,16 @@ func (a *Agent) run(t func(*Agent)) error {
 	case <-a.done:
 		return a.getErr()
 	case a.muChan <- struct{}{}:
-		t(a)
-
+		var err error
+		select {
+		case <-a.done:
+			// Ensure the agent is not closed
+			err = a.getErr()
+		default:
+			t(a)
+		}
 		<-a.muChan
-		return nil
+		return err
 	}
 }
 
