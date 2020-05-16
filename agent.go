@@ -745,7 +745,7 @@ func (a *Agent) findPair(local, remote Candidate) *candidatePair {
 	return nil
 }
 
-// ResetPair initiate ICE Restart on client without send candidates
+// ResetPair initiate ICE Restart without send candidates
 func (a *Agent) ResetPair() {
 	a.setSelectedPair(nil)
 }
