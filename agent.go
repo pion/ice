@@ -745,6 +745,11 @@ func (a *Agent) findPair(local, remote Candidate) *candidatePair {
 	return nil
 }
 
+// ResetPair connection
+func (a *Agent) ResetPair() {
+	a.setSelectedPair(nil)
+}
+
 // validateSelectedPair checks if the selected pair is (still) valid
 // Note: the caller should hold the agent lock.
 func (a *Agent) validateSelectedPair() bool {
