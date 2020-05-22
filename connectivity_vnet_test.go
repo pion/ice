@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
 	"github.com/pion/turn/v2"
@@ -161,13 +162,9 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}, nil
 }
 
-func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
+func signalAgents(aAgent, bAgent *Agent) {
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	log := loggerFactory.NewLogger("test")
-
-	// Manual signaling
-	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
-	bUfrag, bPwd := bAgent.GetLocalUserCredentials()
 
 	candidates, err := aAgent.GetLocalCandidates()
 	check(err)
@@ -182,6 +179,14 @@ func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 		log.Debugf("agent b candidate: %v", c.String())
 		check(aAgent.AddRemoteCandidate(copyCandidate(c)))
 	}
+}
+
+func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
+	// Manual signaling
+	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
+	bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+
+	signalAgents(aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -475,6 +480,12 @@ func TestConnectivityVNet(t *testing.T) {
 
 // TestDisconnectedToConnected asserts that an agent can go to disconnected, and then return to connected successfully
 func TestDisconnectedToConnected(t *testing.T) {
+	lim := test.TimeOut(time.Second * 10)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// Create a network with two interfaces
@@ -501,16 +512,17 @@ func TestDisconnectedToConnected(t *testing.T) {
 
 	assert.NoError(t, wan.Start())
 
-	oneSecond := time.Second
-	threeSeconds := time.Second * 3
+	connectionTimeout := time.Second
+	keepaliveInterval := time.Millisecond * 20
 
 	// Create two agents and connect them
 	controllingAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:      supportedNetworkTypes,
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net0,
-		ConnectionTimeout: &threeSeconds,
-		KeepaliveInterval: &oneSecond,
+		ConnectionTimeout: &connectionTimeout,
+		KeepaliveInterval: &keepaliveInterval,
+		taskLoopInterval:  keepaliveInterval,
 	})
 	assert.NoError(t, err)
 
@@ -518,8 +530,9 @@ func TestDisconnectedToConnected(t *testing.T) {
 		NetworkTypes:      supportedNetworkTypes,
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
-		ConnectionTimeout: &threeSeconds,
-		KeepaliveInterval: &oneSecond,
+		ConnectionTimeout: &connectionTimeout,
+		KeepaliveInterval: &keepaliveInterval,
+		taskLoopInterval:  keepaliveInterval,
 	})
 	assert.NoError(t, err)
 
@@ -557,4 +570,95 @@ func TestDisconnectedToConnected(t *testing.T) {
 	blockUntilStateSeen(ConnectionStateConnected, controlledStateChanges)
 
 	assert.NoError(t, wan.Stop())
+	assert.NoError(t, controllingAgent.Close())
+	assert.NoError(t, controlledAgent.Close())
+}
+
+// Agent.Write should use the best valid pair if a selected pair is not yet available
+func TestWriteUseValidPair(t *testing.T) {
+	lim := test.TimeOut(time.Second * 10)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	// Create a network with two interfaces
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "0.0.0.0/0",
+		LoggerFactory: loggerFactory,
+	})
+	assert.NoError(t, err)
+
+	wan.AddChunkFilter(func(c vnet.Chunk) bool {
+		if stun.IsMessage(c.UserData()) {
+			m := &stun.Message{
+				Raw: c.UserData(),
+			}
+			if err = m.Decode(); err != nil {
+				return false
+			} else if m.Contains(stun.AttrUseCandidate) {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	net0 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.1"},
+	})
+	assert.NoError(t, wan.AddNet(net0))
+
+	net1 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.2"},
+	})
+	assert.NoError(t, wan.AddNet(net1))
+
+	assert.NoError(t, wan.Start())
+
+	// Create two agents and connect them
+	controllingAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:     supportedNetworkTypes,
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              net0,
+	})
+	assert.NoError(t, err)
+
+	controlledAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:     supportedNetworkTypes,
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              net1,
+	})
+	assert.NoError(t, err)
+
+	signalAgents(controllingAgent, controlledAgent)
+
+	controllingUfrag, controllingPwd := controllingAgent.GetLocalUserCredentials()
+	controlledUfrag, controlledPwd := controlledAgent.GetLocalUserCredentials()
+
+	assert.NoError(t, controllingAgent.startConnectivityChecks(true, controlledUfrag, controlledPwd))
+	assert.NoError(t, controlledAgent.startConnectivityChecks(false, controllingUfrag, controllingPwd))
+
+	testMessage := []byte("Test Message")
+	go func() {
+		for {
+			if _, writeErr := (&Conn{agent: controllingAgent}).Write(testMessage); writeErr != nil {
+				return
+			}
+
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+
+	readBuf := make([]byte, len(testMessage))
+	_, err = (&Conn{agent: controlledAgent}).Read(readBuf)
+	assert.NoError(t, err)
+
+	assert.Equal(t, readBuf, testMessage)
+
+	assert.NoError(t, wan.Stop())
+	assert.NoError(t, controllingAgent.Close())
+	assert.NoError(t, controlledAgent.Close())
 }
