@@ -753,11 +753,10 @@ func (a *Agent) validateSelectedPair() bool {
 		return false
 	}
 
-	if (a.connectionTimeout != 0) &&
-		(time.Since(selectedPair.remote.LastReceived()) > a.connectionTimeout) {
-		a.setSelectedPair(nil)
+	if (a.connectionTimeout != 0) && (time.Since(selectedPair.remote.LastReceived()) > a.connectionTimeout) {
 		a.updateConnectionState(ConnectionStateDisconnected)
-		return false
+	} else {
+		a.updateConnectionState(ConnectionStateConnected)
 	}
 
 	return true
