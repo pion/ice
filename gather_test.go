@@ -256,3 +256,13 @@ func TestTURNConcurrency(t *testing.T) {
 		runTest(ProtoTypeUDP, SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 }
+
+func TestCloseConnLog(t *testing.T) {
+	a, err := NewAgent(&AgentConfig{})
+	assert.NoError(t, err)
+	defer a.Close()
+
+	closeConnAndLog(nil, a.log, "normal nil")
+	var nc *net.UDPConn
+	closeConnAndLog(nc, a.log, "nil ptr")
+}
