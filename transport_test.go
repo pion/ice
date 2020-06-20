@@ -72,7 +72,7 @@ func TestTimeout(t *testing.T) {
 		panic(err)
 	}
 
-	testTimeout(t, ca, defaultConnectionTimeout)
+	testTimeout(t, ca, defaultDisconnectTimeout)
 
 	ca, cb = pipeWithTimeout(5*time.Second, 3*time.Second)
 	err = cb.Close()
@@ -261,7 +261,7 @@ func pipe() (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
+func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
 	var urls []*URL
 
 	aNotifier, aConnected := onConnected()
@@ -273,7 +273,7 @@ func pipeWithTimeout(iceTimeout time.Duration, iceKeepalive time.Duration) (*Con
 	cfg := &AgentConfig{
 		Urls:              urls,
 		Trickle:           true,
-		ConnectionTimeout: &iceTimeout,
+		DisconnectTimeout: &disconnectTimeout,
 		KeepaliveInterval: &iceKeepalive,
 		NetworkTypes:      supportedNetworkTypes,
 	}

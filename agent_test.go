@@ -702,13 +702,13 @@ func TestConnectionStateCallback(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	timeoutDuration := time.Second
+	disconnectDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 	cfg := &AgentConfig{
 		Urls:              []*URL{},
 		Trickle:           true,
 		NetworkTypes:      supportedNetworkTypes,
-		ConnectionTimeout: &timeoutDuration,
+		DisconnectTimeout: &disconnectDuration,
 		KeepaliveInterval: &KeepaliveInterval,
 		taskLoopInterval:  500 * time.Millisecond,
 	}

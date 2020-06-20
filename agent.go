@@ -25,8 +25,11 @@ const (
 	// keepaliveInterval used to keep candidates alive
 	defaultKeepaliveInterval = 10 * time.Second
 
-	// defaultConnectionTimeout used to declare a connection dead
-	defaultConnectionTimeout = 30 * time.Second
+	// defaultDisconnectTimeout is the default time till an Agent transitions disconnected
+	defaultDisconnectTimeout = 5 * time.Second
+
+	// defaultFailureTimeout is the default time till an Agent transitions to failed
+	defaultFailureTimeout = 25 * time.Second //nolint
 
 	// timeout for candidate selection, after this time, the best candidate is used
 	defaultCandidateSelectionTimeout = 10 * time.Second
@@ -112,9 +115,13 @@ type Agent struct {
 
 	candidateTypes []CandidateType
 
-	// How long should a pair stay quiet before we declare it dead?
-	// 0 means never timeout
-	connectionTimeout time.Duration
+	// How long connectivity checks can fail before the ICE Agent
+	// goes to disconnected
+	disconnectTimeout time.Duration
+
+	// How long connectivity checks can fail before the ICE Agent
+	// goes to failed
+	failedTimeout time.Duration //nolint
 
 	// How often should we send keepalive packets?
 	// 0 means never
@@ -230,9 +237,14 @@ type AgentConfig struct {
 	// MulticastDNSHostName controls the hostname for this agent. If none is specified a random one will be generated
 	MulticastDNSHostName string
 
-	// ConnectionTimeout defaults to 30 seconds when this property is nil.
-	// If the duration is 0, we will never timeout this connection.
-	ConnectionTimeout *time.Duration
+	// DisconnectTimeout defaults to 5 seconds when this property is nil.
+	// If the duration is 0, the ICE Agent will never go to disconnected
+	DisconnectTimeout *time.Duration
+
+	// FailedTimeout defaults to 25 seconds when this property is nil.
+	// If the duration is 0, we will never go to failed.
+	FailedTimeout *time.Duration
+
 	// KeepaliveInterval determines how often should we send ICE
 	// keepalives (should be less then connectiontimeout above)
 	// when this is nil, it defaults to 10 seconds.
@@ -489,11 +501,10 @@ func (a *Agent) initWithDefaults(config *AgentConfig) {
 		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
 
-	// connectionTimeout used to declare a connection dead
-	if config.ConnectionTimeout == nil {
-		a.connectionTimeout = defaultConnectionTimeout
+	if config.DisconnectTimeout == nil {
+		a.disconnectTimeout = defaultDisconnectTimeout
 	} else {
-		a.connectionTimeout = *config.ConnectionTimeout
+		a.disconnectTimeout = *config.DisconnectTimeout
 	}
 
 	if config.KeepaliveInterval == nil {
@@ -753,7 +764,7 @@ func (a *Agent) validateSelectedPair() bool {
 		return false
 	}
 
-	if (a.connectionTimeout != 0) && (time.Since(selectedPair.remote.LastReceived()) > a.connectionTimeout) {
+	if (a.disconnectTimeout != 0) && (time.Since(selectedPair.remote.LastReceived()) > a.disconnectTimeout) {
 		a.updateConnectionState(ConnectionStateDisconnected)
 	} else {
 		a.updateConnectionState(ConnectionStateConnected)
