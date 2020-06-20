@@ -118,14 +118,24 @@ func (c *Conn) Close() error {
 
 // TODO: Maybe just switch to using io.ReadWriteCloser?
 
-// LocalAddr is a stub
+// LocalAddr returns the local address of the current selected pair or nil if there is none.
 func (c *Conn) LocalAddr() net.Addr {
-	return nil
+	pair := c.agent.getSelectedPair()
+	if pair == nil {
+		return nil
+	}
+
+	return pair.local.addr()
 }
 
-// RemoteAddr is a stub
+// RemoteAddr returns the remote address of the current selected pair or nil if there is none.
 func (c *Conn) RemoteAddr() net.Addr {
-	return nil
+	pair := c.agent.getSelectedPair()
+	if pair == nil {
+		return nil
+	}
+
+	return pair.remote.addr()
 }
 
 // SetDeadline is a stub

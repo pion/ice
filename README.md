@@ -51,6 +51,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [adwpc](https://github.com/adwpc)
 * [Ori Bernstein](https://eigenstate.org)
 * [Sam Lancia](https://github.com/nerd2)
+* [Henry](https://github.com/cryptix)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
