@@ -512,7 +512,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 
 	assert.NoError(t, wan.Start())
 
-	connectionTimeout := time.Second
+	disconnectTimeout := time.Second
 	keepaliveInterval := time.Millisecond * 20
 
 	// Create two agents and connect them
@@ -520,7 +520,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		NetworkTypes:      supportedNetworkTypes,
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net0,
-		ConnectionTimeout: &connectionTimeout,
+		DisconnectTimeout: &disconnectTimeout,
 		KeepaliveInterval: &keepaliveInterval,
 		taskLoopInterval:  keepaliveInterval,
 	})
@@ -530,7 +530,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		NetworkTypes:      supportedNetworkTypes,
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
-		ConnectionTimeout: &connectionTimeout,
+		DisconnectTimeout: &disconnectTimeout,
 		KeepaliveInterval: &keepaliveInterval,
 		taskLoopInterval:  keepaliveInterval,
 	})
