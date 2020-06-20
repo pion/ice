@@ -121,7 +121,7 @@ type Agent struct {
 
 	// How long connectivity checks can fail before the ICE Agent
 	// goes to failed
-	failedTimeout time.Duration //nolint
+	failedTimeout time.Duration
 
 	// How often should we send keepalive packets?
 	// 0 means never
@@ -764,9 +764,21 @@ func (a *Agent) validateSelectedPair() bool {
 		return false
 	}
 
-	if (a.disconnectTimeout != 0) && (time.Since(selectedPair.remote.LastReceived()) > a.disconnectTimeout) {
+	disconnectedTime := time.Since(selectedPair.remote.LastReceived())
+
+	// Only allow transitions to failed if a.failedTimeout is non-zero
+	totalTimeToFailure := a.failedTimeout
+	if totalTimeToFailure != 0 {
+		totalTimeToFailure += a.disconnectTimeout
+	}
+
+	switch {
+	case totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure:
+		a.deleteAllCandidates()
+		a.updateConnectionState(ConnectionStateFailed)
+	case a.disconnectTimeout != 0 && disconnectedTime > a.disconnectTimeout:
 		a.updateConnectionState(ConnectionStateDisconnected)
-	} else {
+	default:
 		a.updateConnectionState(ConnectionStateConnected)
 	}
 
@@ -940,25 +952,8 @@ func (a *Agent) Close() error {
 		agent.err.Store(ErrClosed)
 		close(agent.done)
 
-		// Cleanup all candidates
-		for net, cs := range agent.localCandidates {
-			for _, c := range cs {
-				err := c.close()
-				if err != nil {
-					a.log.Warnf("Failed to close candidate %s: %v", c, err)
-				}
-			}
-			delete(agent.localCandidates, net)
-		}
-		for net, cs := range agent.remoteCandidates {
-			for _, c := range cs {
-				err := c.close()
-				if err != nil {
-					a.log.Warnf("Failed to close candidate %s: %v", c, err)
-				}
-			}
-			delete(agent.remoteCandidates, net)
-		}
+		a.deleteAllCandidates()
+
 		if err := a.buffer.Close(); err != nil {
 			a.log.Warnf("failed to close buffer: %v", err)
 		}
@@ -976,6 +971,29 @@ func (a *Agent) Close() error {
 
 	<-done
 	return nil
+}
+
+// Remove all candidates. This closes any listening sockets
+// and removes both the local and remote candidate lists.
+//
+// This is used for restarts, failures and on close
+func (a *Agent) deleteAllCandidates() {
+	for net, cs := range a.localCandidates {
+		for _, c := range cs {
+			if err := c.close(); err != nil {
+				a.log.Warnf("Failed to close candidate %s: %v", c, err)
+			}
+		}
+		delete(a.localCandidates, net)
+	}
+	for net, cs := range a.remoteCandidates {
+		for _, c := range cs {
+			if err := c.close(); err != nil {
+				a.log.Warnf("Failed to close candidate %s: %v", c, err)
+			}
+		}
+		delete(a.remoteCandidates, net)
+	}
 }
 
 func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {

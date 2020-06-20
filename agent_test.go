@@ -691,7 +691,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 	assert.NoError(t, a.Close())
 }
 
-// Assert that Agent emits Connecting/Connected/Disconnected/Closed messages
+// Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestConnectionStateCallback(t *testing.T) {
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -703,12 +703,15 @@ func TestConnectionStateCallback(t *testing.T) {
 	wg.Add(2)
 
 	disconnectDuration := time.Second
+	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
+
 	cfg := &AgentConfig{
 		Urls:              []*URL{},
 		Trickle:           true,
 		NetworkTypes:      supportedNetworkTypes,
 		DisconnectTimeout: &disconnectDuration,
+		FailedTimeout:     &failedDuration,
 		KeepaliveInterval: &KeepaliveInterval,
 		taskLoopInterval:  500 * time.Millisecond,
 	}
@@ -750,6 +753,7 @@ func TestConnectionStateCallback(t *testing.T) {
 	isChecking := make(chan interface{})
 	isConnected := make(chan interface{})
 	isDisconnected := make(chan interface{})
+	isFailed := make(chan interface{})
 	isClosed := make(chan interface{})
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
@@ -759,6 +763,8 @@ func TestConnectionStateCallback(t *testing.T) {
 			close(isConnected)
 		case ConnectionStateDisconnected:
 			close(isDisconnected)
+		case ConnectionStateFailed:
+			close(isFailed)
 		case ConnectionStateClosed:
 			close(isClosed)
 		}
@@ -773,6 +779,7 @@ func TestConnectionStateCallback(t *testing.T) {
 	<-isChecking
 	<-isConnected
 	<-isDisconnected
+	<-isFailed
 
 	assert.NoError(t, aAgent.Close())
 	assert.NoError(t, bAgent.Close())
@@ -1260,4 +1267,49 @@ func TestAgentCredentials(t *testing.T) {
 
 	_, err = NewAgent(&AgentConfig{Trickle: true, LocalPwd: "xxxxxx", LoggerFactory: log})
 	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
+}
+
+// Assert that Agent on Failure flushes all existing candidates
+// User can then do an ICE Restart to bring agent back
+func TestConnectionStateFailedFlushCandidates(t *testing.T) {
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	oneSecond := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	cfg := &AgentConfig{
+		Urls:              []*URL{},
+		NetworkTypes:      supportedNetworkTypes,
+		DisconnectTimeout: &oneSecond,
+		FailedTimeout:     &oneSecond,
+		KeepaliveInterval: &KeepaliveInterval,
+		taskLoopInterval:  250 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	assert.NoError(t, err)
+
+	bAgent, err := NewAgent(cfg)
+	assert.NoError(t, err)
+
+	isFailed := make(chan interface{})
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			close(isFailed)
+		}
+	})
+	assert.NoError(t, err)
+
+	connect(aAgent, bAgent)
+	<-isFailed
+
+	assert.Equal(t, len(aAgent.remoteCandidates), 0)
+	assert.Equal(t, len(bAgent.localCandidates), 0)
+
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
 }
