@@ -1,4 +1,4 @@
-module github.com/pion/ice
+module github.com/pion/ice/v2
 
 go 1.13
 
