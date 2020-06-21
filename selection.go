@@ -26,31 +26,6 @@ type controllingSelector struct {
 
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
-	go func() {
-		select {
-		case <-s.agent.done:
-			return
-		case <-time.After(s.agent.candidateSelectionTimeout):
-		}
-
-		err := s.agent.run(func(a *Agent) {
-			if s.nominatedPair == nil {
-				p := s.agent.getBestValidCandidatePair()
-				if p == nil {
-					s.log.Trace("check timeout reached and no valid candidate pair found, marking connection as failed")
-					s.agent.updateConnectionState(ConnectionStateFailed)
-				} else {
-					s.log.Tracef("check timeout reached, nominating (%s, %s)", p.local.String(), p.remote.String())
-					s.nominatedPair = p
-					s.nominatePair(p)
-				}
-			}
-		})
-
-		if err != nil {
-			s.log.Errorf("error processing checkCandidatesTimeout handler %v", err.Error())
-		}
-	}()
 }
 
 func (s *controllingSelector) isNominatable(c Candidate) bool {
@@ -193,13 +168,11 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 }
 
 type controlledSelector struct {
-	startTime time.Time
-	agent     *Agent
-	log       logging.LeveledLogger
+	agent *Agent
+	log   logging.LeveledLogger
 }
 
 func (s *controlledSelector) Start() {
-	s.startTime = time.Now()
 }
 
 func (s *controlledSelector) ContactCandidates() {
@@ -209,12 +182,7 @@ func (s *controlledSelector) ContactCandidates() {
 			s.agent.checkKeepalive()
 		}
 	} else {
-		if time.Since(s.startTime) > s.agent.candidateSelectionTimeout {
-			s.log.Trace("check timeout reached and no valid candidate pair found, marking connection as failed")
-			s.agent.updateConnectionState(ConnectionStateFailed)
-		} else {
-			s.agent.pingAllCandidates()
-		}
+		s.agent.pingAllCandidates()
 	}
 }
 

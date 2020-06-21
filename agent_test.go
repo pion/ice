@@ -357,20 +357,24 @@ func TestConnectivityOnStartup(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	stunServerURL := &URL{
-		Scheme: SchemeTypeSTUN,
-		Host:   "1.2.3.4",
-		Port:   3478,
-		Proto:  ProtoTypeUDP,
-	}
+	// Create a network with two interfaces
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "0.0.0.0/0",
+		LoggerFactory: logging.NewDefaultLoggerFactory(),
+	})
+	assert.NoError(t, err)
 
-	natType := &vnet.NATType{
-		MappingBehavior:   vnet.EndpointIndependent,
-		FilteringBehavior: vnet.EndpointIndependent,
-	}
-	v, err := buildVNet(natType, natType)
-	require.NoError(t, err, "should succeed")
-	defer v.close()
+	net0 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.1"},
+	})
+	assert.NoError(t, wan.AddNet(net0))
+
+	net1 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.2"},
+	})
+	assert.NoError(t, wan.AddNet(net1))
+
+	assert.NoError(t, wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -379,11 +383,10 @@ func TestConnectivityOnStartup(t *testing.T) {
 	wg.Add(2)
 
 	cfg0 := &AgentConfig{
-		Urls:             []*URL{stunServerURL},
 		Trickle:          true,
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net0,
+		Net:              net0,
 
 		taskLoopInterval: time.Hour,
 	}
@@ -399,11 +402,10 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require.NoError(t, aAgent.GatherCandidates())
 
 	cfg1 := &AgentConfig{
-		Urls:             []*URL{stunServerURL},
 		Trickle:          true,
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net1,
+		Net:              net1,
 		taskLoopInterval: time.Hour,
 	}
 
@@ -425,6 +427,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
+	assert.NoError(t, wan.Stop())
 	if !closePipe(t, aConn, bConn) {
 		return
 	}
@@ -1269,9 +1272,9 @@ func TestAgentCredentials(t *testing.T) {
 	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
 }
 
-// Assert that Agent on Failure flushes all existing candidates
+// Assert that Agent on Failure deletes all existing candidates
 // User can then do an ICE Restart to bring agent back
-func TestConnectionStateFailedFlushCandidates(t *testing.T) {
+func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
 
@@ -1282,7 +1285,6 @@ func TestConnectionStateFailedFlushCandidates(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		Urls:              []*URL{},
 		NetworkTypes:      supportedNetworkTypes,
 		DisconnectTimeout: &oneSecond,
 		FailedTimeout:     &oneSecond,
@@ -1297,18 +1299,84 @@ func TestConnectionStateFailedFlushCandidates(t *testing.T) {
 	assert.NoError(t, err)
 
 	isFailed := make(chan interface{})
-	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	assert.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateFailed {
 			close(isFailed)
 		}
-	})
-	assert.NoError(t, err)
+	}))
 
 	connect(aAgent, bAgent)
 	<-isFailed
 
-	assert.Equal(t, len(aAgent.remoteCandidates), 0)
-	assert.Equal(t, len(bAgent.localCandidates), 0)
+	done := make(chan struct{})
+	assert.NoError(t, aAgent.run(func(agent *Agent) {
+		assert.Equal(t, len(aAgent.remoteCandidates), 0)
+		assert.Equal(t, len(aAgent.localCandidates), 0)
+		close(done)
+	}))
+	<-done
+
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
+}
+
+// Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
+func TestConnectionStateConnectingToFailed(t *testing.T) {
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	oneSecond := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	cfg := &AgentConfig{
+		DisconnectTimeout: &oneSecond,
+		FailedTimeout:     &oneSecond,
+		KeepaliveInterval: &KeepaliveInterval,
+		taskLoopInterval:  250 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	assert.NoError(t, err)
+
+	bAgent, err := NewAgent(cfg)
+	assert.NoError(t, err)
+
+	var isFailed sync.WaitGroup
+	var isChecking sync.WaitGroup
+
+	isFailed.Add(2)
+	isChecking.Add(2)
+
+	connectionStateCheck := func(c ConnectionState) {
+		switch c {
+		case ConnectionStateFailed:
+			isFailed.Done()
+		case ConnectionStateChecking:
+			isChecking.Done()
+		case ConnectionStateConnected:
+		case ConnectionStateCompleted:
+			t.Errorf("Unexpected ConnectionState: %v", c)
+		}
+	}
+
+	assert.NoError(t, aAgent.OnConnectionStateChange(connectionStateCheck))
+	assert.NoError(t, bAgent.OnConnectionStateChange(connectionStateCheck))
+
+	go func() {
+		_, err := aAgent.Accept(context.TODO(), "InvalidFrag", "InvalidPwd")
+		assert.Error(t, err)
+	}()
+
+	go func() {
+		_, err := bAgent.Dial(context.TODO(), "InvalidFrag", "InvalidPwd")
+		assert.Error(t, err)
+	}()
+
+	isChecking.Wait()
+	isFailed.Wait()
 
 	assert.NoError(t, aAgent.Close())
 	assert.NoError(t, bAgent.Close())

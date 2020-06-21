@@ -380,32 +380,63 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		// TODO this should be dynamic, and grow when the connection is stable
 		a.requestConnectivityCheck()
 		agent.connectivityTicker = time.NewTicker(a.taskLoopInterval)
+		go a.connectivityChecks()
+	})
+}
 
-		go func() {
-			contact := func() {
-				if err := a.run(func(a *Agent) {
-					a.selector.ContactCandidates()
-				}); err != nil {
-					a.log.Warnf("taskLoop failed: %v", err)
+func (a *Agent) connectivityChecks() {
+	lastConnectionState := ConnectionState(0)
+	checkingDuration := time.Time{}
+
+	contact := func() {
+		if err := a.run(func(a *Agent) {
+			defer func() {
+				lastConnectionState = a.connectionState
+			}()
+
+			switch a.connectionState {
+			case ConnectionStateFailed:
+				// The connection is currently failed so don't send any checks
+				// In the future it may be restarted though
+				return
+			case ConnectionStateChecking:
+				// We have just entered checking for the first time so update our checking timer
+				if lastConnectionState != a.connectionState {
+					checkingDuration = time.Now()
 				}
-			}
 
-			for {
-				select {
-				case <-a.forceCandidateContact:
-					contact()
-				case <-a.connectivityTicker.C:
-					contact()
-				case <-a.done:
+				// We have been in checking longer then Disconnect+Failed timeout, set the connection to Failed
+				if time.Since(checkingDuration) > a.disconnectTimeout+a.failedTimeout {
+					a.updateConnectionState(ConnectionStateFailed)
 					return
 				}
 			}
-		}()
-	})
+
+			a.selector.ContactCandidates()
+		}); err != nil {
+			a.log.Warnf("taskLoop failed: %v", err)
+		}
+	}
+
+	for {
+		select {
+		case <-a.forceCandidateContact:
+			contact()
+		case <-a.connectivityTicker.C:
+			contact()
+		case <-a.done:
+			return
+		}
+	}
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
 	if a.connectionState != newState {
+		// Connection has gone to failed, release all gathered candidates
+		if newState == ConnectionStateFailed {
+			a.deleteAllCandidates()
+		}
+
 		a.log.Infof("Setting new connection state: %s", newState)
 		a.connectionState = newState
 
@@ -527,7 +558,6 @@ func (a *Agent) validateSelectedPair() bool {
 
 	switch {
 	case totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure:
-		a.deleteAllCandidates()
 		a.updateConnectionState(ConnectionStateFailed)
 	case a.disconnectTimeout != 0 && disconnectedTime > a.disconnectTimeout:
 		a.updateConnectionState(ConnectionStateDisconnected)
