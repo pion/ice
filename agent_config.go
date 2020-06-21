@@ -221,3 +221,41 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.candidateTypes = config.CandidateTypes
 	}
 }
+
+func (config *AgentConfig) initExtIPMapping(a *Agent) error {
+	var err error
+	a.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+	if err != nil {
+		return err
+	}
+	if a.extIPMapper == nil {
+		return nil // this may happen when config.NAT1To1IPs is an empty array
+	}
+	if a.extIPMapper.candidateType == CandidateTypeHost {
+		if a.mDNSMode == MulticastDNSModeQueryAndGather {
+			return ErrMulticastDNSWithNAT1To1IPMapping
+		}
+		candiHostEnabled := false
+		for _, candiType := range a.candidateTypes {
+			if candiType == CandidateTypeHost {
+				candiHostEnabled = true
+				break
+			}
+		}
+		if !candiHostEnabled {
+			return ErrIneffectiveNAT1To1IPMappingHost
+		}
+	} else if a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+		candiSrflxEnabled := false
+		for _, candiType := range a.candidateTypes {
+			if candiType == CandidateTypeServerReflexive {
+				candiSrflxEnabled = true
+				break
+			}
+		}
+		if !candiSrflxEnabled {
+			return ErrIneffectiveNAT1To1IPMappingSrflx
+		}
+	}
+	return nil
+}
