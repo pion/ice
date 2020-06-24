@@ -26,6 +26,8 @@ type controllingSelector struct {
 
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
+	s.nominatedPair = nil
+	s.nominationRequestCount = 0
 }
 
 func (s *controllingSelector) isNominatable(c Candidate) bool {
