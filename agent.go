@@ -176,26 +176,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, ErrPort
 	}
 
-	// local username fragment and password
-	localUfrag := randSeq(16)
-	localPwd := randSeq(32)
-
-	if config.LocalUfrag != "" {
-		if len([]rune(config.LocalUfrag))*8 < 24 {
-			return nil, ErrLocalUfragInsufficientBits
-		}
-
-		localUfrag = config.LocalUfrag
-	}
-
-	if config.LocalPwd != "" {
-		if len([]rune(config.LocalPwd))*8 < 128 {
-			return nil, ErrLocalPwdInsufficientBits
-		}
-
-		localPwd = config.LocalPwd
-	}
-
 	mDNSName := config.MulticastDNSHostName
 	if mDNSName == "" {
 		if mDNSName, err = generateMulticastDNSName(); err != nil {
@@ -234,29 +214,25 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	}
 
 	a := &Agent{
-		tieBreaker:             rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
-		lite:                   config.Lite,
-		gatheringState:         GatheringStateNew,
-		connectionState:        ConnectionStateNew,
-		localCandidates:        make(map[NetworkType][]Candidate),
-		remoteCandidates:       make(map[NetworkType][]Candidate),
-		pendingBindingRequests: make([]bindingRequest, 0),
-		checklist:              make([]*candidatePair, 0),
-		urls:                   config.Urls,
-		networkTypes:           config.NetworkTypes,
-		localUfrag:             localUfrag,
-		localPwd:               localPwd,
-		onConnected:            make(chan struct{}),
-		buffer:                 packetio.NewBuffer(),
-		done:                   make(chan struct{}),
-		chanState:              make(chan ConnectionState, 1),
-		portmin:                config.PortMin,
-		portmax:                config.PortMax,
-		trickle:                config.Trickle,
-		loggerFactory:          loggerFactory,
-		log:                    log,
-		net:                    config.Net,
-		muChan:                 make(chan struct{}, 1),
+		tieBreaker:       rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
+		lite:             config.Lite,
+		gatheringState:   GatheringStateNew,
+		connectionState:  ConnectionStateNew,
+		localCandidates:  make(map[NetworkType][]Candidate),
+		remoteCandidates: make(map[NetworkType][]Candidate),
+		urls:             config.Urls,
+		networkTypes:     config.NetworkTypes,
+		onConnected:      make(chan struct{}),
+		buffer:           packetio.NewBuffer(),
+		done:             make(chan struct{}),
+		chanState:        make(chan ConnectionState, 1),
+		portmin:          config.PortMin,
+		portmax:          config.PortMax,
+		trickle:          config.Trickle,
+		loggerFactory:    loggerFactory,
+		log:              log,
+		net:              config.Net,
+		muChan:           make(chan struct{}, 1),
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -301,14 +277,11 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 
-	go func() {
-		for s := range a.chanState {
-			hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState))
-			if ok {
-				hdlr(s)
-			}
-		}
-	}()
+	// Restart is also used to initialize the agent for the first time
+	if err := a.Restart(config.LocalUfrag, config.LocalPwd); err != nil {
+		closeMDNSConn()
+		return nil, err
+	}
 
 	// Initialize local candidates
 	if !a.trickle {
@@ -345,17 +318,26 @@ func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
 	}
 }
 
+func (a *Agent) startOnConnectionStateChangeRoutine() {
+	go func() {
+		for s := range a.chanState {
+			if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
+				hdlr(s)
+			}
+		}
+	}()
+}
+
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
-	switch {
-	case a.haveStarted.Load():
+	if a.haveStarted.Load().(bool) {
 		return ErrMultipleStart
-	case remoteUfrag == "":
-		return ErrRemoteUfragEmpty
-	case remotePwd == "":
-		return ErrRemotePwdEmpty
+	}
+	if err := a.SetRemoteCredentials(remoteUfrag, remotePwd); err != nil {
+		return err
 	}
 
 	a.haveStarted.Store(true)
+	a.startOnConnectionStateChangeRoutine()
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.run(func(agent *Agent) {
@@ -451,19 +433,16 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 	// Notify when the selected pair changes
 	a.onSelectedCandidatePairChange(p)
 
-	if p != nil {
-		p.nominated = true
-		a.selectedPair.Store(p)
-	} else {
+	if p == nil {
 		var nilPair *candidatePair
 		a.selectedPair.Store(nilPair)
+		return
 	}
 
-	a.updateConnectionState(ConnectionStateConnected)
+	p.nominated = true
+	a.selectedPair.Store(p)
 
-	// Close mDNS Conn. We don't need to do anymore querying
-	// and no reason to respond to others traffic
-	a.closeMulticastConn()
+	a.updateConnectionState(ConnectionStateConnected)
 
 	// Signal connected
 	a.onConnectedOnce.Do(func() { close(a.onConnected) })
@@ -969,6 +948,7 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 
 func (a *Agent) getSelectedPair() *candidatePair {
 	selectedPair := a.selectedPair.Load()
+
 	if selectedPair == nil {
 		return nil
 	}
@@ -982,4 +962,73 @@ func (a *Agent) closeMulticastConn() {
 			a.log.Warnf("failed to close mDNS Conn: %v", err)
 		}
 	}
+}
+
+// SetRemoteCredentials sets the credentials of the remote agent
+func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
+	switch {
+	case remoteUfrag == "":
+		return ErrRemoteUfragEmpty
+	case remotePwd == "":
+		return ErrRemotePwdEmpty
+	}
+
+	return a.run(func(agent *Agent) {
+		agent.remoteUfrag = remoteUfrag
+		agent.remotePwd = remotePwd
+	})
+}
+
+// Restart restarts the ICE Agent with the provided ufrag/pwd
+// If no ufrag/pwd is provided the Agent will generate one itself
+//
+// Restart must only be called when GatheringState is GatheringStateComplete
+// a user must then call GatherCandidates explicitly to start generating new ones
+func (a *Agent) Restart(ufrag, pwd string) error {
+	if ufrag == "" {
+		ufrag = randSeq(16)
+	}
+	if pwd == "" {
+		pwd = randSeq(32)
+	}
+
+	if len([]rune(ufrag))*8 < 24 {
+		return ErrLocalUfragInsufficientBits
+	}
+	if len([]rune(pwd))*8 < 128 {
+		return ErrLocalPwdInsufficientBits
+	}
+
+	err := make(chan error, 1)
+	if runErr := a.run(func(agent *Agent) {
+		if agent.gatheringState == GatheringStateGathering {
+			err <- ErrRestartWhenGathering
+			return
+		}
+
+		// Clear all agent needed to take back to fresh state
+		agent.localUfrag = ufrag
+		agent.localPwd = pwd
+		agent.remoteUfrag = ""
+		agent.remotePwd = ""
+		a.gatheringState = GatheringStateNew
+		a.checklist = make([]*candidatePair, 0)
+		a.pendingBindingRequests = make([]bindingRequest, 0)
+		a.setSelectedPair(nil)
+		a.deleteAllCandidates()
+		if a.selector != nil {
+			a.selector.Start()
+		}
+
+		// Restart is used by NewAgent. Accept/Connect should be used to move to checking
+		// for new Agents
+		if a.connectionState != ConnectionStateNew {
+			a.updateConnectionState(ConnectionStateChecking)
+		}
+
+		close(err)
+	}); runErr != nil {
+		return runErr
+	}
+	return <-err
 }

@@ -5,6 +5,7 @@ package ice
 import (
 	"context"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -148,6 +149,8 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
+	a.startOnConnectionStateChangeRoutine()
+
 	callbackCalled := make(chan struct{}, 1)
 	if err = a.OnSelectedCandidatePairChange(func(local, remote Candidate) {
 		close(callbackCalled)
@@ -1380,4 +1383,111 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 
 	assert.NoError(t, aAgent.Close())
 	assert.NoError(t, bAgent.Close())
+}
+
+func TestAgentRestart(t *testing.T) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	t.Run("Restart During Gather", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+
+		agent.gatheringState = GatheringStateGathering
+
+		assert.Equal(t, ErrRestartWhenGathering, agent.Restart("", ""))
+		assert.NoError(t, agent.Close())
+	})
+
+	t.Run("Restart When Closed", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+		assert.NoError(t, agent.Close())
+
+		assert.Equal(t, ErrClosed, agent.Restart("", ""))
+	})
+
+	t.Run("Restart One Side", func(t *testing.T) {
+		oneSecond := time.Second
+		connA, connB := pipe(&AgentConfig{
+			DisconnectTimeout: &oneSecond,
+			FailedTimeout:     &oneSecond,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
+				cancel()
+			}
+		}))
+		assert.NoError(t, connA.agent.Restart("", ""))
+
+		<-ctx.Done()
+		assert.NoError(t, connA.agent.Close())
+		assert.NoError(t, connB.agent.Close())
+	})
+
+	t.Run("Restart Both Sides", func(t *testing.T) {
+		// Get all addresses of candidates concatenated
+		generateCandidateAddressStrings := func(candidates []Candidate, err error) (out string) {
+			assert.NoError(t, err)
+
+			for _, c := range candidates {
+				out += c.Address() + ":"
+				out += strconv.Itoa(c.Port())
+			}
+			return
+		}
+
+		// Store the original candidates, confirm that after we reconnect we have new pairs
+		connA, connB := pipe(nil)
+		connAFirstCandidates := generateCandidateAddressStrings(connA.agent.GetLocalCandidates())
+		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
+
+		aNotifier, aConnected := onConnected()
+		assert.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
+
+		bNotifier, bConnected := onConnected()
+		assert.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
+
+		// Restart and Re-Signal
+		assert.NoError(t, connA.agent.Restart("", ""))
+		assert.NoError(t, connB.agent.Restart("", ""))
+
+		// Gather, and block until both sides are done
+		var gatherWaitGroup sync.WaitGroup
+		gatherWaitGroup.Add(2)
+		onCandidate := func(c Candidate) {
+			if c == nil {
+				gatherWaitGroup.Done()
+			}
+		}
+
+		assert.NoError(t, connA.agent.OnCandidate(onCandidate))
+		assert.NoError(t, connB.agent.OnCandidate(onCandidate))
+
+		assert.NoError(t, connA.agent.GatherCandidates())
+		assert.NoError(t, connB.agent.GatherCandidates())
+
+		gatherWaitGroup.Wait()
+
+		// Exchange Candidates and Credentials
+		assert.NoError(t, connA.agent.SetRemoteCredentials(connB.agent.GetLocalUserCredentials()))
+		assert.NoError(t, connB.agent.SetRemoteCredentials(connA.agent.GetLocalUserCredentials()))
+		signalAgents(connA.agent, connB.agent)
+
+		// Wait until both have gone back to connected
+		<-aConnected
+		<-bConnected
+
+		// Assert that we have new candiates each time
+		assert.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
+		assert.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
+
+		assert.NoError(t, connA.agent.Close())
+		assert.NoError(t, connB.agent.Close())
+	})
 }

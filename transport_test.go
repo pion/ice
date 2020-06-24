@@ -64,7 +64,7 @@ func TestTimeout(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	ca, cb := pipe()
+	ca, cb := pipe(nil)
 	err := cb.Close()
 
 	if err != nil {
@@ -86,7 +86,7 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestReadClosed(t *testing.T) {
-	ca, cb := pipe()
+	ca, cb := pipe(nil)
 
 	err := ca.Close()
 	if err != nil {
@@ -108,7 +108,7 @@ func TestReadClosed(t *testing.T) {
 }
 
 func stressDuplex(t *testing.T) {
-	ca, cb := pipe()
+	ca, cb := pipe(nil)
 
 	defer func() {
 		err := ca.Close()
@@ -133,7 +133,7 @@ func stressDuplex(t *testing.T) {
 }
 
 func Benchmark(b *testing.B) {
-	ca, cb := pipe()
+	ca, cb := pipe(nil)
 	defer func() {
 		err := ca.Close()
 		check(err)
@@ -193,7 +193,7 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipe() (*Conn, *Conn) {
+func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	var urls []*URL
 
 	aNotifier, aConnected := onConnected()
@@ -202,11 +202,14 @@ func pipe() (*Conn, *Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	cfg := &AgentConfig{
-		Urls:         urls,
-		Trickle:      true,
-		NetworkTypes: supportedNetworkTypes,
+	cfg := &AgentConfig{}
+	if defaultConfig != nil {
+		*cfg = *defaultConfig
 	}
+
+	cfg.Urls = urls
+	cfg.Trickle = true
+	cfg.NetworkTypes = supportedNetworkTypes
 
 	aAgent, err := NewAgent(cfg)
 	if err != nil {
@@ -404,7 +407,7 @@ func randomPort(t testing.TB) int {
 }
 
 func TestConnStats(t *testing.T) {
-	ca, cb := pipe()
+	ca, cb := pipe(nil)
 	if _, err := ca.Write(make([]byte, 10)); err != nil {
 		t.Fatal("unexpected error trying to write")
 	}
