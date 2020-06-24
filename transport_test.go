@@ -39,7 +39,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 		err := c.agent.run(func(agent *Agent) {
 			statechan <- agent.connectionState
-		})
+		}, nil)
 		if err != nil {
 			// we should never get here.
 			panic(err)

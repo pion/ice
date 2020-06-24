@@ -147,7 +147,7 @@ func (a *Agent) getErr() error {
 
 // Run an operation with the the lock taken
 // If the agent is closed return an error
-func (a *Agent) run(t func(*Agent)) error {
+func (a *Agent) run(t func(*Agent), localDone <-chan struct{}) error {
 	if err := a.ok(); err != nil {
 		return err
 	}
@@ -155,9 +155,13 @@ func (a *Agent) run(t func(*Agent)) error {
 	select {
 	case <-a.done:
 		return a.getErr()
+	case <-localDone:
+		return ErrRunCanceled
 	case a.muChan <- struct{}{}:
 		var err error
 		select {
+		case <-localDone:
+			err = ErrRunCanceled
 		case <-a.done:
 			// Ensure the agent is not closed
 			err = a.getErr()
@@ -363,7 +367,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		a.requestConnectivityCheck()
 		agent.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 		go a.connectivityChecks()
-	})
+	}, nil)
 }
 
 func (a *Agent) connectivityChecks() {
@@ -395,7 +399,7 @@ func (a *Agent) connectivityChecks() {
 			}
 
 			a.selector.ContactCandidates()
-		}); err != nil {
+		}, nil); err != nil {
 			a.log.Warnf("taskLoop failed: %v", err)
 		}
 	}
@@ -585,7 +589,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	go func() {
 		if err := a.run(func(agent *Agent) {
 			agent.addRemoteCandidate(c)
-		}); err != nil {
+		}, nil); err != nil {
 			a.log.Warnf("Failed to add remote candidate %s: %v", c.Address(), err)
 			return
 		}
@@ -616,7 +620,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 
 	if err = a.run(func(agent *Agent) {
 		agent.addRemoteCandidate(c)
-	}); err != nil {
+	}, nil); err != nil {
 		a.log.Warnf("Failed to add mDNS candidate %s: %v", c.Address(), err)
 		return
 	}
@@ -677,7 +681,7 @@ func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
 		a.requestConnectivityCheck()
 
 		a.chanCandidate <- c
-	})
+	}, nil)
 }
 
 // GetLocalCandidates returns the local candidates
@@ -690,7 +694,7 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 			candidates = append(candidates, set...)
 		}
 		res <- candidates
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +730,7 @@ func (a *Agent) Close() error {
 
 		a.closeMulticastConn()
 		a.updateConnectionState(ConnectionStateClosed)
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}
@@ -939,7 +943,7 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 			remoteCandidate.seen(false)
 			atomic.AddUint64(&isValidCandidate, 1)
 		}
-	}); err != nil {
+	}, nil); err != nil {
 		a.log.Warnf("failed to validate remote candidate: %v", err)
 	}
 
@@ -976,7 +980,7 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 	return a.run(func(agent *Agent) {
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
-	})
+	}, nil)
 }
 
 // Restart restarts the ICE Agent with the provided ufrag/pwd
@@ -1027,7 +1031,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		}
 
 		close(err)
-	}); runErr != nil {
+	}, nil); runErr != nil {
 		return runErr
 	}
 	return <-err

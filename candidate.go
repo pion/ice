@@ -33,6 +33,7 @@ type Candidate interface {
 
 	addr() *net.UDPAddr
 	agent() *Agent
+	getCloseCh() chan struct{}
 
 	close() error
 	seen(outbound bool)

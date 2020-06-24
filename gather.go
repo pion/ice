@@ -68,7 +68,7 @@ func (a *Agent) GatherCandidates() error {
 
 		a.gatherCandidates()
 		gatherErrChan <- nil
-	})
+	}, nil)
 	if runErr != nil {
 		return runErr
 	}
@@ -104,7 +104,7 @@ func (a *Agent) gatherCandidates() <-chan struct{} {
 		if err := a.run(func(agent *Agent) {
 			a.gatheringState = GatheringStateGathering
 			close(gatherStateUpdated)
-		}); err != nil {
+		}, nil); err != nil {
 			a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
 			return
 		}
@@ -130,7 +130,7 @@ func (a *Agent) gatherCandidates() <-chan struct{} {
 				close(agent.chanCandidate)
 			})
 			a.gatheringState = GatheringStateComplete
-		}); err != nil {
+		}, nil); err != nil {
 			a.log.Warnf("Failed to stop OnCandidate handler routine and update gatheringState: %v\n", err)
 			return
 		}

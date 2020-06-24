@@ -111,7 +111,7 @@ func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log
 		}
 		err := c.agent().run(func(agent *Agent) {
 			agent.handleInbound(m, c, srcAddr)
-		})
+		}, c.getCloseCh())
 		if err != nil {
 			log.Warnf("Failed to handle message: %v", err)
 		}
@@ -226,4 +226,8 @@ func (c *candidateBase) addr() *net.UDPAddr {
 
 func (c *candidateBase) agent() *Agent {
 	return c.currAgent
+}
+
+func (c *candidateBase) getCloseCh() chan struct{} {
+	return c.closeCh
 }
