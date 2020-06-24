@@ -100,4 +100,7 @@ var (
 
 	// ErrRestartWhenGathering indicates Restart was called when Agent is in GatheringStateGathering
 	ErrRestartWhenGathering = errors.New("ICE Agent can not be restarted when gathering")
+
+	// ErrRunCanceled indicates a run operation was canceled by its individual done
+	ErrRunCanceled = errors.New("run was canceled by done")
 )

@@ -186,7 +186,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	if err = a.run(func(agent *Agent) {
 		p := newCandidatePair(hostLocal, relayRemote, false)
 		agent.setSelectedPair(p)
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("Failed to setValidPair(): %s", err)
 	}
 
@@ -211,7 +211,7 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
 		t.Fatalf("Error constructing ice.Agent")
 	}
 
-	if err := a.run(task); err != nil {
+	if err := a.run(task, nil); err != nil {
 		t.Fatalf("Agent run failure: %v", err)
 	}
 
@@ -605,7 +605,7 @@ func TestInboundValidity(t *testing.T) {
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values was unable to create prflx candidate")
 			}
-		})
+		}, nil)
 
 		assert.NoError(t, err)
 		assert.NoError(t, a.Close())
@@ -1316,7 +1316,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 		assert.Equal(t, len(aAgent.remoteCandidates), 0)
 		assert.Equal(t, len(aAgent.localCandidates), 0)
 		close(done)
-	}))
+	}, nil))
 	<-done
 
 	assert.NoError(t, aAgent.Close())

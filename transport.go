@@ -96,7 +96,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 		bestValidPair := make(chan *candidatePair, 1)
 		if err = c.agent.run(func(a *Agent) {
 			bestValidPair <- a.getBestValidCandidatePair()
-		}); err != nil {
+		}, nil); err != nil {
 			return 0, err
 		}
 
