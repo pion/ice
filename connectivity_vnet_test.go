@@ -475,7 +475,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		Net:                 net0,
 		DisconnectedTimeout: &disconnectTimeout,
 		KeepaliveInterval:   &keepaliveInterval,
-		taskLoopInterval:    keepaliveInterval,
+		checkInterval:       keepaliveInterval,
 	})
 	assert.NoError(t, err)
 
@@ -485,7 +485,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		Net:                 net1,
 		DisconnectedTimeout: &disconnectTimeout,
 		KeepaliveInterval:   &keepaliveInterval,
-		taskLoopInterval:    keepaliveInterval,
+		checkInterval:       keepaliveInterval,
 	})
 	assert.NoError(t, err)
 

@@ -239,7 +239,6 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
 			hostConfig := CandidateHostConfig{
 				Network:   "udp",
@@ -300,7 +299,6 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
 			hostConfig := CandidateHostConfig{
 				Network:   "tcp",
@@ -327,7 +325,6 @@ func TestHandlePeerReflexive(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], []byte("ABC"))
 			a.pendingBindingRequests = []bindingRequest{
@@ -391,12 +388,14 @@ func TestConnectivityOnStartup(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
+	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
 
-		taskLoopInterval: time.Hour,
+		KeepaliveInterval: &KeepaliveInterval,
+		checkInterval:     time.Hour,
 	}
 
 	aAgent, err := NewAgent(cfg0)
@@ -404,10 +403,11 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
-		NetworkTypes:     supportedNetworkTypes,
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net1,
-		taskLoopInterval: time.Hour,
+		NetworkTypes:      supportedNetworkTypes,
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		Net:               net1,
+		KeepaliveInterval: &KeepaliveInterval,
+		checkInterval:     time.Hour,
 	}
 
 	bAgent, err := NewAgent(cfg1)
@@ -615,7 +615,6 @@ func TestInboundValidity(t *testing.T) {
 
 		err = a.run(func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values was unable to create prflx candidate")
@@ -630,7 +629,6 @@ func TestInboundValidity(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
-			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
 				stun.NewShortTermIntegrity(a.localPwd),
@@ -730,7 +728,6 @@ func TestConnectionStateCallback(t *testing.T) {
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
-		taskLoopInterval:    500 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1271,7 +1268,6 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
-		taskLoopInterval:    250 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1317,7 +1313,6 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
-		taskLoopInterval:    250 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1395,7 +1390,6 @@ func TestAgentRestart(t *testing.T) {
 		connA, connB := pipe(&AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
-			taskLoopInterval:    50 * time.Millisecond,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1427,7 +1421,6 @@ func TestAgentRestart(t *testing.T) {
 		connA, connB := pipe(&AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
-			taskLoopInterval:    50 * time.Millisecond,
 		})
 		connAFirstCandidates := generateCandidateAddressStrings(connA.agent.GetLocalCandidates())
 		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())

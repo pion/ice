@@ -41,7 +41,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 	startedAt := time.Now()
 
-	for cnt := time.Duration(0); cnt <= timeout+defaultTaskLoopInterval; cnt += pollrate {
+	for cnt := time.Duration(0); cnt <= timeout+defaultCheckInterval; cnt += pollrate {
 		<-ticker.C
 
 		err := c.agent.run(func(agent *Agent) {
