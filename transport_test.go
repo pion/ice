@@ -41,7 +41,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 	startedAt := time.Now()
 
-	for cnt := time.Duration(0); cnt <= timeout+defaultTaskLoopInterval; cnt += pollrate {
+	for cnt := time.Duration(0); cnt <= timeout+defaultKeepaliveInterval+pollrate; cnt += pollrate {
 		<-ticker.C
 
 		var cs ConnectionState
@@ -64,7 +64,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 			}
 		}
 	}
-	t.Fatalf("Connection failed to time out in time.")
+	t.Fatalf("Connection failed to time out in time. (expected timeout: %v)", timeout)
 }
 
 func TestTimeout(t *testing.T) {

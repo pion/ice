@@ -38,8 +38,7 @@ type Agent struct {
 	onConnected     chan struct{}
 	onConnectedOnce sync.Once
 
-	connectivityTicker *time.Ticker
-	// force candidate to be contacted immediately (instead of waiting for connectivityTicker)
+	// force candidate to be contacted immediately (instead of waiting for task ticker)
 	forceCandidateContact chan bool
 
 	tieBreaker uint64
@@ -82,8 +81,8 @@ type Agent struct {
 	// 0 means never
 	keepaliveInterval time.Duration
 
-	// How after should we run our internal taskLoop
-	taskLoopInterval time.Duration
+	// How often should we run our internal taskLoop to check for state changes when connecting
+	checkInterval time.Duration
 
 	localUfrag      string
 	localPwd        string
@@ -198,10 +197,6 @@ func (a *Agent) taskLoop() {
 
 		if err := a.buffer.Close(); err != nil {
 			a.log.Warnf("failed to close buffer: %v", err)
-		}
-
-		if a.connectivityTicker != nil {
-			a.connectivityTicker.Stop()
 		}
 
 		a.closeMulticastConn()
@@ -460,9 +455,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 
 		agent.updateConnectionState(ConnectionStateChecking)
 
-		// TODO this should be dynamic, and grow when the connection is stable
 		a.requestConnectivityCheck()
-		agent.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 		go a.connectivityChecks()
 	})
 }
@@ -502,12 +495,34 @@ func (a *Agent) connectivityChecks() {
 	}
 
 	for {
+		interval := defaultKeepaliveInterval
+
+		updateInterval := func(x time.Duration) {
+			if x != 0 && (interval == 0 || interval > x) {
+				interval = x
+			}
+		}
+
+		switch lastConnectionState {
+		case ConnectionStateNew, ConnectionStateChecking: // While connecting, check candidates more frequently
+			updateInterval(a.checkInterval)
+		case ConnectionStateConnected, ConnectionStateDisconnected:
+			updateInterval(a.keepaliveInterval)
+		default:
+		}
+		// Ensure we run our task loop as quickly as the minimum of our various configured timeouts
+		updateInterval(a.disconnectedTimeout)
+		updateInterval(a.failedTimeout)
+
+		t := time.NewTimer(interval)
 		select {
 		case <-a.forceCandidateContact:
+			t.Stop()
 			contact()
-		case <-a.connectivityTicker.C:
+		case <-t.C:
 			contact()
 		case <-a.done:
+			t.Stop()
 			return
 		}
 	}

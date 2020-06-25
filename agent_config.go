@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	// taskLoopInterval is the interval at which the agent performs checks
-	defaultTaskLoopInterval = 2 * time.Second
+	// defaultCheckInterval is the interval at which the agent performs candidate checks in the connecting phase
+	defaultCheckInterval = 200 * time.Millisecond
 
 	// keepaliveInterval used to keep candidates alive
 	defaultKeepaliveInterval = 2 * time.Second
@@ -95,10 +95,9 @@ type AgentConfig struct {
 
 	LoggerFactory logging.LoggerFactory
 
-	// taskLoopInterval controls how often our internal task loop runs, this
-	// task loop handles things like sending keepAlives. This is only value for testing
-	// keepAlive behavior should be modified with KeepaliveInterval and ConnectionTimeout
-	taskLoopInterval time.Duration
+	// checkInterval controls how often our internal task loop runs when
+	// in the connecting state. Only useful for testing.
+	checkInterval time.Duration
 
 	// MaxBindingRequests is the max amount of binding requests the agent will send
 	// over a candidate pair for validation or nomination, if after MaxBindingRequests
@@ -205,10 +204,10 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.keepaliveInterval = *config.KeepaliveInterval
 	}
 
-	if config.taskLoopInterval == 0 {
-		a.taskLoopInterval = defaultTaskLoopInterval
+	if config.checkInterval == 0 {
+		a.checkInterval = defaultCheckInterval
 	} else {
-		a.taskLoopInterval = config.taskLoopInterval
+		a.checkInterval = config.checkInterval
 	}
 
 	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
