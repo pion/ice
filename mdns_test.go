@@ -113,7 +113,6 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 	assert.Equal(t, err, ErrInvalidMulticastDNSHostName)
 
 	agent, err := NewAgent(&AgentConfig{
-		Trickle:              true,
 		NetworkTypes:         []NetworkType{NetworkTypeUDP4},
 		CandidateTypes:       []CandidateType{CandidateTypeHost},
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,

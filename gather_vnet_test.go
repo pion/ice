@@ -202,7 +202,6 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 				NetworkTypeUDP4,
 			},
 			NAT1To1IPs: []string{map0, map1},
-			Trickle:    true,
 			Net:        nw,
 		})
 		assert.NoError(t, err, "should succeed")
@@ -303,7 +302,6 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 				"1.2.3.4",
 			},
 			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
-			Trickle:                true,
 			Net:                    nw,
 		})
 		assert.NoError(t, err, "should succeed")

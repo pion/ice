@@ -5,7 +5,6 @@ package ice
 import (
 	"context"
 	"net"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -162,31 +161,12 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}, nil
 }
 
-func signalAgents(aAgent, bAgent *Agent) {
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	log := loggerFactory.NewLogger("test")
-
-	candidates, err := aAgent.GetLocalCandidates()
-	check(err)
-	for _, c := range candidates {
-		log.Debugf("agent a candidate: %v", c.String())
-		check(bAgent.AddRemoteCandidate(copyCandidate(c)))
-	}
-
-	candidates, err = bAgent.GetLocalCandidates()
-	check(err)
-	for _, c := range candidates {
-		log.Debugf("agent b candidate: %v", c.String())
-		check(aAgent.AddRemoteCandidate(copyCandidate(c)))
-	}
-}
-
 func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	// Manual signaling
 	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
 	bUfrag, bPwd := bAgent.GetLocalUserCredentials()
 
-	signalAgents(aAgent, bAgent)
+	gatherAndExchangeCandidates(aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -215,9 +195,6 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	var nat1To1IPs []string
 	if a0TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
@@ -227,7 +204,6 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 
 	cfg0 := &AgentConfig{
 		Urls:                   a0TestConfig.urls,
-		Trickle:                true,
 		NetworkTypes:           supportedNetworkTypes,
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
@@ -243,18 +219,6 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	if err != nil {
 		panic(err)
 	}
-	err = aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
 
 	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
@@ -263,7 +227,6 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	}
 	cfg1 := &AgentConfig{
 		Urls:                   a1TestConfig.urls,
-		Trickle:                true,
 		NetworkTypes:           supportedNetworkTypes,
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
@@ -279,20 +242,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	if err != nil {
 		panic(err)
 	}
-	err = bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
 
-	wg.Wait()
 	aConn, bConn := connectWithVNet(aAgent, bAgent)
 
 	// Ensure pair selected
@@ -633,7 +583,7 @@ func TestWriteUseValidPair(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	signalAgents(controllingAgent, controlledAgent)
+	gatherAndExchangeCandidates(controllingAgent, controlledAgent)
 
 	controllingUfrag, controllingPwd := controllingAgent.GetLocalUserCredentials()
 	controlledUfrag, controlledPwd := controlledAgent.GetLocalUserCredentials()

@@ -382,11 +382,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	cfg0 := &AgentConfig{
-		Trickle:          true,
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
@@ -397,15 +393,8 @@ func TestConnectivityOnStartup(t *testing.T) {
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	}))
-	require.NoError(t, aAgent.GatherCandidates())
 
 	cfg1 := &AgentConfig{
-		Trickle:          true,
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net1,
@@ -415,14 +404,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	bAgent, err := NewAgent(cfg1)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
-	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	}))
-	require.NoError(t, bAgent.GatherCandidates())
 
-	wg.Wait()
 	aConn, bConn := connectWithVNet(aAgent, bAgent)
 
 	// Ensure pair selected
@@ -461,12 +443,8 @@ func TestConnectivityLite(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	cfg0 := &AgentConfig{
 		Urls:             []*URL{stunServerURL},
-		Trickle:          true,
 		NetworkTypes:     supportedNetworkTypes,
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net0,
@@ -475,16 +453,9 @@ func TestConnectivityLite(t *testing.T) {
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	}))
-	require.NoError(t, aAgent.GatherCandidates())
 
 	cfg1 := &AgentConfig{
 		Urls:             []*URL{},
-		Trickle:          true,
 		Lite:             true,
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		NetworkTypes:     supportedNetworkTypes,
@@ -495,14 +466,7 @@ func TestConnectivityLite(t *testing.T) {
 	bAgent, err := NewAgent(cfg1)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
-	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	}))
-	require.NoError(t, bAgent.GatherCandidates())
 
-	wg.Wait()
 	aConn, bConn := connectWithVNet(aAgent, bAgent)
 
 	// Ensure pair selected
@@ -705,16 +669,12 @@ func TestConnectionStateCallback(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
-		Trickle:             true,
 		NetworkTypes:        supportedNetworkTypes,
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
@@ -726,34 +686,10 @@ func TestConnectionStateCallback(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
 
 	bAgent, err := NewAgent(cfg)
 	if err != nil {
 		t.Error(err)
-	}
-	err = bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
 	}
 
 	isChecking := make(chan interface{})
@@ -779,7 +715,6 @@ func TestConnectionStateCallback(t *testing.T) {
 		t.Error(err)
 	}
 
-	wg.Wait()
 	connect(aAgent, bAgent)
 
 	<-isChecking
@@ -794,8 +729,8 @@ func TestConnectionStateCallback(t *testing.T) {
 }
 
 func TestInvalidGather(t *testing.T) {
-	t.Run("Gather with Trickle enable and no OnCandidate should error", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{Trickle: true})
+	t.Run("Gather with no OnCandidate should error", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
 		if err != nil {
 			t.Fatalf("Error constructing ice.Agent")
 		}
@@ -1147,9 +1082,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	defer report()
 
 	// a.extIPMapper should be nil by default
-	a, err := NewAgent(&AgentConfig{
-		Trickle: true, // to avoid starting gathering candidates
-	})
+	a, err := NewAgent(&AgentConfig{})
 	if err != nil {
 		t.Fatalf("Failed to create agent: %v", err)
 	}
@@ -1162,7 +1095,6 @@ func TestInitExtIPMapping(t *testing.T) {
 	a, err = NewAgent(&AgentConfig{
 		NAT1To1IPs:             []string{},
 		NAT1To1IPCandidateType: CandidateTypeHost,
-		Trickle:                true, // to avoid starting gathering candidates
 	})
 	if err != nil {
 		t.Fatalf("Failed to create agent: %v", err)
@@ -1178,7 +1110,6 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPs:             []string{"1.2.3.4"},
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
-		Trickle:                true, // to avoid starting gathering candidates
 	})
 	if err != ErrIneffectiveNAT1To1IPMappingHost {
 		t.Fatalf("Unexpected error: %v", err)
@@ -1190,7 +1121,6 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPs:             []string{"1.2.3.4"},
 		NAT1To1IPCandidateType: CandidateTypeServerReflexive,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
-		Trickle:                true, // to avoid starting gathering candidates
 	})
 	if err != ErrIneffectiveNAT1To1IPMappingSrflx {
 		t.Fatalf("Unexpected error: %v", err)
@@ -1202,7 +1132,6 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPs:             []string{"1.2.3.4"},
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		MulticastDNSMode:       MulticastDNSModeQueryAndGather,
-		Trickle:                true, // to avoid starting gathering candidates
 	})
 	if err != ErrMulticastDNSWithNAT1To1IPMapping {
 		t.Fatalf("Unexpected error: %v", err)
@@ -1212,7 +1141,6 @@ func TestInitExtIPMapping(t *testing.T) {
 	_, err = NewAgent(&AgentConfig{
 		NAT1To1IPs:             []string{"bad.2.3.4"}, // bad IP
 		NAT1To1IPCandidateType: CandidateTypeHost,
-		Trickle:                true, // to avoid starting gathering candidates
 	})
 	if err != ErrInvalidNAT1To1IPMapping {
 		t.Fatalf("Unexpected error: %v", err)
@@ -1257,7 +1185,7 @@ func TestAgentCredentials(t *testing.T) {
 	// Agent should not require any of the usernames and password to be set
 	// If set, they should follow the default 16/128 bits random number generator strategy
 
-	agent, err := NewAgent(&AgentConfig{Trickle: true, LoggerFactory: log})
+	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
 	assert.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
@@ -1268,10 +1196,10 @@ func TestAgentCredentials(t *testing.T) {
 	// random number generator output used to generate the password, and
 	// at least 24 bits of output to generate the username fragment.
 
-	_, err = NewAgent(&AgentConfig{Trickle: true, LocalUfrag: "xx", LoggerFactory: log})
+	_, err = NewAgent(&AgentConfig{LocalUfrag: "xx", LoggerFactory: log})
 	assert.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
 
-	_, err = NewAgent(&AgentConfig{Trickle: true, LocalPwd: "xxxxxx", LoggerFactory: log})
+	_, err = NewAgent(&AgentConfig{LocalPwd: "xxxxxx", LoggerFactory: log})
 	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
 }
 
@@ -1457,27 +1385,10 @@ func TestAgentRestart(t *testing.T) {
 		assert.NoError(t, connA.agent.Restart("", ""))
 		assert.NoError(t, connB.agent.Restart("", ""))
 
-		// Gather, and block until both sides are done
-		var gatherWaitGroup sync.WaitGroup
-		gatherWaitGroup.Add(2)
-		onCandidate := func(c Candidate) {
-			if c == nil {
-				gatherWaitGroup.Done()
-			}
-		}
-
-		assert.NoError(t, connA.agent.OnCandidate(onCandidate))
-		assert.NoError(t, connB.agent.OnCandidate(onCandidate))
-
-		assert.NoError(t, connA.agent.GatherCandidates())
-		assert.NoError(t, connB.agent.GatherCandidates())
-
-		gatherWaitGroup.Wait()
-
 		// Exchange Candidates and Credentials
 		assert.NoError(t, connA.agent.SetRemoteCredentials(connB.agent.GetLocalUserCredentials()))
 		assert.NoError(t, connB.agent.SetRemoteCredentials(connA.agent.GetLocalUserCredentials()))
-		signalAgents(connA.agent, connB.agent)
+		gatherAndExchangeCandidates(connA.agent, connB.agent)
 
 		// Wait until both have gone back to connected
 		<-aConnected

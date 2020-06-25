@@ -46,7 +46,6 @@ type Agent struct {
 	// force candidate to be contacted immediately (instead of waiting for connectivityTicker)
 	forceCandidateContact chan bool
 
-	trickle    bool
 	tieBreaker uint64
 	lite       bool
 
@@ -232,7 +231,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		chanState:        make(chan ConnectionState, 1),
 		portmin:          config.PortMin,
 		portmax:          config.PortMax,
-		trickle:          config.Trickle,
 		loggerFactory:    loggerFactory,
 		log:              log,
 		net:              config.Net,
@@ -287,10 +285,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 
-	// Initialize local candidates
-	if !a.trickle {
-		<-a.gatherCandidates()
-	}
 	return a, nil
 }
 

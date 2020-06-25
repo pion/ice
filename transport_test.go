@@ -158,10 +158,25 @@ func check(err error) {
 	}
 }
 
-func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
-	// Manual signaling
-	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
-	bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+func gatherAndExchangeCandidates(aAgent, bAgent *Agent) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	check(aAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	}))
+	check(aAgent.GatherCandidates())
+
+	check(bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	}))
+	check(bAgent.GatherCandidates())
+
+	wg.Wait()
 
 	candidates, err := aAgent.GetLocalCandidates()
 	check(err)
@@ -174,17 +189,23 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	for _, c := range candidates {
 		check(aAgent.AddRemoteCandidate(copyCandidate(c)))
 	}
+}
+
+func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
+	gatherAndExchangeCandidates(aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
 
 	go func() {
 		var acceptErr error
+		bUfrag, bPwd := bAgent.GetLocalUserCredentials()
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
 		check(acceptErr)
 		close(accepted)
 	}()
 
+	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
 	check(err)
 
@@ -199,61 +220,23 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	cfg := &AgentConfig{}
 	if defaultConfig != nil {
 		*cfg = *defaultConfig
 	}
 
 	cfg.Urls = urls
-	cfg.Trickle = true
 	cfg.NetworkTypes = supportedNetworkTypes
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
+	check(err)
+	check(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
-	wg.Wait()
+	check(bAgent.OnConnectionStateChange(bNotifier))
+
 	aConn, bConn := connect(aAgent, bAgent)
 
 	// Ensure pair selected
@@ -270,60 +253,21 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	cfg := &AgentConfig{
 		Urls:                urls,
-		Trickle:             true,
 		DisconnectedTimeout: &disconnectTimeout,
 		KeepaliveInterval:   &iceKeepalive,
 		NetworkTypes:        supportedNetworkTypes,
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
+	check(err)
+	check(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	})
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.GatherCandidates()
-	if err != nil {
-		panic(err)
-	}
+	check(err)
+	check(bAgent.OnConnectionStateChange(bNotifier))
 
-	wg.Wait()
 	aConn, bConn := connect(aAgent, bAgent)
 
 	// Ensure pair selected
