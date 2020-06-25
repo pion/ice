@@ -255,6 +255,73 @@ func TestTURNConcurrency(t *testing.T) {
 	})
 }
 
+// Assert that STUN and TURN gathering are done concurrently
+func TestSTUNTURNConcurrency(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 8)
+	defer lim.Stop()
+
+	serverPort := randomPort(t)
+	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	assert.NoError(t, err)
+
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			},
+		},
+	})
+	assert.NoError(t, err)
+
+	urls := []*URL{}
+	for i := 0; i <= 10; i++ {
+		urls = append(urls, &URL{
+			Scheme: SchemeTypeSTUN,
+			Host:   "127.0.0.1",
+			Port:   serverPort + 1,
+		})
+	}
+	urls = append(urls, &URL{
+		Scheme:   SchemeTypeTURN,
+		Proto:    ProtoTypeUDP,
+		Host:     "127.0.0.1",
+		Port:     serverPort,
+		Username: "username",
+		Password: "password",
+	})
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes,
+		Urls:           urls,
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
+	})
+	assert.NoError(t, err)
+
+	{
+		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
+		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+		assert.NoError(t, a.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateGatheredFunc()
+			}
+		}))
+		assert.NoError(t, a.GatherCandidates())
+
+		<-candidateGathered.Done()
+
+		gatherLim.Stop()
+	}
+
+	assert.NoError(t, a.Close())
+	assert.NoError(t, server.Close())
+}
+
 func TestCloseConnLog(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
