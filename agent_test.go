@@ -708,18 +708,18 @@ func TestConnectionStateCallback(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	disconnectDuration := time.Second
+	disconnectedDuration := time.Second
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		Urls:              []*URL{},
-		Trickle:           true,
-		NetworkTypes:      supportedNetworkTypes,
-		DisconnectTimeout: &disconnectDuration,
-		FailedTimeout:     &failedDuration,
-		KeepaliveInterval: &KeepaliveInterval,
-		taskLoopInterval:  500 * time.Millisecond,
+		Urls:                []*URL{},
+		Trickle:             true,
+		NetworkTypes:        supportedNetworkTypes,
+		DisconnectedTimeout: &disconnectedDuration,
+		FailedTimeout:       &failedDuration,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    500 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1288,11 +1288,11 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		NetworkTypes:      supportedNetworkTypes,
-		DisconnectTimeout: &oneSecond,
-		FailedTimeout:     &oneSecond,
-		KeepaliveInterval: &KeepaliveInterval,
-		taskLoopInterval:  250 * time.Millisecond,
+		NetworkTypes:        supportedNetworkTypes,
+		DisconnectedTimeout: &oneSecond,
+		FailedTimeout:       &oneSecond,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    250 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1335,10 +1335,10 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		DisconnectTimeout: &oneSecond,
-		FailedTimeout:     &oneSecond,
-		KeepaliveInterval: &KeepaliveInterval,
-		taskLoopInterval:  250 * time.Millisecond,
+		DisconnectedTimeout: &oneSecond,
+		FailedTimeout:       &oneSecond,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    250 * time.Millisecond,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1413,8 +1413,8 @@ func TestAgentRestart(t *testing.T) {
 	t.Run("Restart One Side", func(t *testing.T) {
 		oneSecond := time.Second
 		connA, connB := pipe(&AgentConfig{
-			DisconnectTimeout: &oneSecond,
-			FailedTimeout:     &oneSecond,
+			DisconnectedTimeout: &oneSecond,
+			FailedTimeout:       &oneSecond,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())

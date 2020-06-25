@@ -12,10 +12,10 @@ const (
 	defaultTaskLoopInterval = 2 * time.Second
 
 	// keepaliveInterval used to keep candidates alive
-	defaultKeepaliveInterval = 10 * time.Second
+	defaultKeepaliveInterval = 2 * time.Second
 
-	// defaultDisconnectTimeout is the default time till an Agent transitions disconnected
-	defaultDisconnectTimeout = 5 * time.Second
+	// defaultDisconnectedTimeout is the default time till an Agent transitions disconnected
+	defaultDisconnectedTimeout = 5 * time.Second
 
 	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected
 	defaultFailedTimeout = 25 * time.Second
@@ -75,9 +75,9 @@ type AgentConfig struct {
 	// MulticastDNSHostName controls the hostname for this agent. If none is specified a random one will be generated
 	MulticastDNSHostName string
 
-	// DisconnectTimeout defaults to 5 seconds when this property is nil.
+	// DisconnectedTimeout defaults to 5 seconds when this property is nil.
 	// If the duration is 0, the ICE Agent will never go to disconnected
-	DisconnectTimeout *time.Duration
+	DisconnectedTimeout *time.Duration
 
 	// FailedTimeout defaults to 25 seconds when this property is nil.
 	// If the duration is 0, we will never go to failed.
@@ -191,10 +191,10 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
 
-	if config.DisconnectTimeout == nil {
-		a.disconnectTimeout = defaultDisconnectTimeout
+	if config.DisconnectedTimeout == nil {
+		a.disconnectedTimeout = defaultDisconnectedTimeout
 	} else {
-		a.disconnectTimeout = *config.DisconnectTimeout
+		a.disconnectedTimeout = *config.DisconnectedTimeout
 	}
 
 	if config.FailedTimeout == nil {

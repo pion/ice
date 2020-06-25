@@ -517,22 +517,22 @@ func TestDisconnectedToConnected(t *testing.T) {
 
 	// Create two agents and connect them
 	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      supportedNetworkTypes,
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		Net:               net0,
-		DisconnectTimeout: &disconnectTimeout,
-		KeepaliveInterval: &keepaliveInterval,
-		taskLoopInterval:  keepaliveInterval,
+		NetworkTypes:        supportedNetworkTypes,
+		MulticastDNSMode:    MulticastDNSModeDisabled,
+		Net:                 net0,
+		DisconnectedTimeout: &disconnectTimeout,
+		KeepaliveInterval:   &keepaliveInterval,
+		taskLoopInterval:    keepaliveInterval,
 	})
 	assert.NoError(t, err)
 
 	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      supportedNetworkTypes,
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		Net:               net1,
-		DisconnectTimeout: &disconnectTimeout,
-		KeepaliveInterval: &keepaliveInterval,
-		taskLoopInterval:  keepaliveInterval,
+		NetworkTypes:        supportedNetworkTypes,
+		MulticastDNSMode:    MulticastDNSModeDisabled,
+		Net:                 net1,
+		DisconnectedTimeout: &disconnectTimeout,
+		KeepaliveInterval:   &keepaliveInterval,
+		taskLoopInterval:    keepaliveInterval,
 	})
 	assert.NoError(t, err)
 

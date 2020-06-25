@@ -75,7 +75,7 @@ type Agent struct {
 
 	// How long connectivity checks can fail before the ICE Agent
 	// goes to disconnected
-	disconnectTimeout time.Duration
+	disconnectedTimeout time.Duration
 
 	// How long connectivity checks can fail before the ICE Agent
 	// goes to failed
@@ -392,7 +392,7 @@ func (a *Agent) connectivityChecks() {
 				}
 
 				// We have been in checking longer then Disconnect+Failed timeout, set the connection to Failed
-				if time.Since(checkingDuration) > a.disconnectTimeout+a.failedTimeout {
+				if time.Since(checkingDuration) > a.disconnectedTimeout+a.failedTimeout {
 					a.updateConnectionState(ConnectionStateFailed)
 					return
 				}
@@ -536,13 +536,13 @@ func (a *Agent) validateSelectedPair() bool {
 	// Only allow transitions to failed if a.failedTimeout is non-zero
 	totalTimeToFailure := a.failedTimeout
 	if totalTimeToFailure != 0 {
-		totalTimeToFailure += a.disconnectTimeout
+		totalTimeToFailure += a.disconnectedTimeout
 	}
 
 	switch {
 	case totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure:
 		a.updateConnectionState(ConnectionStateFailed)
-	case a.disconnectTimeout != 0 && disconnectedTime > a.disconnectTimeout:
+	case a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout:
 		a.updateConnectionState(ConnectionStateDisconnected)
 	default:
 		a.updateConnectionState(ConnectionStateConnected)
