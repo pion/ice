@@ -118,7 +118,6 @@ func TestSTUNConcurrency(t *testing.T) {
 
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes,
-		Trickle:        true,
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
 	})
@@ -195,7 +194,6 @@ func TestTURNConcurrency(t *testing.T) {
 			CandidateTypes:     []CandidateType{CandidateTypeRelay},
 			InsecureSkipVerify: true,
 			NetworkTypes:       supportedNetworkTypes,
-			Trickle:            true,
 			Urls:               urls,
 		})
 		assert.NoError(t, err)

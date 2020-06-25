@@ -51,7 +51,6 @@ var (
 	ErrRemotePwdEmpty = errors.New("remote pwd is empty")
 
 	// ErrNoOnCandidateHandler indicates agent was started without OnCandidate
-	// while running in trickle mode.
 	ErrNoOnCandidateHandler = errors.New("no OnCandidate provided")
 
 	// ErrMultipleGatherAttempted indicates GatherCandidates has been called multiple times

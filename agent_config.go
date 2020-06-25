@@ -65,10 +65,6 @@ type AgentConfig struct {
 	LocalUfrag string
 	LocalPwd   string
 
-	// Trickle specifies whether or not ice agent should trickle candidates or
-	// work perform synchronous gathering.
-	Trickle bool
-
 	// MulticastDNSMode controls mDNS behavior for the ICE agent
 	MulticastDNSMode MulticastDNSMode
 
