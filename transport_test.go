@@ -72,7 +72,7 @@ func TestTimeout(t *testing.T) {
 		panic(err)
 	}
 
-	testTimeout(t, ca, defaultDisconnectTimeout)
+	testTimeout(t, ca, defaultDisconnectedTimeout)
 
 	ca, cb = pipeWithTimeout(5*time.Second, 3*time.Second)
 	err = cb.Close()
@@ -274,11 +274,11 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	wg.Add(2)
 
 	cfg := &AgentConfig{
-		Urls:              urls,
-		Trickle:           true,
-		DisconnectTimeout: &disconnectTimeout,
-		KeepaliveInterval: &iceKeepalive,
-		NetworkTypes:      supportedNetworkTypes,
+		Urls:                urls,
+		Trickle:             true,
+		DisconnectedTimeout: &disconnectTimeout,
+		KeepaliveInterval:   &iceKeepalive,
+		NetworkTypes:        supportedNetworkTypes,
 	}
 
 	aAgent, err := NewAgent(cfg)
