@@ -37,6 +37,6 @@ type Candidate interface {
 
 	close() error
 	seen(outbound bool)
-	start(a *Agent, conn net.PacketConn)
+	start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{})
 	writeTo(raw []byte, dst Candidate) (int, error)
 }

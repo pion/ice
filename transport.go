@@ -45,9 +45,6 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 	if err != nil {
 		return nil, err
 	}
-	if a.opened {
-		return nil, errors.New("a connection is already opened")
-	}
 	err = a.startConnectivityChecks(isControlling, remoteUfrag, remotePwd)
 	if err != nil {
 		return nil, err
