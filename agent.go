@@ -35,9 +35,6 @@ type Agent struct {
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
 	onCandidateHdlr                   atomic.Value // func(Candidate)
 
-	// Used to block double Dial/Accept
-	opened bool
-
 	// State owned by the taskLoop
 	onConnected     chan struct{}
 	onConnectedOnce sync.Once
@@ -56,8 +53,9 @@ type Agent struct {
 	mDNSName string
 	mDNSConn *mdns.Conn
 
-	haveStarted   bool
 	muHaveStarted sync.Mutex
+	startedCh     <-chan struct{}
+	startedFn     func()
 	isControlling bool
 
 	maxBindingRequests uint16
@@ -217,6 +215,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		}
 	}
 
+	startedCtx, startedFn := context.WithCancel(context.Background())
+
 	a := &Agent{
 		tieBreaker:       rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
 		lite:             config.Lite,
@@ -229,6 +229,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		onConnected:      make(chan struct{}),
 		buffer:           packetio.NewBuffer(),
 		done:             make(chan struct{}),
+		startedCh:        startedCtx.Done(),
+		startedFn:        startedFn,
 		chanState:        make(chan ConnectionState, 1),
 		portmin:          config.PortMin,
 		portmax:          config.PortMax,
@@ -329,13 +331,14 @@ func (a *Agent) startOnConnectionStateChangeRoutine() {
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
 	a.muHaveStarted.Lock()
 	defer a.muHaveStarted.Unlock()
-	if a.haveStarted {
+	select {
+	case <-a.startedCh:
 		return ErrMultipleStart
+	default:
 	}
 	if err := a.SetRemoteCredentials(remoteUfrag, remotePwd); err != nil {
 		return err
 	}
-	a.haveStarted = true
 
 	a.startOnConnectionStateChangeRoutine()
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
@@ -356,6 +359,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		}
 
 		a.selector.Start()
+		a.startedFn()
 
 		agent.updateConnectionState(ConnectionStateChecking)
 
@@ -653,7 +657,7 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 
 func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
 	return a.run(func(agent *Agent) {
-		c.start(a, candidateConn)
+		c.start(a, candidateConn, a.startedCh)
 
 		set := a.localCandidates[c.NetworkType()]
 		for _, candidate := range set {
@@ -715,6 +719,7 @@ func (a *Agent) Close() error {
 		close(agent.done)
 
 		a.deleteAllCandidates()
+		a.startedFn()
 
 		if err := a.buffer.Close(); err != nil {
 			a.log.Warnf("failed to close buffer: %v", err)

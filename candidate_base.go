@@ -72,19 +72,25 @@ func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 }
 
 // start runs the candidate using the provided connection
-func (c *candidateBase) start(a *Agent, conn net.PacketConn) {
+func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{}) {
 	c.currAgent = a
 	c.conn = conn
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
 
-	go c.recvLoop()
+	go c.recvLoop(initializedCh)
 }
 
-func (c *candidateBase) recvLoop() {
+func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	defer func() {
 		close(c.closedCh)
 	}()
+
+	select {
+	case <-initializedCh:
+	case <-c.closeCh:
+		return
+	}
 
 	log := c.agent().log
 	buffer := make([]byte, receiveMTU)
