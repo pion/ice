@@ -31,6 +31,13 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	const margin = 20 * time.Millisecond // allow 20msec error in time
 	statechan := make(chan ConnectionState, 1)
 	ticker := time.NewTicker(pollrate)
+	defer func() {
+		ticker.Stop()
+		err := c.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	startedAt := time.Now()
 
@@ -64,25 +71,37 @@ func TestTimeout(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	ca, cb := pipe()
-	err := cb.Close()
+	// Check for leaking routines
+	report := test.CheckRoutines(t)
+	defer report()
 
-	if err != nil {
-		// we should never get here.
-		panic(err)
-	}
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 40)
+	defer lim.Stop()
 
-	testTimeout(t, ca, defaultConnectionTimeout)
+	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
+		ca, cb := pipe()
+		err := cb.Close()
 
-	ca, cb = pipeWithTimeout(5*time.Second, 3*time.Second)
-	err = cb.Close()
+		if err != nil {
+			// we should never get here.
+			panic(err)
+		}
 
-	if err != nil {
-		// we should never get here.
-		panic(err)
-	}
+		testTimeout(t, ca, defaultConnectionTimeout)
+	})
 
-	testTimeout(t, ca, 5*time.Second)
+	t.Run("WithDisconnectTimeout", func(t *testing.T) {
+		ca, cb := pipeWithTimeout(5*time.Second, 3*time.Second)
+		err := cb.Close()
+
+		if err != nil {
+			// we should never get here.
+			panic(err)
+		}
+
+		testTimeout(t, ca, 5*time.Second)
+	})
 }
 
 func TestReadClosed(t *testing.T) {
