@@ -14,13 +14,13 @@ import (
 )
 
 func TestStressDuplex(t *testing.T) {
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
-
 	// Check for leaking routines
 	report := test.CheckRoutines(t)
 	defer report()
+
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 20)
+	defer lim.Stop()
 
 	// Run the test
 	stressDuplex(t)

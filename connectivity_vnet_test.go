@@ -430,11 +430,11 @@ func TestConnectivityVNet(t *testing.T) {
 
 // TestDisconnectedToConnected asserts that an agent can go to disconnected, and then return to connected successfully
 func TestDisconnectedToConnected(t *testing.T) {
-	lim := test.TimeOut(time.Second * 10)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 10)
+	defer lim.Stop()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -526,11 +526,11 @@ func TestDisconnectedToConnected(t *testing.T) {
 
 // Agent.Write should use the best valid pair if a selected pair is not yet available
 func TestWriteUseValidPair(t *testing.T) {
-	lim := test.TimeOut(time.Second * 10)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 10)
+	defer lim.Stop()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 

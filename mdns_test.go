@@ -12,12 +12,12 @@ import (
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
 
 	cfg := &AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
@@ -54,12 +54,12 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 }
 
 func TestMulticastDNSMixedConnection(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
 
 	aAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
@@ -98,11 +98,11 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 }
 
 func TestMulticastDNSStaticHostName(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	_, err := NewAgent(&AgentConfig{
 		NetworkTypes:         []NetworkType{NetworkTypeUDP4},

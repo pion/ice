@@ -228,12 +228,12 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
 }
 
 func TestHandlePeerReflexive(t *testing.T) {
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 2)
+	defer lim.Stop()
 
 	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
@@ -466,11 +466,11 @@ func TestConnectivityOnStartup(t *testing.T) {
 }
 
 func TestConnectivityLite(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	stunServerURL := &URL{
 		Scheme: SchemeTypeSTUN,
@@ -710,11 +710,11 @@ func TestInvalidAgentStarts(t *testing.T) {
 
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestConnectionStateCallback(t *testing.T) {
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -1253,11 +1253,11 @@ func TestAgentCredentials(t *testing.T) {
 // Assert that Agent on Failure deletes all existing candidates
 // User can then do an ICE Restart to bring agent back
 func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1300,11 +1300,11 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 
 // Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
 func TestConnectionStateConnectingToFailed(t *testing.T) {
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1361,11 +1361,11 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 }
 
 func TestAgentRestart(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	t.Run("Restart During Gather", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})

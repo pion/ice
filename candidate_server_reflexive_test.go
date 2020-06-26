@@ -14,12 +14,12 @@ import (
 )
 
 func TestServerReflexiveOnlyConnection(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
