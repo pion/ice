@@ -86,6 +86,14 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestReadClosed(t *testing.T) {
+	// Check for leaking routines
+	report := test.CheckRoutines(t)
+	defer report()
+
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 20)
+	defer lim.Stop()
+
 	ca, cb := pipe()
 
 	err := ca.Close()
@@ -404,6 +412,14 @@ func randomPort(t testing.TB) int {
 }
 
 func TestConnStats(t *testing.T) {
+	// Check for leaking routines
+	report := test.CheckRoutines(t)
+	defer report()
+
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 20)
+	defer lim.Stop()
+
 	ca, cb := pipe()
 	if _, err := ca.Write(make([]byte, 10)); err != nil {
 		t.Fatal("unexpected error trying to write")
