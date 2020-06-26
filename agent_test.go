@@ -405,7 +405,45 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connectWithVNet(aAgent, bAgent)
+	aConn, bConn := func(aAgent, bAgent *Agent) (*Conn, *Conn) {
+		// Manual signaling
+		aUfrag, aPwd := aAgent.GetLocalUserCredentials()
+		bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+		gatherAndExchangeCandidates(aAgent, bAgent)
+
+		accepted := make(chan struct{})
+		accepting := make(chan struct{})
+		var aConn *Conn
+
+		origHdlr := aAgent.onConnectionStateChangeHdlr.Load()
+		if origHdlr != nil {
+			defer check(aAgent.OnConnectionStateChange(origHdlr.(func(ConnectionState))))
+		}
+		check(aAgent.OnConnectionStateChange(func(s ConnectionState) {
+			if s == ConnectionStateChecking {
+				close(accepting)
+			}
+			if origHdlr != nil {
+				origHdlr.(func(ConnectionState))(s)
+			}
+		}))
+
+		go func() {
+			var acceptErr error
+			aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
+			check(acceptErr)
+			close(accepted)
+		}()
+
+		<-accepting
+
+		bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
+		check(err)
+
+		// Ensure accepted
+		<-accepted
+		return aConn, bConn
+	}(aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
