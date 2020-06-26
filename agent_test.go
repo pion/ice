@@ -30,6 +30,9 @@ func (m *mockPacketConn) SetReadDeadline(t time.Time) error                   { 
 func (m *mockPacketConn) SetWriteDeadline(t time.Time) error                  { return nil }
 
 func TestPairSearch(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 10)
 	defer lim.Stop()
@@ -55,6 +58,9 @@ func TestPairSearch(t *testing.T) {
 }
 
 func TestPairPriority(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
@@ -142,6 +148,9 @@ func TestPairPriority(t *testing.T) {
 }
 
 func TestOnSelectedCandidatePairChange(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
@@ -220,7 +229,7 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
 
 func TestHandlePeerReflexive(t *testing.T) {
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 2)
+	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
 	report := test.CheckRoutines(t)
