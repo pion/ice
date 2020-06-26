@@ -56,7 +56,8 @@ type Agent struct {
 	mDNSName string
 	mDNSConn *mdns.Conn
 
-	haveStarted   atomic.Value
+	haveStarted   bool
+	muHaveStarted sync.Mutex
 	isControlling bool
 
 	maxBindingRequests uint16
@@ -246,7 +247,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 		insecureSkipVerify: config.InsecureSkipVerify,
 	}
-	a.haveStarted.Store(false)
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -327,14 +327,16 @@ func (a *Agent) startOnConnectionStateChangeRoutine() {
 }
 
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
-	if a.haveStarted.Load().(bool) {
+	a.muHaveStarted.Lock()
+	defer a.muHaveStarted.Unlock()
+	if a.haveStarted {
 		return ErrMultipleStart
 	}
 	if err := a.SetRemoteCredentials(remoteUfrag, remotePwd); err != nil {
 		return err
 	}
+	a.haveStarted = true
 
-	a.haveStarted.Store(true)
 	a.startOnConnectionStateChangeRoutine()
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
