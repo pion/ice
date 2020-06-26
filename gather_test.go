@@ -80,11 +80,11 @@ func TestListenUDP(t *testing.T) {
 
 // Assert that STUN gathering is done concurrently
 func TestSTUNConcurrency(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
@@ -140,11 +140,11 @@ func TestSTUNConcurrency(t *testing.T) {
 
 // Assert that TURN gathering is done concurrently
 func TestTURNConcurrency(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	runTest := func(protocol ProtoType, scheme SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
 		packetConnConfigs := []turn.PacketConnConfig{}

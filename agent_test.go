@@ -225,12 +225,12 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
 }
 
 func TestHandlePeerReflexive(t *testing.T) {
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	// Limit runtime in case of deadlocks
+	lim := test.TimeOut(time.Second * 2)
+	defer lim.Stop()
 
 	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
@@ -440,11 +440,11 @@ func TestConnectivityOnStartup(t *testing.T) {
 }
 
 func TestConnectivityLite(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	stunServerURL := &URL{
 		Scheme: SchemeTypeSTUN,
@@ -702,11 +702,11 @@ func TestInvalidAgentStarts(t *testing.T) {
 
 // Assert that Agent emits Connecting/Connected/Disconnected/Closed messages
 func TestConnectionStateCallback(t *testing.T) {
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
-
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
