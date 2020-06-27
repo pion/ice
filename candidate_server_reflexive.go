@@ -1,3 +1,5 @@
+// Package ice ...
+//nolint:dupl
 package ice
 
 import "net"
@@ -32,10 +34,7 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 
 	candidateID := config.CandidateID
 	if candidateID == "" {
-		candidateID, err = generateCandidateID()
-		if err != nil {
-			return nil, err
-		}
+		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
 	return &CandidateServerReflexive{

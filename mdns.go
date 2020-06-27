@@ -3,6 +3,7 @@ package ice
 import (
 	"net"
 
+	"github.com/google/uuid"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"golang.org/x/net/ipv4"
@@ -24,7 +25,10 @@ const (
 )
 
 func generateMulticastDNSName() (string, error) {
-	return generateRandString("", ".local")
+	// https://tools.ietf.org/id/draft-ietf-rtcweb-mdns-ice-candidates-02.html#gathering
+	// The unique name MUST consist of a version 4 UUID as defined in [RFC4122], followed by “.local”.
+	u, err := uuid.NewRandom()
+	return u.String() + ".local", err
 }
 
 func createMulticastDNS(mDNSMode MulticastDNSMode, mDNSName string, log logging.LeveledLogger) (*mdns.Conn, MulticastDNSMode, error) {

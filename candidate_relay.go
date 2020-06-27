@@ -28,11 +28,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 	candidateID := config.CandidateID
 
 	if candidateID == "" {
-		var err error
-		candidateID, err = generateCandidateID()
-		if err != nil {
-			return nil, err
-		}
+		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
 	ip := net.ParseIP(config.Address)
