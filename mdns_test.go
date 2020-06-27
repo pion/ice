@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"regexp"
 	"testing"
 	"time"
 
@@ -131,4 +132,18 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 	assert.NoError(t, agent.GatherCandidates())
 	<-correctHostName.Done()
 	assert.NoError(t, agent.Close())
+}
+
+func TestGenerateMulticastDNSName(t *testing.T) {
+	name, err := generateMulticastDNSName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	isMDNSName := regexp.MustCompile(
+		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`,
+	).MatchString
+
+	if !isMDNSName(name) {
+		t.Fatalf("mDNS name must be UUID v4 + \".local\" suffix, got %s", name)
+	}
 }
