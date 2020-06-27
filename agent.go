@@ -4,7 +4,6 @@ package ice
 
 import (
 	"context"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -218,7 +217,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	a := &Agent{
-		tieBreaker:       rand.New(rand.NewSource(time.Now().UnixNano())).Uint64(),
+		tieBreaker:       globalMathRandomGenerator.Uint64(),
 		lite:             config.Lite,
 		gatheringState:   GatheringStateNew,
 		connectionState:  ConnectionStateNew,
@@ -991,10 +990,18 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 // a user must then call GatherCandidates explicitly to start generating new ones
 func (a *Agent) Restart(ufrag, pwd string) error {
 	if ufrag == "" {
-		ufrag = randSeq(16)
+		var err error
+		ufrag, err = generateUFrag()
+		if err != nil {
+			return err
+		}
 	}
 	if pwd == "" {
-		pwd = randSeq(32)
+		var err error
+		pwd, err = generatePwd()
+		if err != nil {
+			return err
+		}
 	}
 
 	if len([]rune(ufrag))*8 < 24 {

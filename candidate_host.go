@@ -26,11 +26,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	candidateID := config.CandidateID
 
 	if candidateID == "" {
-		var err error
-		candidateID, err = generateCandidateID()
-		if err != nil {
-			return nil, err
-		}
+		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
 	c := &CandidateHost{
