@@ -17,17 +17,15 @@ type pairCandidateSelector interface {
 }
 
 type controllingSelector struct {
-	startTime              time.Time
-	agent                  *Agent
-	nominatedPair          *candidatePair
-	nominationRequestCount uint16
-	log                    logging.LeveledLogger
+	startTime     time.Time
+	agent         *Agent
+	nominatedPair *candidatePair
+	log           logging.LeveledLogger
 }
 
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
 	s.nominatedPair = nil
-	s.nominationRequestCount = 0
 }
 
 func (s *controllingSelector) isNominatable(c Candidate) bool {
@@ -54,11 +52,6 @@ func (s *controllingSelector) ContactCandidates() {
 			s.agent.checkKeepalive()
 		}
 	case s.nominatedPair != nil:
-		if s.nominationRequestCount > s.agent.maxBindingRequests {
-			s.log.Trace("max nomination requests reached, setting the connection state to failed")
-			s.agent.updateConnectionState(ConnectionStateFailed)
-			return
-		}
 		s.nominatePair(s.nominatedPair)
 	default:
 		p := s.agent.getBestValidCandidatePair()
@@ -94,7 +87,6 @@ func (s *controllingSelector) nominatePair(pair *candidatePair) {
 
 	s.log.Tracef("ping STUN (nominate candidate pair) from %s to %s\n", pair.local.String(), pair.remote.String())
 	s.agent.sendBindingRequest(msg, pair.local, pair.remote)
-	s.nominationRequestCount++
 }
 
 func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
