@@ -1367,6 +1367,8 @@ func TestAgentRestart(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
+	oneSecond := time.Second
+
 	t.Run("Restart During Gather", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
 		assert.NoError(t, err)
@@ -1386,10 +1388,10 @@ func TestAgentRestart(t *testing.T) {
 	})
 
 	t.Run("Restart One Side", func(t *testing.T) {
-		oneSecond := time.Second
 		connA, connB := pipe(&AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
+			taskLoopInterval:    50 * time.Millisecond,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1418,7 +1420,11 @@ func TestAgentRestart(t *testing.T) {
 		}
 
 		// Store the original candidates, confirm that after we reconnect we have new pairs
-		connA, connB := pipe(nil)
+		connA, connB := pipe(&AgentConfig{
+			DisconnectedTimeout: &oneSecond,
+			FailedTimeout:       &oneSecond,
+			taskLoopInterval:    50 * time.Millisecond,
+		})
 		connAFirstCandidates := generateCandidateAddressStrings(connA.agent.GetLocalCandidates())
 		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
 
