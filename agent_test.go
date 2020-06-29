@@ -1449,3 +1449,11 @@ func TestAgentRestart(t *testing.T) {
 		assert.NoError(t, connB.agent.Close())
 	})
 }
+
+func TestGetRemoteCredentials(t *testing.T) {
+	a := Agent{remoteUfrag: "remoteUfrag", remotePwd: "remotePwd"}
+
+	actualUfrag, actualPwd := a.GetRemoteUserCredentials()
+	assert.Equal(t, actualUfrag, a.remoteUfrag)
+	assert.Equal(t, actualPwd, a.remotePwd)
+}
