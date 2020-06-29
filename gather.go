@@ -252,10 +252,6 @@ func (a *Agent) gatherCandidatesSrflxMapped(networkTypes []NetworkType, wg *sync
 func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType, wg *sync.WaitGroup) {
 	for _, networkType := range networkTypes {
 		for i := range urls {
-			if urls[i].Scheme != SchemeTypeSTUN {
-				continue
-			}
-
 			wg.Add(1)
 			go func(url URL, network string) {
 				defer wg.Done()

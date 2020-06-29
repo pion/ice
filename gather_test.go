@@ -322,6 +322,66 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	assert.NoError(t, server.Close())
 }
 
+// Assert that srflx candidates can be gathered from TURN servers
+//
+// When TURN servers are utilized, both types of candidates
+// (i.e. srflx and relay) are obtained from the TURN server.
+//
+// https://tools.ietf.org/html/rfc5245#section-2.1
+func TestTURNSrflx(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	serverPort := randomPort(t)
+	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	assert.NoError(t, err)
+
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			},
+		},
+	})
+	assert.NoError(t, err)
+
+	urls := []*URL{{
+		Scheme:   SchemeTypeTURN,
+		Proto:    ProtoTypeUDP,
+		Host:     "127.0.0.1",
+		Port:     serverPort,
+		Username: "username",
+		Password: "password",
+	}}
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes,
+		Urls:           urls,
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
+	})
+	assert.NoError(t, err)
+
+	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c != nil && c.Type() == CandidateTypeServerReflexive {
+			candidateGatheredFunc()
+		}
+	}))
+
+	assert.NoError(t, a.GatherCandidates())
+
+	<-candidateGathered.Done()
+
+	assert.NoError(t, a.Close())
+	assert.NoError(t, server.Close())
+}
+
 func TestCloseConnLog(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
