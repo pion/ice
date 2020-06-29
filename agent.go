@@ -706,6 +706,11 @@ func (a *Agent) GetLocalUserCredentials() (frag string, pwd string) {
 	return a.localUfrag, a.localPwd
 }
 
+// GetRemoteUserCredentials returns the remote user credentials
+func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string) {
+	return a.remoteUfrag, a.remotePwd
+}
+
 // Close cleans up the Agent
 func (a *Agent) Close() error {
 	done := make(chan struct{})
