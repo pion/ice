@@ -702,13 +702,33 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 }
 
 // GetLocalUserCredentials returns the local user credentials
-func (a *Agent) GetLocalUserCredentials() (frag string, pwd string) {
-	return a.localUfrag, a.localPwd
+func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
+	valSet := make(chan struct{})
+	err = a.run(func(agent *Agent) {
+		frag = agent.localUfrag
+		pwd = agent.localPwd
+		close(valSet)
+	}, nil)
+
+	if err == nil {
+		<-valSet
+	}
+	return
 }
 
 // GetRemoteUserCredentials returns the remote user credentials
-func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string) {
-	return a.remoteUfrag, a.remotePwd
+func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) {
+	valSet := make(chan struct{})
+	err = a.run(func(agent *Agent) {
+		frag = agent.remoteUfrag
+		pwd = agent.remotePwd
+		close(valSet)
+	}, nil)
+
+	if err == nil {
+		<-valSet
+	}
+	return
 }
 
 // Close cleans up the Agent
