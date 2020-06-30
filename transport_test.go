@@ -226,13 +226,15 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 
 	go func() {
 		var acceptErr error
-		bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+		bUfrag, bPwd, acceptErr := bAgent.GetLocalUserCredentials()
+		check(acceptErr)
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
 		check(acceptErr)
 		close(accepted)
 	}()
 
-	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	check(err)
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
 	check(err)
 

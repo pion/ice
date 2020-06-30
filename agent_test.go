@@ -416,8 +416,12 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 	aConn, bConn := func(aAgent, bAgent *Agent) (*Conn, *Conn) {
 		// Manual signaling
-		aUfrag, aPwd := aAgent.GetLocalUserCredentials()
-		bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+		aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+		assert.NoError(t, err)
+
+		bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+		assert.NoError(t, err)
+
 		gatherAndExchangeCandidates(aAgent, bAgent)
 
 		accepted := make(chan struct{})
@@ -1439,8 +1443,14 @@ func TestAgentRestart(t *testing.T) {
 		assert.NoError(t, connB.agent.Restart("", ""))
 
 		// Exchange Candidates and Credentials
-		assert.NoError(t, connA.agent.SetRemoteCredentials(connB.agent.GetLocalUserCredentials()))
-		assert.NoError(t, connB.agent.SetRemoteCredentials(connA.agent.GetLocalUserCredentials()))
+		ufrag, pwd, err := connB.agent.GetLocalUserCredentials()
+		assert.NoError(t, err)
+		assert.NoError(t, connA.agent.SetRemoteCredentials(ufrag, pwd))
+
+		ufrag, pwd, err = connA.agent.GetLocalUserCredentials()
+		assert.NoError(t, err)
+		assert.NoError(t, connB.agent.SetRemoteCredentials(ufrag, pwd))
+
 		gatherAndExchangeCandidates(connA.agent, connB.agent)
 
 		// Wait until both have gone back to connected
@@ -1457,9 +1467,11 @@ func TestAgentRestart(t *testing.T) {
 }
 
 func TestGetRemoteCredentials(t *testing.T) {
-	a := Agent{remoteUfrag: "remoteUfrag", remotePwd: "remotePwd"}
+	a := Agent{remoteUfrag: "remoteUfrag", remotePwd: "remotePwd", muChan: make(chan struct{}, 1)}
 
-	actualUfrag, actualPwd := a.GetRemoteUserCredentials()
+	actualUfrag, actualPwd, err := a.GetRemoteUserCredentials()
+	assert.NoError(t, err)
+
 	assert.Equal(t, actualUfrag, a.remoteUfrag)
 	assert.Equal(t, actualPwd, a.remotePwd)
 }

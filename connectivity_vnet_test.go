@@ -163,8 +163,11 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 
 func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	// Manual signaling
-	aUfrag, aPwd := aAgent.GetLocalUserCredentials()
-	bUfrag, bPwd := bAgent.GetLocalUserCredentials()
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	check(err)
+
+	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+	check(err)
 
 	gatherAndExchangeCandidates(aAgent, bAgent)
 
@@ -585,8 +588,11 @@ func TestWriteUseValidPair(t *testing.T) {
 
 	gatherAndExchangeCandidates(controllingAgent, controlledAgent)
 
-	controllingUfrag, controllingPwd := controllingAgent.GetLocalUserCredentials()
-	controlledUfrag, controlledPwd := controlledAgent.GetLocalUserCredentials()
+	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
+	assert.NoError(t, err)
+
+	controlledUfrag, controlledPwd, err := controlledAgent.GetLocalUserCredentials()
+	assert.NoError(t, err)
 
 	assert.NoError(t, controllingAgent.startConnectivityChecks(true, controlledUfrag, controlledPwd))
 	assert.NoError(t, controlledAgent.startConnectivityChecks(false, controllingUfrag, controllingPwd))
