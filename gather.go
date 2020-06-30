@@ -66,6 +66,7 @@ func (a *Agent) GatherCandidates() error {
 			return
 		}
 
+		a.gatheringState = GatheringStateGathering
 		a.gatherCandidates()
 		gatherErrChan <- nil
 	}, nil)
@@ -76,8 +77,6 @@ func (a *Agent) GatherCandidates() error {
 }
 
 func (a *Agent) gatherCandidates() <-chan struct{} {
-	gatherStateUpdated := make(chan bool)
-
 	a.chanCandidate = make(chan Candidate, 1)
 	var closeChanCandidateOnce sync.Once
 	go func() {
@@ -100,15 +99,6 @@ func (a *Agent) gatherCandidates() <-chan struct{} {
 			})
 			close(done)
 		}()
-
-		if err := a.run(func(agent *Agent) {
-			a.gatheringState = GatheringStateGathering
-			close(gatherStateUpdated)
-		}, nil); err != nil {
-			a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
-			return
-		}
-		<-gatherStateUpdated
 
 		var wg sync.WaitGroup
 		for _, t := range a.candidateTypes {
