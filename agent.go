@@ -230,7 +230,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		done:             make(chan struct{}),
 		startedCh:        startedCtx.Done(),
 		startedFn:        startedFn,
-		chanState:        make(chan ConnectionState, 1),
+		chanState:        make(chan ConnectionState),
+		chanCandidate:    make(chan Candidate),
 		portmin:          config.PortMin,
 		portmax:          config.PortMax,
 		loggerFactory:    loggerFactory,
@@ -286,6 +287,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 
+	a.startOnConnectionStateChangeRoutine()
 	return a, nil
 }
 
@@ -319,9 +321,25 @@ func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
 
 func (a *Agent) startOnConnectionStateChangeRoutine() {
 	go func() {
-		for s := range a.chanState {
-			if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
-				hdlr(s)
+		for {
+			select {
+			case s, isOpen := <-a.chanState:
+				if !isOpen {
+					return
+				}
+
+				if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
+					hdlr(s)
+				}
+
+			case c, isOpen := <-a.chanCandidate:
+				if !isOpen {
+					return
+				}
+
+				if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
+					onCandidateHdlr(c)
+				}
 			}
 		}
 	}()
@@ -339,7 +357,6 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		return err
 	}
 
-	a.startOnConnectionStateChangeRoutine()
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.run(func(agent *Agent) {
@@ -738,6 +755,7 @@ func (a *Agent) Close() error {
 		defer func() {
 			close(done)
 			close(agent.chanState)
+			close(agent.chanCandidate)
 		}()
 		agent.err.Store(ErrClosed)
 		close(agent.done)
@@ -1068,4 +1086,21 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		return runErr
 	}
 	return <-err
+}
+
+func (a *Agent) setGatheringState(newState GatheringState) error {
+	done := make(chan struct{})
+	if err := a.run(func(agent *Agent) {
+		if a.gatheringState != newState && newState == GatheringStateComplete {
+			a.chanCandidate <- nil
+		}
+
+		a.gatheringState = newState
+		close(done)
+	}, nil); err != nil {
+		return err
+	}
+
+	<-done
+	return nil
 }
