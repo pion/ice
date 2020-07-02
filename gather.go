@@ -76,39 +76,17 @@ func (a *Agent) GatherCandidates() error {
 }
 
 func (a *Agent) gatherCandidates() <-chan struct{} {
-	gatherStateUpdated := make(chan bool)
-
-	a.chanCandidate = make(chan Candidate, 1)
-	var closeChanCandidateOnce sync.Once
-	go func() {
-		for c := range a.chanCandidate {
-			if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
-				onCandidateHdlr(c)
-			}
-		}
-		if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
-			onCandidateHdlr(nil)
-		}
-	}()
-
 	done := make(chan struct{})
 
 	go func() {
 		defer func() {
-			closeChanCandidateOnce.Do(func() {
-				close(a.chanCandidate)
-			})
 			close(done)
 		}()
 
-		if err := a.run(func(agent *Agent) {
-			a.gatheringState = GatheringStateGathering
-			close(gatherStateUpdated)
-		}, nil); err != nil {
-			a.log.Warnf("failed to set gatheringState to GatheringStateGathering for gatherCandidates: %v", err)
+		if err := a.setGatheringState(GatheringStateGathering); err != nil {
+			a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
 			return
 		}
-		<-gatherStateUpdated
 
 		var wg sync.WaitGroup
 		for _, t := range a.candidateTypes {
@@ -128,14 +106,9 @@ func (a *Agent) gatherCandidates() <-chan struct{} {
 		}
 		// Block until all STUN and TURN URLs have been gathered (or timed out)
 		wg.Wait()
-		if err := a.run(func(agent *Agent) {
-			closeChanCandidateOnce.Do(func() {
-				close(agent.chanCandidate)
-			})
-			a.gatheringState = GatheringStateComplete
-		}, nil); err != nil {
-			a.log.Warnf("Failed to stop OnCandidate handler routine and update gatheringState: %v\n", err)
-			return
+
+		if err := a.setGatheringState(GatheringStateComplete); err != nil {
+			a.log.Warnf("failed to set gatheringState to GatheringStateComplete: %v", err)
 		}
 	}()
 
