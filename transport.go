@@ -90,14 +90,12 @@ func (c *Conn) Write(p []byte) (int, error) {
 
 	pair := c.agent.getSelectedPair()
 	if pair == nil {
-		bestValidPair := make(chan *candidatePair, 1)
-		if err = c.agent.run(func(a *Agent) {
-			bestValidPair <- a.getBestValidCandidatePair()
-		}, nil); err != nil {
+		if err = c.agent.run(c.agent.context(), func(ctx context.Context, a *Agent) {
+			pair = a.getBestValidCandidatePair()
+		}); err != nil {
 			return 0, err
 		}
 
-		pair = <-bestValidPair
 		if pair == nil {
 			return 0, err
 		}

@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -33,7 +34,7 @@ type Candidate interface {
 
 	addr() *net.UDPAddr
 	agent() *Agent
-	getCloseCh() chan struct{}
+	context() context.Context
 
 	close() error
 	seen(outbound bool)

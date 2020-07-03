@@ -26,9 +26,9 @@ type bindingRequest struct {
 
 // Agent represents the ICE agent
 type Agent struct {
-	// Lock for transactional operations on Agent. Unlike a mutex
-	// all queued lock attempts are canceled when .Close() is called
-	muChan chan struct{}
+	chanTask   chan task
+	afterRunFn []func(ctx context.Context)
+	muAfterRun sync.Mutex
 
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
@@ -126,6 +126,26 @@ type Agent struct {
 	insecureSkipVerify bool
 }
 
+type task struct {
+	fn   func(context.Context, *Agent)
+	done chan struct{}
+}
+
+// afterRun registers function to be run after the task.
+func (a *Agent) afterRun(f func(context.Context)) {
+	a.muAfterRun.Lock()
+	a.afterRunFn = append(a.afterRunFn, f)
+	a.muAfterRun.Unlock()
+}
+
+func (a *Agent) getAfterRunFn() []func(context.Context) {
+	a.muAfterRun.Lock()
+	defer a.muAfterRun.Unlock()
+	fns := a.afterRunFn
+	a.afterRunFn = nil
+	return fns
+}
+
 func (a *Agent) ok() error {
 	select {
 	case <-a.done:
@@ -142,31 +162,65 @@ func (a *Agent) getErr() error {
 	return ErrClosed
 }
 
-// Run an operation with the the lock taken
-// If the agent is closed return an error
-func (a *Agent) run(t func(*Agent), localDone <-chan struct{}) error {
+// Run task in serial. Blocking tasks must be cancelable by context.
+func (a *Agent) run(ctx context.Context, t func(context.Context, *Agent)) error {
 	if err := a.ok(); err != nil {
 		return err
 	}
-
+	done := make(chan struct{})
 	select {
-	case <-a.done:
-		return a.getErr()
-	case <-localDone:
-		return ErrRunCanceled
-	case a.muChan <- struct{}{}:
-		var err error
-		select {
-		case <-localDone:
-			err = ErrRunCanceled
-		case <-a.done:
-			// Ensure the agent is not closed
-			err = a.getErr()
-		default:
-			t(a)
+	case <-ctx.Done():
+		return ctx.Err()
+	case a.chanTask <- task{t, done}:
+		<-done
+		return nil
+	}
+}
+
+// taskLoop handles registered tasks and agent close.
+func (a *Agent) taskLoop() {
+	after := func() {
+		for {
+			// Get and run func registered by afterRun().
+			fns := a.getAfterRunFn()
+			if len(fns) == 0 {
+				break
+			}
+			for _, fn := range fns {
+				fn(a.context())
+			}
 		}
-		<-a.muChan
-		return err
+	}
+	defer func() {
+		a.deleteAllCandidates()
+		a.startedFn()
+
+		if err := a.buffer.Close(); err != nil {
+			a.log.Warnf("failed to close buffer: %v", err)
+		}
+
+		if a.connectivityTicker != nil {
+			a.connectivityTicker.Stop()
+		}
+
+		a.closeMulticastConn()
+		a.updateConnectionState(ConnectionStateClosed)
+
+		after()
+
+		close(a.chanState)
+		close(a.chanCandidate)
+	}()
+
+	for {
+		select {
+		case <-a.done:
+			return
+		case t := <-a.chanTask:
+			t.fn(a.context(), a)
+			close(t.done)
+			after()
+		}
 	}
 }
 
@@ -217,6 +271,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	a := &Agent{
+		chanTask:         make(chan task),
+		chanState:        make(chan ConnectionState),
+		chanCandidate:    make(chan Candidate),
 		tieBreaker:       globalMathRandomGenerator.Uint64(),
 		lite:             config.Lite,
 		gatheringState:   GatheringStateNew,
@@ -230,14 +287,11 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		done:             make(chan struct{}),
 		startedCh:        startedCtx.Done(),
 		startedFn:        startedFn,
-		chanState:        make(chan ConnectionState),
-		chanCandidate:    make(chan Candidate),
 		portmin:          config.PortMin,
 		portmax:          config.PortMax,
 		loggerFactory:    loggerFactory,
 		log:              log,
 		net:              config.Net,
-		muChan:           make(chan struct{}, 1),
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -281,13 +335,16 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		return nil, err
 	}
 
+	go a.taskLoop()
+	a.startOnConnectionStateChangeRoutine()
+
 	// Restart is also used to initialize the agent for the first time
 	if err := a.Restart(config.LocalUfrag, config.LocalPwd); err != nil {
 		closeMDNSConn()
+		_ = a.Close()
 		return nil, err
 	}
 
-	a.startOnConnectionStateChangeRoutine()
 	return a, nil
 }
 
@@ -371,7 +428,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
-	return a.run(func(agent *Agent) {
+	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		agent.isControlling = isControlling
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
@@ -395,7 +452,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		a.requestConnectivityCheck()
 		agent.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 		go a.connectivityChecks()
-	}, nil)
+	})
 }
 
 func (a *Agent) connectivityChecks() {
@@ -403,7 +460,7 @@ func (a *Agent) connectivityChecks() {
 	checkingDuration := time.Time{}
 
 	contact := func() {
-		if err := a.run(func(a *Agent) {
+		if err := a.run(a.context(), func(ctx context.Context, a *Agent) {
 			defer func() {
 				lastConnectionState = a.connectionState
 			}()
@@ -427,7 +484,7 @@ func (a *Agent) connectivityChecks() {
 			}
 
 			a.selector.ContactCandidates()
-		}, nil); err != nil {
+		}); err != nil {
 			a.log.Warnf("taskLoop failed: %v", err)
 		}
 	}
@@ -454,9 +511,11 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 		a.log.Infof("Setting new connection state: %s", newState)
 		a.connectionState = newState
 
-		// Call handler in different routine since we may be holding the agent lock
+		// Call handler after finishing current task since we may be holding the agent lock
 		// and the handler may also require it
-		a.chanState <- newState
+		a.afterRun(func(ctx context.Context) {
+			a.chanState <- newState
+		})
 	}
 }
 
@@ -615,9 +674,9 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	}
 
 	go func() {
-		if err := a.run(func(agent *Agent) {
+		if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 			agent.addRemoteCandidate(c)
-		}, nil); err != nil {
+		}); err != nil {
 			a.log.Warnf("Failed to add remote candidate %s: %v", c.Address(), err)
 			return
 		}
@@ -646,9 +705,9 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 		return
 	}
 
-	if err = a.run(func(agent *Agent) {
+	if err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		agent.addRemoteCandidate(c)
-	}, nil); err != nil {
+	}); err != nil {
 		a.log.Warnf("Failed to add mDNS candidate %s: %v", c.Address(), err)
 		return
 	}
@@ -684,7 +743,7 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 }
 
 func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
-	return a.run(func(agent *Agent) {
+	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		c.start(a, candidateConn, a.startedCh)
 
 		set := a.localCandidates[c.NetworkType()]
@@ -709,35 +768,35 @@ func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
 		a.requestConnectivityCheck()
 
 		a.chanCandidate <- c
-	}, nil)
+	})
 }
 
 // GetLocalCandidates returns the local candidates
 func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
-	res := make(chan []Candidate, 1)
+	var res []Candidate
 
-	err := a.run(func(agent *Agent) {
+	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		var candidates []Candidate
 		for _, set := range agent.localCandidates {
 			candidates = append(candidates, set...)
 		}
-		res <- candidates
-	}, nil)
+		res = candidates
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return <-res, nil
+	return res, nil
 }
 
 // GetLocalUserCredentials returns the local user credentials
 func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
 	valSet := make(chan struct{})
-	err = a.run(func(agent *Agent) {
+	err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		frag = agent.localUfrag
 		pwd = agent.localPwd
 		close(valSet)
-	}, nil)
+	})
 
 	if err == nil {
 		<-valSet
@@ -748,11 +807,11 @@ func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
 // GetRemoteUserCredentials returns the remote user credentials
 func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) {
 	valSet := make(chan struct{})
-	err = a.run(func(agent *Agent) {
+	err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		frag = agent.remoteUfrag
 		pwd = agent.remotePwd
 		close(valSet)
-	}, nil)
+	})
 
 	if err == nil {
 		<-valSet
@@ -762,33 +821,18 @@ func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) 
 
 // Close cleans up the Agent
 func (a *Agent) Close() error {
-	done := make(chan struct{})
-	err := a.run(func(agent *Agent) {
-		defer func() {
-			close(done)
-			close(agent.chanState)
-			close(agent.chanCandidate)
-		}()
-		agent.err.Store(ErrClosed)
-		close(agent.done)
-
-		a.deleteAllCandidates()
-		a.startedFn()
-
-		if err := a.buffer.Close(); err != nil {
-			a.log.Warnf("failed to close buffer: %v", err)
-		}
-
-		if a.connectivityTicker != nil {
-			a.connectivityTicker.Stop()
-		}
-
-		a.closeMulticastConn()
-		a.updateConnectionState(ConnectionStateClosed)
-	}, nil)
-	if err != nil {
+	if err := a.ok(); err != nil {
 		return err
 	}
+
+	done := make(chan struct{})
+
+	a.afterRun(func(context.Context) {
+		close(done)
+	})
+
+	a.err.Store(ErrClosed)
+	close(a.done)
 
 	<-done
 	return nil
@@ -992,13 +1036,13 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 // and returns true if it is an actual remote candidate
 func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 	var isValidCandidate uint64
-	if err := a.run(func(agent *Agent) {
+	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
 			atomic.AddUint64(&isValidCandidate, 1)
 		}
-	}, nil); err != nil {
+	}); err != nil {
 		a.log.Warnf("failed to validate remote candidate: %v", err)
 	}
 
@@ -1032,10 +1076,10 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 		return ErrRemotePwdEmpty
 	}
 
-	return a.run(func(agent *Agent) {
+	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
-	}, nil)
+	})
 }
 
 // Restart restarts the ICE Agent with the provided ufrag/pwd
@@ -1066,10 +1110,10 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		return ErrLocalPwdInsufficientBits
 	}
 
-	err := make(chan error, 1)
-	if runErr := a.run(func(agent *Agent) {
+	var err error
+	if runErr := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		if agent.gatheringState == GatheringStateGathering {
-			err <- ErrRestartWhenGathering
+			err = ErrRestartWhenGathering
 			return
 		}
 
@@ -1092,24 +1136,22 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		if a.connectionState != ConnectionStateNew {
 			a.updateConnectionState(ConnectionStateChecking)
 		}
-
-		close(err)
-	}, nil); runErr != nil {
+	}); runErr != nil {
 		return runErr
 	}
-	return <-err
+	return err
 }
 
 func (a *Agent) setGatheringState(newState GatheringState) error {
 	done := make(chan struct{})
-	if err := a.run(func(agent *Agent) {
+	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		if a.gatheringState != newState && newState == GatheringStateComplete {
 			a.chanCandidate <- nil
 		}
 
 		a.gatheringState = newState
 		close(done)
-	}, nil); err != nil {
+	}); err != nil {
 		return err
 	}
 

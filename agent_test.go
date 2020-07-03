@@ -158,7 +158,6 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create agent: %s", err)
 	}
-	a.startOnConnectionStateChangeRoutine()
 
 	callbackCalled := make(chan struct{}, 1)
 	if err = a.OnSelectedCandidatePairChange(func(local, remote Candidate) {
@@ -192,10 +191,10 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	}
 
 	// select the pair
-	if err = a.run(func(agent *Agent) {
+	if err = a.run(context.Background(), func(ctx context.Context, agent *Agent) {
 		p := newCandidatePair(hostLocal, relayRemote, false)
 		agent.setSelectedPair(p)
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatalf("Failed to setValidPair(): %s", err)
 	}
 
@@ -213,14 +212,14 @@ func (ba *BadAddr) String() string {
 	return "yyy"
 }
 
-func runAgentTest(t *testing.T, config *AgentConfig, task func(a *Agent)) {
+func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Context, a *Agent)) {
 	a, err := NewAgent(config)
 
 	if err != nil {
 		t.Fatalf("Error constructing ice.Agent")
 	}
 
-	if err := a.run(task, nil); err != nil {
+	if err := a.run(context.Background(), task); err != nil {
 		t.Fatalf("Agent run failure: %v", err)
 	}
 
@@ -237,7 +236,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(a *Agent) {
+		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
@@ -298,7 +297,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(a *Agent) {
+		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 
@@ -325,7 +324,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(a *Agent) {
+		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			tID := [stun.TransactionIDSize]byte{}
@@ -368,6 +367,9 @@ func TestHandlePeerReflexive(t *testing.T) {
 func TestConnectivityOnStartup(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
 
 	// Create a network with two interfaces
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{
@@ -613,14 +615,14 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		err = a.run(func(a *Agent) {
+		err = a.run(context.Background(), func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values was unable to create prflx candidate")
 			}
-		}, nil)
+		})
 
 		assert.NoError(t, err)
 		assert.NoError(t, a.Close())
@@ -628,7 +630,7 @@ func TestInboundValidity(t *testing.T) {
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(a *Agent) {
+		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.connectivityTicker = time.NewTicker(a.taskLoopInterval)
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
@@ -1229,6 +1231,9 @@ func TestBindingRequestTimeout(t *testing.T) {
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
 // and ensure it's backwards compatible with previous versions of the pion/ice
 func TestAgentCredentials(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
 	// Make sure to pass travis check by disabling the logs
 	log := logging.NewDefaultLoggerFactory()
 	log.DefaultLogLevel = logging.LogLevelDisabled
@@ -1291,11 +1296,11 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	<-isFailed
 
 	done := make(chan struct{})
-	assert.NoError(t, aAgent.run(func(agent *Agent) {
+	assert.NoError(t, aAgent.run(context.Background(), func(ctx context.Context, agent *Agent) {
 		assert.Equal(t, len(aAgent.remoteCandidates), 0)
 		assert.Equal(t, len(aAgent.localCandidates), 0)
 		close(done)
-	}, nil))
+	}))
 	<-done
 
 	assert.NoError(t, aAgent.Close())
@@ -1467,11 +1472,114 @@ func TestAgentRestart(t *testing.T) {
 }
 
 func TestGetRemoteCredentials(t *testing.T) {
-	a := Agent{remoteUfrag: "remoteUfrag", remotePwd: "remotePwd", muChan: make(chan struct{}, 1)}
+	var config AgentConfig
+	a, err := NewAgent(&config)
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent: %v", err)
+	}
+
+	a.remoteUfrag = "remoteUfrag"
+	a.remotePwd = "remotePwd"
 
 	actualUfrag, actualPwd, err := a.GetRemoteUserCredentials()
 	assert.NoError(t, err)
 
 	assert.Equal(t, actualUfrag, a.remoteUfrag)
 	assert.Equal(t, actualPwd, a.remotePwd)
+
+	assert.NoError(t, a.Close())
+}
+
+func TestCloseInConnectionStateCallback(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	disconnectedDuration := time.Second
+	failedDuration := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	cfg := &AgentConfig{
+		Urls:                []*URL{},
+		NetworkTypes:        supportedNetworkTypes,
+		DisconnectedTimeout: &disconnectedDuration,
+		FailedTimeout:       &failedDuration,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    500 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+
+	bAgent, err := NewAgent(cfg)
+	if err != nil {
+		t.Error(err)
+	}
+
+	isClosed := make(chan interface{})
+	isConnected := make(chan interface{})
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		switch c {
+		case ConnectionStateConnected:
+			<-isConnected
+			assert.NoError(t, aAgent.Close())
+		case ConnectionStateClosed:
+			close(isClosed)
+		}
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	connect(aAgent, bAgent)
+	close(isConnected)
+
+	<-isClosed
+	assert.NoError(t, bAgent.Close())
+}
+
+func TestAgentRestartInConnectionStateCallback(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	oneSecond := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	cfg := &AgentConfig{
+		Urls:                []*URL{},
+		NetworkTypes:        supportedNetworkTypes,
+		DisconnectedTimeout: &oneSecond,
+		FailedTimeout:       &oneSecond,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    50 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	check(err)
+	bAgent, err := NewAgent(cfg)
+	check(err)
+
+	isComplete := make(chan interface{})
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateConnected {
+			assert.NoError(t, aAgent.Restart("", ""))
+			close(isComplete)
+		}
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	connect(aAgent, bAgent)
+
+	<-isComplete
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
 }

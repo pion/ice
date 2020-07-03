@@ -1,11 +1,14 @@
 package ice
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // GetCandidatePairsStats returns a list of candidate pair stats
 func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
-	resultChan := make(chan []CandidatePairStats, 1)
-	err := a.run(func(agent *Agent) {
+	var res []CandidatePairStats
+	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		result := make([]CandidatePairStats, 0, len(agent.checklist))
 		for _, cp := range agent.checklist {
 			stat := CandidatePairStats{
@@ -39,19 +42,19 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 			}
 			result = append(result, stat)
 		}
-		resultChan <- result
-	}, nil)
+		res = result
+	})
 	if err != nil {
 		a.log.Errorf("error getting candidate pairs stats %v", err)
 		return []CandidatePairStats{}
 	}
-	return <-resultChan
+	return res
 }
 
 // GetLocalCandidatesStats returns a list of local candidates stats
 func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
-	resultChan := make(chan []CandidateStats, 1)
-	err := a.run(func(agent *Agent) {
+	var res []CandidateStats
+	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		result := make([]CandidateStats, 0, len(agent.localCandidates))
 		for networkType, localCandidates := range agent.localCandidates {
 			for _, c := range localCandidates {
@@ -70,19 +73,19 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 				result = append(result, stat)
 			}
 		}
-		resultChan <- result
-	}, nil)
+		res = result
+	})
 	if err != nil {
 		a.log.Errorf("error getting candidate pairs stats %v", err)
 		return []CandidateStats{}
 	}
-	return <-resultChan
+	return res
 }
 
 // GetRemoteCandidatesStats returns a list of remote candidates stats
 func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
-	resultChan := make(chan []CandidateStats, 1)
-	err := a.run(func(agent *Agent) {
+	var res []CandidateStats
+	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		result := make([]CandidateStats, 0, len(agent.remoteCandidates))
 		for networkType, localCandidates := range agent.remoteCandidates {
 			for _, c := range localCandidates {
@@ -100,11 +103,11 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 				result = append(result, stat)
 			}
 		}
-		resultChan <- result
-	}, nil)
+		res = result
+	})
 	if err != nil {
 		a.log.Errorf("error getting candidate pairs stats %v", err)
 		return []CandidateStats{}
 	}
-	return <-resultChan
+	return res
 }
