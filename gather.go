@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -55,64 +56,52 @@ func (f *fakePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 // GatherCandidates initiates the trickle based gathering process.
 func (a *Agent) GatherCandidates() error {
-	gatherErrChan := make(chan error, 1)
+	var gatherErr error
 
-	runErr := a.run(func(agent *Agent) {
+	if runErr := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		if a.gatheringState != GatheringStateNew {
-			gatherErrChan <- ErrMultipleGatherAttempted
+			gatherErr = ErrMultipleGatherAttempted
 			return
 		} else if a.onCandidateHdlr.Load() == nil {
-			gatherErrChan <- ErrNoOnCandidateHandler
+			gatherErr = ErrNoOnCandidateHandler
 			return
 		}
 
-		a.gatherCandidates()
-		gatherErrChan <- nil
-	}, nil)
-	if runErr != nil {
+		go a.gatherCandidates()
+	}); runErr != nil {
 		return runErr
 	}
-	return <-gatherErrChan
+	return gatherErr
 }
 
-func (a *Agent) gatherCandidates() <-chan struct{} {
-	done := make(chan struct{})
+func (a *Agent) gatherCandidates() {
+	if err := a.setGatheringState(GatheringStateGathering); err != nil {
+		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
+		return
+	}
 
-	go func() {
-		defer func() {
-			close(done)
-		}()
-
-		if err := a.setGatheringState(GatheringStateGathering); err != nil {
-			a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
-			return
-		}
-
-		var wg sync.WaitGroup
-		for _, t := range a.candidateTypes {
-			switch t {
-			case CandidateTypeHost:
-				a.gatherCandidatesLocal(a.networkTypes)
-			case CandidateTypeServerReflexive:
-				a.gatherCandidatesSrflx(a.urls, a.networkTypes, &wg)
-				if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
-					a.gatherCandidatesSrflxMapped(a.networkTypes, &wg)
-				}
-			case CandidateTypeRelay:
-				if err := a.gatherCandidatesRelay(a.urls, &wg); err != nil {
-					a.log.Errorf("Failed to gather relay candidates: %v\n", err)
-				}
+	var wg sync.WaitGroup
+	for _, t := range a.candidateTypes {
+		switch t {
+		case CandidateTypeHost:
+			a.gatherCandidatesLocal(a.networkTypes)
+		case CandidateTypeServerReflexive:
+			a.gatherCandidatesSrflx(a.urls, a.networkTypes, &wg)
+			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+				a.gatherCandidatesSrflxMapped(a.networkTypes, &wg)
+			}
+		case CandidateTypeRelay:
+			if err := a.gatherCandidatesRelay(a.urls, &wg); err != nil {
+				a.log.Errorf("Failed to gather relay candidates: %v\n", err)
 			}
 		}
-		// Block until all STUN and TURN URLs have been gathered (or timed out)
-		wg.Wait()
+	}
+	// Block until all STUN and TURN URLs have been gathered (or timed out)
+	wg.Wait()
 
-		if err := a.setGatheringState(GatheringStateComplete); err != nil {
-			a.log.Warnf("failed to set gatheringState to GatheringStateComplete: %v", err)
-		}
-	}()
-
-	return done
+	if err := a.setGatheringState(GatheringStateComplete); err != nil {
+		a.log.Warnf("failed to set gatheringState to GatheringStateComplete: %v", err)
+	}
 }
 
 func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {

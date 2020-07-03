@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -29,6 +30,31 @@ type candidateBase struct {
 	currAgent *Agent
 	closeCh   chan struct{}
 	closedCh  chan struct{}
+}
+
+// Done implements context.Context
+func (c *candidateBase) Done() <-chan struct{} {
+	return c.closeCh
+}
+
+// Err implements context.Context
+func (c *candidateBase) Err() error {
+	select {
+	case <-c.closedCh:
+		return ErrRunCanceled
+	default:
+		return nil
+	}
+}
+
+// Deadline implements context.Context
+func (c *candidateBase) Deadline() (deadline time.Time, ok bool) {
+	return time.Time{}, false
+}
+
+// Value implements context.Context
+func (c *candidateBase) Value(key interface{}) interface{} {
+	return nil
 }
 
 // ID returns Candidate ID
@@ -100,11 +126,11 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 			return
 		}
 
-		handleInboundCandidateMsg(c, buffer[:n], srcAddr, log)
+		handleInboundCandidateMsg(c, c, buffer[:n], srcAddr, log)
 	}
 }
 
-func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log logging.LeveledLogger) {
+func handleInboundCandidateMsg(ctx context.Context, c Candidate, buffer []byte, srcAddr net.Addr, log logging.LeveledLogger) {
 	if stun.IsMessage(buffer) {
 		m := &stun.Message{
 			Raw: make([]byte, len(buffer)),
@@ -115,9 +141,9 @@ func handleInboundCandidateMsg(c Candidate, buffer []byte, srcAddr net.Addr, log
 			log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
 			return
 		}
-		err := c.agent().run(func(agent *Agent) {
+		err := c.agent().run(ctx, func(ctx context.Context, agent *Agent) {
 			agent.handleInbound(m, c, srcAddr)
-		}, c.getCloseCh())
+		})
 		if err != nil {
 			log.Warnf("Failed to handle message: %v", err)
 		}
@@ -149,6 +175,7 @@ func (c *candidateBase) close() error {
 
 		// Wait until the recvLoop is closed
 		<-c.closedCh
+		c.conn = nil
 	}
 
 	return nil
@@ -234,6 +261,6 @@ func (c *candidateBase) agent() *Agent {
 	return c.currAgent
 }
 
-func (c *candidateBase) getCloseCh() chan struct{} {
-	return c.closeCh
+func (c *candidateBase) context() context.Context {
+	return c
 }

@@ -30,7 +30,6 @@ func TestStressDuplex(t *testing.T) {
 func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	const pollrate = 100 * time.Millisecond
 	const margin = 20 * time.Millisecond // allow 20msec error in time
-	statechan := make(chan ConnectionState, 1)
 	ticker := time.NewTicker(pollrate)
 	defer func() {
 		ticker.Stop()
@@ -45,15 +44,16 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	for cnt := time.Duration(0); cnt <= timeout+defaultTaskLoopInterval; cnt += pollrate {
 		<-ticker.C
 
-		err := c.agent.run(func(agent *Agent) {
-			statechan <- agent.connectionState
-		}, nil)
+		var cs ConnectionState
+
+		err := c.agent.run(context.Background(), func(ctx context.Context, agent *Agent) {
+			cs = agent.connectionState
+		})
 		if err != nil {
 			// we should never get here.
 			panic(err)
 		}
 
-		cs := <-statechan
 		if cs != ConnectionStateConnected {
 			elapsed := time.Since(startedAt)
 			if elapsed+margin < timeout {
@@ -233,7 +233,6 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 		check(acceptErr)
 		close(accepted)
 	}()
-
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
 	check(err)
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
