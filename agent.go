@@ -319,27 +319,39 @@ func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
 	}
 }
 
+func (a *Agent) onCandidate(c Candidate) {
+	if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
+		onCandidateHdlr(c)
+	}
+}
+
+func (a *Agent) onConnectionStateChange(s ConnectionState) {
+	if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
+		hdlr(s)
+	}
+}
+
 func (a *Agent) startOnConnectionStateChangeRoutine() {
 	go func() {
 		for {
 			select {
 			case s, isOpen := <-a.chanState:
 				if !isOpen {
+					for c := range a.chanCandidate {
+						a.onCandidate(c)
+					}
 					return
 				}
-
-				if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
-					hdlr(s)
-				}
+				a.onConnectionStateChange(s)
 
 			case c, isOpen := <-a.chanCandidate:
 				if !isOpen {
+					for s := range a.chanState {
+						a.onConnectionStateChange(s)
+					}
 					return
 				}
-
-				if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
-					onCandidateHdlr(c)
-				}
+				a.onCandidate(c)
 			}
 		}
 	}()
