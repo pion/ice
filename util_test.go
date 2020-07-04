@@ -3,6 +3,8 @@ package ice
 import (
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsSupportedIPv6(t *testing.T) {
@@ -25,4 +27,15 @@ func TestIsSupportedIPv6(t *testing.T) {
 	if !isSupportedIPv6(net.ParseIP("2001::1")) {
 		t.Errorf("isSupportedIPv6 return false with IPv6 global unicast address")
 	}
+}
+
+func TestCreateAddr(t *testing.T) {
+	ipv4 := net.IP{127, 0, 0, 1}
+	ipv6 := net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	port := 9000
+
+	assert.Equal(t, &net.UDPAddr{IP: ipv4, Port: port}, createAddr(NetworkTypeUDP4, ipv4, port))
+	assert.Equal(t, &net.UDPAddr{IP: ipv6, Port: port}, createAddr(NetworkTypeUDP6, ipv6, port))
+	assert.Equal(t, &net.TCPAddr{IP: ipv4, Port: port}, createAddr(NetworkTypeTCP4, ipv4, port))
+	assert.Equal(t, &net.TCPAddr{IP: ipv6, Port: port}, createAddr(NetworkTypeTCP6, ipv6, port))
 }

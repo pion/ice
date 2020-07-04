@@ -11,16 +11,11 @@ const (
 	tcp = "tcp"
 )
 
-var supportedNetworks = []string{
-	udp,
-	// tcp, // Not supported yet
-}
-
 var supportedNetworkTypes = []NetworkType{
 	NetworkTypeUDP4,
 	NetworkTypeUDP6,
-	// NetworkTypeTCP4, // Not supported yet
-	// NetworkTypeTCP6, // Not supported yet
+	NetworkTypeTCP4,
+	NetworkTypeTCP6,
 }
 
 // NetworkType represents the type of network
@@ -53,6 +48,16 @@ func (t NetworkType) String() string {
 	default:
 		return ErrUnknownType.Error()
 	}
+}
+
+// IsUDP returns true when network is UDP4 or UDP6.
+func (t NetworkType) IsUDP() bool {
+	return t == NetworkTypeUDP4 || t == NetworkTypeUDP6
+}
+
+// IsTCP returns true when network is TCP4 or TCP6.
+func (t NetworkType) IsTCP() bool {
+	return t == NetworkTypeTCP4 || t == NetworkTypeTCP6
 }
 
 // NetworkShort returns the short network description

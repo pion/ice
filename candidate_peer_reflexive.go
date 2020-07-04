@@ -44,7 +44,7 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 			candidateType: CandidateTypePeerReflexive,
 			address:       config.Address,
 			port:          config.Port,
-			resolvedAddr:  &net.UDPAddr{IP: ip, Port: config.Port},
+			resolvedAddr:  createAddr(networkType, ip, config.Port),
 			component:     config.Component,
 			relatedAddress: &CandidateRelatedAddress{
 				Address: config.RelAddr,

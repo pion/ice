@@ -138,6 +138,11 @@ type AgentConfig struct {
 	// InsecureSkipVerify controls if self-signed certificates are accepted when connecting
 	// to TURN servers via TLS or DTLS
 	InsecureSkipVerify bool
+
+	// TCPListenPort will be used to start a TCP listener on all allowed interfaces for
+	// ICE TCP. Currently only passive candidates are supported. This functionality is
+	// experimental and this API will likely change in the future.
+	TCPListenPort int
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

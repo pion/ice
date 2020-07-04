@@ -123,6 +123,15 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 }
 
 func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) {
+	networks := map[string]struct{}{}
+	for _, networkType := range networkTypes {
+		if networkType.IsTCP() {
+			networks[tcp] = struct{}{}
+		} else {
+			networks[udp] = struct{}{}
+		}
+	}
+
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, networkTypes)
 	if err != nil {
 		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
@@ -144,19 +153,51 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			address = a.mDNSName
 		}
 
-		for _, network := range supportedNetworks {
-			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-			if err != nil {
-				a.log.Warnf("could not listen %s %s\n", network, ip)
-				continue
-			}
+		for network := range networks {
+			var port int
+			var conn net.PacketConn
+			var err error
 
-			port := conn.LocalAddr().(*net.UDPAddr).Port
+			var tcpType TCPType
+			switch network {
+			case tcp:
+				if a.tcp == nil {
+					continue
+				}
+
+				// below is for passive mode
+				// TODO active mode
+				// TODO S-O mode
+
+				mux, muxErr := a.tcp.Listen(ip)
+				if muxErr != nil {
+					a.log.Warnf("could not listen %s %s\n", network, ip)
+					continue
+				}
+
+				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
+				conn, err = mux.GetConn(a.localUfrag)
+				if err != nil {
+					a.log.Warnf("error getting tcp conn by ufrag: %s %s\n", network, ip, a.localUfrag)
+					continue
+				}
+				port = conn.LocalAddr().(*net.TCPAddr).Port
+				tcpType = TCPTypePassive
+			case udp:
+				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				if err != nil {
+					a.log.Warnf("could not listen %s %s\n", network, ip)
+					continue
+				}
+
+				port = conn.LocalAddr().(*net.UDPAddr).Port
+			}
 			hostConfig := CandidateHostConfig{
 				Network:   network,
 				Address:   address,
 				Port:      port,
 				Component: ComponentRTP,
+				TCPType:   tcpType,
 			}
 
 			c, err := NewCandidateHost(&hostConfig)
@@ -187,6 +228,10 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	defer wg.Wait()
 
 	for _, networkType := range networkTypes {
+		if networkType.IsTCP() {
+			continue
+		}
+
 		network := networkType.String()
 		wg.Add(1)
 		go func() {
@@ -237,6 +282,10 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 	defer wg.Wait()
 
 	for _, networkType := range networkTypes {
+		if networkType.IsTCP() {
+			continue
+		}
+
 		for i := range urls {
 			wg.Add(1)
 			go func(url URL, network string) {

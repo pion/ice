@@ -121,6 +121,7 @@ type Agent struct {
 	log           logging.LeveledLogger
 
 	net *vnet.Net
+	tcp *tcpIPMux
 
 	interfaceFilter func(string) bool
 
@@ -304,6 +305,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 
 		insecureSkipVerify: config.InsecureSkipVerify,
 	}
+
+	a.tcp = newTCPIPMux(tcpIPMuxParams{
+		ListenPort:     config.TCPListenPort,
+		Logger:         log,
+		ReadBufferSize: 8,
+	})
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -695,6 +702,15 @@ func (a *Agent) checkKeepalive() {
 
 // AddRemoteCandidate adds a new remote candidate
 func (a *Agent) AddRemoteCandidate(c Candidate) error {
+	// canot check for network yet because it might not be applied
+	// when mDNS hostame is used.
+	if c.TCPType() == TCPTypeActive {
+		// TCP Candidates with tcptype active will probe server passive ones, so
+		// no need to do anything with them.
+		a.log.Infof("Ignoring remote candidate with tcpType active: %s", c)
+		return nil
+	}
+
 	// If we have a mDNS Candidate lets fully resolve it before adding it locally
 	if c.Type() == CandidateTypeHost && strings.HasSuffix(c.Address(), ".local") {
 		if a.mDNSMode == MulticastDNSModeDisabled {
@@ -871,6 +887,7 @@ func (a *Agent) Close() error {
 
 	a.gatherCandidateCancel()
 	a.err.Store(ErrClosed)
+	a.tcp.RemoveUfrag(a.localUfrag)
 	close(a.done)
 
 	<-done
@@ -901,9 +918,9 @@ func (a *Agent) deleteAllCandidates() {
 }
 
 func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
-	ip, port, err := addrIPAndPort(addr)
-	if err != nil {
-		a.log.Warn(err.Error())
+	ip, port, _, ok := parseAddr(addr)
+	if !ok {
+		a.log.Warnf("Error parsing addr: %s", addr)
 		return nil
 	}
 
@@ -932,10 +949,17 @@ func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
 
 func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	base := remote
+
+	ip, port, _, ok := parseAddr(base.addr())
+	if !ok {
+		a.log.Warnf("Error parsing addr: %s", base.addr())
+		return
+	}
+
 	if out, err := stun.Build(m, stun.BindingSuccess,
 		&stun.XORMappedAddress{
-			IP:   base.addr().IP,
-			Port: base.addr().Port,
+			IP:   ip,
+			Port: port,
 		},
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint,
@@ -1048,6 +1072,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				Component: local.Component(),
 				RelAddr:   "",
 				RelPort:   0,
+				// TODO set TCPType
 			}
 
 			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
