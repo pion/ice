@@ -113,8 +113,9 @@ type Agent struct {
 	done chan struct{}
 	err  atomicError
 
-	chanCandidate chan Candidate
-	chanState     chan ConnectionState
+	chanCandidate     chan Candidate
+	chanCandidatePair chan *candidatePair
+	chanState         chan ConnectionState
 
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
@@ -210,6 +211,7 @@ func (a *Agent) taskLoop() {
 
 		close(a.chanState)
 		close(a.chanCandidate)
+		close(a.chanCandidatePair)
 	}()
 
 	for {
@@ -271,27 +273,28 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	a := &Agent{
-		chanTask:         make(chan task),
-		chanState:        make(chan ConnectionState),
-		chanCandidate:    make(chan Candidate),
-		tieBreaker:       globalMathRandomGenerator.Uint64(),
-		lite:             config.Lite,
-		gatheringState:   GatheringStateNew,
-		connectionState:  ConnectionStateNew,
-		localCandidates:  make(map[NetworkType][]Candidate),
-		remoteCandidates: make(map[NetworkType][]Candidate),
-		urls:             config.Urls,
-		networkTypes:     config.NetworkTypes,
-		onConnected:      make(chan struct{}),
-		buffer:           packetio.NewBuffer(),
-		done:             make(chan struct{}),
-		startedCh:        startedCtx.Done(),
-		startedFn:        startedFn,
-		portmin:          config.PortMin,
-		portmax:          config.PortMax,
-		loggerFactory:    loggerFactory,
-		log:              log,
-		net:              config.Net,
+		chanTask:          make(chan task),
+		chanState:         make(chan ConnectionState),
+		chanCandidate:     make(chan Candidate),
+		chanCandidatePair: make(chan *candidatePair),
+		tieBreaker:        globalMathRandomGenerator.Uint64(),
+		lite:              config.Lite,
+		gatheringState:    GatheringStateNew,
+		connectionState:   ConnectionStateNew,
+		localCandidates:   make(map[NetworkType][]Candidate),
+		remoteCandidates:  make(map[NetworkType][]Candidate),
+		urls:              config.Urls,
+		networkTypes:      config.NetworkTypes,
+		onConnected:       make(chan struct{}),
+		buffer:            packetio.NewBuffer(),
+		done:              make(chan struct{}),
+		startedCh:         startedCtx.Done(),
+		startedFn:         startedFn,
+		portmin:           config.PortMin,
+		portmax:           config.PortMax,
+		loggerFactory:     loggerFactory,
+		log:               log,
+		net:               config.Net,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -369,10 +372,8 @@ func (a *Agent) OnCandidate(f func(Candidate)) error {
 }
 
 func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
-	if p != nil {
-		if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok {
-			h(p.local, p.remote)
-		}
+	if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok {
+		h(p.local, p.remote)
 	}
 }
 
@@ -389,6 +390,17 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 }
 
 func (a *Agent) startOnConnectionStateChangeRoutine() {
+	go func() {
+		for {
+			// CandidatePair and ConnectionState are usually changed at once.
+			// Blocking one by the other one causes deadlock.
+			p, isOpen := <-a.chanCandidatePair
+			if !isOpen {
+				return
+			}
+			a.onSelectedCandidatePairChange(p)
+		}
+	}()
 	go func() {
 		for {
 			select {
@@ -521,8 +533,6 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 
 func (a *Agent) setSelectedPair(p *candidatePair) {
 	a.log.Tracef("Set selected candidate pair: %s", p)
-	// Notify when the selected pair changes
-	a.onSelectedCandidatePairChange(p)
 
 	if p == nil {
 		var nilPair *candidatePair
@@ -534,6 +544,16 @@ func (a *Agent) setSelectedPair(p *candidatePair) {
 	a.selectedPair.Store(p)
 
 	a.updateConnectionState(ConnectionStateConnected)
+
+	// Notify when the selected pair changes
+	if p != nil {
+		a.afterRun(func(ctx context.Context) {
+			select {
+			case a.chanCandidatePair <- p:
+			case <-ctx.Done():
+			}
+		})
+	}
 
 	// Signal connected
 	a.onConnectedOnce.Do(func() { close(a.onConnected) })

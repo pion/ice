@@ -1542,7 +1542,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	assert.NoError(t, bAgent.Close())
 }
 
-func TestAgentRestartInConnectionStateCallback(t *testing.T) {
+func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -1569,11 +1569,59 @@ func TestAgentRestartInConnectionStateCallback(t *testing.T) {
 	isComplete := make(chan interface{})
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
+			_, _, errCred := aAgent.GetLocalUserCredentials()
+			assert.NoError(t, errCred)
 			assert.NoError(t, aAgent.Restart("", ""))
 			close(isComplete)
 		}
 	})
 	if err != nil {
+		t.Error(err)
+	}
+
+	connect(aAgent, bAgent)
+
+	<-isComplete
+	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
+}
+
+func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 5)
+	defer lim.Stop()
+
+	oneSecond := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	cfg := &AgentConfig{
+		Urls:                []*URL{},
+		NetworkTypes:        supportedNetworkTypes,
+		DisconnectedTimeout: &oneSecond,
+		FailedTimeout:       &oneSecond,
+		KeepaliveInterval:   &KeepaliveInterval,
+		taskLoopInterval:    50 * time.Millisecond,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	check(err)
+	bAgent, err := NewAgent(cfg)
+	check(err)
+
+	isComplete := make(chan interface{})
+	if err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
+		_, _, errCred := aAgent.GetLocalUserCredentials()
+		assert.NoError(t, errCred)
+	}); err != nil {
+		t.Error(err)
+	}
+	if err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateConnected {
+			close(isComplete)
+		}
+	}); err != nil {
 		t.Error(err)
 	}
 
