@@ -29,10 +29,11 @@ type Candidate interface {
 	RelatedAddress() *CandidateRelatedAddress
 	String() string
 	Type() CandidateType
+	TCPType() TCPType
 
 	Equal(other Candidate) bool
 
-	addr() *net.UDPAddr
+	addr() net.Addr
 	agent() *Agent
 	context() context.Context
 

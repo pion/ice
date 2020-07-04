@@ -19,6 +19,7 @@ type CandidateHostConfig struct {
 	Address     string
 	Port        int
 	Component   uint16
+	TCPType     TCPType
 }
 
 // NewCandidateHost creates a new host candidate
@@ -36,6 +37,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			candidateType: CandidateTypeHost,
 			component:     config.Component,
 			port:          config.Port,
+			tcpType:       config.TCPType,
 		},
 		network: config.Network,
 	}
@@ -50,6 +52,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			return nil, err
 		}
 	}
+
 	return c, nil
 }
 
@@ -60,6 +63,7 @@ func (c *CandidateHost) setIP(ip net.IP) error {
 	}
 
 	c.candidateBase.networkType = networkType
-	c.candidateBase.resolvedAddr = &net.UDPAddr{IP: ip, Port: c.port}
+	c.candidateBase.resolvedAddr = createAddr(networkType, ip, c.port)
+
 	return nil
 }

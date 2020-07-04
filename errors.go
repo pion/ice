@@ -102,4 +102,7 @@ var (
 
 	// ErrRunCanceled indicates a run operation was canceled by its individual done
 	ErrRunCanceled = errors.New("run was canceled by done")
+
+	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
+	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 )

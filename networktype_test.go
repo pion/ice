@@ -3,6 +3,8 @@ package ice
 import (
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNetworkTypeParsing_Success(t *testing.T) {
@@ -71,4 +73,18 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 				test.name, test.inNetwork, actual)
 		}
 	}
+}
+
+func TestNetworkTypeIsUDP(t *testing.T) {
+	assert.True(t, NetworkTypeUDP4.IsUDP())
+	assert.True(t, NetworkTypeUDP6.IsUDP())
+	assert.False(t, NetworkTypeUDP4.IsTCP())
+	assert.False(t, NetworkTypeUDP6.IsTCP())
+}
+
+func TestNetworkTypeIsTCP(t *testing.T) {
+	assert.True(t, NetworkTypeTCP4.IsTCP())
+	assert.True(t, NetworkTypeTCP6.IsTCP())
+	assert.False(t, NetworkTypeTCP4.IsUDP())
+	assert.False(t, NetworkTypeTCP6.IsUDP())
 }

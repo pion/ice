@@ -54,6 +54,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Lander Noterman](https://github.com/LanderN)
 * [BUPTCZQ](https://github.com/buptczq)
 * [Henry](https://github.com/cryptix)
+* [Jerko Steiner](https://github.com/jeremija)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text

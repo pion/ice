@@ -20,8 +20,9 @@ type candidateBase struct {
 	address        string
 	port           int
 	relatedAddress *CandidateRelatedAddress
+	tcpType        TCPType
 
-	resolvedAddr *net.UDPAddr
+	resolvedAddr net.Addr
 
 	lastSent     atomic.Value
 	lastReceived atomic.Value
@@ -95,6 +96,10 @@ func (c *candidateBase) LocalPreference() uint16 {
 // RelatedAddress returns *CandidateRelatedAddress
 func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 	return c.relatedAddress
+}
+
+func (c *candidateBase) TCPType() TCPType {
+	return c.tcpType
 }
 
 // start runs the candidate using the provided connection
@@ -227,7 +232,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 
 // String makes the candidateBase printable
 func (c *candidateBase) String() string {
-	return fmt.Sprintf("%s %s:%d%s", c.Type(), c.Address(), c.Port(), c.relatedAddress)
+	return fmt.Sprintf("%s %s %s:%d%s", c.NetworkType(), c.Type(), c.Address(), c.Port(), c.relatedAddress)
 }
 
 // LastReceived returns a time.Time indicating the last time
@@ -266,7 +271,7 @@ func (c *candidateBase) seen(outbound bool) {
 	}
 }
 
-func (c *candidateBase) addr() *net.UDPAddr {
+func (c *candidateBase) addr() net.Addr {
 	return c.resolvedAddr
 }
 

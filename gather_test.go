@@ -119,15 +119,18 @@ func TestSTUNConcurrency(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes,
 		Urls:           urls,
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
+		TCPListenPort:  9999,
 	})
 	assert.NoError(t, err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 	assert.NoError(t, a.OnCandidate(func(c Candidate) {
-		if c != nil {
+		if c == nil {
 			candidateGatheredFunc()
+			return
 		}
+		t.Log(c.NetworkType(), c.Priority(), c)
 	}))
 	assert.NoError(t, a.GatherCandidates())
 

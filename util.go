@@ -53,6 +53,15 @@ func parseAddr(in net.Addr) (net.IP, int, NetworkType, bool) {
 	return nil, 0, 0, false
 }
 
+func createAddr(network NetworkType, ip net.IP, port int) net.Addr {
+	switch {
+	case network.IsTCP():
+		return &net.TCPAddr{IP: ip, Port: port}
+	default:
+		return &net.UDPAddr{IP: ip, Port: port}
+	}
+}
+
 func addrEqual(a, b net.Addr) bool {
 	aIP, aPort, aType, aOk := parseAddr(a)
 	if !aOk {
@@ -220,15 +229,4 @@ func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, po
 		}
 	}
 	return nil, ErrPort
-}
-
-func addrIPAndPort(addr net.Addr) (net.IP, int, error) {
-	switch casted := addr.(type) {
-	case *net.UDPAddr:
-		return casted.IP, casted.Port, nil
-	case *net.TCPAddr:
-		return casted.IP, casted.Port, nil
-	default:
-		return nil, 0, fmt.Errorf("unsupported address type %T", addr)
-	}
 }
