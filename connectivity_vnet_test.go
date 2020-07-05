@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,17 @@ import (
 	"github.com/pion/transport/vnet"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	vnetGlobalIPA        = "27.1.1.1"
+	vnetLocalIPA         = "192.168.0.1"
+	vnetLocalSubnetMaskA = "24"
+	vnetGlobalIPB        = "28.1.1.1"
+	vnetLocalIPB         = "10.2.0.1"
+	vnetLocalSubnetMaskB = "24"
+	vnetSTUNServerIP     = "1.2.3.4"
+	vnetSTUNServerPort   = 3478
 )
 
 type virtualNet struct {
@@ -42,7 +54,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}
 
 	wanNet := vnet.NewNet(&vnet.NetConfig{
-		StaticIP: "1.2.3.4", // will be assigned to eth0
+		StaticIP: vnetSTUNServerIP, // will be assigned to eth0
 	})
 
 	err = wan.AddNet(wanNet)
@@ -55,14 +67,14 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		StaticIPs: func() []string {
 			if natType0.Mode == vnet.NATModeNAT1To1 {
 				return []string{
-					"27.1.1.1/192.168.0.1",
+					vnetGlobalIPA + "/" + vnetLocalIPA,
 				}
 			}
 			return []string{
-				"27.1.1.1",
+				vnetGlobalIPA,
 			}
 		}(),
-		CIDR:          "192.168.0.0/24",
+		CIDR:          vnetLocalIPA + "/" + vnetLocalSubnetMaskA,
 		NATType:       natType0,
 		LoggerFactory: loggerFactory,
 	})
@@ -71,7 +83,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}
 
 	net0 := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"192.168.0.1"},
+		StaticIPs: []string{vnetLocalIPA},
 	})
 	err = lan0.AddNet(net0)
 	if err != nil {
@@ -88,14 +100,14 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		StaticIPs: func() []string {
 			if natType1.Mode == vnet.NATModeNAT1To1 {
 				return []string{
-					"28.1.1.1/10.2.0.1",
+					vnetGlobalIPB + "/" + vnetLocalIPB,
 				}
 			}
 			return []string{
-				"28.1.1.1",
+				vnetGlobalIPB,
 			}
 		}(),
-		CIDR:          "10.2.0.0/24",
+		CIDR:          vnetLocalIPB + "/" + vnetLocalSubnetMaskB,
 		NATType:       natType1,
 		LoggerFactory: loggerFactory,
 	})
@@ -104,7 +116,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}
 
 	net1 := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"10.2.0.1"},
+		StaticIPs: []string{vnetLocalIPB},
 	})
 	err = lan1.AddNet(net1)
 	if err != nil {
@@ -122,10 +134,24 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		return nil, err
 	}
 
+	server, err := addVNetSTUN(wanNet, loggerFactory)
+	if err != nil {
+		return nil, err
+	}
+
+	return &virtualNet{
+		wan:    wan,
+		net0:   net0,
+		net1:   net1,
+		server: server,
+	}, nil
+}
+
+func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.Server, error) {
 	// Run TURN(STUN) server
 	credMap := map[string]string{}
 	credMap["user"] = "pass"
-	wanNetPacketConn, err := wanNet.ListenPacket("udp", "1.2.3.4:3478")
+	wanNetPacketConn, err := wanNet.ListenPacket("udp", fmt.Sprintf("%s:%d", vnetSTUNServerIP, vnetSTUNServerPort))
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +166,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 			{
 				PacketConn: wanNetPacketConn,
 				RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
-					RelayAddress: net.ParseIP("1.2.3.4"),
+					RelayAddress: net.ParseIP(vnetSTUNServerIP),
 					Address:      "0.0.0.0",
 					Net:          wanNet,
 				},
@@ -153,12 +179,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		return nil, err
 	}
 
-	return &virtualNet{
-		wan:    wan,
-		net0:   net0,
-		net1:   net1,
-		server: server,
-	}, nil
+	return server, err
 }
 
 func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
@@ -201,7 +222,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	var nat1To1IPs []string
 	if a0TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
-			"27.1.1.1",
+			vnetGlobalIPA,
 		}
 	}
 
@@ -225,7 +246,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 
 	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
-			"28.1.1.1",
+			vnetGlobalIPB,
 		}
 	}
 	cfg1 := &AgentConfig{
@@ -271,15 +292,15 @@ func TestConnectivityVNet(t *testing.T) {
 
 	stunServerURL := &URL{
 		Scheme: SchemeTypeSTUN,
-		Host:   "1.2.3.4",
-		Port:   3478,
+		Host:   vnetSTUNServerIP,
+		Port:   vnetSTUNServerPort,
 		Proto:  ProtoTypeUDP,
 	}
 
 	turnServerURL := &URL{
 		Scheme:   SchemeTypeTURN,
-		Host:     "1.2.3.4",
-		Port:     3478,
+		Host:     vnetSTUNServerIP,
+		Port:     vnetSTUNServerPort,
 		Username: "user",
 		Password: "pass",
 		Proto:    ProtoTypeUDP,
