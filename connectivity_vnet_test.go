@@ -549,7 +549,7 @@ func TestWriteUseValidPair(t *testing.T) {
 			m := &stun.Message{
 				Raw: c.UserData(),
 			}
-			if err = m.Decode(); err != nil {
+			if decErr := m.Decode(); decErr != nil {
 				return false
 			} else if m.Contains(stun.AttrUseCandidate) {
 				return false
