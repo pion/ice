@@ -20,9 +20,6 @@ const (
 	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected
 	defaultFailedTimeout = 25 * time.Second
 
-	// timeout for candidate selection, after this time, the best candidate is used
-	defaultCandidateSelectionTimeout = 10 * time.Second
-
 	// wait time before nominating a host candidate
 	defaultHostAcceptanceMinWait = 0
 
@@ -104,11 +101,6 @@ type AgentConfig struct {
 	// the candidate is yet to answer a binding request or a nomination we set the pair as failed
 	MaxBindingRequests *uint16
 
-	// CandidatesSelectionTimeout specify a timeout for selecting candidates, if no nomination has happen
-	// before this timeout, once hit we will nominate the best valid candidate available,
-	// or mark the connection as failed if no valid candidate is available
-	CandidateSelectionTimeout *time.Duration
-
 	// Lite agents do not perform connectivity check and only provide host candidates.
 	Lite bool
 
@@ -154,12 +146,6 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.maxBindingRequests = defaultMaxBindingRequests
 	} else {
 		a.maxBindingRequests = *config.MaxBindingRequests
-	}
-
-	if config.CandidateSelectionTimeout == nil {
-		a.candidateSelectionTimeout = defaultCandidateSelectionTimeout
-	} else {
-		a.candidateSelectionTimeout = *config.CandidateSelectionTimeout
 	}
 
 	if config.HostAcceptanceMinWait == nil {
