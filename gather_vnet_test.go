@@ -3,6 +3,7 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -411,4 +412,48 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 
 		assert.NoError(t, a.Close())
 	})
+}
+
+func TestVNetGather_TURNConnectionLeak(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	turnServerURL := &URL{
+		Scheme:   SchemeTypeTURN,
+		Host:     vnetSTUNServerIP,
+		Port:     vnetSTUNServerPort,
+		Username: "user",
+		Password: "pass",
+		Proto:    ProtoTypeUDP,
+	}
+
+	// buildVNet with a Symmetric NATs for both LANs
+	natType := &vnet.NATType{
+		MappingBehavior:   vnet.EndpointAddrPortDependent,
+		FilteringBehavior: vnet.EndpointAddrPortDependent,
+	}
+	v, err := buildVNet(natType, natType)
+
+	if !assert.NoError(t, err, "should succeed") {
+		return
+	}
+	defer v.close()
+
+	cfg0 := &AgentConfig{
+		Urls: []*URL{
+			turnServerURL,
+		},
+		NetworkTypes:     supportedNetworkTypes,
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		NAT1To1IPs:       []string{vnetGlobalIPA},
+		Net:              v.net0,
+	}
+	aAgent, err := NewAgent(cfg0)
+	if !assert.NoError(t, err, "should succeed") {
+		return
+	}
+
+	aAgent.gatherCandidatesRelay(context.Background(), []*URL{turnServerURL})
+	// Assert relay conn leak on close.
+	assert.NoError(t, aAgent.Close())
 }
