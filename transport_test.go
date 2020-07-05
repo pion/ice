@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pion/transport/test"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestStressDuplex(t *testing.T) {
@@ -441,41 +440,4 @@ func TestConnStats(t *testing.T) {
 		// we should never get here.
 		panic(err)
 	}
-}
-
-func TestRemoteLocalAddr(t *testing.T) {
-	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
-
-	t.Run("Disconnected Returns nil", func(t *testing.T) {
-		disconnectedAgent, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
-
-		disconnectedConn := Conn{agent: disconnectedAgent}
-		assert.Nil(t, disconnectedConn.RemoteAddr())
-		assert.Nil(t, disconnectedConn.LocalAddr())
-
-		assert.NoError(t, disconnectedConn.Close())
-	})
-
-	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
-		ca, cb := pipe()
-
-		// Assert that nothing is nil
-		assert.NotNil(t, ca.RemoteAddr())
-		assert.NotNil(t, ca.LocalAddr())
-
-		// Assert that they are equal
-		assert.Equal(t, ca.LocalAddr(), cb.RemoteAddr())
-		assert.Equal(t, cb.LocalAddr(), ca.RemoteAddr())
-
-		// Close
-		assert.NoError(t, ca.Close())
-		assert.NoError(t, cb.Close())
-	})
 }
