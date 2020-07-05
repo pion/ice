@@ -69,7 +69,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 		},
 	}
 
-	const N = 1000
+	const N = 100
 	const iteration = 100
 
 	for name, testCase := range testCases {
