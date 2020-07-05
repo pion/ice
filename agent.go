@@ -58,11 +58,10 @@ type Agent struct {
 
 	maxBindingRequests uint16
 
-	candidateSelectionTimeout time.Duration
-	hostAcceptanceMinWait     time.Duration
-	srflxAcceptanceMinWait    time.Duration
-	prflxAcceptanceMinWait    time.Duration
-	relayAcceptanceMinWait    time.Duration
+	hostAcceptanceMinWait  time.Duration
+	srflxAcceptanceMinWait time.Duration
+	prflxAcceptanceMinWait time.Duration
+	relayAcceptanceMinWait time.Duration
 
 	portmin uint16
 	portmax uint16
