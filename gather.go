@@ -415,11 +415,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) {
 					return locConn.Close()
 				},
 			}
-			candidate, err := NewCandidateRelay(&relayConfig)
-			if err != nil {
+			relayConnClose := func() {
 				if relayConErr := relayConn.Close(); relayConErr != nil {
 					a.log.Warnf("Failed to close relay %v", relayConErr)
 				}
+			}
+			candidate, err := NewCandidateRelay(&relayConfig)
+			if err != nil {
+				relayConnClose()
 
 				client.Close()
 				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to create relay candidate: %s %s: %v\n", network, raddr.String(), err))
@@ -427,6 +430,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) {
 			}
 
 			if err := a.addCandidate(ctx, candidate, relayConn); err != nil {
+				relayConnClose()
+
 				if closeErr := candidate.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
