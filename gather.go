@@ -67,14 +67,18 @@ func (a *Agent) GatherCandidates() error {
 			return
 		}
 
-		go a.gatherCandidates()
+		a.gatherCandidateCancel() // Cancel previous gathering routine
+		ctx, cancel := context.WithCancel(ctx)
+		a.gatherCandidateCancel = cancel
+
+		go a.gatherCandidates(ctx)
 	}); runErr != nil {
 		return runErr
 	}
 	return gatherErr
 }
 
-func (a *Agent) gatherCandidates() {
+func (a *Agent) gatherCandidates(ctx context.Context) {
 	if err := a.setGatheringState(GatheringStateGathering); err != nil {
 		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
 		return
@@ -84,16 +88,30 @@ func (a *Agent) gatherCandidates() {
 	for _, t := range a.candidateTypes {
 		switch t {
 		case CandidateTypeHost:
-			a.gatherCandidatesLocal(a.networkTypes)
+			wg.Add(1)
+			go func() {
+				a.gatherCandidatesLocal(ctx, a.networkTypes)
+				wg.Done()
+			}()
 		case CandidateTypeServerReflexive:
-			a.gatherCandidatesSrflx(a.urls, a.networkTypes, &wg)
+			wg.Add(1)
+			go func() {
+				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
+				wg.Done()
+			}()
 			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
-				a.gatherCandidatesSrflxMapped(a.networkTypes, &wg)
+				wg.Add(1)
+				go func() {
+					a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
+					wg.Done()
+				}()
 			}
 		case CandidateTypeRelay:
-			if err := a.gatherCandidatesRelay(a.urls, &wg); err != nil {
-				a.log.Errorf("Failed to gather relay candidates: %v\n", err)
-			}
+			wg.Add(1)
+			go func() {
+				a.gatherCandidatesRelay(ctx, a.urls)
+				wg.Done()
+			}()
 		}
 	}
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
@@ -104,7 +122,7 @@ func (a *Agent) gatherCandidates() {
 	}
 }
 
-func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) {
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, networkTypes)
 	if err != nil {
 		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
@@ -154,7 +172,7 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 				}
 			}
 
-			if err := a.addCandidate(c, conn); err != nil {
+			if err := a.addCandidate(ctx, c, conn); err != nil {
 				if closeErr := c.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
@@ -164,7 +182,10 @@ func (a *Agent) gatherCandidatesLocal(networkTypes []NetworkType) {
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflxMapped(networkTypes []NetworkType, wg *sync.WaitGroup) {
+func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []NetworkType) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, networkType := range networkTypes {
 		network := networkType.String()
 		wg.Add(1)
@@ -201,7 +222,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(networkTypes []NetworkType, wg *sync
 				return
 			}
 
-			if err := a.addCandidate(c, conn); err != nil {
+			if err := a.addCandidate(ctx, c, conn); err != nil {
 				if closeErr := c.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
@@ -211,7 +232,10 @@ func (a *Agent) gatherCandidatesSrflxMapped(networkTypes []NetworkType, wg *sync
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType, wg *sync.WaitGroup) {
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	for _, networkType := range networkTypes {
 		for i := range urls {
 			wg.Add(1)
@@ -254,7 +278,7 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType, w
 					return
 				}
 
-				if err := a.addCandidate(c, conn); err != nil {
+				if err := a.addCandidate(ctx, c, conn); err != nil {
 					if closeErr := c.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
@@ -265,16 +289,21 @@ func (a *Agent) gatherCandidatesSrflx(urls []*URL, networkTypes []NetworkType, w
 	}
 }
 
-func (a *Agent) gatherCandidatesRelay(urls []*URL, wg *sync.WaitGroup) error {
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	network := NetworkTypeUDP4.String() // TODO IPv6
 	for i := range urls {
 		switch {
 		case urls[i].Scheme != SchemeTypeTURN && urls[i].Scheme != SchemeTypeTURNS:
 			continue
 		case urls[i].Username == "":
-			return ErrUsernameEmpty
+			a.log.Errorf("Failed to gather relay candidates: %v", ErrUsernameEmpty)
+			return
 		case urls[i].Password == "":
-			return ErrPasswordEmpty
+			a.log.Errorf("Failed to gather relay candidates: %v", ErrPasswordEmpty)
+			return
 		}
 
 		wg.Add(1)
@@ -397,7 +426,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL, wg *sync.WaitGroup) error {
 				return
 			}
 
-			if err := a.addCandidate(candidate, relayConn); err != nil {
+			if err := a.addCandidate(ctx, candidate, relayConn); err != nil {
 				if closeErr := candidate.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
@@ -405,6 +434,4 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL, wg *sync.WaitGroup) error {
 			}
 		}(*urls[i])
 	}
-
-	return nil
 }

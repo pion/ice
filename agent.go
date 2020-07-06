@@ -112,6 +112,8 @@ type Agent struct {
 	done chan struct{}
 	err  atomicError
 
+	gatherCandidateCancel func()
+
 	chanCandidate     chan Candidate
 	chanCandidatePair chan *candidatePair
 	chanState         chan ConnectionState
@@ -294,6 +296,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
 		mDNSConn: mDNSConn,
+
+		gatherCandidateCancel: func() {},
 
 		forceCandidateContact: make(chan bool, 1),
 
@@ -777,8 +781,8 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 	a.requestConnectivityCheck()
 }
 
-func (a *Agent) addCandidate(c Candidate, candidateConn net.PacketConn) error {
-	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
+func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net.PacketConn) error {
+	return a.run(ctx, func(ctx context.Context, agent *Agent) {
 		c.start(a, candidateConn, a.startedCh)
 
 		set := a.localCandidates[c.NetworkType()]
@@ -866,6 +870,7 @@ func (a *Agent) Close() error {
 		close(done)
 	})
 
+	a.gatherCandidateCancel()
 	a.err.Store(ErrClosed)
 	close(a.done)
 
