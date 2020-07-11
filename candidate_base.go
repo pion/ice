@@ -99,6 +99,10 @@ func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 
 // start runs the candidate using the provided connection
 func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{}) {
+	if c.conn != nil {
+		c.agent().log.Warn("Can't start already started candidateBase")
+		return
+	}
 	c.currAgent = a
 	c.conn = conn
 	c.closeCh = make(chan struct{})
@@ -165,12 +169,21 @@ func handleInboundCandidateMsg(ctx context.Context, c Candidate, buffer []byte, 
 // close stops the recvLoop
 func (c *candidateBase) close() error {
 	if c.conn != nil {
+		var firstErr error
+
 		// Unblock recvLoop
 		close(c.closeCh)
+		if err := c.conn.SetDeadline(time.Now()); err != nil {
+			firstErr = err
+		}
+
 		// Close the conn
-		err := c.conn.Close()
-		if err != nil {
-			return err
+		if err := c.conn.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+
+		if firstErr != nil {
+			return firstErr
 		}
 
 		// Wait until the recvLoop is closed
