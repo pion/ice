@@ -53,6 +53,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Sam Lancia](https://github.com/nerd2)
 * [BUPTCZQ](https://github.com/buptczq)
 * [Henry](https://github.com/cryptix)
+* [cnderrauber](https://github.com/cnderrauber)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
