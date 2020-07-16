@@ -173,28 +173,37 @@ func handleInboundCandidateMsg(ctx context.Context, c Candidate, buffer []byte, 
 
 // close stops the recvLoop
 func (c *candidateBase) close() error {
-	if c.conn != nil {
-		var firstErr error
-
-		// Unblock recvLoop
-		close(c.closeCh)
-		if err := c.conn.SetDeadline(time.Now()); err != nil {
-			firstErr = err
-		}
-
-		// Close the conn
-		if err := c.conn.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-
-		if firstErr != nil {
-			return firstErr
-		}
-
-		// Wait until the recvLoop is closed
-		<-c.closedCh
-		c.conn = nil
+	// If conn has never been started will be nil
+	if c.Done() == nil {
+		return nil
 	}
+
+	// Assert that conn has not already been closed
+	select {
+	case <-c.Done():
+		return nil
+	default:
+	}
+
+	var firstErr error
+
+	// Unblock recvLoop
+	close(c.closeCh)
+	if err := c.conn.SetDeadline(time.Now()); err != nil {
+		firstErr = err
+	}
+
+	// Close the conn
+	if err := c.conn.Close(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
+	if firstErr != nil {
+		return firstErr
+	}
+
+	// Wait until the recvLoop is closed
+	<-c.closedCh
 
 	return nil
 }
