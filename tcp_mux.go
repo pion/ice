@@ -144,17 +144,6 @@ func (m *tcpMux) handleConn(conn net.Conn) {
 		m.params.Logger.Debugf("msg attr: %s\n", attr.String())
 	}
 
-	// Firefox will send ICEControlling for its Active canddiate. We
-	// currently support passive local TCP candidates only.
-	//
-	// TODO: not sure what will be sent for caniddate with tcptype S-O.
-	_, err = msg.Get(stun.AttrICEControlling)
-	if err != nil {
-		m.closeAndLogError(conn)
-		m.params.Logger.Warnf("No ICEControlling attribute in STUN message from %s to %s\n", conn.RemoteAddr(), conn.LocalAddr())
-		return
-	}
-
 	attr, err := msg.Get(stun.AttrUsername)
 	if err != nil {
 		m.closeAndLogError(conn)

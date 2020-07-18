@@ -37,7 +37,6 @@ func TestTCP_Recv(t *testing.T) {
 	msg := stun.New()
 	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
 	msg.Add(stun.AttrUsername, []byte("myufrag:otherufrag"))
-	msg.Add(stun.AttrICEControlling, nil)
 	msg.Encode()
 
 	n, err := writeStreamingPacket(conn, msg.Raw)
