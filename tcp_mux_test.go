@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"io"
 	"net"
 	"testing"
 
@@ -11,20 +12,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTCP_Recv(t *testing.T) {
+var _ TCPMux = &TCPMuxDefault{}
+var _ TCPMux = &invalidTCPMux{}
+
+func TestTCPMux_Recv(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
-	tim := newTCPIPMux(tcpIPMuxParams{
-		ListenPort:     8080,
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.IP{127, 0, 0, 1},
+		Port: 0,
+	})
+	require.NoError(t, err, "error starting listener")
+	defer func() {
+		_ = listener.Close()
+	}()
+
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{
+		Listener:       listener,
 		Logger:         loggerFactory.NewLogger("ice"),
 		ReadBufferSize: 20,
 	})
 
-	tcpMux, err := tim.Listen(net.IP{127, 0, 0, 1})
-	require.NoError(t, err, "error starting listener")
 	defer func() {
 		_ = tcpMux.Close()
 	}()
@@ -42,7 +53,7 @@ func TestTCP_Recv(t *testing.T) {
 	n, err := writeStreamingPacket(conn, msg.Raw)
 	require.NoError(t, err, "error writing tcp stun packet")
 
-	pktConn, err := tcpMux.GetConn("myufrag")
+	pktConn, err := tcpMux.GetConnByUfrag("myufrag")
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
@@ -54,4 +65,35 @@ func TestTCP_Recv(t *testing.T) {
 	assert.Equal(t, conn.LocalAddr(), raddr, "remote tcp address mismatch")
 	assert.Equal(t, n, n2, "received byte size mismatch")
 	assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
+}
+
+func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.IP{127, 0, 0, 1},
+		Port: 0,
+	})
+	require.NoError(t, err, "error starting listener")
+	defer func() {
+		_ = listener.Close()
+	}()
+
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{
+		Listener:       listener,
+		Logger:         loggerFactory.NewLogger("ice"),
+		ReadBufferSize: 20,
+	})
+
+	_, err = tcpMux.GetConnByUfrag("test")
+	require.NoError(t, err, "error getting conn by ufrag")
+
+	require.NoError(t, tcpMux.Close(), "error closing tcpMux")
+
+	conn, err := tcpMux.GetConnByUfrag("test")
+	assert.Nil(t, conn, "should receive nil because mux is closed")
+	assert.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }
