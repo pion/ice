@@ -62,17 +62,16 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 	}
 
 	if _, ok := t.conns[conn.RemoteAddr().String()]; ok {
-		return ErrTCPRemoteAddrAlreadyExists
+		return fmt.Errorf("connection with same remote address already exists: %s", conn.RemoteAddr().String())
 	}
 
 	t.conns[conn.RemoteAddr().String()] = conn
 
-	if firstPacketData != nil {
-		t.recvChan <- streamingPacket{firstPacketData, conn.RemoteAddr(), nil}
-	}
-
 	t.wg.Add(1)
 	go func() {
+		if firstPacketData != nil {
+			t.recvChan <- streamingPacket{firstPacketData, conn.RemoteAddr(), nil}
+		}
 		defer t.wg.Done()
 		t.startReading(conn)
 	}()

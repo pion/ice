@@ -120,8 +120,8 @@ type Agent struct {
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
-	net *vnet.Net
-	tcp *tcpIPMux
+	net    *vnet.Net
+	tcpMux TCPMux
 
 	interfaceFilter func(string) bool
 
@@ -306,11 +306,10 @@ func NewAgent(config *AgentConfig) (*Agent, error) {
 		insecureSkipVerify: config.InsecureSkipVerify,
 	}
 
-	a.tcp = newTCPIPMux(tcpIPMuxParams{
-		ListenPort:     config.TCPListenPort,
-		Logger:         log,
-		ReadBufferSize: 8,
-	})
+	a.tcpMux = config.TCPMux
+	if a.tcpMux == nil {
+		a.tcpMux = newInvalidTCPMux()
+	}
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -887,7 +886,9 @@ func (a *Agent) Close() error {
 
 	a.gatherCandidateCancel()
 	a.err.Store(ErrClosed)
-	a.tcp.RemoveUfrag(a.localUfrag)
+
+	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+
 	close(a.done)
 
 	<-done

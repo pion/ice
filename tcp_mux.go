@@ -11,31 +11,69 @@ import (
 	"github.com/pion/stun"
 )
 
-type tcpMux struct {
-	params *tcpMuxParams
+// TCPMux is allows grouping multiple TCP net.Conns and using them like UDP
+// net.PacketConns. The main implementation of this is TCPMuxDefault, and this
+// interface exists to:
+// 1. prevent SEGV panics when TCPMuxDefault is not initialized by using the
+//    invalidTCPMux implementation, and
+// 2. allow mocking in tests.
+type TCPMux interface {
+	io.Closer
+	GetConnByUfrag(ufrag string) (net.PacketConn, error)
+	RemoveConnByUfrag(ufrag string)
+}
+
+// invalidTCPMux is an implementation of TCPMux that always returns ErroTCPMuxNotInitialized.
+type invalidTCPMux struct {
+}
+
+func newInvalidTCPMux() *invalidTCPMux {
+	return &invalidTCPMux{}
+}
+
+// Close implements TCPMux interface.
+func (m *invalidTCPMux) Close() error {
+	return ErrTCPMuxNotInitialized
+}
+
+// GetConnByUfrag implements TCPMux interface.
+func (m *invalidTCPMux) GetConnByUfrag(ufrag string) (net.PacketConn, error) {
+	return nil, ErrTCPMuxNotInitialized
+}
+
+// RemoveConnByUfrag implements TCPMux interface.
+func (m *invalidTCPMux) RemoveConnByUfrag(ufrag string) {}
+
+// TCPMuxDefault muxes TCP net.Conns into net.PacketConns and groups them by
+// Ufrag. It is a default implementation of TCPMux interface.
+type TCPMuxDefault struct {
+	params *TCPMuxParams
+	closed bool
 
 	// conns is a map of all tcpPacketConns indexed by ufrag
 	conns map[string]*tcpPacketConn
 
-	mu         sync.Mutex
-	wg         sync.WaitGroup
-	closedChan chan struct{}
-	closeOnce  sync.Once
+	mu sync.Mutex
+	wg sync.WaitGroup
 }
 
-type tcpMuxParams struct {
+// TCPMuxParams are parameters for TCPMux.
+type TCPMuxParams struct {
 	Listener       net.Listener
 	Logger         logging.LeveledLogger
 	ReadBufferSize int
 }
 
-func newTCPMux(params tcpMuxParams) *tcpMux {
-	m := &tcpMux{
+// NewTCPMuxDefault creates a new instance of TCPMuxDefault.
+func NewTCPMuxDefault(params TCPMuxParams) *TCPMuxDefault {
+	if params.Logger == nil {
+		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
+	}
+
+	m := &TCPMuxDefault{
 		params: &params,
 
 		conns: map[string]*tcpPacketConn{},
-
-		closedChan: make(chan struct{}),
 	}
 
 	m.wg.Add(1)
@@ -47,7 +85,7 @@ func newTCPMux(params tcpMuxParams) *tcpMux {
 	return m
 }
 
-func (m *tcpMux) start() {
+func (m *TCPMuxDefault) start() {
 	m.params.Logger.Infof("Listening TCP on %s\n", m.params.Listener.Addr())
 	for {
 		conn, err := m.params.Listener.Accept()
@@ -66,13 +104,19 @@ func (m *tcpMux) start() {
 	}
 }
 
-func (m *tcpMux) LocalAddr() net.Addr {
+// LocalAddr returns the listening address of this TCPMuxDefault.
+func (m *TCPMuxDefault) LocalAddr() net.Addr {
 	return m.params.Listener.Addr()
 }
 
-func (m *tcpMux) GetConn(ufrag string) (net.PacketConn, error) {
+// GetConnByUfrag retrieves an existing or creates a new net.PacketConn.
+func (m *TCPMuxDefault) GetConnByUfrag(ufrag string) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.closed {
+		return nil, io.ErrClosedPipe
+	}
 
 	conn, ok := m.conns[ufrag]
 
@@ -86,7 +130,7 @@ func (m *tcpMux) GetConn(ufrag string) (net.PacketConn, error) {
 	return conn, nil
 }
 
-func (m *tcpMux) createConn(ufrag string, localAddr net.Addr) *tcpPacketConn {
+func (m *TCPMuxDefault) createConn(ufrag string, localAddr net.Addr) *tcpPacketConn {
 	conn := newTCPPacketConn(tcpPacketParams{
 		ReadBuffer: m.params.ReadBufferSize,
 		LocalAddr:  localAddr,
@@ -98,20 +142,20 @@ func (m *tcpMux) createConn(ufrag string, localAddr net.Addr) *tcpPacketConn {
 	go func() {
 		defer m.wg.Done()
 		<-conn.CloseChannel()
-		m.RemoveConn(ufrag)
+		m.RemoveConnByUfrag(ufrag)
 	}()
 
 	return conn
 }
 
-func (m *tcpMux) closeAndLogError(closer io.Closer) {
+func (m *TCPMuxDefault) closeAndLogError(closer io.Closer) {
 	err := closer.Close()
 	if err != nil {
 		m.params.Logger.Warnf("Error closing connection: %s", err)
 	}
 }
 
-func (m *tcpMux) handleConn(conn net.Conn) {
+func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 	buf := make([]byte, receiveMTU)
 
 	n, err := readStreamingPacket(conn, buf)
@@ -169,42 +213,33 @@ func (m *tcpMux) handleConn(conn net.Conn) {
 	}
 }
 
-func (m *tcpMux) Close() error {
+// Close closes the listener and waits for all goroutines to exit.
+func (m *TCPMuxDefault) Close() error {
 	m.mu.Lock()
+	m.closed = true
 
-	m.closeOnce.Do(func() {
-		close(m.closedChan)
-	})
-
+	for _, conn := range m.conns {
+		m.closeAndLogError(conn)
+	}
 	m.conns = map[string]*tcpPacketConn{}
-	m.mu.Unlock()
 
 	err := m.params.Listener.Close()
+
+	m.mu.Unlock()
 
 	m.wg.Wait()
 
 	return err
 }
 
-func (m *tcpMux) CloseChannel() <-chan struct{} {
-	return m.closedChan
-}
-
-func (m *tcpMux) RemoveConn(ufrag string) {
+// RemoveConnByUfrag closes and removes a net.PacketConn by Ufrag.
+func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if conn, ok := m.conns[ufrag]; ok {
 		m.closeAndLogError(conn)
 		delete(m.conns, ufrag)
-	}
-
-	if len(m.conns) == 0 {
-		m.closeOnce.Do(func() {
-			close(m.closedChan)
-		})
-
-		m.closeAndLogError(m.params.Listener)
 	}
 }
 

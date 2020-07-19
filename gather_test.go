@@ -14,9 +14,11 @@ import (
 
 	"github.com/pion/dtls/v2"
 	"github.com/pion/dtls/v2/pkg/crypto/selfsign"
+	"github.com/pion/logging"
 	"github.com/pion/transport/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListenUDP(t *testing.T) {
@@ -116,11 +118,25 @@ func TestSTUNConcurrency(t *testing.T) {
 		Port:   serverPort,
 	})
 
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP: net.IP{127, 0, 0, 1},
+	})
+	require.NoError(t, err)
+	defer func() {
+		_ = listener.Close()
+	}()
+
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes,
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
-		TCPListenPort:  9999,
+		TCPMux: NewTCPMuxDefault(
+			TCPMuxParams{
+				Listener:       listener,
+				Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
+				ReadBufferSize: 8,
+			},
+		),
 	})
 	assert.NoError(t, err)
 

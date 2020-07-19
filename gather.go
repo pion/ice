@@ -161,28 +161,22 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			var tcpType TCPType
 			switch network {
 			case tcp:
-				if a.tcp == nil {
-					continue
-				}
-
-				// below is for passive mode
+				// Handle ICE TCP passive mode
 				// TODO active mode
 				// TODO S-O mode
 
-				mux, muxErr := a.tcp.Listen(ip)
-				if muxErr != nil {
-					a.log.Warnf("could not listen %s %s\n", network, ip)
-					continue
-				}
-
 				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
-				conn, err = mux.GetConn(a.localUfrag)
+				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
 				if err != nil {
-					a.log.Warnf("error getting tcp conn by ufrag: %s %s\n", network, ip, a.localUfrag)
+					if err != ErrTCPMuxNotInitialized {
+						a.log.Warnf("error getting tcp conn by ufrag: %s %s\n", network, ip, a.localUfrag)
+					}
 					continue
 				}
 				port = conn.LocalAddr().(*net.TCPAddr).Port
 				tcpType = TCPTypePassive
+				// TODO is there a way to verify that the listen address is even
+				// accessible from the current interface.
 			case udp:
 				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {
