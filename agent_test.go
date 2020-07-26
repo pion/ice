@@ -1208,20 +1208,20 @@ func TestBindingRequestTimeout(t *testing.T) {
 
 	now := time.Now()
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now,
+		timestamp: now, // valid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-25 * time.Millisecond),
+		timestamp: now.Add(-3900 * time.Millisecond), // valid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-750 * time.Millisecond),
+		timestamp: now.Add(-4100 * time.Millisecond), // invalid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-75 * time.Hour),
+		timestamp: now.Add(-75 * time.Hour), // invalid
 	})
 
 	a.invalidatePendingBindingRequests(now)
-	assert.Equal(t, len(a.pendingBindingRequests), expectedRemovalCount, "Binding invalidation due to timeout did not remove the correct number of binding requests")
+	assert.Equal(t, expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
 	assert.NoError(t, a.Close())
 }
 
