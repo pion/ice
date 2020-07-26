@@ -49,7 +49,7 @@ const (
 	maxBufferSize = 1000 * 1000 // 1MB
 
 	// wait time before binding requests can be deleted
-	maxBindingRequestTimeout = 500 * time.Millisecond
+	maxBindingRequestTimeout = 4000 * time.Millisecond
 )
 
 var (
