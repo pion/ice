@@ -208,7 +208,7 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 
 	if err := packetConn.AddConn(conn, buf); err != nil {
 		m.closeAndLogError(conn)
-		m.params.Logger.Warnf("Error adding conn to tcpPacketConn from %s to %s, %w\n", conn.RemoteAddr(), conn.LocalAddr(), err)
+		m.params.Logger.Warnf("Error adding conn to tcpPacketConn from %s to %s: %s\n", conn.RemoteAddr(), conn.LocalAddr(), err)
 		return
 	}
 }

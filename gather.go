@@ -169,7 +169,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
 				if err != nil {
 					if err != ErrTCPMuxNotInitialized {
-						a.log.Warnf("error getting tcp conn by ufrag: %s %s\n", network, ip, a.localUfrag)
+						a.log.Warnf("error getting tcp conn by ufrag: %s %s %s\n", network, ip, a.localUfrag)
 					}
 					continue
 				}
