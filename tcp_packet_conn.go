@@ -194,9 +194,10 @@ func (t *tcpPacketConn) removeConn(conn net.Conn) {
 func (t *tcpPacketConn) Close() error {
 	t.mu.Lock()
 
+	var shouldCloseRecvChan bool
 	t.closeOnce.Do(func() {
 		close(t.closedChan)
-		close(t.recvChan)
+		shouldCloseRecvChan = true
 	})
 
 	for _, conn := range t.conns {
@@ -207,6 +208,10 @@ func (t *tcpPacketConn) Close() error {
 	t.mu.Unlock()
 
 	t.wg.Wait()
+
+	if shouldCloseRecvChan {
+		close(t.recvChan)
+	}
 
 	return nil
 }
