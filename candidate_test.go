@@ -22,6 +22,39 @@ func TestCandidatePriority(t *testing.T) {
 			WantPriority: 2130706431,
 		},
 		{
+			Candidate: &CandidateHost{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeHost,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP4,
+					tcpType:       TCPTypeActive,
+				},
+			},
+			WantPriority: 2128609279,
+		},
+		{
+			Candidate: &CandidateHost{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeHost,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP4,
+					tcpType:       TCPTypePassive,
+				},
+			},
+			WantPriority: 2124414975,
+		},
+		{
+			Candidate: &CandidateHost{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeHost,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP4,
+					tcpType:       TCPTypeSimultaneousOpen,
+				},
+			},
+			WantPriority: 2120220671,
+		},
+		{
 			Candidate: &CandidatePeerReflexive{
 				candidateBase: candidateBase{
 					candidateType: CandidateTypePeerReflexive,
@@ -29,6 +62,39 @@ func TestCandidatePriority(t *testing.T) {
 				},
 			},
 			WantPriority: 1862270975,
+		},
+		{
+			Candidate: &CandidatePeerReflexive{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypePeerReflexive,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP6,
+					tcpType:       TCPTypeSimultaneousOpen,
+				},
+			},
+			WantPriority: 1860173823,
+		},
+		{
+			Candidate: &CandidatePeerReflexive{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypePeerReflexive,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP6,
+					tcpType:       TCPTypeActive,
+				},
+			},
+			WantPriority: 1855979519,
+		},
+		{
+			Candidate: &CandidatePeerReflexive{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypePeerReflexive,
+					component:     ComponentRTP,
+					networkType:   NetworkTypeTCP6,
+					tcpType:       TCPTypePassive,
+				},
+			},
+			WantPriority: 1851785215,
 		},
 		{
 			Candidate: &CandidateServerReflexive{
