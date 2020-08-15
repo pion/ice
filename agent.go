@@ -741,7 +741,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	if a.mDNSConn == nil {
 		return
 	}
-	_, src, err := a.mDNSConn.Query(context.TODO(), c.Address())
+	_, src, err := a.mDNSConn.Query(c.context(), c.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
 		return
