@@ -692,7 +692,8 @@ func (a *Agent) checkKeepalive() {
 	}
 
 	if (a.keepaliveInterval != 0) &&
-		(time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) {
+		((time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) ||
+			(time.Since(selectedPair.remote.LastReceived()) > a.keepaliveInterval)) {
 		// we use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
 		a.selector.PingCandidate(selectedPair.local, selectedPair.remote)
