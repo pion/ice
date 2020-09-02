@@ -33,6 +33,8 @@ type Candidate interface {
 
 	Equal(other Candidate) bool
 
+	Marshal() string
+
 	addr() net.Addr
 	agent() *Agent
 	context() context.Context

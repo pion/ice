@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -356,4 +358,98 @@ func (c *candidateBase) agent() *Agent {
 
 func (c *candidateBase) context() context.Context {
 	return c
+}
+
+// Marshal returns the string representation of the ICECandidate
+func (c candidateBase) Marshal() string {
+	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
+		c.ID(),
+		c.Component(),
+		c.NetworkType().NetworkShort(),
+		c.Priority(),
+		c.Address(),
+		c.Port(),
+		c.Type())
+
+	if c.RelatedAddress() != nil {
+		val = fmt.Sprintf("%s raddr %s rport %d",
+			val,
+			c.RelatedAddress().Address,
+			c.RelatedAddress().Port)
+	}
+
+	return val
+}
+
+// UnmarshalCandidate creates a Candidate from its string representation
+func UnmarshalCandidate(raw string) (Candidate, error) {
+	split := strings.Fields(raw)
+	if len(split) < 8 {
+		return nil, fmt.Errorf("attribute not long enough to be ICE candidate (%d)", len(split))
+	}
+
+	// Foundation
+	foundation := split[0]
+
+	// Component
+	rawComponent, err := strconv.ParseUint(split[1], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse component: %v", err)
+	}
+	component := uint16(rawComponent)
+
+	// Protocol
+	protocol := split[2]
+
+	// Priority
+	if _, err = strconv.ParseUint(split[3], 10, 32); err != nil {
+		return nil, fmt.Errorf("could not parse priority: %v", err)
+	}
+
+	// Address
+	address := split[4]
+
+	// Port
+	rawPort, err := strconv.ParseUint(split[5], 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse port: %v", err)
+	}
+	port := int(rawPort)
+	typ := split[7]
+
+	relatedAddress := ""
+	relatedPort := 0
+	if len(split) > 8 {
+		split = split[8:]
+
+		if split[0] == "raddr" {
+			if len(split) < 4 {
+				return nil, fmt.Errorf("could not parse related addresses: incorrect length")
+			}
+
+			// RelatedAddress
+			relatedAddress = split[1]
+
+			// RelatedPort
+			rawRelatedPort, err := strconv.ParseUint(split[3], 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse port: %v", err)
+			}
+			relatedPort = int(rawRelatedPort)
+		}
+
+	}
+
+	switch typ {
+	case "host":
+		return NewCandidateHost(&CandidateHostConfig{foundation, protocol, address, port, uint16(component), TCPTypePassive})
+	case "srflx":
+		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort})
+	case "prflx":
+		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort})
+	case "relay":
+		return NewCandidateRelay(&CandidateRelayConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort, nil})
+	}
+
+	return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
 }
