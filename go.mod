@@ -8,6 +8,7 @@ require (
 	github.com/pion/logging v0.2.2
 	github.com/pion/mdns v0.0.4
 	github.com/pion/randutil v0.1.0
+	github.com/pion/sdp/v2 v2.4.0
 	github.com/pion/stun v0.3.5
 	github.com/pion/transport v0.10.1
 	github.com/pion/turn/v2 v2.0.4
