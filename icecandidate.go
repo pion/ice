@@ -8,7 +8,7 @@ import (
 
 // ICECandidate represents a ice candidate
 type ICECandidate struct {
-	statsID        string
+	StatsID        string
 	Foundation     string           `json:"foundation"`
 	Priority       uint32           `json:"priority"`
 	Address        string           `json:"address"`
@@ -37,7 +37,7 @@ func NewICECandidatesFromICE(iceCandidates []Candidate) ([]ICECandidate, error) 
 }
 
 func newICECandidateFromICE(i Candidate) (ICECandidate, error) {
-	typ, err := convertTypeFromICE(i.Type())
+	typ, err := ConvertTypeFromICE(i.Type())
 	if err != nil {
 		return ICECandidate{}, err
 	}
@@ -47,7 +47,7 @@ func newICECandidateFromICE(i Candidate) (ICECandidate, error) {
 	}
 
 	c := ICECandidate{
-		statsID:    i.ID(),
+		StatsID:    i.ID(),
 		Foundation: "foundation",
 		Priority:   i.Priority(),
 		Address:    i.Address(),
@@ -67,7 +67,7 @@ func newICECandidateFromICE(i Candidate) (ICECandidate, error) {
 }
 
 func (c ICECandidate) ToICE() (Candidate, error) {
-	candidateID := c.statsID
+	candidateID := c.StatsID
 	switch c.Typ {
 	case ICECandidateTypeHost:
 		config := CandidateHostConfig{
@@ -117,7 +117,7 @@ func (c ICECandidate) ToICE() (Candidate, error) {
 	}
 }
 
-func convertTypeFromICE(t CandidateType) (ICECandidateType, error) {
+func ConvertTypeFromICE(t CandidateType) (ICECandidateType, error) {
 	switch t {
 	case CandidateTypeHost:
 		return ICECandidateTypeHost, nil
