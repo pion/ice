@@ -2,23 +2,30 @@ package ice
 
 import (
 	"fmt"
-
-	"github.com/pion/sdp/v2"
+	"strings"
+	"strconv"
 )
 
 // ICECandidate represents a ice candidate
 type ICECandidate struct {
 	StatsID        string
-	Foundation     string           `json:"foundation"`
-	Priority       uint32           `json:"priority"`
-	Address        string           `json:"address"`
-	Protocol       ICEProtocol      `json:"protocol"`
-	Port           uint16           `json:"port"`
-	Typ            ICECandidateType `json:"type"`
-	Component      uint16           `json:"component"`
-	RelatedAddress string           `json:"relatedAddress"`
-	RelatedPort    uint16           `json:"relatedPort"`
-	TCPType        string           `json:"tcpType"`
+	Foundation     string           		`json:"foundation"`
+	Priority       uint32           		`json:"priority"`
+	Address        string           		`json:"address"`
+	Protocol       ICEProtocol      		`json:"protocol"`
+	Port           uint16           		`json:"port"`
+	Typ            ICECandidateType	 		`json:"type"`
+	Component      uint16           		`json:"component"`
+	RelatedAddress string           		`json:"relatedAddress"`
+	RelatedPort    uint16           		`json:"relatedPort"`
+	TCPType        string           		`json:"tcpType"`
+	ExtensionAttributes []ICECandidateAttribute     `json:"extensionAttributes"`
+}
+
+// ICECandidateAttribute represents an ICE candidate extension attribute
+type ICECandidateAttribute struct {
+	Key   string
+	Value string
 }
 
 // Conversion for package ice
@@ -140,64 +147,6 @@ func (c ICECandidate) String() string {
 	return ic.String()
 }
 
-func iceCandidateToSDP(c ICECandidate) sdp.ICECandidate {
-	var extensions []sdp.ICECandidateAttribute
-
-	if c.Protocol == ICEProtocolTCP && c.TCPType != "" {
-		extensions = append(extensions, sdp.ICECandidateAttribute{
-			Key:   "tcptype",
-			Value: c.TCPType,
-		})
-	}
-
-	return sdp.ICECandidate{
-		Foundation:          c.Foundation,
-		Priority:            c.Priority,
-		Address:             c.Address,
-		Protocol:            c.Protocol.String(),
-		Port:                c.Port,
-		Component:           c.Component,
-		Typ:                 c.Typ.String(),
-		RelatedAddress:      c.RelatedAddress,
-		RelatedPort:         c.RelatedPort,
-		ExtensionAttributes: extensions,
-	}
-}
-
-func newICECandidateFromSDP(c sdp.ICECandidate) (ICECandidate, error) {
-	typ, err := NewICECandidateType(c.Typ)
-	if err != nil {
-		return ICECandidate{}, err
-	}
-	protocol, err := NewICEProtocol(c.Protocol)
-	if err != nil {
-		return ICECandidate{}, err
-	}
-
-	var tcpType string
-	if protocol == ICEProtocolTCP {
-		for _, attr := range c.ExtensionAttributes {
-			if attr.Key == "tcptype" {
-				tcpType = attr.Value
-				break
-			}
-		}
-	}
-
-	return ICECandidate{
-		Foundation:     c.Foundation,
-		Priority:       c.Priority,
-		Address:        c.Address,
-		Protocol:       protocol,
-		Port:           c.Port,
-		Component:      c.Component,
-		Typ:            typ,
-		RelatedAddress: c.RelatedAddress,
-		RelatedPort:    c.RelatedPort,
-		TCPType:        tcpType,
-	}, nil
-}
-
 // ToJSON returns an ICECandidateInit
 // as indicated by the spec https://w3c.github.io/webrtc-pc/#dom-rtcicecandidate-tojson
 func (c ICECandidate) ToJSON() ICECandidateInit {
@@ -205,8 +154,112 @@ func (c ICECandidate) ToJSON() ICECandidateInit {
 	emptyStr := ""
 
 	return ICECandidateInit{
-		Candidate:     fmt.Sprintf("candidate:%s", iceCandidateToSDP(c).Marshal()),
+		Candidate:     fmt.Sprintf("candidate:%s", c.Marshal()),
 		SDPMid:        &emptyStr,
 		SDPMLineIndex: &zeroVal,
 	}
+}
+
+// Marshal returns the string representation of the ICECandidate
+func (c ICECandidate) Marshal() string {
+	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
+		c.Foundation,
+		c.Component,
+		c.Protocol,
+		c.Priority,
+		c.Address,
+		c.Port,
+		c.Typ)
+
+	if len(c.RelatedAddress) > 0 {
+		val = fmt.Sprintf("%s raddr %s rport %d",
+			val,
+			c.RelatedAddress,
+			c.RelatedPort)
+	}
+
+	for _, attr := range c.ExtensionAttributes {
+		val = fmt.Sprintf("%s %s %s",
+			val,
+			attr.Key,
+			attr.Value)
+	}
+	return val
+}
+
+// Unmarshal popuulates the ICECandidate from its string representation
+func (c *ICECandidate) Unmarshal(raw string) error {
+	split := strings.Fields(raw)
+	if len(split) < 8 {
+		return fmt.Errorf("attribute not long enough to be ICE candidate (%d)", len(split))
+	}
+
+	// Foundation
+	c.Foundation = split[0]
+
+	// Component
+	component, err := strconv.ParseUint(split[1], 10, 16)
+	if err != nil {
+		return fmt.Errorf("could not parse component: %v", err)
+	}
+	c.Component = uint16(component)
+
+	// Protocol
+	c.Protocol, _ = NewICEProtocol(split[2])
+
+	// Priority
+	priority, err := strconv.ParseUint(split[3], 10, 32)
+	if err != nil {
+		return fmt.Errorf("could not parse priority: %v", err)
+	}
+	c.Priority = uint32(priority)
+
+	// Address
+	c.Address = split[4]
+
+	// Port
+	port, err := strconv.ParseUint(split[5], 10, 16)
+	if err != nil {
+		return fmt.Errorf("could not parse port: %v", err)
+	}
+	c.Port = uint16(port)
+
+	c.Typ, _ = NewICECandidateType(split[7])
+
+	if len(split) <= 8 {
+		return nil
+	}
+
+	split = split[8:]
+
+	if split[0] == "raddr" {
+		if len(split) < 4 {
+			return fmt.Errorf("could not parse related addresses: incorrect length")
+		}
+
+		// RelatedAddress
+		c.RelatedAddress = split[1]
+
+		// RelatedPort
+		relatedPort, err := strconv.ParseUint(split[3], 10, 16)
+		if err != nil {
+			return fmt.Errorf("could not parse port: %v", err)
+		}
+		c.RelatedPort = uint16(relatedPort)
+
+		if len(split) <= 4 {
+			return nil
+		}
+
+		split = split[4:]
+	}
+
+	for i := 0; len(split) > i+1; i += 2 {
+		c.ExtensionAttributes = append(c.ExtensionAttributes, ICECandidateAttribute{
+			Key:   split[i],
+			Value: split[i+1],
+		})
+	}
+
+	return nil
 }
