@@ -33,7 +33,7 @@ func NewICECandidatesFromICE(iceCandidates []Candidate) ([]ICECandidate, error) 
 	candidates := []ICECandidate{}
 
 	for _, i := range iceCandidates {
-		c, err := newICECandidateFromICE(i)
+		c, err := NewICECandidateFromICE(i)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +43,7 @@ func NewICECandidatesFromICE(iceCandidates []Candidate) ([]ICECandidate, error) 
 	return candidates, nil
 }
 
-func newICECandidateFromICE(i Candidate) (ICECandidate, error) {
+func NewICECandidateFromICE(i Candidate) (ICECandidate, error) {
 	typ, err := ConvertTypeFromICE(i.Type())
 	if err != nil {
 		return ICECandidate{}, err
