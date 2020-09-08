@@ -5,22 +5,33 @@ linters-settings:
     locale: US
 
 linters:
-  enable-all: true
-  disable:
+  enable:
+    - deadcode
+    - depguard
     - dogsled
-    - funlen
+    - dupl
+    - errcheck
     - gochecknoglobals
-    - godox
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - golint
+    - ineffassign
     - interfacer
-    - lll
-    - maligned
+    - misspell
+    - nakedret
+    - prealloc
+    - scopelint
+    - structcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - whitespace
 
-issues:
-  exclude-use-default: false
-  max-per-linter: 0
-  max-same-issues: 50
-
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
+run:
+  skip-dirs-use-default: false
