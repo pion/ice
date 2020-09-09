@@ -4,23 +4,5 @@ linters-settings:
   misspell:
     locale: US
 
-linters:
-  enable-all: true
-  disable:
-    - dogsled
-    - funlen
-    - gochecknoglobals
-    - godox
-    - interfacer
-    - lll
-    - maligned
-
-issues:
-  exclude-use-default: false
-  max-per-linter: 0
-  max-same-issues: 50
-
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
+run:
+  skip-dirs-use-default: false
