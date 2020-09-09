@@ -369,12 +369,12 @@ func (c candidateBase) Marshal() string {
                 c.Port(),
                 c.Type())
 
-        //if c.RelatedAddress() != nil && len(c.RelatedAddress().Address) > 0 {
-        //        val = fmt.Sprintf("%s raddr %s rport %d",
-        //                val,
-        //                c.RelatedAddress().Address,
-        //                c.RelatedAddress().Port)
-       // }
+        if c.RelatedAddress() != nil {
+                val = fmt.Sprintf("%s raddr %s rport %d",
+                        val,
+                        c.RelatedAddress().Address,
+                        c.RelatedAddress().Port)
+        }
 
         return val
 }
@@ -405,33 +405,33 @@ func (c *candidateBase) Unmarshal(raw string) error {
 
         c.candidateType = ToCandidateType(split[5])
 
-        //if len(split) <= 8 {
-        //        return nil
-        //}
+        if len(split) <= 5 {
+                return nil
+        }
 
-        //split = split[8:]
+        split = split[6:]
 
-        //if split[0] == "raddr" {
-        //        if len(split) < 4 {
-        //                return fmt.Errorf("could not parse related addresses: incorrect length")
-        //        }
+        if split[0] == "raddr" {
+                if len(split) < 4 {
+                        return fmt.Errorf("could not parse related addresses: incorrect length")
+                }
 
                 // RelatedAddress
-        //        c.relatedAddress.Address = split[1]
+                c.relatedAddress.Address = split[1]
 
                 // RelatedPort
-        //        relatedPort, err := strconv.ParseUint(split[3], 10, 16)
-        //        if err != nil {
-        //                return fmt.Errorf("could not parse port: %v", err)
-        //        }
-        //        c.relatedAddress.Port = int(relatedPort)
+                relatedPort, err := strconv.ParseUint(split[3], 10, 16)
+                if err != nil {
+                        return fmt.Errorf("could not parse port: %v", err)
+                }
+                c.relatedAddress.Port = int(relatedPort)
 
-        //        if len(split) <= 4 {
-        //                return nil
-        //        }
+                if len(split) <= 4 {
+                        return nil
+                }
 
-        //        split = split[4:]
-        //}
+                split = split[4:]
+        }
 
         return nil
 }
