@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -357,3 +359,85 @@ func (c *candidateBase) agent() *Agent {
 func (c *candidateBase) context() context.Context {
 	return c
 }
+
+// Marshal returns the string representation of the ICECandidate
+func (c candidateBase) Marshal() string {
+        val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
+                //c.Foundation,
+                c.Component,
+                //c.Protocol,
+                c.Priority,
+                c.Address,
+                c.Port,
+                c.Type())
+
+        if len(c.RelatedAddress().Address) > 0 {
+                val = fmt.Sprintf("%s raddr %s rport %d",
+                        val,
+                        c.RelatedAddress().Address,
+                        c.RelatedAddress().Port)
+        }
+
+        return val
+}
+
+// Unmarshal popuulates the ICECandidate from its string representation
+func (c *candidateBase) Unmarshal(raw string) error {
+        split := strings.Fields(raw)
+        if len(split) < 8 {
+                return fmt.Errorf("attribute not long enough to be ICE candidate (%d)", len(split))
+        }
+
+        // Foundation
+        //c.Foundation = split[0]
+
+        // Component
+        component, err := strconv.ParseUint(split[1], 10, 16)
+        if err != nil {
+                return fmt.Errorf("could not parse component: %v", err)
+        }
+        c.component = uint16(component)
+
+        // Address
+        c.address = split[4]
+
+        // Port
+        port, err := strconv.ParseUint(split[5], 10, 16)
+        if err != nil {
+                return fmt.Errorf("could not parse port: %v", err)
+        }
+        c.port = int(port)
+
+        c.candidateType = ToCandidateType(split[7])
+
+        if len(split) <= 8 {
+                return nil
+        }
+
+        split = split[8:]
+
+        if split[0] == "raddr" {
+                if len(split) < 4 {
+                        return fmt.Errorf("could not parse related addresses: incorrect length")
+                }
+
+                // RelatedAddress
+                c.relatedAddress.Address = split[1]
+
+                // RelatedPort
+                relatedPort, err := strconv.ParseUint(split[3], 10, 16)
+                if err != nil {
+                        return fmt.Errorf("could not parse port: %v", err)
+                }
+                c.relatedAddress.Port = int(relatedPort)
+
+                if len(split) <= 4 {
+                        return nil
+                }
+
+                split = split[4:]
+        }
+
+        return nil
+}
+

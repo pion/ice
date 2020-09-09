@@ -27,6 +27,20 @@ func (c CandidateType) String() string {
 	return "Unknown candidate type"
 }
 
+func ToCandidateType(value string) CandidateType {
+	switch value {
+	case "host":
+		return CandidateTypeHost
+	case "srflx":
+		return CandidateTypeServerReflexive
+	case "prflx":
+		return CandidateTypePeerReflexive
+	case "relay":
+		return CandidateTypeRelay
+	}
+	return CandidateTypeUnspecified
+}
+
 // Preference returns the preference weight of a CandidateType
 //
 // 4.1.2.2.  Guidelines for Choosing Type and Local Preferences
