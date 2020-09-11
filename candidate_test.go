@@ -136,3 +136,32 @@ func TestCandidateLastReceived(t *testing.T) {
 	candidate.setLastReceived(now)
 	assert.Equal(t, candidate.LastReceived(), now)
 }
+
+func TestCandidateMarshal(t *testing.T) {
+
+	candidate := &CandidateHost{
+                                candidateBase: candidateBase{
+                                	id: "id1",
+					networkType: NetworkTypeUDP4,
+					component: 1,
+					address: "0.0.0.0",
+					port: 8080,
+					candidateType: CandidateTypeHost,
+                                },
+	}
+
+	assert.Equal(t, "id1 udp4 1 2130706431 0.0.0.0 8080 typ host", candidate.Marshal(), "the strings should be the same")
+}
+
+func TestCandidateUnmarshal(t *testing.T) {
+	marshaledCandidate := "id1 udp4 1 2130706431 0.0.0.0 8080 typ host"
+	candidate, _ := Unmarshal(marshaledCandidate)
+
+	assert.Equal(t, "id1", candidate.ID())
+	assert.Equal(t, NetworkTypeUDP4, candidate.NetworkType())
+	assert.Equal(t, uint16(1), candidate.Component())
+	assert.Equal(t, uint32(2130706431), candidate.Priority())
+	assert.Equal(t, "0.0.0.0", candidate.Address())
+	assert.Equal(t, 8080, candidate.Port())
+	assert.Equal(t, CandidateTypeHost, candidate.Type())
+}
