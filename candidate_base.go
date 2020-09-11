@@ -362,7 +362,9 @@ func (c *candidateBase) context() context.Context {
 
 // Marshal returns the string representation of the ICECandidate
 func (c candidateBase) Marshal() string {
-        val := fmt.Sprintf("%d %d %s %d typ %s",
+        val := fmt.Sprintf("%s %s %d %d %s %d typ %s",
+		c.ID(),
+		c.NetworkType().String(),
                 c.Component(),
                 c.Priority(),
                 c.Address(),
@@ -380,59 +382,30 @@ func (c candidateBase) Marshal() string {
 }
 
 // Unmarshal popuulates the ICECandidate from its string representation
-func (c *candidateBase) Unmarshal(raw string) error {
-        split := strings.Fields(raw)
-        if len(split) < 5 {
-                return fmt.Errorf("attribute not long enough to be ICE candidate (%d)", len(split))
-        }
+func Unmarshal(raw string) (Candidate, error) {
+        elements := strings.Split(raw, " ")
+        port, _ := strconv.Atoi(elements[5])
+        component, _ := strconv.Atoi(elements[2])
 
-        // Component
-        component, err := strconv.ParseUint(split[0], 10, 16)
-        if err != nil {
-                return fmt.Errorf("could not parse component: %v", err)
-        }
-        c.component = uint16(component)
-
-        // Address
-        c.address = split[2]
-
-        // Port
-        port, err := strconv.ParseUint(split[3], 10, 16)
-        if err != nil {
-                return fmt.Errorf("could not parse port: %v", err)
-        }
-        c.port = int(port)
-
-        c.candidateType = ToCandidateType(split[5])
-
-        if len(split) <= 5 {
-                return nil
-        }
-
-        split = split[6:]
-
-        if split[0] == "raddr" {
-                if len(split) < 4 {
-                        return fmt.Errorf("could not parse related addresses: incorrect length")
+        switch elements[7] {
+        case "host":
+                return NewCandidateHost(&CandidateHostConfig{elements[0], elements[1], elements[4], port, uint16(component), TCPTypePassive})
+        case "srflx":
+                {
+                        rlPort, _ := strconv.Atoi(elements[11])
+                        return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
                 }
-
-                // RelatedAddress
-                c.relatedAddress.Address = split[1]
-
-                // RelatedPort
-                relatedPort, err := strconv.ParseUint(split[3], 10, 16)
-                if err != nil {
-                        return fmt.Errorf("could not parse port: %v", err)
+        case "prflx":
+                {
+                        rlPort, _ := strconv.Atoi(elements[11])
+                        return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
                 }
-                c.relatedAddress.Port = int(relatedPort)
-
-                if len(split) <= 4 {
-                        return nil
+        case "relay":
+                {
+                        rlPort, _ := strconv.Atoi(elements[11])
+                        return NewCandidateRelay(&CandidateRelayConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort, nil})
                 }
-
-                split = split[4:]
         }
-
-        return nil
+        return NewCandidateHost(&CandidateHostConfig{})
 }
 

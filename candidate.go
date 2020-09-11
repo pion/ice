@@ -34,7 +34,6 @@ type Candidate interface {
 	Equal(other Candidate) bool
 
 	Marshal() string
-	Unmarshal(raw string) error
 
 	addr() net.Addr
 	agent() *Agent
