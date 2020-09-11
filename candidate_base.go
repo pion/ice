@@ -362,50 +362,49 @@ func (c *candidateBase) context() context.Context {
 
 // Marshal returns the string representation of the ICECandidate
 func (c candidateBase) Marshal() string {
-        val := fmt.Sprintf("%s %s %d %d %s %d typ %s",
+	val := fmt.Sprintf("%s %s %d %d %s %d typ %s",
 		c.ID(),
 		c.NetworkType().String(),
-                c.Component(),
-                c.Priority(),
-                c.Address(),
-                c.Port(),
-                c.Type())
+		c.Component(),
+		c.Priority(),
+		c.Address(),
+		c.Port(),
+		c.Type())
 
-        if c.RelatedAddress() != nil {
-                val = fmt.Sprintf("%s raddr %s rport %d",
-                        val,
-                        c.RelatedAddress().Address,
-                        c.RelatedAddress().Port)
-        }
+	if c.RelatedAddress() != nil {
+		val = fmt.Sprintf("%s raddr %s rport %d",
+			val,
+			c.RelatedAddress().Address,
+			c.RelatedAddress().Port)
+	}
 
-        return val
+	return val
 }
 
-// Unmarshal popuulates the ICECandidate from its string representation
+// Unmarshal populates the ICECandidate from its string representation
 func Unmarshal(raw string) (Candidate, error) {
-        elements := strings.Split(raw, " ")
-        port, _ := strconv.Atoi(elements[5])
-        component, _ := strconv.Atoi(elements[2])
+	elements := strings.Split(raw, " ")
+	port, _ := strconv.Atoi(elements[5])
+	component, _ := strconv.Atoi(elements[2])
 
-        switch elements[7] {
-        case "host":
-                return NewCandidateHost(&CandidateHostConfig{elements[0], elements[1], elements[4], port, uint16(component), TCPTypePassive})
-        case "srflx":
-                {
-                        rlPort, _ := strconv.Atoi(elements[11])
-                        return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
-                }
-        case "prflx":
-                {
-                        rlPort, _ := strconv.Atoi(elements[11])
-                        return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
-                }
-        case "relay":
-                {
-                        rlPort, _ := strconv.Atoi(elements[11])
-                        return NewCandidateRelay(&CandidateRelayConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort, nil})
-                }
-        }
-        return NewCandidateHost(&CandidateHostConfig{})
+	switch elements[7] {
+	case "host":
+		return NewCandidateHost(&CandidateHostConfig{elements[0], elements[1], elements[4], port, uint16(component), TCPTypePassive})
+	case "srflx":
+		{
+			rlPort, _ := strconv.Atoi(elements[11])
+			return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
+		}
+	case "prflx":
+		{
+			rlPort, _ := strconv.Atoi(elements[11])
+			return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort})
+		}
+	case "relay":
+		{
+			rlPort, _ := strconv.Atoi(elements[11])
+			return NewCandidateRelay(&CandidateRelayConfig{elements[0], elements[1], elements[4], port, uint16(component), elements[9], rlPort, nil})
+		}
+	}
+	return NewCandidateHost(&CandidateHostConfig{})
 }
-
