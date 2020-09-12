@@ -3,6 +3,7 @@ package ice
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"strconv"
 	"strings"
@@ -65,6 +66,10 @@ func (c *candidateBase) ID() string {
 	return c.id
 }
 
+func (c *candidateBase) Foundation() string {
+	return fmt.Sprintf("%d", crc32.ChecksumIEEE([]byte(c.Type().String()+c.address+c.networkType.String())))
+}
+
 // Address returns Candidate Address
 func (c *candidateBase) Address() string {
 	return c.address
@@ -88,6 +93,10 @@ func (c *candidateBase) NetworkType() NetworkType {
 // Component returns candidate component
 func (c *candidateBase) Component() uint16 {
 	return c.component
+}
+
+func (c *candidateBase) SetComponent(component uint16) {
+	c.component = component
 }
 
 // LocalPreference returns the local preference for this candidate
@@ -363,7 +372,7 @@ func (c *candidateBase) context() context.Context {
 // Marshal returns the string representation of the ICECandidate
 func (c candidateBase) Marshal() string {
 	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
-		c.ID(),
+		c.Foundation(),
 		c.Component(),
 		c.NetworkType().NetworkShort(),
 		c.Priority(),
