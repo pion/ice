@@ -214,14 +214,16 @@ func TestCandidateMarshal(t *testing.T) {
 	}{
 		{&CandidateHost{
 			candidateBase{
-				networkType:   NetworkTypeUDP6,
-				candidateType: CandidateTypeHost,
-				address:       "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
-				port:          53987,
+				networkType:        NetworkTypeUDP6,
+				candidateType:      CandidateTypeHost,
+				address:            "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+				port:               53987,
+				priorityOverride:   500,
+				foundationOverride: "750",
 			},
 			"",
 		},
-			"121457893 1 udp 2130706431 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host",
+			"750 1 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host",
 			false,
 		},
 		{&CandidateHost{

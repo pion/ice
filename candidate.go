@@ -23,6 +23,10 @@ type Candidate interface {
 	// have the same type, base IP address, protocol (UDP, TCP, etc.),
 	// and STUN or TURN server.
 	Foundation() string
+	// setFoundation lets you explicitly override the foundation of a candidate
+	// if needed. This useful mostly for remote candidates, but can also be helpful
+	// for debugging
+	setFoundation(string)
 
 	// ID is a unique identifier for just this candidate
 	// Unlike the foundation this is different for each candidate
@@ -44,6 +48,10 @@ type Candidate interface {
 	Port() int
 
 	Priority() uint32
+	// setPriority lets you explicitly override the priority of a candidate
+	// if needed. This useful mostly for remote candidates, but can also be helpful
+	// for debugging
+	setPriority(uint32)
 
 	// A transport address related to a
 	//  candidate, which is useful for diagnostics and other purposes

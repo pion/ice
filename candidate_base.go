@@ -34,6 +34,9 @@ type candidateBase struct {
 	currAgent *Agent
 	closeCh   chan struct{}
 	closedCh  chan struct{}
+
+	foundationOverride string
+	priorityOverride   uint32
 }
 
 // Done implements context.Context
@@ -67,6 +70,10 @@ func (c *candidateBase) ID() string {
 }
 
 func (c *candidateBase) Foundation() string {
+	if c.foundationOverride != "" {
+		return c.foundationOverride
+	}
+
 	return fmt.Sprintf("%d", crc32.ChecksumIEEE([]byte(c.Type().String()+c.address+c.networkType.String())))
 }
 
@@ -296,6 +303,10 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 
 // Priority computes the priority for this ICE Candidate
 func (c *candidateBase) Priority() uint32 {
+	if c.priorityOverride != 0 {
+		return c.priorityOverride
+	}
+
 	// The local preference MUST be an integer from 0 (lowest preference) to
 	// 65535 (highest preference) inclusive.  When there is only a single IP
 	// address, this value SHOULD be set to 65535.  If there are multiple
@@ -395,6 +406,14 @@ func (c candidateBase) Marshal() string {
 	return val
 }
 
+func (c *candidateBase) setFoundation(foundation string) {
+	c.foundationOverride = foundation
+}
+
+func (c *candidateBase) setPriority(priority uint32) {
+	c.priorityOverride = priority
+}
+
 // UnmarshalCandidate creates a Candidate from its string representation
 func UnmarshalCandidate(raw string) (Candidate, error) {
 	split := strings.Fields(raw)
@@ -416,9 +435,11 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	protocol := split[2]
 
 	// Priority
-	if _, err = strconv.ParseUint(split[3], 10, 32); err != nil {
+	priorityRaw, err := strconv.ParseUint(split[3], 10, 32)
+	if err != nil {
 		return nil, fmt.Errorf("could not parse priority: %v", err)
 	}
+	priority := uint32(priorityRaw)
 
 	// Address
 	address := split[4]
@@ -447,9 +468,9 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 			relatedAddress = split[1]
 
 			// RelatedPort
-			rawRelatedPort, err := strconv.ParseUint(split[3], 10, 16)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse port: %v", err)
+			rawRelatedPort, parseErr := strconv.ParseUint(split[3], 10, 16)
+			if parseErr != nil {
+				return nil, fmt.Errorf("could not parse port: %v", parseErr)
 			}
 			relatedPort = int(rawRelatedPort)
 		} else if split[0] == "tcptype" {
@@ -461,16 +482,26 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 		}
 	}
 
+	var c Candidate
 	switch typ {
 	case "host":
-		return NewCandidateHost(&CandidateHostConfig{foundation, protocol, address, port, uint16(component), tcpType})
+		c, err = NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, uint16(component), tcpType})
 	case "srflx":
-		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort})
+		c, err = NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort})
 	case "prflx":
-		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort})
+		c, err = NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort})
 	case "relay":
-		return NewCandidateRelay(&CandidateRelayConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort, nil})
+		c, err = NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort, nil})
+	default:
+		return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
+
 	}
 
-	return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
+	if err != nil {
+		return nil, err
+	}
+
+	c.setPriority(priority)
+	c.setFoundation(foundation)
+	return c, err
 }
