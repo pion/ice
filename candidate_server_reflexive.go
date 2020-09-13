@@ -16,6 +16,8 @@ type CandidateServerReflexiveConfig struct {
 	Address     string
 	Port        int
 	Component   uint16
+	Priority    uint32
+	Foundation  string
 	RelAddr     string
 	RelPort     int
 }
@@ -39,13 +41,15 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 
 	return &CandidateServerReflexive{
 		candidateBase: candidateBase{
-			id:            candidateID,
-			networkType:   networkType,
-			candidateType: CandidateTypeServerReflexive,
-			address:       config.Address,
-			port:          config.Port,
-			resolvedAddr:  &net.UDPAddr{IP: ip, Port: config.Port},
-			component:     config.Component,
+			id:                 candidateID,
+			networkType:        networkType,
+			candidateType:      CandidateTypeServerReflexive,
+			address:            config.Address,
+			port:               config.Port,
+			resolvedAddr:       &net.UDPAddr{IP: ip, Port: config.Port},
+			component:          config.Component,
+			foundationOverride: config.Foundation,
+			priorityOverride:   config.Priority,
 			relatedAddress: &CandidateRelatedAddress{
 				Address: config.RelAddr,
 				Port:    config.RelPort,

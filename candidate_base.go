@@ -406,14 +406,6 @@ func (c candidateBase) Marshal() string {
 	return val
 }
 
-func (c *candidateBase) setFoundation(foundation string) {
-	c.foundationOverride = foundation
-}
-
-func (c *candidateBase) setPriority(priority uint32) {
-	c.priorityOverride = priority
-}
-
 // UnmarshalCandidate creates a Candidate from its string representation
 func UnmarshalCandidate(raw string) (Candidate, error) {
 	split := strings.Fields(raw)
@@ -482,26 +474,17 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 		}
 	}
 
-	var c Candidate
 	switch typ {
 	case "host":
-		c, err = NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, uint16(component), tcpType})
+		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, uint16(component), priority, foundation, tcpType})
 	case "srflx":
-		c, err = NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort})
+		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort})
 	case "prflx":
-		c, err = NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort})
+		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort})
 	case "relay":
-		c, err = NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, uint16(component), relatedAddress, relatedPort, nil})
+		return NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort, nil})
 	default:
-		return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
-
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	c.setPriority(priority)
-	c.setFoundation(foundation)
-	return c, err
+	return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
 }

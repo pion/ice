@@ -19,6 +19,8 @@ type CandidateHostConfig struct {
 	Address     string
 	Port        int
 	Component   uint16
+	Priority    uint32
+	Foundation  string
 	TCPType     TCPType
 }
 
@@ -32,12 +34,14 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 
 	c := &CandidateHost{
 		candidateBase: candidateBase{
-			id:            candidateID,
-			address:       config.Address,
-			candidateType: CandidateTypeHost,
-			component:     config.Component,
-			port:          config.Port,
-			tcpType:       config.TCPType,
+			id:                 candidateID,
+			address:            config.Address,
+			candidateType:      CandidateTypeHost,
+			component:          config.Component,
+			port:               config.Port,
+			tcpType:            config.TCPType,
+			foundationOverride: config.Foundation,
+			priorityOverride:   config.Priority,
 		},
 		network: config.Network,
 	}
