@@ -313,6 +313,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
+		c.TCPType() == other.TCPType() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
 
@@ -380,6 +381,10 @@ func (c candidateBase) Marshal() string {
 		c.Port(),
 		c.Type())
 
+	if c.tcpType != TCPTypeUnspecified {
+		val += fmt.Sprintf(" tcptype %s", c.tcpType.String())
+	}
+
 	if c.RelatedAddress() != nil {
 		val = fmt.Sprintf("%s raddr %s rport %d",
 			val,
@@ -428,6 +433,8 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 
 	relatedAddress := ""
 	relatedPort := 0
+	tcpType := TCPTypeUnspecified
+
 	if len(split) > 8 {
 		split = split[8:]
 
@@ -445,13 +452,18 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 				return nil, fmt.Errorf("could not parse port: %v", err)
 			}
 			relatedPort = int(rawRelatedPort)
-		}
+		} else if split[0] == "tcptype" {
+			if len(split) < 2 {
+				return nil, fmt.Errorf("could not parse typtype: incorrect length")
+			}
 
+			tcpType = NewTCPType(split[1])
+		}
 	}
 
 	switch typ {
 	case "host":
-		return NewCandidateHost(&CandidateHostConfig{foundation, protocol, address, port, uint16(component), TCPTypePassive})
+		return NewCandidateHost(&CandidateHostConfig{foundation, protocol, address, port, uint16(component), tcpType})
 	case "srflx":
 		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{foundation, protocol, address, port, uint16(component), relatedAddress, relatedPort})
 	case "prflx":
