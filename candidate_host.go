@@ -51,6 +51,9 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		if err := c.setIP(ip); err != nil {
 			return nil, err
 		}
+	} else {
+		// Until mDNS candidate is resolved assume it is UDPv4
+		c.candidateBase.networkType = NetworkTypeUDP4
 	}
 
 	return c, nil
