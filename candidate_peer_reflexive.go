@@ -35,8 +35,9 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 	}
 
 	candidateID := config.CandidateID
+	candidateIDGenerator := newCandidateIDGenerator()
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = candidateIDGenerator.Generate()
 	}
 
 	return &CandidatePeerReflexive{

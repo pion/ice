@@ -65,7 +65,7 @@ type externalIPMapper struct {
 	candidateType CandidateType
 }
 
-func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIPMapper, error) {
+func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIPMapper, error) { //nolint:gocognit
 	if len(ips) == 0 {
 		return nil, nil
 	}

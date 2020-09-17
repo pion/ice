@@ -224,7 +224,7 @@ func (a *Agent) taskLoop() {
 }
 
 // NewAgent creates a new Agent
-func NewAgent(config *AgentConfig) (*Agent, error) {
+func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	var err error
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
@@ -748,7 +748,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 		return
 	}
 
-	ip, _, _, _ := parseAddr(src)
+	ip, _, _, _ := parseAddr(src) //nolint:dogsled
 	if ip == nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: failed to parse IP", c.Address())
 		return
@@ -1009,7 +1009,7 @@ func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bo
 }
 
 // handleInbound processes STUN traffic from a remote candidate
-func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) { //nolint:gocognit
 	var err error
 	if m == nil || local == nil {
 		return
@@ -1074,7 +1074,6 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				Component: local.Component(),
 				RelAddr:   "",
 				RelPort:   0,
-				// TODO set TCPType
 			}
 
 			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)

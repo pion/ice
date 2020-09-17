@@ -1,6 +1,8 @@
 package ice
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Role represents ICE agent role, which can be controlling or controlled.
 type Role byte
@@ -19,7 +21,7 @@ func (r *Role) UnmarshalText(text []byte) error {
 	case "controlled":
 		*r = Controlled
 	default:
-		return fmt.Errorf("unknown role %q", text)
+		return fmt.Errorf("%w %q", errUnknownRole, text)
 	}
 	return nil
 }

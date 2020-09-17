@@ -1,15 +1,16 @@
 package ice
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/pion/stun"
 )
 
-func TestPriority_GetFrom(t *testing.T) {
+func TestPriority_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
 	var p PriorityAttr
-	if err := p.GetFrom(m); err != stun.ErrAttributeNotFound {
+	if err := p.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
 	if err := m.Build(stun.BindingRequest, &p); err != nil {

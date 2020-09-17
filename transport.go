@@ -2,7 +2,6 @@ package ice
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync/atomic"
 	"time"
@@ -55,7 +54,6 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 	case <-a.done:
 		return nil, a.getErr()
 	case <-ctx.Done():
-		// TODO: Stop connectivity checks?
 		return nil, ErrCanceledByCaller
 	case <-a.onConnected:
 	}
@@ -85,7 +83,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 	}
 
 	if stun.IsMessage(p) {
-		return 0, errors.New("the ICE conn can't write STUN messages")
+		return 0, errICEWriteSTUNMessage
 	}
 
 	pair := c.agent.getSelectedPair()
@@ -110,8 +108,6 @@ func (c *Conn) Write(p []byte) (int, error) {
 func (c *Conn) Close() error {
 	return c.agent.Close()
 }
-
-// TODO: Maybe just switch to using io.ReadWriteCloser?
 
 // LocalAddr returns the local address of the current selected pair or nil if there is none.
 func (c *Conn) LocalAddr() net.Addr {

@@ -4,7 +4,6 @@ package ice
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -82,7 +81,6 @@ func TestTimeout(t *testing.T) {
 	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
 		ca, cb := pipe(nil)
 		err := cb.Close()
-
 		if err != nil {
 			// we should never get here.
 			panic(err)
@@ -94,7 +92,6 @@ func TestTimeout(t *testing.T) {
 	t.Run("WithDisconnectTimeout", func(t *testing.T) {
 		ca, cb := pipeWithTimeout(5*time.Second, 3*time.Second)
 		err := cb.Close()
-
 		if err != nil {
 			// we should never get here.
 			panic(err)
@@ -254,7 +251,7 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	}
 
 	cfg.Urls = urls
-	cfg.NetworkTypes = supportedNetworkTypes
+	cfg.NetworkTypes = supportedNetworkTypes()
 
 	aAgent, err := NewAgent(cfg)
 	check(err)
@@ -285,7 +282,7 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 		Urls:                urls,
 		DisconnectedTimeout: &disconnectTimeout,
 		KeepaliveInterval:   &iceKeepalive,
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -397,7 +394,7 @@ func TestConnStats(t *testing.T) {
 	go func() {
 		buf := make([]byte, 10)
 		if _, err := cb.Read(buf); err != nil {
-			panic(errors.New("unexpected error trying to read"))
+			panic(errRead)
 		}
 		wg.Done()
 	}()

@@ -42,7 +42,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	assert.NoError(t, err)
 
 	cfg := &AgentConfig{
-		NetworkTypes: supportedNetworkTypes,
+		NetworkTypes: supportedNetworkTypes(),
 		Urls: []*URL{
 			{
 				Scheme:   SchemeTypeTURN,

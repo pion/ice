@@ -156,6 +156,8 @@ func (c *candidateBase) LocalPreference() uint16 {
 					return 4
 				case TCPTypeSimultaneousOpen:
 					return 2
+				case TCPTypeUnspecified:
+					return 0
 				}
 			case CandidateTypePeerReflexive, CandidateTypeServerReflexive:
 				switch c.tcpType {
@@ -165,9 +167,12 @@ func (c *candidateBase) LocalPreference() uint16 {
 					return 4
 				case TCPTypePassive:
 					return 2
+				case TCPTypeUnspecified:
+					return 0
 				}
+			case CandidateTypeUnspecified:
+				return 0
 			}
-
 			return 0
 		}()
 
@@ -295,7 +300,7 @@ func (c *candidateBase) close() error {
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
-		return n, fmt.Errorf("failed to send packet: %v", err)
+		return n, fmt.Errorf("%w: %v", errSendPacket, err)
 	}
 	c.seen(true)
 	return n, nil
@@ -410,7 +415,7 @@ func (c candidateBase) Marshal() string {
 func UnmarshalCandidate(raw string) (Candidate, error) {
 	split := strings.Fields(raw)
 	if len(split) < 8 {
-		return nil, fmt.Errorf("attribute not long enough to be ICE candidate (%d)", len(split))
+		return nil, fmt.Errorf("%w (%d)", errAttributeTooShortICECandidate, len(split))
 	}
 
 	// Foundation
@@ -419,7 +424,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Component
 	rawComponent, err := strconv.ParseUint(split[1], 10, 16)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse component: %v", err)
+		return nil, fmt.Errorf("%w: %v", errParseComponent, err)
 	}
 	component := uint16(rawComponent)
 
@@ -429,7 +434,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Priority
 	priorityRaw, err := strconv.ParseUint(split[3], 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse priority: %v", err)
+		return nil, fmt.Errorf("%w: %v", errParsePriority, err)
 	}
 	priority := uint32(priorityRaw)
 
@@ -439,7 +444,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Port
 	rawPort, err := strconv.ParseUint(split[5], 10, 16)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse port: %v", err)
+		return nil, fmt.Errorf("%w: %v", errParsePort, err)
 	}
 	port := int(rawPort)
 	typ := split[7]
@@ -453,7 +458,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 
 		if split[0] == "raddr" {
 			if len(split) < 4 {
-				return nil, fmt.Errorf("could not parse related addresses: incorrect length")
+				return nil, fmt.Errorf("%w: incorrect length", errParseRelatedAddr)
 			}
 
 			// RelatedAddress
@@ -462,12 +467,12 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 			// RelatedPort
 			rawRelatedPort, parseErr := strconv.ParseUint(split[3], 10, 16)
 			if parseErr != nil {
-				return nil, fmt.Errorf("could not parse port: %v", parseErr)
+				return nil, fmt.Errorf("%w: %v", errParsePort, parseErr)
 			}
 			relatedPort = int(rawRelatedPort)
 		} else if split[0] == "tcptype" {
 			if len(split) < 2 {
-				return nil, fmt.Errorf("could not parse typtype: incorrect length")
+				return nil, fmt.Errorf("%w: incorrect length", errParseTypType)
 			}
 
 			tcpType = NewTCPType(split[1])
@@ -476,15 +481,15 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 
 	switch typ {
 	case "host":
-		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, uint16(component), priority, foundation, tcpType})
+		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, component, priority, foundation, tcpType})
 	case "srflx":
-		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort})
+		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
 	case "prflx":
-		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort})
+		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
 	case "relay":
-		return NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, uint16(component), priority, foundation, relatedAddress, relatedPort, nil})
+		return NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort, nil})
 	default:
 	}
 
-	return nil, fmt.Errorf("Unknown candidate typ(%s)", typ)
+	return nil, fmt.Errorf("%w (%s)", errUnknownCandidateTyp, typ)
 }

@@ -1,6 +1,10 @@
 package ice
 
-import "github.com/pion/stun"
+import (
+	"encoding/binary"
+
+	"github.com/pion/stun"
+)
 
 // tiebreaker is common helper for ICE-{CONTROLLED,CONTROLLING}
 // and represents the so-called tiebreaker number.
@@ -11,7 +15,7 @@ const tiebreakerSize = 8 // 64 bit
 // AddToAs adds tiebreaker value to m as t attribute.
 func (a tiebreaker) AddToAs(m *stun.Message, t stun.AttrType) error {
 	v := make([]byte, tiebreakerSize)
-	bin.PutUint64(v, uint64(a))
+	binary.BigEndian.PutUint64(v, uint64(a))
 	m.Add(t, v)
 	return nil
 }
@@ -25,7 +29,7 @@ func (a *tiebreaker) GetFromAs(m *stun.Message, t stun.AttrType) error {
 	if err = stun.CheckSize(t, len(v), tiebreakerSize); err != nil {
 		return err
 	}
-	*a = tiebreaker(bin.Uint64(v))
+	*a = tiebreaker(binary.BigEndian.Uint64(v))
 	return nil
 }
 

@@ -6,8 +6,6 @@ import (
 	"strconv"
 )
 
-// TODO: Migrate address parsing to STUN/TURN
-
 // SchemeType indicates the type of server used in the ice.URL structure.
 type SchemeType int
 
@@ -110,7 +108,7 @@ type URL struct {
 // ParseURL parses a STUN or TURN urls following the ABNF syntax described in
 // https://tools.ietf.org/html/rfc7064 and https://tools.ietf.org/html/rfc7065
 // respectively.
-func ParseURL(raw string) (*URL, error) {
+func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 	rawParts, err := url.Parse(raw)
 	if err != nil {
 		return nil, err

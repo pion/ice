@@ -228,7 +228,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 
 	cfg0 := &AgentConfig{
 		Urls:                   a0TestConfig.urls,
-		NetworkTypes:           supportedNetworkTypes,
+		NetworkTypes:           supportedNetworkTypes(),
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
 		NAT1To1IPCandidateType: a0TestConfig.nat1To1IPCandidateType,
@@ -251,7 +251,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 	}
 	cfg1 := &AgentConfig{
 		Urls:                   a1TestConfig.urls,
-		NetworkTypes:           supportedNetworkTypes,
+		NetworkTypes:           supportedNetworkTypes(),
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
 		NAT1To1IPCandidateType: a1TestConfig.nat1To1IPCandidateType,
@@ -491,7 +491,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 
 	// Create two agents and connect them
 	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		MulticastDNSMode:    MulticastDNSModeDisabled,
 		Net:                 net0,
 		DisconnectedTimeout: &disconnectTimeout,
@@ -501,7 +501,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 	assert.NoError(t, err)
 
 	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		MulticastDNSMode:    MulticastDNSModeDisabled,
 		Net:                 net1,
 		DisconnectedTimeout: &disconnectTimeout,
@@ -594,14 +594,14 @@ func TestWriteUseValidPair(t *testing.T) {
 
 	// Create two agents and connect them
 	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
 	})
 	assert.NoError(t, err)
 
 	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net1,
 	})

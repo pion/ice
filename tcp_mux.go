@@ -159,7 +159,6 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 	buf := make([]byte, receiveMTU)
 
 	n, err := readStreamingPacket(conn, buf)
-
 	if err != nil {
 		m.params.Logger.Warnf("Error reading first packet: %s", err)
 		return
@@ -254,7 +253,7 @@ const streamingPacketHeaderLen = 2
 //    |             LENGTH            |  RTP or RTCP packet ...       |
 //    -----------------------------------------------------------------
 func readStreamingPacket(conn net.Conn, buf []byte) (int, error) {
-	var header = make([]byte, streamingPacketHeaderLen)
+	header := make([]byte, streamingPacketHeaderLen)
 	var bytesRead, n int
 	var err error
 
@@ -288,7 +287,6 @@ func writeStreamingPacket(conn net.Conn, buf []byte) (int, error) {
 	copy(bufferCopy[2:], buf)
 
 	n, err := conn.Write(bufferCopy)
-
 	if err != nil {
 		return 0, err
 	}

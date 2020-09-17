@@ -62,7 +62,7 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 	}
 
 	if _, ok := t.conns[conn.RemoteAddr().String()]; ok {
-		return fmt.Errorf("connection with same remote address already exists: %s", conn.RemoteAddr().String())
+		return fmt.Errorf("%w: %s", errConnectionAddrAlreadyExist, conn.RemoteAddr().String())
 	}
 
 	t.conns[conn.RemoteAddr().String()] = conn
@@ -85,9 +85,8 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 	for {
 		n, err := readStreamingPacket(conn, buf)
 		// t.params.Logger.Infof("readStreamingPacket read %d bytes", n)
-
 		if err != nil {
-			t.params.Logger.Infof("Error reading streaming packet: %s\n", err)
+			t.params.Logger.Infof("%w: %s\n", errReadingStreamingPacket, err)
 			t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
 			t.removeConn(conn)
 			return
@@ -168,7 +167,7 @@ func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 
 	n, err = writeStreamingPacket(conn, buf)
 	if err != nil {
-		t.params.Logger.Tracef("Error writing to %s\n", raddr)
+		t.params.Logger.Tracef("%w %s\n", errWriting, raddr)
 		return n, err
 	}
 
@@ -178,7 +177,7 @@ func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 func (t *tcpPacketConn) closeAndLogError(closer io.Closer) {
 	err := closer.Close()
 	if err != nil {
-		t.params.Logger.Warnf("Error closing connection: %s", err)
+		t.params.Logger.Warnf("%w: %s", errClosingConnection, err)
 	}
 }
 

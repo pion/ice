@@ -1,15 +1,16 @@
 package ice
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/pion/stun"
 )
 
-func TestControlled_GetFrom(t *testing.T) {
+func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
 	var c AttrControlled
-	if err := c.GetFrom(m); err != stun.ErrAttributeNotFound {
+	if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
 	if err := m.Build(stun.BindingRequest, &c); err != nil {
@@ -36,10 +37,10 @@ func TestControlled_GetFrom(t *testing.T) {
 	})
 }
 
-func TestControlling_GetFrom(t *testing.T) {
+func TestControlling_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
 	var c AttrControlling
-	if err := c.GetFrom(m); err != stun.ErrAttributeNotFound {
+	if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
 	if err := m.Build(stun.BindingRequest, &c); err != nil {
@@ -70,14 +71,14 @@ func TestControl_GetFrom(t *testing.T) {
 	t.Run("Blank", func(t *testing.T) {
 		m := new(stun.Message)
 		var c AttrControl
-		if err := c.GetFrom(m); err != stun.ErrAttributeNotFound {
+		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 			t.Error("unexpected error")
 		}
 	})
-	t.Run("Controlling", func(t *testing.T) {
+	t.Run("Controlling", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
 		var c AttrControl
-		if err := c.GetFrom(m); err != stun.ErrAttributeNotFound {
+		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 			t.Error("unexpected error")
 		}
 		c.Role = Controlling
@@ -105,10 +106,10 @@ func TestControl_GetFrom(t *testing.T) {
 			}
 		})
 	})
-	t.Run("Controlled", func(t *testing.T) {
+	t.Run("Controlled", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
 		var c AttrControl
-		if err := c.GetFrom(m); err != stun.ErrAttributeNotFound {
+		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 			t.Error("unexpected error")
 		}
 		c.Role = Controlled
