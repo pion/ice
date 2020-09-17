@@ -73,13 +73,12 @@ func (s *controllingSelector) nominatePair(pair *candidatePair) {
 	// request.
 	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
-		UseCandidate,
+		UseCandidate(),
 		AttrControlling(s.agent.tieBreaker),
 		PriorityAttr(pair.local.Priority()),
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
 		stun.Fingerprint,
 	)
-
 	if err != nil {
 		s.log.Error(err.Error())
 		return
@@ -152,7 +151,6 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
 		stun.Fingerprint,
 	)
-
 	if err != nil {
 		s.log.Error(err.Error())
 		return
@@ -188,7 +186,6 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
 		stun.Fingerprint,
 	)
-
 	if err != nil {
 		s.log.Error(err.Error())
 		return
@@ -198,6 +195,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 }
 
 func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+	// nolint:godox
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 	// If the controlled agent does not accept the request from the
@@ -278,6 +276,7 @@ type liteSelector struct {
 // A lite selector should not contact candidates
 func (s *liteSelector) ContactCandidates() {
 	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
+		// nolint:godox
 		// pion/ice#96
 		// TODO: implement lite controlling agent. For now falling back to full agent.
 		// This only happens if both peers are lite. See RFC 8445 S6.1.1 and S6.2

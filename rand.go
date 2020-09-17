@@ -14,8 +14,10 @@ const (
 // Seeding random generator each time limits number of generated sequence to 31-bits,
 // and causes collision on low time accuracy environments.
 // Use global random generator seeded by crypto grade random.
-var globalMathRandomGenerator = randutil.NewMathRandomGenerator()
-var globalCandidateIDGenerator = candidateIDGenerator{globalMathRandomGenerator}
+var (
+	globalMathRandomGenerator  = randutil.NewMathRandomGenerator()               //nolint:gochecknoglobals
+	globalCandidateIDGenerator = candidateIDGenerator{globalMathRandomGenerator} //nolint:gochecknoglobals
+)
 
 // candidateIDGenerator is a random candidate ID generator.
 // Candidate ID is used in SDP and always shared to the other peer.

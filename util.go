@@ -16,6 +16,7 @@ type atomicError struct{ v atomic.Value }
 func (a *atomicError) Store(err error) {
 	a.v.Store(struct{ error }{err})
 }
+
 func (a *atomicError) Load() error {
 	err, _ := a.v.Load().(struct{ error })
 	return err.error
@@ -105,7 +106,7 @@ func getXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, deadline time.Du
 	}
 	var addr stun.XORMappedAddress
 	if err = addr.GetFrom(resp); err != nil {
-		return nil, fmt.Errorf("failed to get XOR-MAPPED-ADDRESS response: %v", err)
+		return nil, fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err)
 	}
 	return &addr, nil
 }
@@ -131,7 +132,7 @@ func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)
 	return res, nil
 }
 
-func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkTypes []NetworkType) ([]net.IP, error) {
+func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkTypes []NetworkType) ([]net.IP, error) { //nolint:gocognit
 	ips := []net.IP{}
 	ifaces, err := vnet.Interfaces()
 	if err != nil {

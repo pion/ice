@@ -1,14 +1,10 @@
 package ice
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/pion/stun"
 )
-
-// bin is shorthand for BigEndian.
-var bin = binary.BigEndian
 
 func assertInboundUsername(m *stun.Message, expectedUsername string) error {
 	var username stun.Username
@@ -16,7 +12,7 @@ func assertInboundUsername(m *stun.Message, expectedUsername string) error {
 		return err
 	}
 	if string(username) != expectedUsername {
-		return fmt.Errorf("username mismatch expected(%x) actual(%x)", expectedUsername, string(username))
+		return fmt.Errorf("%w expected(%x) actual(%x)", errMismatchUsername, expectedUsername, string(username))
 	}
 
 	return nil

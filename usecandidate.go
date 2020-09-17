@@ -18,4 +18,6 @@ func (UseCandidateAttr) IsSet(m *stun.Message) bool {
 }
 
 // UseCandidate is shorthand for UseCandidateAttr.
-var UseCandidate UseCandidateAttr
+func UseCandidate() UseCandidateAttr {
+	return UseCandidateAttr{}
+}

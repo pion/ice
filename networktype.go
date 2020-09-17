@@ -11,11 +11,13 @@ const (
 	tcp = "tcp"
 )
 
-var supportedNetworkTypes = []NetworkType{
-	NetworkTypeUDP4,
-	NetworkTypeUDP6,
-	NetworkTypeTCP4,
-	NetworkTypeTCP6,
+func supportedNetworkTypes() []NetworkType {
+	return []NetworkType{
+		NetworkTypeUDP4,
+		NetworkTypeUDP6,
+		NetworkTypeTCP4,
+		NetworkTypeTCP6,
+	}
 }
 
 // NetworkType represents the type of network
@@ -124,5 +126,5 @@ func determineNetworkType(network string, ip net.IP) (NetworkType, error) {
 		return NetworkTypeTCP6, nil
 	}
 
-	return NetworkType(0), fmt.Errorf("unable to determine networkType from %s %s", network, ip)
+	return NetworkType(0), fmt.Errorf("%w from %s %s", errDetermineNetworkType, network, ip)
 }

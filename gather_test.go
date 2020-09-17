@@ -127,7 +127,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	}()
 
 	a, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes,
+		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
 		TCPMux: NewTCPMuxDefault(
@@ -212,7 +212,7 @@ func TestTURNConcurrency(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			CandidateTypes:     []CandidateType{CandidateTypeRelay},
 			InsecureSkipVerify: true,
-			NetworkTypes:       supportedNetworkTypes,
+			NetworkTypes:       supportedNetworkTypes(),
 			Urls:               urls,
 		})
 		assert.NoError(t, err)
@@ -252,7 +252,7 @@ func TestTURNConcurrency(t *testing.T) {
 		assert.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort), &tls.Config{
+		serverListener, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort), &tls.Config{ //nolint:gosec
 			Certificates: []tls.Certificate{certificate},
 		})
 		assert.NoError(t, err)
@@ -316,7 +316,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	})
 
 	a, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes,
+		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
@@ -380,7 +380,7 @@ func TestTURNSrflx(t *testing.T) {
 	}}
 
 	a, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes,
+		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})

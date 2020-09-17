@@ -42,9 +42,9 @@ const (
 	maxBindingRequestTimeout = 4000 * time.Millisecond
 )
 
-var (
-	defaultCandidateTypes = []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
-)
+func defaultCandidateTypes() []CandidateType {
+	return []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+}
 
 // AgentConfig collects the arguments to ice.Agent construction into
 // a single structure, for future-proofness of the interface
@@ -202,7 +202,7 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 	}
 
 	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
-		a.candidateTypes = defaultCandidateTypes
+		a.candidateTypes = defaultCandidateTypes()
 	} else {
 		a.candidateTypes = config.CandidateTypes
 	}

@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
 	"sync"
@@ -39,7 +40,6 @@ func TestPairSearch(t *testing.T) {
 
 	var config AgentConfig
 	a, err := NewAgent(&config)
-
 	if err != nil {
 		t.Fatalf("Error constructing ice.Agent")
 	}
@@ -208,13 +208,13 @@ type BadAddr struct{}
 func (ba *BadAddr) Network() string {
 	return "xxx"
 }
+
 func (ba *BadAddr) String() string {
 	return "yyy"
 }
 
 func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Context, a *Agent)) {
 	a, err := NewAgent(config)
-
 	if err != nil {
 		t.Fatalf("Error constructing ice.Agent")
 	}
@@ -255,7 +255,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
-				UseCandidate,
+				UseCandidate(),
 				AttrControlling(a.tieBreaker),
 				PriorityAttr(local.Priority()),
 				stun.NewShortTermIntegrity(a.localPwd),
@@ -325,7 +325,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			tID := [stun.TransactionIDSize]byte{}
-			copy(tID[:], []byte("ABC"))
+			copy(tID[:], "ABC")
 			a.pendingBindingRequests = []bindingRequest{
 				{time.Now(), tID, &net.UDPAddr{}, false},
 			}
@@ -392,7 +392,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
 
@@ -405,7 +405,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
-		NetworkTypes:      supportedNetworkTypes,
+		NetworkTypes:      supportedNetworkTypes(),
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
 		KeepaliveInterval: &KeepaliveInterval,
@@ -498,7 +498,7 @@ func TestConnectivityLite(t *testing.T) {
 
 	cfg0 := &AgentConfig{
 		Urls:             []*URL{stunServerURL},
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net0,
 	}
@@ -511,7 +511,7 @@ func TestConnectivityLite(t *testing.T) {
 		Urls:             []*URL{},
 		Lite:             true,
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net1,
 	}
@@ -666,7 +666,7 @@ func TestInboundValidity(t *testing.T) {
 
 		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 		tID := [stun.TransactionIDSize]byte{}
-		copy(tID[:], []byte("ABC"))
+		copy(tID[:], "ABC")
 		msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
 			stun.NewShortTermIntegrity(a.remotePwd),
 			stun.Fingerprint,
@@ -693,19 +693,19 @@ func TestInvalidAgentStarts(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 
-	if _, err = a.Dial(ctx, "", "bar"); err != nil && err != ErrRemoteUfragEmpty {
+	if _, err = a.Dial(ctx, "", "bar"); err != nil && !errors.Is(err, ErrRemoteUfragEmpty) {
 		t.Fatal(err)
 	}
 
-	if _, err = a.Dial(ctx, "foo", ""); err != nil && err != ErrRemotePwdEmpty {
+	if _, err = a.Dial(ctx, "foo", ""); err != nil && !errors.Is(err, ErrRemotePwdEmpty) {
 		t.Fatal(err)
 	}
 
-	if _, err = a.Dial(ctx, "foo", "bar"); err != nil && err != ErrCanceledByCaller {
+	if _, err = a.Dial(ctx, "foo", "bar"); err != nil && !errors.Is(err, ErrCanceledByCaller) {
 		t.Fatal(err)
 	}
 
-	if _, err = a.Dial(context.TODO(), "foo", "bar"); err != nil && err != ErrMultipleStart {
+	if _, err = a.Dial(context.TODO(), "foo", "bar"); err != nil && !errors.Is(err, ErrMultipleStart) {
 		t.Fatal(err)
 	}
 
@@ -726,7 +726,7 @@ func TestConnectionStateCallback(t *testing.T) {
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
@@ -786,7 +786,7 @@ func TestInvalidGather(t *testing.T) {
 		}
 
 		err = a.GatherCandidates()
-		if err != ErrNoOnCandidateHandler {
+		if !errors.Is(err, ErrNoOnCandidateHandler) {
 			t.Fatal("trickle GatherCandidates succeeded without OnCandidate")
 		}
 		assert.NoError(t, a.Close())
@@ -1161,7 +1161,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
 	})
-	if err != ErrIneffectiveNAT1To1IPMappingHost {
+	if !errors.Is(err, ErrIneffectiveNAT1To1IPMappingHost) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
@@ -1172,7 +1172,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeServerReflexive,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
 	})
-	if err != ErrIneffectiveNAT1To1IPMappingSrflx {
+	if !errors.Is(err, ErrIneffectiveNAT1To1IPMappingSrflx) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
@@ -1183,7 +1183,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		MulticastDNSMode:       MulticastDNSModeQueryAndGather,
 	})
-	if err != ErrMulticastDNSWithNAT1To1IPMapping {
+	if !errors.Is(err, ErrMulticastDNSWithNAT1To1IPMapping) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
@@ -1192,7 +1192,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPs:             []string{"bad.2.3.4"}, // bad IP
 		NAT1To1IPCandidateType: CandidateTypeHost,
 	})
-	if err != ErrInvalidNAT1To1IPMapping {
+	if !errors.Is(err, ErrInvalidNAT1To1IPMapping) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 }
@@ -1269,7 +1269,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
@@ -1496,7 +1496,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
@@ -1547,7 +1547,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
@@ -1591,7 +1591,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
-		NetworkTypes:        supportedNetworkTypes,
+		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,

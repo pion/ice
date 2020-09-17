@@ -23,6 +23,8 @@ func (c CandidateType) String() string {
 		return "prflx"
 	case CandidateTypeRelay:
 		return "relay"
+	case CandidateTypeUnspecified:
+		return "Unknown candidate type"
 	}
 	return "Unknown candidate type"
 }
@@ -41,6 +43,8 @@ func (c CandidateType) Preference() uint16 {
 		return 110
 	case CandidateTypeServerReflexive:
 		return 100
+	case CandidateTypeRelay, CandidateTypeUnspecified:
+		return 0
 	}
 	return 0
 }

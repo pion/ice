@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ TCPMux = &TCPMuxDefault{}
-var _ TCPMux = &invalidTCPMux{}
+var (
+	_ TCPMux = &TCPMuxDefault{}
+	_ TCPMux = &invalidTCPMux{}
+)
 
 func TestTCPMux_Recv(t *testing.T) {
 	report := test.CheckRoutines(t)

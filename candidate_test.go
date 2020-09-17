@@ -212,80 +212,87 @@ func TestCandidateMarshal(t *testing.T) {
 		marshaled   string
 		expectError bool
 	}{
-		{&CandidateHost{
-			candidateBase{
-				networkType:        NetworkTypeUDP6,
-				candidateType:      CandidateTypeHost,
-				address:            "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
-				port:               53987,
-				priorityOverride:   500,
-				foundationOverride: "750",
+		{
+			&CandidateHost{
+				candidateBase{
+					networkType:        NetworkTypeUDP6,
+					candidateType:      CandidateTypeHost,
+					address:            "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+					port:               53987,
+					priorityOverride:   500,
+					foundationOverride: "750",
+				},
+				"",
 			},
-			"",
-		},
 			"750 1 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host",
 			false,
 		},
-		{&CandidateHost{
-			candidateBase{
-				networkType:   NetworkTypeUDP4,
-				candidateType: CandidateTypeHost,
-				address:       "10.0.75.1",
-				port:          53634,
+		{
+			&CandidateHost{
+				candidateBase{
+					networkType:   NetworkTypeUDP4,
+					candidateType: CandidateTypeHost,
+					address:       "10.0.75.1",
+					port:          53634,
+				},
+				"",
 			},
-			"",
-		},
 			"4273957277 1 udp 2130706431 10.0.75.1 53634 typ host",
 			false,
 		},
-		{&CandidateServerReflexive{
-			candidateBase{
-				networkType:    NetworkTypeUDP4,
-				candidateType:  CandidateTypeServerReflexive,
-				address:        "191.228.238.68",
-				port:           53991,
-				relatedAddress: &CandidateRelatedAddress{"192.168.0.274", 53991},
+		{
+			&CandidateServerReflexive{
+				candidateBase{
+					networkType:    NetworkTypeUDP4,
+					candidateType:  CandidateTypeServerReflexive,
+					address:        "191.228.238.68",
+					port:           53991,
+					relatedAddress: &CandidateRelatedAddress{"192.168.0.274", 53991},
+				},
 			},
-		},
 			"647372371 1 udp 1694498815 191.228.238.68 53991 typ srflx raddr 192.168.0.274 rport 53991",
 			false,
 		},
-		{&CandidateRelay{
-			candidateBase{
-				networkType:    NetworkTypeUDP4,
-				candidateType:  CandidateTypeRelay,
-				address:        "50.0.0.1",
-				port:           5000,
-				relatedAddress: &CandidateRelatedAddress{"192.168.0.1", 5001},
+		{
+			&CandidateRelay{
+				candidateBase{
+					networkType:    NetworkTypeUDP4,
+					candidateType:  CandidateTypeRelay,
+					address:        "50.0.0.1",
+					port:           5000,
+					relatedAddress: &CandidateRelatedAddress{"192.168.0.1", 5001},
+				},
+				nil,
 			},
-			nil,
-		},
 			"848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 5001",
 			false,
 		},
-		{&CandidateHost{
-			candidateBase{
-				networkType:   NetworkTypeTCP4,
-				candidateType: CandidateTypeHost,
-				address:       "192.168.0.196",
-				port:          0,
-				tcpType:       TCPTypeActive,
+		{
+			&CandidateHost{
+				candidateBase{
+					networkType:   NetworkTypeTCP4,
+					candidateType: CandidateTypeHost,
+					address:       "192.168.0.196",
+					port:          0,
+					tcpType:       TCPTypeActive,
+				},
+				"",
 			},
-			"",
-		},
 			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active",
 			false,
 		},
-		{&CandidateHost{
-			candidateBase{
-				networkType:   NetworkTypeUDP4,
-				candidateType: CandidateTypeHost,
-				address:       "e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local",
-				port:          60542,
+		{
+			&CandidateHost{
+				candidateBase{
+					networkType:   NetworkTypeUDP4,
+					candidateType: CandidateTypeHost,
+					address:       "e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local",
+					port:          60542,
+				},
+				"",
 			},
-			"",
+			"1380287402 1 udp 2130706431 e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local 60542 typ host", false,
 		},
-			"1380287402 1 udp 2130706431 e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local 60542 typ host", false},
 
 		// Invalid candidates
 		{nil, "", true},

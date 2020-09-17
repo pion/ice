@@ -3,6 +3,7 @@ package ice
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -112,6 +113,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 				a.gatherCandidatesRelay(ctx, a.urls)
 				wg.Done()
 			}()
+		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
 		}
 	}
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
@@ -122,7 +124,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 	}
 }
 
-func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) { //nolint:gocognit
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
 		if networkType.IsTCP() {
@@ -162,20 +164,18 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			switch network {
 			case tcp:
 				// Handle ICE TCP passive mode
-				// TODO active mode
-				// TODO S-O mode
 
 				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
 				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
 				if err != nil {
-					if err != ErrTCPMuxNotInitialized {
+					if !errors.Is(err, ErrTCPMuxNotInitialized) {
 						a.log.Warnf("error getting tcp conn by ufrag: %s %s %s\n", network, ip, a.localUfrag)
 					}
 					continue
 				}
 				port = conn.LocalAddr().(*net.TCPAddr).Port
 				tcpType = TCPTypePassive
-				// TODO is there a way to verify that the listen address is even
+				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
 				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
@@ -332,11 +332,11 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 	}
 }
 
-func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) {
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	network := NetworkTypeUDP4.String() // TODO IPv6
+	network := NetworkTypeUDP4.String()
 	for i := range urls {
 		switch {
 		case urls[i].Scheme != SchemeTypeTURN && urls[i].Scheme != SchemeTypeTURNS:

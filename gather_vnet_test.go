@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -19,7 +20,7 @@ func TestVNetGather(t *testing.T) {
 	defer report()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	//log := loggerFactory.NewLogger("test")
+	// log := loggerFactory.NewLogger("test")
 
 	t.Run("No local IP address", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
@@ -131,7 +132,7 @@ func TestVNetGather(t *testing.T) {
 		}
 
 		_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-		if err != ErrPort {
+		if !errors.Is(err, ErrPort) {
 			t.Fatal("listenUDP with invalid port range did not return ErrPort")
 		}
 
@@ -443,7 +444,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 		Urls: []*URL{
 			turnServerURL,
 		},
-		NetworkTypes:     supportedNetworkTypes,
+		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		NAT1To1IPs:       []string{vnetGlobalIPA},
 		Net:              v.net0,
