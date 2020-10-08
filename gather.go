@@ -405,7 +405,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				} else {
 					udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
 					if connectErr != nil {
-						a.log.Warnf("Failed to Dial DTLS Addr %s, via proxy dialer: %v\n", TURNServerAddr, connectErr)
+						a.log.Warnf("Failed to resolve UDP Addr %s: %v\n", TURNServerAddr, connectErr)
 						return
 					}
 					conn, connectErr = dtls.Dial(network, udpAddr, &dtls.Config{
