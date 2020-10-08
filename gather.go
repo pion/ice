@@ -375,7 +375,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				if a.proxyDialer != nil {
 					conn, connectErr = a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
 					if connectErr != nil {
-						a.log.Warnf("Failed to Dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
+						a.log.Warnf("Failed to Dial TCP Addr %s via proxy dialer: %v\n", TURNServerAddr, connectErr)
 						return
 					}
 				} else {
@@ -386,7 +386,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					}
 					conn, connectErr = net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 					if connectErr != nil {
-						a.log.Warnf("Failed to dial Addr %s: %v\n", TURNServerAddr, connectErr)
+						a.log.Warnf("Failed to dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
 						return
 					}
 				}
@@ -399,7 +399,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				if a.proxyDialer != nil {
 					conn, connectErr = a.proxyDialer.Dial(network, TURNServerAddr)
 					if connectErr != nil {
-						a.log.Warnf("Failed to Dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
+						a.log.Warnf("Failed to Dial DTLS Addr %s, via proxy Dialer: %v\n", TURNServerAddr, connectErr)
 						return
 					}
 				} else {
