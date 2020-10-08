@@ -19,8 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type mockPacketConn struct {
-}
+type mockPacketConn struct{}
 
 func (m *mockPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
 func (m *mockPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error)  { return 0, nil }

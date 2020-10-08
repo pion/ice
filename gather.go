@@ -369,6 +369,18 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
+			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
+				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
+				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TCP Addr %s via proxy dialer: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				locConn = turn.NewSTUNConn(conn)
+
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
 				tcpAddr, connectErr := net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
 				if connectErr != nil {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/vnet"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -143,6 +144,10 @@ type AgentConfig struct {
 	// Currently only passive candidates are supported. This functionality is
 	// experimental and the API might change in the future.
 	TCPMux TCPMux
+
+	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
+	// dial interface in order to support corporate proxies
+	ProxyDialer proxy.Dialer
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

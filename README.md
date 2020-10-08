@@ -59,6 +59,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [JooYoung Lim](https://github.com/DevRockstarZ)
 * [Kory Miller](https://github.com/korymiller1489)
 * [ZHENK](https://github.com/scorpionknifes)
+* [Assad Obaid](https://github.com/assadobaid)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text

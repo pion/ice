@@ -5,7 +5,9 @@ package ice
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/proxy"
 )
 
 func TestListenUDP(t *testing.T) {
@@ -197,7 +200,7 @@ func TestTURNConcurrency(t *testing.T) {
 				Username: "username",
 				Password: "password",
 				Proto:    protocol,
-				Port:     serverPort + 1,
+				Port:     serverPort + 1 + i,
 			})
 		}
 		urls = append(urls, &URL{
@@ -409,6 +412,75 @@ func TestCloseConnLog(t *testing.T) {
 
 	var nc *net.UDPConn
 	closeConnAndLog(nc, a.log, "nil ptr")
+
+	assert.NoError(t, a.Close())
+}
+
+type mockProxy struct {
+	proxyWasDialed func()
+}
+
+type mockConn struct{}
+
+func (m *mockConn) Read(b []byte) (n int, err error)   { return 0, io.EOF }
+func (m *mockConn) Write(b []byte) (int, error)        { return 0, io.EOF }
+func (m *mockConn) Close() error                       { return io.EOF }
+func (m *mockConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
+func (m *mockConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
+func (m *mockConn) SetDeadline(t time.Time) error      { return io.EOF }
+func (m *mockConn) SetReadDeadline(t time.Time) error  { return io.EOF }
+func (m *mockConn) SetWriteDeadline(t time.Time) error { return io.EOF }
+
+func (m *mockProxy) Dial(network, addr string) (net.Conn, error) {
+	m.proxyWasDialed()
+	return &mockConn{}, nil
+}
+
+func TestTURNProxyDialer(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	proxyWasDialed, proxyWasDialedFunc := context.WithCancel(context.Background())
+	proxy.RegisterDialerType("tcp", func(*url.URL, proxy.Dialer) (proxy.Dialer, error) {
+		return &mockProxy{proxyWasDialedFunc}, nil
+	})
+
+	tcpProxyURI, err := url.Parse("tcp://fakeproxy:3128")
+	assert.NoError(t, err)
+
+	proxyDialer, err := proxy.FromURL(tcpProxyURI, proxy.Direct)
+	assert.NoError(t, err)
+
+	a, err := NewAgent(&AgentConfig{
+		CandidateTypes: []CandidateType{CandidateTypeRelay},
+		NetworkTypes:   supportedNetworkTypes(),
+		Urls: []*URL{
+			{
+				Scheme:   SchemeTypeTURN,
+				Host:     "127.0.0.1",
+				Username: "username",
+				Password: "password",
+				Proto:    ProtoTypeTCP,
+				Port:     5000,
+			},
+		},
+		ProxyDialer: proxyDialer,
+	})
+	assert.NoError(t, err)
+
+	candidateGatherFinish, candidateGatherFinishFunc := context.WithCancel(context.Background())
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c == nil {
+			candidateGatherFinishFunc()
+		}
+	}))
+
+	assert.NoError(t, a.GatherCandidates())
+	<-candidateGatherFinish.Done()
+	<-proxyWasDialed.Done()
 
 	assert.NoError(t, a.Close())
 }
