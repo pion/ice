@@ -15,6 +15,7 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/packetio"
 	"github.com/pion/transport/vnet"
+	"golang.org/x/net/proxy"
 )
 
 type bindingRequest struct {
@@ -126,6 +127,8 @@ type Agent struct {
 	interfaceFilter func(string) bool
 
 	insecureSkipVerify bool
+
+	proxyDialer proxy.Dialer
 }
 
 type task struct {
