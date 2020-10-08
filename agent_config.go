@@ -215,7 +215,6 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 	if config.ProxyDialer != nil {
 		a.proxyDialer = config.ProxyDialer
 	}
-
 }
 
 func (config *AgentConfig) initExtIPMapping(a *Agent) error {
