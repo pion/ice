@@ -414,7 +414,7 @@ func TestCloseConnLog(t *testing.T) {
 	assert.NoError(t, a.Close())
 }
 
-func TestTURNTCPPROXY(t *testing.T) {
+func TestTURNTCPProxy(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
