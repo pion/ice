@@ -304,44 +304,7 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 }
 
 func copyCandidate(o Candidate) (c Candidate) {
-	candidateID := o.ID()
-	var err error
-	switch orig := o.(type) {
-	case *CandidateHost:
-		config := CandidateHostConfig{
-			CandidateID: candidateID,
-			Network:     udp,
-			Address:     orig.address,
-			Port:        orig.port,
-			Component:   orig.component,
-		}
-		c, err = NewCandidateHost(&config)
-	case *CandidateServerReflexive:
-		config := CandidateServerReflexiveConfig{
-			CandidateID: candidateID,
-			Network:     udp,
-			Address:     orig.address,
-			Port:        orig.port,
-			Component:   orig.component,
-			RelAddr:     orig.relatedAddress.Address,
-			RelPort:     orig.relatedAddress.Port,
-		}
-		c, err = NewCandidateServerReflexive(&config)
-	case *CandidateRelay:
-		config := CandidateRelayConfig{
-			CandidateID: candidateID,
-			Network:     udp,
-			Address:     orig.address,
-			Port:        orig.port,
-			Component:   orig.component,
-			RelAddr:     orig.relatedAddress.Address,
-			RelPort:     orig.relatedAddress.Port,
-		}
-		c, err = NewCandidateRelay(&config)
-	default:
-		panic("Tried to copy unsupported candidate type")
-	}
-
+	c, err := UnmarshalCandidate(o.Marshal())
 	if err != nil {
 		panic(err)
 	}

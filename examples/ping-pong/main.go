@@ -14,6 +14,7 @@ import (
 	"github.com/pion/randutil"
 )
 
+//nolint
 var (
 	isControlling                 bool
 	iceAgent                      *ice.Agent
@@ -29,7 +30,6 @@ func remoteAuth(w http.ResponseWriter, r *http.Request) {
 
 	remoteAuthChannel <- r.PostForm["ufrag"][0]
 	remoteAuthChannel <- r.PostForm["pwd"][0]
-
 }
 
 // HTTP Listener to get ICE Candidate from remote Peer
@@ -48,7 +48,7 @@ func remoteCandidate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
+func main() { //nolint
 	var (
 		err  error
 		conn *ice.Conn
@@ -97,7 +97,7 @@ func main() {
 			return
 		}
 
-		_, err = http.PostForm(fmt.Sprintf("http://localhost:%d/remoteCandidate", remoteHTTPPort),
+		_, err = http.PostForm(fmt.Sprintf("http://localhost:%d/remoteCandidate", remoteHTTPPort), //nolint
 			url.Values{
 				"candidate": {c.Marshal()},
 			})
@@ -121,7 +121,7 @@ func main() {
 		panic(err)
 	}
 
-	_, err = http.PostForm(fmt.Sprintf("http://localhost:%d/remoteAuth", remoteHTTPPort),
+	_, err = http.PostForm(fmt.Sprintf("http://localhost:%d/remoteAuth", remoteHTTPPort), //nolint
 		url.Values{
 			"ufrag": {localUfrag},
 			"pwd":   {localPwd},
