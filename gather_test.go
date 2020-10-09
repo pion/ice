@@ -466,11 +466,10 @@ func TestTURNTCPProxy(t *testing.T) {
 		})
 
 		a, err := NewAgent(&AgentConfig{
-			CandidateTypes:     []CandidateType{CandidateTypeRelay},
-			InsecureSkipVerify: true,
-			NetworkTypes:       supportedNetworkTypes(),
-			Urls:               urls,
-			ProxyDialer:        proxy.FromEnvironment(),
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			NetworkTypes:   supportedNetworkTypes(),
+			Urls:           urls,
+			ProxyDialer:    proxy.FromEnvironment(),
 		})
 		assert.NoError(t, err)
 
@@ -488,7 +487,7 @@ func TestTURNTCPProxy(t *testing.T) {
 		assert.NoError(t, server.Close())
 	}
 
-	t.Run("TCP Relay", func(t *testing.T) {
+	t.Run("TCP Relay via proxy", func(t *testing.T) {
 		serverPort := randomPort(t)
 		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
