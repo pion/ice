@@ -19,6 +19,7 @@ import (
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/proxy"
 )
 
 func TestListenUDP(t *testing.T) {
@@ -411,4 +412,87 @@ func TestCloseConnLog(t *testing.T) {
 	closeConnAndLog(nc, a.log, "nil ptr")
 
 	assert.NoError(t, a.Close())
+}
+
+func TestTURNTCPPROXY(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	runTest := func(protocol ProtoType, scheme SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
+		packetConnConfigs := []turn.PacketConnConfig{}
+		if packetConn != nil {
+			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
+				PacketConn:            packetConn,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			})
+		}
+
+		listenerConfigs := []turn.ListenerConfig{}
+		if listener != nil {
+			listenerConfigs = append(listenerConfigs, turn.ListenerConfig{
+				Listener:              listener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+			})
+		}
+
+		server, err := turn.NewServer(turn.ServerConfig{
+			Realm:             "pion.ly",
+			AuthHandler:       optimisticAuthHandler,
+			PacketConnConfigs: packetConnConfigs,
+			ListenerConfigs:   listenerConfigs,
+		})
+		assert.NoError(t, err)
+
+		urls := []*URL{}
+		urls = append(urls, &URL{
+			Scheme:   scheme,
+			Host:     "127.0.0.1",
+			Username: "username",
+			Password: "password",
+			Proto:    protocol,
+			Port:     serverPort + 1,
+		})
+
+		urls = append(urls, &URL{
+			Scheme:   scheme,
+			Host:     "127.0.0.1",
+			Username: "username",
+			Password: "password",
+			Proto:    protocol,
+			Port:     serverPort,
+		})
+
+		a, err := NewAgent(&AgentConfig{
+			CandidateTypes:     []CandidateType{CandidateTypeRelay},
+			InsecureSkipVerify: true,
+			NetworkTypes:       supportedNetworkTypes(),
+			Urls:               urls,
+			ProxyDialer:        proxy.FromEnvironment(),
+		})
+		assert.NoError(t, err)
+
+		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+		assert.NoError(t, a.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateGatheredFunc()
+			}
+		}))
+		assert.NoError(t, a.GatherCandidates())
+
+		<-candidateGathered.Done()
+
+		assert.NoError(t, a.Close())
+		assert.NoError(t, server.Close())
+	}
+
+	t.Run("TCP Relay", func(t *testing.T) {
+		serverPort := randomPort(t)
+		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
+		assert.NoError(t, err)
+
+		runTest(ProtoTypeTCP, SchemeTypeTURN, nil, serverListener, serverPort)
+	})
 }

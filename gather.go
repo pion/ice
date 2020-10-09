@@ -369,73 +369,59 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
-			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
-				var connectErr error
-				var conn net.Conn
-				if a.proxyDialer != nil {
-					conn, connectErr = a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to Dial TCP Addr %s via proxy dialer: %v\n", TURNServerAddr, connectErr)
-						return
-					}
-				} else {
-					tcpAddr, connectErr := net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to resolve TCP Addr %s: %v\n", TURNServerAddr, connectErr)
-						return
-					}
-					conn, connectErr = net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
-						return
-					}
+			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
+				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
+				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TCP Addr %s via proxy dialer: %v\n", TURNServerAddr, connectErr)
+					return
 				}
+
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				locConn = turn.NewSTUNConn(conn)
+
+			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
+				tcpAddr, connectErr := net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to resolve TCP Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
+				conn, connectErr := net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TCP Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
-				var connectErr error
-				var conn net.Conn
-				if a.proxyDialer != nil {
-					conn, connectErr = a.proxyDialer.Dial(network, TURNServerAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to Dial DTLS Addr %s, via proxy Dialer: %v\n", TURNServerAddr, connectErr)
-						return
-					}
-				} else {
-					udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to resolve UDP Addr %s: %v\n", TURNServerAddr, connectErr)
-						return
-					}
-					conn, connectErr = dtls.Dial(network, udpAddr, &dtls.Config{
-						InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
-					})
-					if connectErr != nil {
-						a.log.Warnf("Failed to Dial DTLS Addr %s: %v\n", TURNServerAddr, connectErr)
-						return
-					}
+				udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
+				if connectErr != nil {
+					a.log.Warnf("Failed to resolve UDP Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
 				}
+
+				conn, connectErr := dtls.Dial(network, udpAddr, &dtls.Config{
+					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
+				})
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial DTLS Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
+				}
+
 				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.UDPAddr).Port
 				locConn = &fakePacketConn{conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
-				var connectErr error
-				var conn net.Conn
-				if a.proxyDialer != nil {
-					conn, connectErr = a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
-					if connectErr != nil {
-						a.log.Warnf("Failed to Dial TLS Addr %s via proxy dialer: %v\n", TURNServerAddr, connectErr)
-						return
-					}
-				} else {
-					conn, connectErr = tls.Dial(NetworkTypeTCP4.String(), TURNServerAddr, &tls.Config{
-						InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
-					})
-					if connectErr != nil {
-						a.log.Warnf("Failed to Dial TLS Addr %s: %v\n", TURNServerAddr, connectErr)
-						return
-					}
+				conn, connectErr := tls.Dial(NetworkTypeTCP4.String(), TURNServerAddr, &tls.Config{
+					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
+				})
+				if connectErr != nil {
+					a.log.Warnf("Failed to Dial TLS Addr %s: %v\n", TURNServerAddr, connectErr)
+					return
 				}
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
