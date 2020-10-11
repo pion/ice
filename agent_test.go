@@ -5,6 +5,7 @@ package ice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -1624,5 +1625,64 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	<-isComplete
 	<-isTested
 	assert.NoError(t, aAgent.Close())
+	assert.NoError(t, bAgent.Close())
+}
+
+// Assert that a Lite agent goes to disconnected and failed
+func TestLiteLifecycle(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	aNotifier, aConnected := onConnected()
+
+	aAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	})
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+
+	disconnectedDuration := time.Second
+	failedDuration := time.Second
+	KeepaliveInterval := time.Duration(0)
+	bAgent, err := NewAgent(&AgentConfig{
+		Lite:                true,
+		CandidateTypes:      []CandidateType{CandidateTypeHost},
+		NetworkTypes:        supportedNetworkTypes(),
+		MulticastDNSMode:    MulticastDNSModeDisabled,
+		DisconnectedTimeout: &disconnectedDuration,
+		FailedTimeout:       &failedDuration,
+		KeepaliveInterval:   &KeepaliveInterval,
+		checkInterval:       500 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	bConnected := make(chan interface{})
+	bDisconnected := make(chan interface{})
+	bFailed := make(chan interface{})
+
+	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+		fmt.Println(c)
+		switch c {
+		case ConnectionStateConnected:
+			close(bConnected)
+		case ConnectionStateDisconnected:
+			close(bDisconnected)
+		case ConnectionStateFailed:
+			close(bFailed)
+		}
+	}))
+
+	connectWithVNet(bAgent, aAgent)
+
+	<-aConnected
+	<-bConnected
+	assert.NoError(t, aAgent.Close())
+
+	<-bDisconnected
+	<-bFailed
 	assert.NoError(t, bAgent.Close())
 }
