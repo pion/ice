@@ -281,5 +281,7 @@ func (s *liteSelector) ContactCandidates() {
 		// TODO: implement lite controlling agent. For now falling back to full agent.
 		// This only happens if both peers are lite. See RFC 8445 S6.1.1 and S6.2
 		s.pairCandidateSelector.ContactCandidates()
+	} else if v, ok := s.pairCandidateSelector.(*controlledSelector); ok {
+		v.agent.validateSelectedPair()
 	}
 }
