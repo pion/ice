@@ -60,6 +60,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Kory Miller](https://github.com/korymiller1489)
 * [ZHENK](https://github.com/scorpionknifes)
 * [Assad Obaid](https://github.com/assadobaid)
+* [Antoine Baché](https://github.com/Antonito)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
