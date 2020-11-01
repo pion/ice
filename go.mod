@@ -12,5 +12,5 @@ require (
 	github.com/pion/transport v0.10.1
 	github.com/pion/turn/v2 v2.0.5
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/net v0.0.0-20201002202402-0a1ea396d57c
+	golang.org/x/net v0.0.0-20201031054903-ff519b6c9102
 )
