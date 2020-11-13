@@ -300,7 +300,8 @@ func (c *candidateBase) close() error {
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
-		return n, fmt.Errorf("%w: %v", errSendPacket, err)
+		c.agent().log.Warnf("%s: %v", errSendPacket, err)
+		return n, nil
 	}
 	c.seen(true)
 	return n, nil
