@@ -156,26 +156,6 @@ func stressDuplex(t *testing.T) {
 	}
 }
 
-func Benchmark(b *testing.B) {
-	ca, cb := pipe(nil)
-	defer func() {
-		err := ca.Close()
-		check(err)
-		err = cb.Close()
-		check(err)
-	}()
-
-	b.ResetTimer()
-
-	opt := test.Options{
-		MsgSize:  128,
-		MsgCount: b.N,
-	}
-
-	err := test.StressDuplex(ca, cb, opt)
-	check(err)
-}
-
 func check(err error) {
 	if err != nil {
 		panic(err)
