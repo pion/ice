@@ -1105,7 +1105,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 // and returns true if it is an actual remote candidate
 func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 	var isValidCandidate uint64
-	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if err := a.run(local.context(), func(ctx context.Context, agent *Agent) {
 		remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
