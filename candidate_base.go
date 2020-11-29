@@ -388,7 +388,7 @@ func (c *candidateBase) context() context.Context {
 }
 
 // Marshal returns the string representation of the ICECandidate
-func (c candidateBase) Marshal() string {
+func (c *candidateBase) Marshal() string {
 	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
 		c.Foundation(),
 		c.Component(),
