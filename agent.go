@@ -128,6 +128,8 @@ type Agent struct {
 
 	insecureSkipVerify bool
 
+	endOfCandidate bool
+
 	proxyDialer proxy.Dialer
 }
 
@@ -495,7 +497,8 @@ func (a *Agent) connectivityChecks() {
 				}
 
 				// We have been in checking longer then Disconnect+Failed timeout, set the connection to Failed
-				if time.Since(checkingDuration) > a.disconnectedTimeout+a.failedTimeout {
+				// ICE Agent not go to failed until it sees a end-of-candidate
+				if time.Since(checkingDuration) > a.disconnectedTimeout+a.failedTimeout && a.endOfCandidate {
 					a.updateConnectionState(ConnectionStateFailed)
 					return
 				}
@@ -706,6 +709,12 @@ func (a *Agent) checkKeepalive() {
 
 // AddRemoteCandidate adds a new remote candidate
 func (a *Agent) AddRemoteCandidate(c Candidate) error {
+	// check for end-of-candidate
+	if c == nil {
+		a.endOfCandidate = true
+		return nil
+	}
+
 	// canot check for network yet because it might not be applied
 	// when mDNS hostame is used.
 	if c.TCPType() == TCPTypeActive {
@@ -1192,6 +1201,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		agent.remoteUfrag = ""
 		agent.remotePwd = ""
 		a.gatheringState = GatheringStateNew
+		a.endOfCandidate = false
 		a.checklist = make([]*candidatePair, 0)
 		a.pendingBindingRequests = make([]bindingRequest, 0)
 		a.setSelectedPair(nil)
