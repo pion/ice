@@ -706,7 +706,11 @@ func (a *Agent) checkKeepalive() {
 
 // AddRemoteCandidate adds a new remote candidate
 func (a *Agent) AddRemoteCandidate(c Candidate) error {
-	// canot check for network yet because it might not be applied
+	if c == nil {
+		return nil
+	}
+
+	// cannot check for network yet because it might not be applied
 	// when mDNS hostame is used.
 	if c.TCPType() == TCPTypeActive {
 		// TCP Candidates with tcptype active will probe server passive ones, so
