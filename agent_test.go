@@ -1686,3 +1686,16 @@ func TestLiteLifecycle(t *testing.T) {
 	<-bFailed
 	assert.NoError(t, bAgent.Close())
 }
+
+func TestNilCandidate(t *testing.T) {
+	var config AgentConfig
+	a, err := NewAgent(&config)
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent: %v", err)
+	}
+
+	err = a.AddRemoteCandidate(nil)
+	assert.NoError(t, err)
+
+	assert.NoError(t, a.Close())
+}
