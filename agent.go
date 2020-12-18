@@ -100,7 +100,7 @@ type Agent struct {
 	urls         []*URL
 	networkTypes []NetworkType
 
-	buffer *packetio.Buffer
+	buffer packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
