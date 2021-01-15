@@ -96,3 +96,9 @@ func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
 		a.log.Tracef("failed to send STUN message: %s", err)
 	}
 }
+
+func main(){
+  var nilCandidatePair *candidatePair
+	fmt.Println( nilCandidatePair.String() )
+	
+}
