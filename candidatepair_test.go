@@ -122,3 +122,11 @@ func TestCandidatePairEquality(t *testing.T) {
 		t.Fatalf("Expected %v to equal %v", pairA, pairB)
 	}
 }
+
+func TestNilCandidatePairString(t *testing.T) {
+	var nilCandidatePair *candidatePair
+
+	if res := nilCandidatePair.String(); res != "" {
+		t.Fatalf("Expected %v to equal %v", res, "")
+	}
+}
