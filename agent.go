@@ -560,13 +560,14 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 }
 
 func (a *Agent) setSelectedPair(p *candidatePair) {
-	a.log.Tracef("Set selected candidate pair: %s", p)
 
 	if p == nil {
 		var nilPair *candidatePair
 		a.selectedPair.Store(nilPair)
 		return
 	}
+	
+	a.log.Tracef("Set selected candidate pair: %s", p)
 
 	p.nominated = true
 	a.selectedPair.Store(p)
