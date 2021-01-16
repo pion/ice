@@ -1694,3 +1694,11 @@ func TestNilCandidate(t *testing.T) {
 	assert.NoError(t, a.AddRemoteCandidate(nil))
 	assert.NoError(t, a.Close())
 }
+
+func TestNilCandidatePair(t *testing.T) {
+	a, err := NewAgent(&AgentConfig{})
+	assert.NoError(t, err)
+
+	a.setSelectedPair(nil)
+	assert.NoError(t, a.Close())
+}

@@ -1,6 +1,10 @@
 package ice
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func hostCandidate() *CandidateHost {
 	return &CandidateHost{
@@ -125,8 +129,5 @@ func TestCandidatePairEquality(t *testing.T) {
 
 func TestNilCandidatePairString(t *testing.T) {
 	var nilCandidatePair *candidatePair
-
-	if res := nilCandidatePair.String(); res != "" {
-		t.Fatalf("Expected %v to equal %v", res, "")
-	}
+	assert.Equal(t, nilCandidatePair.String(), "")
 }
