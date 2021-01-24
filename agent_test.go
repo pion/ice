@@ -1375,13 +1375,24 @@ func TestAgentRestart(t *testing.T) {
 	oneSecond := time.Second
 
 	t.Run("Restart During Gather", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		connA, connB := pipe(&AgentConfig{
+			DisconnectedTimeout: &oneSecond,
+			FailedTimeout:       &oneSecond,
+		})
 
-		agent.gatheringState = GatheringStateGathering
+		ctx, cancel := context.WithCancel(context.Background())
+		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
+				cancel()
+			}
+		}))
 
-		assert.Equal(t, ErrRestartWhenGathering, agent.Restart("", ""))
-		assert.NoError(t, agent.Close())
+		connA.agent.gatheringState = GatheringStateGathering
+		assert.NoError(t, connA.agent.Restart("", ""))
+
+		<-ctx.Done()
+		assert.NoError(t, connA.agent.Close())
+		assert.NoError(t, connB.agent.Close())
 	})
 
 	t.Run("Restart When Closed", func(t *testing.T) {

@@ -97,9 +97,6 @@ var (
 	// ErrInvalidMulticastDNSHostName indicates an invalid MulticastDNSHostName
 	ErrInvalidMulticastDNSHostName = errors.New("invalid mDNS HostName, must end with .local and can only contain a single '.'")
 
-	// ErrRestartWhenGathering indicates Restart was called when Agent is in GatheringStateGathering
-	ErrRestartWhenGathering = errors.New("ICE Agent can not be restarted when gathering")
-
 	// ErrRunCanceled indicates a run operation was canceled by its individual done
 	ErrRunCanceled = errors.New("run was canceled by done")
 
