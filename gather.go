@@ -178,7 +178,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
-				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				//conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				conn, err = NewUdpMuxedConnection()
 				if err != nil {
 					a.log.Warnf("could not listen %s %s\n", network, ip)
 					continue
@@ -186,7 +187,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 				port = conn.LocalAddr().(*net.UDPAddr).Port
 			}
-			hostConfig := CandidateHostConfig{
+			hostConfig := CandidateHostMuxedConfig{
+			//hostConfig := CandidateHostConfig{
 				Network:   network,
 				Address:   address,
 				Port:      port,
@@ -194,7 +196,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				TCPType:   tcpType,
 			}
 
-			c, err := NewCandidateHost(&hostConfig)
+			c, err := NewCandidateHostMuxed(&hostConfig)
+			//c, err := NewCandidateHost(&hostConfig)
 			if err != nil {
 				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host candidate: %s %s %d: %v\n", network, mappedIP, port, err))
 				continue
@@ -307,6 +310,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 				port := xoraddr.Port
 
 				laddr := conn.LocalAddr().(*net.UDPAddr)
+				fmt.Println("stun Port ", laddr.Port)
 				srflxConfig := CandidateServerReflexiveConfig{
 					Network:   network,
 					Address:   ip.String(),

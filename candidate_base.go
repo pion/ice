@@ -298,6 +298,7 @@ func (c *candidateBase) close() error {
 }
 
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
+	//fmt.Printf("Write to candidate: Src %s, dest: %s \n", c.conn.LocalAddr().String(), dst.addr().String())
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
 		c.agent().log.Warnf("%s: %v", errSendPacket, err)
