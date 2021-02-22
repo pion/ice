@@ -3,6 +3,7 @@ package ice
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -192,6 +193,11 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkT
 			ips = append(ips, ip)
 		}
 	}
+
+	if extIp := os.Getenv("EXT_IP_ADDRESS"); extIp != "" {
+		ips = append(ips, net.ParseIP(extIp))
+	}
+
 	return ips, nil
 }
 

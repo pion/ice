@@ -203,9 +203,8 @@ func (c *CandidateHostMuxed) setIP(ip net.IP) error {
 }
 
 func StartUdpMuxerService(port int) {
-	context, _ := context.WithCancel(context.Background())
-	go startUpdMux(context, &net.UDPAddr{
-		//IP:   net.ParseIP("192.168.1.25"),
+	ctx, _ := context.WithCancel(context.Background())
+	go startUpdMux(ctx, &net.UDPAddr{
 		Port: port,
 	})
 
@@ -228,7 +227,7 @@ func startUpdMux(ctx context.Context, locAddr *net.UDPAddr) (err error) {
 	// methods and interfaces are more broad, also covering `ip`.
 	udpMuxer, err = net.ListenUDP("udp", locAddr)
 	if err != nil {
-		log.Println("[ERROR] Unable to start udp muxer")
+		log.Println("[ERROR] Unable to start udp muxer", err)
 		return
 	}
 
