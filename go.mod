@@ -3,7 +3,6 @@ module github.com/pion/ice/v2
 go 1.13
 
 require (
-	github.com/AndreasBriese/queueChan v0.0.0-20151001074356-79908f7a499f
 	github.com/google/uuid v1.2.0
 	github.com/pion/dtls/v2 v2.0.4
 	github.com/pion/logging v0.2.2
