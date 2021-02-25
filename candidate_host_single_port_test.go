@@ -19,9 +19,7 @@ func TestCandidateHostMuxed_setIP(t *testing.T) {
 
 
 	port := 56767
-	StartUdpMuxerService(port)
-
-	muxedConn, err := NewUdpMuxedConnection()
+	muxedConn, err := NewUdpMuxedConnection(port)
 	assert.NoError(t, err, "Unable to create muxed udp connection")
 
 	wg := sync.WaitGroup{}

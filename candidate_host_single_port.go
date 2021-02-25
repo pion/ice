@@ -146,7 +146,7 @@ func NewUDPMuxService(port int) *UDPMuxService {
 		candidateMap:     map[string]*UdpMuxedPacketConn{},
 		writerChan:       make(chan muxedWriteRequest, 1024*1024),
 		enableRaaderLogs: false,
-		enableWriterLogs: true,
+		enableWriterLogs: false,
 		cancle:           cancel,
 	}
 
