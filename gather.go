@@ -178,8 +178,13 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
-				//conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-				conn, err = NewUdpMuxedConnection()
+				// TODO - Add extra configuration options to start a single port udp muxer.
+				// TODO - For now, if min == max port, start single port UDP muxer
+				if int(a.portmax) == int(a.portmin) {
+					conn, err = NewUdpMuxedConnection(int(a.portmin))
+				} else {
+					conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				}
 				if err != nil {
 					a.log.Warnf("could not listen %s %s\n", network, ip)
 					continue
@@ -187,8 +192,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 				port = conn.LocalAddr().(*net.UDPAddr).Port
 			}
-			hostConfig := CandidateHostMuxedConfig{
-			//hostConfig := CandidateHostConfig{
+
+			hostConfig := CandidateHostConfig{
 				Network:   network,
 				Address:   address,
 				Port:      port,
@@ -196,8 +201,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				TCPType:   tcpType,
 			}
 
-			c, err := NewCandidateHostMuxed(&hostConfig)
-			//c, err := NewCandidateHost(&hostConfig)
+			c, err := NewCandidateHost(&hostConfig)
 			if err != nil {
 				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host candidate: %s %s %d: %v\n", network, mappedIP, port, err))
 				continue
