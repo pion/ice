@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	receiveMTU             = 8192
-	defaultLocalPreference = 65535
-
 	// ComponentRTP indicates that the candidate is used for RTP
-	ComponentRTP uint16 = 1
+	ComponentRTP uint16 = 1 + iota
 	// ComponentRTCP indicates that the candidate is used for RTCP
 	ComponentRTCP
+	
+	receiveMTU             = 8192
+	defaultLocalPreference = 65535
 )
 
 // Candidate represents an ICE candidate
