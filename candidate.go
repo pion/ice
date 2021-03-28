@@ -11,7 +11,6 @@ const (
 	ComponentRTP uint16 = 1 + iota
 	// ComponentRTCP indicates that the candidate is used for RTCP
 	ComponentRTCP
-	
 	receiveMTU             = 8192
 	defaultLocalPreference = 65535
 )
