@@ -109,6 +109,9 @@ var (
 	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
 	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 
+	// ErrMuxNotStarted indicates the Mux has not been started prior to use
+	ErrMuxNotStarted = errors.New("mux must be started first")
+
 	errSendPacket                    = errors.New("failed to send packet")
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errParseComponent                = errors.New("could not parse component")

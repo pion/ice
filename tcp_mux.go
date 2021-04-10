@@ -23,9 +23,8 @@ type TCPMux interface {
 	RemoveConnByUfrag(ufrag string)
 }
 
-// invalidTCPMux is an implementation of TCPMux that always returns ErroTCPMuxNotInitialized.
-type invalidTCPMux struct {
-}
+// invalidTCPMux is an implementation of TCPMux that always returns ErrTCPMuxNotInitialized.
+type invalidTCPMux struct{}
 
 func newInvalidTCPMux() *invalidTCPMux {
 	return &invalidTCPMux{}

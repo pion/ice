@@ -145,6 +145,11 @@ type AgentConfig struct {
 	// experimental and the API might change in the future.
 	TCPMux TCPMux
 
+	// UDPMux is used for multiplexing multiple incoming UDP connections on a single port
+	// when this is set, the agent ignores PortMin and PortMax configurations and will
+	// defer to UDPMux for incoming connections
+	UDPMux UDPMux
+
 	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
 	// dial interface in order to support corporate proxies
 	ProxyDialer proxy.Dialer

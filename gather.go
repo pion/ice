@@ -164,7 +164,6 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			switch network {
 			case tcp:
 				// Handle ICE TCP passive mode
-
 				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
 				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
 				if err != nil {
@@ -178,10 +177,18 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
-				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-				if err != nil {
-					a.log.Warnf("could not listen %s %s\n", network, ip)
-					continue
+				if a.udpMux != nil {
+					conn, err = a.udpMux.GetConnByUfrag(a.localUfrag)
+					if err != nil {
+						a.log.Warnf("could not get udp muxed connection: %v\n", err)
+						continue
+					}
+				} else {
+					conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+					if err != nil {
+						a.log.Warnf("could not listen %s %s\n", network, ip)
+						continue
+					}
 				}
 
 				port = conn.LocalAddr().(*net.UDPAddr).Port
