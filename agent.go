@@ -123,6 +123,7 @@ type Agent struct {
 
 	net    *vnet.Net
 	tcpMux TCPMux
+	udpMux UDPMux
 
 	interfaceFilter func(string) bool
 
@@ -314,6 +315,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	if a.tcpMux == nil {
 		a.tcpMux = newInvalidTCPMux()
 	}
+	a.udpMux = config.UDPMux
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -897,6 +899,9 @@ func (a *Agent) Close() error {
 	a.err.Store(ErrClosed)
 
 	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+	if a.udpMux != nil {
+		a.udpMux.RemoveConnByUfrag(a.localUfrag)
+	}
 
 	close(a.done)
 
