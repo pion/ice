@@ -92,10 +92,10 @@ type Agent struct {
 	remotePwd        string
 	remoteCandidates map[NetworkType][]Candidate
 
-	checklist []*candidatePair
+	checklist []*CandidatePair
 	selector  pairCandidateSelector
 
-	selectedPair atomic.Value // *candidatePair
+	selectedPair atomic.Value // *CandidatePair
 
 	urls         []*URL
 	networkTypes []NetworkType
@@ -115,7 +115,7 @@ type Agent struct {
 	gatherCandidateCancel func()
 
 	chanCandidate     chan Candidate
-	chanCandidatePair chan *candidatePair
+	chanCandidatePair chan *CandidatePair
 	chanState         chan ConnectionState
 
 	loggerFactory logging.LoggerFactory
@@ -276,7 +276,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		chanTask:          make(chan task),
 		chanState:         make(chan ConnectionState),
 		chanCandidate:     make(chan Candidate),
-		chanCandidatePair: make(chan *candidatePair),
+		chanCandidatePair: make(chan *CandidatePair),
 		tieBreaker:        globalMathRandomGenerator.Uint64(),
 		lite:              config.Lite,
 		gatheringState:    GatheringStateNew,
@@ -379,9 +379,9 @@ func (a *Agent) OnCandidate(f func(Candidate)) error {
 	return nil
 }
 
-func (a *Agent) onSelectedCandidatePairChange(p *candidatePair) {
+func (a *Agent) onSelectedCandidatePairChange(p *CandidatePair) {
 	if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok {
-		h(p.local, p.remote)
+		h(p.Local, p.Remote)
 	}
 }
 
@@ -559,11 +559,11 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 	}
 }
 
-func (a *Agent) setSelectedPair(p *candidatePair) {
+func (a *Agent) setSelectedPair(p *CandidatePair) {
 	a.log.Tracef("Set selected candidate pair: %s", p)
 
 	if p == nil {
-		var nilPair *candidatePair
+		var nilPair *CandidatePair
 		a.selectedPair.Store(nilPair)
 		return
 	}
@@ -605,14 +605,14 @@ func (a *Agent) pingAllCandidates() {
 			a.log.Tracef("max requests reached for pair %s, marking it as failed\n", p)
 			p.state = CandidatePairStateFailed
 		} else {
-			a.selector.PingCandidate(p.local, p.remote)
+			a.selector.PingCandidate(p.Local, p.Remote)
 			p.bindingRequestCount++
 		}
 	}
 }
 
-func (a *Agent) getBestAvailableCandidatePair() *candidatePair {
-	var best *candidatePair
+func (a *Agent) getBestAvailableCandidatePair() *CandidatePair {
+	var best *CandidatePair
 	for _, p := range a.checklist {
 		if p.state == CandidatePairStateFailed {
 			continue
@@ -620,15 +620,15 @@ func (a *Agent) getBestAvailableCandidatePair() *candidatePair {
 
 		if best == nil {
 			best = p
-		} else if best.Priority() < p.Priority() {
+		} else if best.priority() < p.priority() {
 			best = p
 		}
 	}
 	return best
 }
 
-func (a *Agent) getBestValidCandidatePair() *candidatePair {
-	var best *candidatePair
+func (a *Agent) getBestValidCandidatePair() *CandidatePair {
+	var best *CandidatePair
 	for _, p := range a.checklist {
 		if p.state != CandidatePairStateSucceeded {
 			continue
@@ -636,22 +636,22 @@ func (a *Agent) getBestValidCandidatePair() *candidatePair {
 
 		if best == nil {
 			best = p
-		} else if best.Priority() < p.Priority() {
+		} else if best.priority() < p.priority() {
 			best = p
 		}
 	}
 	return best
 }
 
-func (a *Agent) addPair(local, remote Candidate) *candidatePair {
+func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
 	p := newCandidatePair(local, remote, a.isControlling)
 	a.checklist = append(a.checklist, p)
 	return p
 }
 
-func (a *Agent) findPair(local, remote Candidate) *candidatePair {
+func (a *Agent) findPair(local, remote Candidate) *CandidatePair {
 	for _, p := range a.checklist {
-		if p.local.Equal(local) && p.remote.Equal(remote) {
+		if p.Local.Equal(local) && p.Remote.Equal(remote) {
 			return p
 		}
 	}
@@ -666,7 +666,7 @@ func (a *Agent) validateSelectedPair() bool {
 		return false
 	}
 
-	disconnectedTime := time.Since(selectedPair.remote.LastReceived())
+	disconnectedTime := time.Since(selectedPair.Remote.LastReceived())
 
 	// Only allow transitions to failed if a.failedTimeout is non-zero
 	totalTimeToFailure := a.failedTimeout
@@ -696,11 +696,11 @@ func (a *Agent) checkKeepalive() {
 	}
 
 	if (a.keepaliveInterval != 0) &&
-		((time.Since(selectedPair.local.LastSent()) > a.keepaliveInterval) ||
-			(time.Since(selectedPair.remote.LastReceived()) > a.keepaliveInterval)) {
+		((time.Since(selectedPair.Local.LastSent()) > a.keepaliveInterval) ||
+			(time.Since(selectedPair.Remote.LastReceived()) > a.keepaliveInterval)) {
 		// we use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
-		a.selector.PingCandidate(selectedPair.local, selectedPair.remote)
+		a.selector.PingCandidate(selectedPair.Local, selectedPair.Remote)
 	}
 }
 
@@ -1122,14 +1122,33 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 	return atomic.LoadUint64(&isValidCandidate) == 1
 }
 
-func (a *Agent) getSelectedPair() *candidatePair {
-	selectedPair := a.selectedPair.Load()
+// GetSelectedCandidatePair returns the selected pair or nil if there is none
+func (a *Agent) GetSelectedCandidatePair() (*CandidatePair, error) {
+	selectedPair := a.getSelectedPair()
+	if selectedPair == nil {
+		return nil, nil
+	}
 
+	local, err := selectedPair.Local.copy()
+	if err != nil {
+		return nil, err
+	}
+
+	remote, err := selectedPair.Remote.copy()
+	if err != nil {
+		return nil, err
+	}
+
+	return &CandidatePair{Local: local, Remote: remote}, nil
+}
+
+func (a *Agent) getSelectedPair() *CandidatePair {
+	selectedPair := a.selectedPair.Load()
 	if selectedPair == nil {
 		return nil
 	}
 
-	return selectedPair.(*candidatePair)
+	return selectedPair.(*CandidatePair)
 }
 
 func (a *Agent) closeMulticastConn() {
@@ -1196,7 +1215,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		agent.remoteUfrag = ""
 		agent.remotePwd = ""
 		a.gatheringState = GatheringStateNew
-		a.checklist = make([]*candidatePair, 0)
+		a.checklist = make([]*CandidatePair, 0)
 		a.pendingBindingRequests = make([]bindingRequest, 0)
 		a.setSelectedPair(nil)
 		a.deleteAllCandidates()

@@ -116,7 +116,7 @@ func (c *Conn) LocalAddr() net.Addr {
 		return nil
 	}
 
-	return pair.local.addr()
+	return pair.Local.addr()
 }
 
 // RemoteAddr returns the remote address of the current selected pair or nil if there is none.
@@ -126,7 +126,7 @@ func (c *Conn) RemoteAddr() net.Addr {
 		return nil
 	}
 
-	return pair.remote.addr()
+	return pair.Remote.addr()
 }
 
 // SetDeadline is a stub

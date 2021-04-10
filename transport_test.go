@@ -185,13 +185,17 @@ func gatherAndExchangeCandidates(aAgent, bAgent *Agent) {
 	candidates, err := aAgent.GetLocalCandidates()
 	check(err)
 	for _, c := range candidates {
-		check(bAgent.AddRemoteCandidate(copyCandidate(c)))
+		candidateCopy, copyErr := c.copy()
+		check(copyErr)
+		check(bAgent.AddRemoteCandidate(candidateCopy))
 	}
 
 	candidates, err = bAgent.GetLocalCandidates()
 	check(err)
 	for _, c := range candidates {
-		check(aAgent.AddRemoteCandidate(copyCandidate(c)))
+		candidateCopy, copyErr := c.copy()
+		check(copyErr)
+		check(aAgent.AddRemoteCandidate(candidateCopy))
 	}
 }
 
@@ -281,14 +285,6 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	<-bConnected
 
 	return aConn, bConn
-}
-
-func copyCandidate(o Candidate) (c Candidate) {
-	c, err := UnmarshalCandidate(o.Marshal())
-	if err != nil {
-		panic(err)
-	}
-	return c
 }
 
 func onConnected() (func(ConnectionState), chan struct{}) {
