@@ -44,7 +44,7 @@ func relayCandidate() *CandidateRelay {
 
 func TestCandidatePairPriority(t *testing.T) {
 	for _, test := range []struct {
-		Pair         *candidatePair
+		Pair         *CandidatePair
 		WantPriority uint64
 	}{
 		{
@@ -112,7 +112,7 @@ func TestCandidatePairPriority(t *testing.T) {
 			WantPriority: 72057593987596287,
 		},
 	} {
-		if got, want := test.Pair.Priority(), test.WantPriority; got != want {
+		if got, want := test.Pair.priority(), test.WantPriority; got != want {
 			t.Fatalf("CandidatePair(%v).Priority() = %d, want %d", test.Pair, got, want)
 		}
 	}
@@ -122,12 +122,12 @@ func TestCandidatePairEquality(t *testing.T) {
 	pairA := newCandidatePair(hostCandidate(), srflxCandidate(), true)
 	pairB := newCandidatePair(hostCandidate(), srflxCandidate(), false)
 
-	if !pairA.Equal(pairB) {
+	if !pairA.equal(pairB) {
 		t.Fatalf("Expected %v to equal %v", pairA, pairB)
 	}
 }
 
 func TestNilCandidatePairString(t *testing.T) {
-	var nilCandidatePair *candidatePair
+	var nilCandidatePair *CandidatePair
 	assert.Equal(t, nilCandidatePair.String(), "")
 }

@@ -13,8 +13,8 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 		for _, cp := range agent.checklist {
 			stat := CandidatePairStats{
 				Timestamp:         time.Now(),
-				LocalCandidateID:  cp.local.ID(),
-				RemoteCandidateID: cp.remote.ID(),
+				LocalCandidateID:  cp.Local.ID(),
+				RemoteCandidateID: cp.Remote.ID(),
 				State:             cp.state,
 				Nominated:         cp.nominated,
 				// PacketsSent uint32

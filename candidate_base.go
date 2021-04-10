@@ -387,6 +387,10 @@ func (c *candidateBase) context() context.Context {
 	return c
 }
 
+func (c *candidateBase) copy() (Candidate, error) {
+	return UnmarshalCandidate(c.Marshal())
+}
+
 // Marshal returns the string representation of the ICECandidate
 func (c *candidateBase) Marshal() string {
 	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
@@ -402,11 +406,11 @@ func (c *candidateBase) Marshal() string {
 		val += fmt.Sprintf(" tcptype %s", c.tcpType.String())
 	}
 
-	if c.RelatedAddress() != nil {
+	if r := c.RelatedAddress(); r != nil && r.Address != "" && r.Port != 0 {
 		val = fmt.Sprintf("%s raddr %s rport %d",
 			val,
-			c.RelatedAddress().Address,
-			c.RelatedAddress().Port)
+			r.Address,
+			r.Port)
 	}
 
 	return val

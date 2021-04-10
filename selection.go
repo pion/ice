@@ -19,7 +19,7 @@ type pairCandidateSelector interface {
 type controllingSelector struct {
 	startTime     time.Time
 	agent         *Agent
-	nominatedPair *candidatePair
+	nominatedPair *CandidatePair
 	log           logging.LeveledLogger
 }
 
@@ -55,8 +55,8 @@ func (s *controllingSelector) ContactCandidates() {
 		s.nominatePair(s.nominatedPair)
 	default:
 		p := s.agent.getBestValidCandidatePair()
-		if p != nil && s.isNominatable(p.local) && s.isNominatable(p.remote) {
-			s.log.Tracef("Nominatable pair found, nominating (%s, %s)", p.local.String(), p.remote.String())
+		if p != nil && s.isNominatable(p.Local) && s.isNominatable(p.Remote) {
+			s.log.Tracef("Nominatable pair found, nominating (%s, %s)", p.Local.String(), p.Remote.String())
 			p.nominated = true
 			s.nominatedPair = p
 			s.nominatePair(p)
@@ -66,7 +66,7 @@ func (s *controllingSelector) ContactCandidates() {
 	}
 }
 
-func (s *controllingSelector) nominatePair(pair *candidatePair) {
+func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 	// The controlling agent MUST include the USE-CANDIDATE attribute in
 	// order to nominate a candidate pair (Section 8.1.1).  The controlled
 	// agent MUST NOT include the USE-CANDIDATE attribute in a Binding
@@ -75,7 +75,7 @@ func (s *controllingSelector) nominatePair(pair *candidatePair) {
 		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
 		UseCandidate(),
 		AttrControlling(s.agent.tieBreaker),
-		PriorityAttr(pair.local.Priority()),
+		PriorityAttr(pair.Local.Priority()),
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
 		stun.Fingerprint,
 	)
@@ -84,8 +84,8 @@ func (s *controllingSelector) nominatePair(pair *candidatePair) {
 		return
 	}
 
-	s.log.Tracef("ping STUN (nominate candidate pair) from %s to %s\n", pair.local.String(), pair.remote.String())
-	s.agent.sendBindingRequest(msg, pair.local, pair.remote)
+	s.log.Tracef("ping STUN (nominate candidate pair) from %s to %s\n", pair.Local.String(), pair.Remote.String())
+	s.agent.sendBindingRequest(msg, pair.Local, pair.Remote)
 }
 
 func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
@@ -102,9 +102,9 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 		bestPair := s.agent.getBestAvailableCandidatePair()
 		if bestPair == nil {
 			s.log.Tracef("No best pair available\n")
-		} else if bestPair.Equal(p) && s.isNominatable(p.local) && s.isNominatable(p.remote) {
+		} else if bestPair.equal(p) && s.isNominatable(p.Local) && s.isNominatable(p.Remote) {
 			s.log.Tracef("The candidate (%s, %s) is the best candidate available, marking it as nominated\n",
-				p.local.String(), p.remote.String())
+				p.Local.String(), p.Remote.String())
 			s.nominatedPair = p
 			s.nominatePair(p)
 		}
