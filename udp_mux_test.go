@@ -52,12 +52,12 @@ func TestUDPMux(t *testing.T) {
 	require.NoError(t, udpMux.Close())
 
 	// can't create more connections
-	_, err = udpMux.GetConnByUfrag("failufrag")
+	_, err = udpMux.GetConn("failufrag", "udp")
 	require.Error(t, err)
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
-	pktConn, err := udpMux.GetConnByUfrag(ufrag)
+	pktConn, err := udpMux.GetConn(ufrag, udp)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()

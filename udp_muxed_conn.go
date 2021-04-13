@@ -17,9 +17,9 @@ type udpMuxedConnParams struct {
 }
 
 type muxedPacket struct {
-	Data  []byte
-	RAddr net.Addr
-	Size  int
+	Buffer *bufferHolder
+	RAddr  net.Addr
+	Size   int
 }
 
 // udpMuxedConn represents a logical packet conn for a single remote as identified by ufrag
@@ -56,8 +56,8 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
 		return 0, pkt.RAddr, io.ErrShortBuffer
 	}
 
-	copy(b, pkt.Data[:pkt.Size])
-	c.params.Mux.doneWithBuffer(pkt.Data)
+	copy(b, pkt.Buffer.buffer[:pkt.Size])
+	c.params.Mux.doneWithBuffer(pkt.Buffer)
 	return pkt.Size, pkt.RAddr, err
 }
 

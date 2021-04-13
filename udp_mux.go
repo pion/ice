@@ -1,9 +1,14 @@
 package ice
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/pion/logging"
 )
@@ -11,8 +16,9 @@ import (
 // UDPMux allows multiple connections to go over a single UDP port
 type UDPMux interface {
 	io.Closer
-	GetConnByUfrag(ufrag string) (net.PacketConn, error)
+	GetConn(ufrag, network string) (net.PacketConn, error)
 	RemoveConnByUfrag(ufrag string)
+	Start(port int) error
 }
 
 // UDPMuxDefault is an implementation of the interface
@@ -25,7 +31,7 @@ type UDPMuxDefault struct {
 	closedChan  chan struct{}
 	closeOnce   sync.Once
 
-	// conns is a map of all udpMuxedConn indexed by ufrag
+	// conns is a map of all udpMuxedConn indexed by ufrag|network|candidateType
 	conns map[string]*udpMuxedConn
 
 	// buffer pool to recycle buffers for incoming packets
@@ -54,7 +60,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		closedChan:  make(chan struct{}, 1),
 		pool: &sync.Pool{
 			New: func() interface{} {
-				return make([]byte, receiveMTU)
+				return newBufferHolder(receiveMTU)
 			},
 		},
 	}
@@ -83,12 +89,14 @@ func (m *UDPMuxDefault) LocalAddr() net.Addr {
 	return m.listenAddr
 }
 
-// GetConnByUfrag returns a PacketConn given the connection's ufrag.
+// GetConn returns a PacketConn given the connection's ufrag and network
 // creates the connection if an existing one can't be found
-func (m *UDPMuxDefault) GetConnByUfrag(ufrag string) (net.PacketConn, error) {
+func (m *UDPMuxDefault) GetConn(ufrag, network string) (net.PacketConn, error) {
 	if m.udpConn == nil {
 		return nil, ErrMuxNotStarted
 	}
+
+	key := fmt.Sprintf("%s|%s", ufrag, network)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -97,37 +105,44 @@ func (m *UDPMuxDefault) GetConnByUfrag(ufrag string) (net.PacketConn, error) {
 		return nil, io.ErrClosedPipe
 	}
 
-	if c, ok := m.conns[ufrag]; ok {
+	if c, ok := m.conns[key]; ok {
 		return c, nil
 	}
 
 	c := m.createMuxedConn()
 	go func() {
 		<-c.CloseChannel()
-		m.RemoveConnByUfrag(ufrag)
+		print("muxed connection closed, removing key ", key, "\n")
+		m.removeConn(key)
 	}()
-	m.conns[ufrag] = c
+	m.conns[key] = c
 	return c, nil
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection
 func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
-	// get addresses to remove
 	m.mu.Lock()
-	c := m.conns[ufrag]
-	delete(m.conns, ufrag)
+	removedConns := make([]*udpMuxedConn, 0)
+	for key := range m.conns {
+		if !strings.HasPrefix(key, ufrag) {
+			continue
+		}
+		c := m.conns[key]
+		delete(m.conns, key)
+		if c != nil {
+			removedConns = append(removedConns, c)
+		}
+	}
 	// keep lock section small to avoid deadlock with conn lock
 	m.mu.Unlock()
 
-	if c == nil {
-		return
-	}
-	addresses := c.getAddresses()
-
-	for _, addr := range addresses {
-		m.mappingChan <- connMap{
-			address: addr,
-			conn:    nil,
+	for _, c := range removedConns {
+		addresses := c.getAddresses()
+		for _, addr := range addresses {
+			m.mappingChan <- connMap{
+				address: addr,
+				conn:    nil,
+			}
 		}
 	}
 }
@@ -161,12 +176,31 @@ func (m *UDPMuxDefault) Close() error {
 	return err
 }
 
+func (m *UDPMuxDefault) removeConn(key string) {
+	m.mu.Lock()
+	c := m.conns[key]
+	delete(m.conns, key)
+	// keep lock section small to avoid deadlock with conn lock
+	m.mu.Unlock()
+
+	if c == nil {
+		return
+	}
+
+	addresses := c.getAddresses()
+	for _, addr := range addresses {
+		m.mappingChan <- connMap{
+			address: addr,
+			conn:    nil,
+		}
+	}
+}
+
 func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {
 	return m.udpConn.WriteTo(buf, raddr)
 }
 
-func (m *UDPMuxDefault) doneWithBuffer(buf []byte) {
-	//nolint
+func (m *UDPMuxDefault) doneWithBuffer(buf *bufferHolder) {
 	m.pool.Put(buf)
 }
 
@@ -200,33 +234,35 @@ func (m *UDPMuxDefault) connWorker() {
 		_ = m.Close()
 	}()
 	for {
-		buffer := m.pool.Get().([]byte)
-		n, addr, err := m.udpConn.ReadFrom(buffer)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logger.Errorf("could not read udp packet: %v", err)
+		buffer := m.pool.Get().(*bufferHolder)
+		_ = m.udpConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		n, addr, err := m.udpConn.ReadFrom(buffer.buffer)
+		// process any mapping changes, this is done as early as possible to prevent channel clogging up
+		m.applyMappingChanges(remoteMap)
+		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				m.doneWithBuffer(buffer)
+				continue
+			} else if err != io.EOF {
+				logger.Errorf("could not read udp packet: %v", err)
+			}
 			return
 		}
-
-		// process any mapping changes
-		m.applyMappingChanges(remoteMap)
 
 		// look up forward destination
 		addrStr := addr.String()
 		c := remoteMap[addrStr]
 
 		if c == nil {
-			//nolint
-			m.pool.Put(buffer)
+			m.doneWithBuffer(buffer)
 			// ignore packets that we don't know where to route to
 			continue
 		}
 
 		err = c.writePacket(muxedPacket{
-			Data:  buffer,
-			Size:  n,
-			RAddr: addr,
+			Buffer: buffer,
+			Size:   n,
+			RAddr:  addr,
 		})
 		if err != nil {
 			logger.Errorf("could not write packet: %v", err)
@@ -247,5 +283,15 @@ func (m *UDPMuxDefault) applyMappingChanges(remoteMap map[string]*udpMuxedConn) 
 		default:
 			return
 		}
+	}
+}
+
+type bufferHolder struct {
+	buffer []byte
+}
+
+func newBufferHolder(size int) *bufferHolder {
+	return &bufferHolder{
+		buffer: make([]byte, size),
 	}
 }
