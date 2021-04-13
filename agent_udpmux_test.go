@@ -4,6 +4,7 @@ package ice
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/test"
@@ -14,8 +15,11 @@ import (
 func TestMuxAgent(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
-	loggerFactory := logging.NewDefaultLoggerFactory()
 
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{
 		Logger:         loggerFactory.NewLogger("ice"),
 		ReadBufferSize: 20,

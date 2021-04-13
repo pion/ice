@@ -178,7 +178,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				// accessible from the current interface.
 			case udp:
 				if a.udpMux != nil {
-					conn, err = a.udpMux.GetConnByUfrag(a.localUfrag)
+					conn, err = a.udpMux.GetConn(a.localUfrag, network)
 					if err != nil {
 						a.log.Warnf("could not get udp muxed connection: %v\n", err)
 						continue
@@ -237,6 +237,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 			if err != nil {
 				a.log.Warnf("Failed to listen %s: %v\n", network, err)
@@ -291,6 +292,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 			wg.Add(1)
 			go func(url URL, network string) {
 				defer wg.Done()
+
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
