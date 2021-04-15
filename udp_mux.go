@@ -112,7 +112,6 @@ func (m *UDPMuxDefault) GetConn(ufrag, network string) (net.PacketConn, error) {
 	c := m.createMuxedConn()
 	go func() {
 		<-c.CloseChannel()
-		print("muxed connection closed, removing key ", key, "\n")
 		m.removeConn(key)
 	}()
 	m.conns[key] = c
