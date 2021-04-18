@@ -21,8 +21,7 @@ func TestMuxAgent(t *testing.T) {
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:         loggerFactory.NewLogger("ice"),
-		ReadBufferSize: 20,
+		Logger: loggerFactory.NewLogger("ice"),
 	})
 	muxPort := 7686
 	require.NoError(t, udpMux.Start(muxPort))

@@ -2,7 +2,11 @@
 
 package ice
 
+//nolint:gosec
 import (
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/binary"
 	"net"
 	"sync"
 	"testing"
@@ -18,10 +22,12 @@ func TestUDPMux(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:         loggerFactory.NewLogger("ice"),
-		ReadBufferSize: 20,
+		Logger: loggerFactory.NewLogger("ice"),
 	})
 	err := udpMux.Start(7686)
 	require.NoError(t, err)
@@ -56,6 +62,46 @@ func TestUDPMux(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAddressEncoding(t *testing.T) {
+	cases := []struct {
+		name string
+		addr net.UDPAddr
+	}{
+		{
+			name: "empty address",
+		},
+		{
+			name: "ipv4",
+			addr: net.UDPAddr{
+				IP:   net.IPv4(244, 120, 0, 5),
+				Port: 6000,
+				Zone: "",
+			},
+		},
+		{
+			name: "ipv6",
+			addr: net.UDPAddr{
+				IP:   net.IPv6loopback,
+				Port: 2500,
+				Zone: "zone",
+			},
+		},
+	}
+
+	for _, c := range cases {
+		addr := c.addr
+		t.Run(c.name, func(t *testing.T) {
+			buf := make([]byte, maxAddrSize)
+			n, err := encodeUDPAddr(&addr, buf)
+			require.NoError(t, err)
+
+			parsedAddr, err := decodeUDPAddr(buf[:n])
+			require.NoError(t, err)
+			require.EqualValues(t, &addr, parsedAddr)
+		})
+	}
+}
+
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
 	pktConn, err := udpMux.GetConn(ufrag, udp)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
@@ -86,22 +132,57 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
 	require.NoError(t, err)
 	require.Equal(t, msg.Raw, buf[:n])
 
-	// write a bunch of packets from remote to ensure proper receipt
-	dataToSend := [][]byte{
-		[]byte("hello world"),
-		[]byte("test text"),
-		msg.Raw,
-	}
+	// start writing packets through mux
+	targetSize := 1 * 1024 * 1024
+	readDone := make(chan struct{}, 1)
 
-	buffer := make([]byte, receiveMTU)
-	for _, data := range dataToSend {
-		_, err := remoteConn.Write(data)
+	// read packets from the muxed side
+	go func() {
+		defer func() {
+			t.Logf("closing read chan for: %s", ufrag)
+			close(readDone)
+		}()
+		readBuf := make([]byte, receiveMTU)
+		nextSeq := uint32(0)
+		for read := 0; read < targetSize; {
+			n, _, _ := pktConn.ReadFrom(readBuf)
+			require.NoError(t, err)
+			require.Equal(t, receiveMTU, n)
+
+			verifyPacket(t, readBuf, nextSeq)
+
+			read += n
+			nextSeq++
+		}
+	}()
+
+	sequence := 0
+	for written := 0; written < targetSize; {
+		buf := make([]byte, receiveMTU)
+		// byte0-4: sequence
+		// bytes4-24: sha1 checksum
+		// bytes24-mtu: random data
+		_, err := rand.Read(buf[24:])
+		require.NoError(t, err)
+		h := sha1.Sum(buf[24:]) //nolint:gosec
+		copy(buf[4:24], h[:])
+		binary.LittleEndian.PutUint32(buf[0:4], uint32(sequence))
+
+		_, err = remoteConn.Write(buf)
 		require.NoError(t, err)
 
-		n, _, err := pktConn.ReadFrom(buffer)
-		require.NoError(t, err)
-		require.Equal(t, data, buffer[:n])
+		written += len(buf)
+		sequence++
 
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(time.Millisecond)
 	}
+
+	<-readDone
+}
+
+func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
+	readSeq := binary.LittleEndian.Uint32(b[0:4])
+	require.Equal(t, nextSeq, readSeq)
+	h := sha1.Sum(b[24:]) //nolint:gosec
+	require.Equal(t, h[:], b[4:24])
 }
