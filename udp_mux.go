@@ -34,11 +34,13 @@ type UDPMuxDefault struct {
 	// conns is a map of all udpMuxedConn indexed by ufrag|network|candidateType
 	conns map[string]*udpMuxedConn
 
-	// buffer pool to recycle buffers for incoming packets
+	// buffer pool to recycle buffers for net.UDPAddr encodes/decodes
 	pool *sync.Pool
 
 	mu sync.Mutex
 }
+
+const maxAddrSize = 256
 
 type connMap struct {
 	address string
@@ -47,8 +49,7 @@ type connMap struct {
 
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
-	Logger         logging.LeveledLogger
-	ReadBufferSize int
+	Logger logging.LeveledLogger
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
@@ -60,7 +61,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		closedChan:  make(chan struct{}, 1),
 		pool: &sync.Pool{
 			New: func() interface{} {
-				return newBufferHolder(receiveMTU)
+				return newBufferHolder(maxAddrSize)
 			},
 		},
 	}
@@ -109,7 +110,7 @@ func (m *UDPMuxDefault) GetConn(ufrag, network string) (net.PacketConn, error) {
 		return c, nil
 	}
 
-	c := m.createMuxedConn()
+	c := m.createMuxedConn(key)
 	go func() {
 		<-c.CloseChannel()
 		m.removeConn(key)
@@ -199,10 +200,6 @@ func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {
 	return m.udpConn.WriteTo(buf, raddr)
 }
 
-func (m *UDPMuxDefault) doneWithBuffer(buf *bufferHolder) {
-	m.pool.Put(buf)
-}
-
 func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) {
 	if m.IsClosed() {
 		return
@@ -213,12 +210,13 @@ func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) 
 	}
 }
 
-func (m *UDPMuxDefault) createMuxedConn() *udpMuxedConn {
+func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
 	c := newUDPMuxedConn(&udpMuxedConnParams{
-		Mux:        m,
-		ReadBuffer: m.params.ReadBufferSize,
-		LocalAddr:  m.LocalAddr(),
-		Logger:     m.params.Logger,
+		Mux:       m,
+		Key:       key,
+		AddrPool:  m.pool,
+		LocalAddr: m.LocalAddr(),
+		Logger:    m.params.Logger,
 	})
 	return c
 }
@@ -232,15 +230,14 @@ func (m *UDPMuxDefault) connWorker() {
 	defer func() {
 		_ = m.Close()
 	}()
+	buf := make([]byte, receiveMTU)
 	for {
-		buffer := m.pool.Get().(*bufferHolder)
 		_ = m.udpConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-		n, addr, err := m.udpConn.ReadFrom(buffer.buffer)
-		// process any mapping changes, this is done as early as possible to prevent channel clogging up
+		n, addr, err := m.udpConn.ReadFromUDP(buf)
+		// process any mapping changes, this is done as early as possible
 		m.applyMappingChanges(remoteMap)
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				m.doneWithBuffer(buffer)
 				continue
 			} else if err != io.EOF {
 				logger.Errorf("could not read udp packet: %v", err)
@@ -253,16 +250,11 @@ func (m *UDPMuxDefault) connWorker() {
 		c := remoteMap[addrStr]
 
 		if c == nil {
-			m.doneWithBuffer(buffer)
 			// ignore packets that we don't know where to route to
 			continue
 		}
 
-		err = c.writePacket(muxedPacket{
-			Buffer: buffer,
-			Size:   n,
-			RAddr:  addr,
-		})
+		err = c.writePacket(buf[:n], addr)
 		if err != nil {
 			logger.Errorf("could not write packet: %v", err)
 		}

@@ -1,25 +1,22 @@
 package ice
 
 import (
+	"encoding/binary"
 	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/transport/packetio"
 )
 
 type udpMuxedConnParams struct {
-	Mux        *UDPMuxDefault
-	ReadBuffer int
-	LocalAddr  net.Addr
-	Logger     logging.LeveledLogger
-}
-
-type muxedPacket struct {
-	Buffer *bufferHolder
-	RAddr  net.Addr
-	Size   int
+	Mux       *UDPMuxDefault
+	AddrPool  *sync.Pool
+	Key       string
+	LocalAddr net.Addr
+	Logger    logging.LeveledLogger
 }
 
 // udpMuxedConn represents a logical packet conn for a single remote as identified by ufrag
@@ -29,7 +26,7 @@ type udpMuxedConn struct {
 	addresses []string
 
 	// channel holding incoming packets
-	recvChan   chan muxedPacket
+	buffer     *packetio.Buffer
 	closedChan chan struct{}
 	closeOnce  sync.Once
 	mu         sync.Mutex
@@ -38,7 +35,7 @@ type udpMuxedConn struct {
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 	p := &udpMuxedConn{
 		params:     params,
-		recvChan:   make(chan muxedPacket, params.ReadBuffer),
+		buffer:     packetio.NewBuffer(),
 		closedChan: make(chan struct{}),
 	}
 
@@ -46,19 +43,26 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 }
 
 func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
-	pkt, ok := <-c.recvChan
+	buf := c.params.AddrPool.Get().(*bufferHolder)
+	defer c.params.AddrPool.Put(buf)
 
-	if !ok {
-		return 0, nil, io.ErrClosedPipe
+	// read address
+	addrN, err := c.buffer.Read(buf.buffer)
+	if err != nil {
+		return 0, nil, err
 	}
 
-	if cap(b) < pkt.Size {
-		return 0, pkt.RAddr, io.ErrShortBuffer
+	if raddr, err = decodeUDPAddr(buf.buffer[:addrN]); err != nil {
+		return 0, nil, err
 	}
 
-	copy(b, pkt.Buffer.buffer[:pkt.Size])
-	c.params.Mux.doneWithBuffer(pkt.Buffer)
-	return pkt.Size, pkt.RAddr, err
+	// read data
+	n, err = c.buffer.Read(b)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return n, raddr, err
 }
 
 func (c *udpMuxedConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
@@ -95,14 +99,15 @@ func (c *udpMuxedConn) CloseChannel() <-chan struct{} {
 }
 
 func (c *udpMuxedConn) Close() error {
+	var err error
 	c.closeOnce.Do(func() {
+		err = c.buffer.Close()
 		close(c.closedChan)
-		close(c.recvChan)
 	})
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.addresses = nil
-	return nil
+	return err
 }
 
 func (c *udpMuxedConn) isClosed() bool {
@@ -132,6 +137,8 @@ func (c *udpMuxedConn) addAddress(addr string) {
 }
 
 func (c *udpMuxedConn) removeAddress(addr string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	newAddresses := make([]string, 0, len(c.addresses))
 	for _, a := range c.addresses {
 		if a != addr {
@@ -139,9 +146,7 @@ func (c *udpMuxedConn) removeAddress(addr string) {
 		}
 	}
 
-	c.mu.Lock()
 	c.addresses = newAddresses
-	c.mu.Unlock()
 }
 
 func (c *udpMuxedConn) containsAddress(addr string) bool {
@@ -155,11 +160,62 @@ func (c *udpMuxedConn) containsAddress(addr string) bool {
 	return false
 }
 
-func (c *udpMuxedConn) writePacket(pkt muxedPacket) error {
-	select {
-	case c.recvChan <- pkt:
+func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
+	// write two packets, address and data
+	buf := c.params.AddrPool.Get().(*bufferHolder)
+	defer c.params.AddrPool.Put(buf)
+	n, err := encodeUDPAddr(addr, buf.buffer)
+	if err != nil {
 		return nil
-	case <-c.closedChan:
-		return io.ErrClosedPipe
 	}
+	if _, err := c.buffer.Write(buf.buffer[:n]); err != nil {
+		return err
+	}
+	if _, err := c.buffer.Write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeUDPAddr(addr *net.UDPAddr, buf []byte) (int, error) {
+	ipdata, err := addr.IP.MarshalText()
+	if err != nil {
+		return 0, err
+	}
+	total := 2 + len(ipdata) + 2 + len(addr.Zone)
+	if total > len(buf) {
+		return 0, io.ErrShortBuffer
+	}
+
+	binary.LittleEndian.PutUint16(buf, uint16(len(ipdata)))
+	offset := 2
+	n := copy(buf[offset:], ipdata)
+	offset += n
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(addr.Port))
+	offset += 2
+	copy(buf[offset:], addr.Zone)
+	return total, nil
+}
+
+func decodeUDPAddr(buf []byte) (*net.UDPAddr, error) {
+	addr := net.UDPAddr{}
+
+	offset := 0
+	ipLen := int(binary.LittleEndian.Uint16(buf[:2]))
+	offset += 2
+	// basic bounds checking
+	if ipLen+offset > len(buf) {
+		return nil, io.ErrShortBuffer
+	}
+	if err := addr.IP.UnmarshalText(buf[offset : offset+ipLen]); err != nil {
+		return nil, err
+	}
+	offset += ipLen
+	addr.Port = int(binary.LittleEndian.Uint16(buf[offset : offset+2]))
+	offset += 2
+	zone := make([]byte, len(buf[offset:]))
+	copy(zone, buf[offset:])
+	addr.Zone = string(zone)
+
+	return &addr, nil
 }
