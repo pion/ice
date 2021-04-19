@@ -3,6 +3,7 @@
 package ice
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -24,7 +25,14 @@ func TestMuxAgent(t *testing.T) {
 		Logger: loggerFactory.NewLogger("ice"),
 	})
 	muxPort := 7686
-	require.NoError(t, udpMux.Start(muxPort))
+	c, err := net.ListenUDP(udp, &net.UDPAddr{
+		Port: muxPort,
+	})
+	require.NoError(t, err)
+	require.NoError(t, udpMux.Start(c))
+	defer func() {
+		_ = udpMux.Close()
+	}()
 
 	muxedA, err := NewAgent(&AgentConfig{
 		UDPMux:         udpMux,
