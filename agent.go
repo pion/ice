@@ -932,17 +932,29 @@ func (a *Agent) deleteAllCandidates() {
 	}
 }
 
-func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
+func (a *Agent) findRemoteCandidate(localNetworkType NetworkType, addr net.Addr) Candidate {
 	ip, port, _, ok := parseAddr(addr)
 	if !ok {
 		a.log.Warnf("Error parsing addr: %s", addr)
 		return nil
 	}
 
-	set := a.remoteCandidates[networkType]
+	set := a.remoteCandidates[localNetworkType]
 	for _, c := range set {
 		if c.Address() == ip.String() && c.Port() == port {
 			return c
+		}
+	}
+
+	// also need to look in ipv6 bucket, when local network type is IPV4 and UDP
+	// Gather registers all host candidates under udp/tcp v4, while they are listening
+	// on all interfaces. It's possible for remote candidate to be IPV6
+	if localNetworkType == NetworkTypeUDP4 {
+		set := a.remoteCandidates[NetworkTypeUDP6]
+		for _, c := range set {
+			if c.Address() == ip.String() && c.Port() == port {
+				return c
+			}
 		}
 	}
 	return nil

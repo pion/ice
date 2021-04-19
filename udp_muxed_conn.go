@@ -47,22 +47,30 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
 	defer c.params.AddrPool.Put(buf)
 
 	// read address
-	addrN, err := c.buffer.Read(buf.buffer)
+	total, err := c.buffer.Read(buf.buffer)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	if raddr, err = decodeUDPAddr(buf.buffer[:addrN]); err != nil {
+	dataLen := int(binary.LittleEndian.Uint16(buf.buffer[:2]))
+	if dataLen > total || dataLen > len(b) {
+		return 0, nil, io.ErrShortBuffer
+	}
+
+	// read data and then address
+	offset := 2
+	copy(b, buf.buffer[offset:offset+dataLen])
+	offset += dataLen
+
+	// read address len & decode address
+	addrLen := int(binary.LittleEndian.Uint16(buf.buffer[offset : offset+2]))
+	offset += 2
+
+	if raddr, err = decodeUDPAddr(buf.buffer[offset : offset+addrLen]); err != nil {
 		return 0, nil, err
 	}
 
-	// read data
-	n, err = c.buffer.Read(b)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	return n, raddr, err
+	return dataLen, raddr, nil
 }
 
 func (c *udpMuxedConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
@@ -164,14 +172,30 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	// write two packets, address and data
 	buf := c.params.AddrPool.Get().(*bufferHolder)
 	defer c.params.AddrPool.Put(buf)
-	n, err := encodeUDPAddr(addr, buf.buffer)
+
+	// format of buffer | data len | data bytes | addr len | addr bytes |
+	if len(buf.buffer) < len(data)+maxAddrSize {
+		return io.ErrShortBuffer
+	}
+	// data len
+	binary.LittleEndian.PutUint16(buf.buffer, uint16(len(data)))
+	offset := 2
+
+	// data
+	copy(buf.buffer[offset:], data)
+	offset += len(data)
+
+	// write address first, leaving room for its length
+	n, err := encodeUDPAddr(addr, buf.buffer[offset+2:])
 	if err != nil {
 		return nil
 	}
-	if _, err := c.buffer.Write(buf.buffer[:n]); err != nil {
-		return err
-	}
-	if _, err := c.buffer.Write(data); err != nil {
+	total := offset + n + 2
+
+	// address len
+	binary.LittleEndian.PutUint16(buf.buffer[offset:], uint16(n))
+
+	if _, err := c.buffer.Write(buf.buffer[:total]); err != nil {
 		return err
 	}
 	return nil

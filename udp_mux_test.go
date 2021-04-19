@@ -29,7 +29,10 @@ func TestUDPMux(t *testing.T) {
 	udpMux := NewUDPMuxDefault(UDPMuxParams{
 		Logger: loggerFactory.NewLogger("ice"),
 	})
-	err := udpMux.Start(7686)
+
+	conn, err := net.ListenUDP(udp, &net.UDPAddr{})
+	require.NoError(t, err)
+	err = udpMux.Start(conn)
 	require.NoError(t, err)
 
 	defer func() {
@@ -37,28 +40,32 @@ func TestUDPMux(t *testing.T) {
 	}()
 
 	require.NotNil(t, udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
-	require.Equal(t, ":7686", udpMux.LocalAddr().String())
 
 	wg := sync.WaitGroup{}
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMuxConnection(t, udpMux, "ufrag1")
+		testMuxConnection(t, udpMux, "ufrag1", udp)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMuxConnection(t, udpMux, "ufrag2")
+		testMuxConnection(t, udpMux, "ufrag2", "udp4")
 	}()
 
-	testMuxConnection(t, udpMux, "ufrag3")
+	// skip ipv6 test on i386
+	const ptrSize = 32 << (^uintptr(0) >> 63)
+	if ptrSize != 32 {
+		testMuxConnection(t, udpMux, "ufrag3", "udp6")
+	}
+
 	wg.Wait()
 
 	require.NoError(t, udpMux.Close())
 
 	// can't create more connections
-	_, err = udpMux.GetConn("failufrag", "udp")
+	_, err = udpMux.GetConn("failufrag", udp)
 	require.Error(t, err)
 }
 
@@ -102,14 +109,16 @@ func TestAddressEncoding(t *testing.T) {
 	}
 }
 
-func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
-	pktConn, err := udpMux.GetConn(ufrag, udp)
+func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
+	pktConn, err := udpMux.GetConn(ufrag, network)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
 	}()
 
-	remoteConn, err := net.DialUDP(udp, nil, udpMux.LocalAddr().(*net.UDPAddr))
+	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
+		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
+	})
 	require.NoError(t, err, "error dialing test udp connection")
 
 	// initial messages are dropped
@@ -135,6 +144,7 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
 	// start writing packets through mux
 	targetSize := 1 * 1024 * 1024
 	readDone := make(chan struct{}, 1)
+	remoteReadDone := make(chan struct{}, 1)
 
 	// read packets from the muxed side
 	go func() {
@@ -145,11 +155,33 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
 		readBuf := make([]byte, receiveMTU)
 		nextSeq := uint32(0)
 		for read := 0; read < targetSize; {
-			n, _, _ := pktConn.ReadFrom(readBuf)
+			n, _, err := pktConn.ReadFrom(readBuf)
 			require.NoError(t, err)
 			require.Equal(t, receiveMTU, n)
 
-			verifyPacket(t, readBuf, nextSeq)
+			verifyPacket(t, readBuf[:n], nextSeq)
+
+			// write it back to sender
+			_, err = pktConn.WriteTo(readBuf[:n], remoteConn.LocalAddr())
+			require.NoError(t, err)
+
+			read += n
+			nextSeq++
+		}
+	}()
+
+	go func() {
+		defer func() {
+			close(remoteReadDone)
+		}()
+		readBuf := make([]byte, receiveMTU)
+		nextSeq := uint32(0)
+		for read := 0; read < targetSize; {
+			n, _, err := remoteConn.ReadFrom(readBuf)
+			require.NoError(t, err)
+			require.Equal(t, receiveMTU, n)
+
+			verifyPacket(t, readBuf[:n], nextSeq)
 
 			read += n
 			nextSeq++
@@ -178,6 +210,7 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string) {
 	}
 
 	<-readDone
+	<-remoteReadDone
 }
 
 func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
