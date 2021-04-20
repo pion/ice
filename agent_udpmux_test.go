@@ -20,18 +20,22 @@ func TestMuxAgent(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger: loggerFactory.NewLogger("ice"),
-	})
-	muxPort := 7686
+	const muxPort = 7686
+
 	c, err := net.ListenUDP(udp, &net.UDPAddr{
 		Port: muxPort,
 	})
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	udpMux := NewUDPMuxDefault(UDPMuxParams{
+		Logger:  loggerFactory.NewLogger("ice"),
+		UDPConn: c,
+	})
+
 	require.NoError(t, err)
-	require.NoError(t, udpMux.Start(c))
 	defer func() {
 		_ = udpMux.Close()
+		_ = c.Close()
 	}()
 
 	muxedA, err := NewAgent(&AgentConfig{

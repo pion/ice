@@ -25,18 +25,20 @@ func TestUDPMux(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger: loggerFactory.NewLogger("ice"),
-	})
-
 	conn, err := net.ListenUDP(udp, &net.UDPAddr{})
 	require.NoError(t, err)
-	err = udpMux.Start(conn)
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	udpMux := NewUDPMuxDefault(UDPMuxParams{
+		Logger:  loggerFactory.NewLogger("ice"),
+		UDPConn: conn,
+	})
+
 	require.NoError(t, err)
 
 	defer func() {
 		_ = udpMux.Close()
+		_ = conn.Close()
 	}()
 
 	require.NotNil(t, udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
@@ -65,7 +67,7 @@ func TestUDPMux(t *testing.T) {
 	require.NoError(t, udpMux.Close())
 
 	// can't create more connections
-	_, err = udpMux.GetConn("failufrag", udp)
+	_, err = udpMux.GetConn("failufrag")
 	require.Error(t, err)
 }
 
@@ -110,7 +112,7 @@ func TestAddressEncoding(t *testing.T) {
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
-	pktConn, err := udpMux.GetConn(ufrag, network)
+	pktConn, err := udpMux.GetConn(ufrag)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
