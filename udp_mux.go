@@ -2,11 +2,9 @@ package ice
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/pion/logging"
@@ -15,15 +13,13 @@ import (
 // UDPMux allows multiple connections to go over a single UDP port
 type UDPMux interface {
 	io.Closer
-	GetConn(ufrag, network string) (net.PacketConn, error)
+	GetConn(ufrag string) (net.PacketConn, error)
 	RemoveConnByUfrag(ufrag string)
-	Start(conn net.PacketConn) error
 }
 
 // UDPMuxDefault is an implementation of the interface
 type UDPMuxDefault struct {
-	params  UDPMuxParams
-	udpConn net.PacketConn
+	params UDPMuxParams
 
 	closedChan chan struct{}
 	closeOnce  sync.Once
@@ -44,12 +40,13 @@ const maxAddrSize = 512
 
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
-	Logger logging.LeveledLogger
+	Logger  logging.LeveledLogger
+	UDPConn *net.UDPConn
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
 func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
-	return &UDPMuxDefault{
+	m := &UDPMuxDefault{
 		params:     params,
 		conns:      make(map[string]*udpMuxedConn),
 		closedChan: make(chan struct{}, 1),
@@ -60,35 +57,20 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 			},
 		},
 	}
-}
-
-// Start starts the mux. Before the UDPMux is usable, it must be started
-// the mux will read/write data on the underlying net.PacketConn. It must
-// conn.ReadFrom *MUST* return a *net.UDPAddr
-func (m *UDPMuxDefault) Start(conn net.PacketConn) error {
-	if m.udpConn != nil {
-		return ErrMultipleStart
-	}
-	m.udpConn = conn
 
 	go m.connWorker()
-	return nil
+
+	return m
 }
 
 // LocalAddr returns the listening address of this UDPMuxDefault
 func (m *UDPMuxDefault) LocalAddr() net.Addr {
-	return m.udpConn.LocalAddr()
+	return m.params.UDPConn.LocalAddr()
 }
 
 // GetConn returns a PacketConn given the connection's ufrag and network
 // creates the connection if an existing one can't be found
-func (m *UDPMuxDefault) GetConn(ufrag, network string) (net.PacketConn, error) {
-	if m.udpConn == nil {
-		return nil, ErrMuxNotStarted
-	}
-
-	key := fmt.Sprintf("%s|%s", ufrag, network)
-
+func (m *UDPMuxDefault) GetConn(ufrag string) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -96,16 +78,16 @@ func (m *UDPMuxDefault) GetConn(ufrag, network string) (net.PacketConn, error) {
 		return nil, io.ErrClosedPipe
 	}
 
-	if c, ok := m.conns[key]; ok {
+	if c, ok := m.conns[ufrag]; ok {
 		return c, nil
 	}
 
-	c := m.createMuxedConn(key)
+	c := m.createMuxedConn(ufrag)
 	go func() {
 		<-c.CloseChannel()
-		m.removeConn(key)
+		m.removeConn(ufrag)
 	}()
-	m.conns[key] = c
+	m.conns[ufrag] = c
 	return c, nil
 }
 
@@ -114,9 +96,10 @@ func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	m.mu.Lock()
 	removedConns := make([]*udpMuxedConn, 0)
 	for key := range m.conns {
-		if !strings.HasPrefix(key, ufrag) {
+		if key != ufrag {
 			continue
 		}
+
 		c := m.conns[key]
 		delete(m.conns, key)
 		if c != nil {
@@ -151,9 +134,6 @@ func (m *UDPMuxDefault) Close() error {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
-		// close udp conn and prevent packets coming in
-		err = m.udpConn.Close()
-
 		for _, c := range m.conns {
 			_ = c.Close()
 		}
@@ -181,7 +161,7 @@ func (m *UDPMuxDefault) removeConn(key string) {
 }
 
 func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {
-	return m.udpConn.WriteTo(buf, raddr)
+	return m.params.UDPConn.WriteTo(buf, raddr)
 }
 
 func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) {
@@ -214,13 +194,16 @@ func (m *UDPMuxDefault) connWorker() {
 	}()
 	buf := make([]byte, receiveMTU)
 	for {
-		n, addr, err := m.udpConn.ReadFrom(buf)
-		if err != nil {
+		n, addr, err := m.params.UDPConn.ReadFrom(buf)
+		if m.IsClosed() {
+			return
+		} else if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				continue
 			} else if err != io.EOF {
 				logger.Errorf("could not read udp packet: %v", err)
 			}
+
 			return
 		}
 
