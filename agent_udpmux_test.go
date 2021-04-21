@@ -41,7 +41,9 @@ func TestMuxAgent(t *testing.T) {
 	muxedA, err := NewAgent(&AgentConfig{
 		UDPMux:         udpMux,
 		CandidateTypes: []CandidateType{CandidateTypeHost},
-		NetworkTypes:   supportedNetworkTypes(),
+		NetworkTypes: []NetworkType{
+			NetworkTypeUDP4,
+		},
 	})
 	require.NoError(t, err)
 

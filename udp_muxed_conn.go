@@ -147,6 +147,7 @@ func (c *udpMuxedConn) addAddress(addr string) {
 func (c *udpMuxedConn) removeAddress(addr string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	newAddresses := make([]string, 0, len(c.addresses))
 	for _, a := range c.addresses {
 		if a != addr {
