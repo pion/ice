@@ -63,6 +63,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [Antoine Baché](https://github.com/Antonito)
 * [Will Forcey](https://github.com/wawesomeNOGUI)
 * [David Zhao](https://github.com/davidzhao)
+* [Juliusz Chroboczek](https://github.com/jech)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
