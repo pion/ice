@@ -134,6 +134,14 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		}
 	}
 
+	// when UDPMux is enabled, skip other UDP candidates
+	if a.udpMux != nil {
+		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
+			a.log.Warnf("could not create host candidate for UDPMux")
+		}
+		delete(networks, udp)
+	}
+
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, networkTypes)
 	if err != nil {
 		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
@@ -159,8 +167,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			var port int
 			var conn net.PacketConn
 			var err error
-
 			var tcpType TCPType
+
 			switch network {
 			case tcp:
 				// Handle ICE TCP passive mode
@@ -177,18 +185,10 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
-				if a.udpMux != nil {
-					conn, err = a.udpMux.GetConn(a.localUfrag)
-					if err != nil {
-						a.log.Warnf("could not get udp muxed connection: %v\n", err)
-						continue
-					}
-				} else {
-					conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
-					if err != nil {
-						a.log.Warnf("could not listen %s %s\n", network, ip)
-						continue
-					}
+				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
+				if err != nil {
+					a.log.Warnf("could not listen %s %s\n", network, ip)
+					continue
 				}
 
 				port = conn.LocalAddr().(*net.UDPAddr).Port
@@ -222,6 +222,65 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 		}
 	}
+}
+
+func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
+	if a.udpMux == nil {
+		return errUDPMuxDisabled
+	}
+
+	// find the IP address to advertise
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
+	if err != nil {
+		return err
+	}
+
+	var candidateIP net.IP
+	if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+		for _, ip := range localIPs {
+			if candidateIP, err = a.extIPMapper.findExternalIP(ip.String()); err == nil {
+				// ok with first mapped IP
+				break
+			} else {
+				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", ip.String())
+			}
+		}
+	}
+
+	if candidateIP == nil && len(localIPs) > 0 {
+		candidateIP = localIPs[0]
+	}
+	if candidateIP == nil {
+		return errCandidateIPNotFound
+	}
+
+	conn, err := a.udpMux.GetConn(a.localUfrag)
+	if err != nil {
+		return err
+	}
+	port := conn.LocalAddr().(*net.UDPAddr).Port
+
+	hostConfig := CandidateHostConfig{
+		Network:   udp,
+		Address:   candidateIP.String(),
+		Port:      port,
+		Component: ComponentRTP,
+	}
+
+	c, err := NewCandidateHost(&hostConfig)
+	if err != nil {
+		closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
+		// already logged error
+		return nil
+	}
+
+	if err := a.addCandidate(ctx, c, conn); err != nil {
+		if closeErr := c.close(); closeErr != nil {
+			a.log.Warnf("Failed to close candidate: %v", closeErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []NetworkType) {
