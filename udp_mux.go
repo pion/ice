@@ -184,8 +184,9 @@ func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) 
 	if ok {
 		existing.removeAddress(addr)
 	}
-
 	m.addressMap[addr] = conn
+
+	m.params.Logger.Debugf("Registered %s for %s", addr, conn.params.Key)
 }
 
 func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
@@ -257,11 +258,12 @@ func (m *UDPMuxDefault) connWorker() {
 		}
 
 		if destinationConn == nil {
+			m.params.Logger.Tracef("dropping packet from %s, addr: %s", udpAddr.String(), addr.String())
 			continue
 		}
 
 		if err = destinationConn.writePacket(buf[:n], udpAddr); err != nil {
-			logger.Errorf("could not write packet: %v", err)
+			m.params.Logger.Errorf("could not write packet: %v", err)
 		}
 	}
 }

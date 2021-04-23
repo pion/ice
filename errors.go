@@ -109,9 +109,6 @@ var (
 	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
 	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 
-	// ErrMuxNotStarted indicates the Mux has not been started prior to use
-	ErrMuxNotStarted = errors.New("mux must be started first")
-
 	errSendPacket                    = errors.New("failed to send packet")
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errParseComponent                = errors.New("could not parse component")
@@ -132,4 +129,6 @@ var (
 	errUnknownRole                   = errors.New("unknown role")
 	errMismatchUsername              = errors.New("username mismatch")
 	errICEWriteSTUNMessage           = errors.New("the ICE conn can't write STUN messages")
+	errUDPMuxDisabled                = errors.New("UDPMux is not enabled")
+	errCandidateIPNotFound           = errors.New("could not determine local IP for Mux candidate")
 )
