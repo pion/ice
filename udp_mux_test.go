@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/logging"
 	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 	"github.com/stretchr/testify/require"
@@ -28,9 +27,8 @@ func TestUDPMux(t *testing.T) {
 	conn, err := net.ListenUDP(udp, &net.UDPAddr{})
 	require.NoError(t, err)
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:  loggerFactory.NewLogger("ice"),
+		Logger:  nil,
 		UDPConn: conn,
 	})
 

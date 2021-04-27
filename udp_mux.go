@@ -47,6 +47,10 @@ type UDPMuxParams struct {
 
 // NewUDPMuxDefault creates an implementation of UDPMux
 func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
+	if params.Logger == nil {
+		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
+	}
+
 	m := &UDPMuxDefault{
 		addressMap: map[string]*udpMuxedConn{},
 		params:     params,
