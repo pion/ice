@@ -317,6 +317,14 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		Username: "username",
 		Password: "password",
 	})
+	urls = append(urls, &URL{
+		Scheme:   SchemeTypeTURN,
+		Proto:    ProtoTypeTCP,
+		Host:     "127.0.0.1",
+		Port:     serverPort,
+		Username: "username",
+		Password: "password",
+	})
 
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
