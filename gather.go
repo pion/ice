@@ -348,14 +348,13 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 		}
 
 		for i := range urls {
+			// if transport protocol is TCP assume UDP calls will fail/timeout.
+			if urls[i].Proto == ProtoTypeTCP {
+				return
+			}
 			wg.Add(1)
 			go func(url URL, network string) {
 				defer wg.Done()
-
-				// if transport protocol is TCP assume UDP calls will fail/timeout.
-				if url.Proto == ProtoTypeTCP {
-					return
-				}
 
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
