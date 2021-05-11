@@ -397,7 +397,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 		Net:              net0,
 
 		KeepaliveInterval: &KeepaliveInterval,
-		checkInterval:     time.Hour,
+		CheckInterval:     &KeepaliveInterval,
 	}
 
 	aAgent, err := NewAgent(cfg0)
@@ -409,7 +409,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
 		KeepaliveInterval: &KeepaliveInterval,
-		checkInterval:     time.Hour,
+		CheckInterval:     &KeepaliveInterval,
 	}
 
 	bAgent, err := NewAgent(cfg1)
@@ -1493,6 +1493,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
+	CheckInterval := 500 * time.Millisecond
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
@@ -1500,7 +1501,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
-		checkInterval:       500 * time.Millisecond,
+		CheckInterval:       &CheckInterval,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1544,6 +1545,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
+	CheckInterval := 50 * time.Millisecond
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
@@ -1551,7 +1553,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
-		checkInterval:       50 * time.Millisecond,
+		CheckInterval:       &CheckInterval,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1588,6 +1590,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
+	CheckInterval := 50 * time.Millisecond
 
 	cfg := &AgentConfig{
 		Urls:                []*URL{},
@@ -1595,7 +1598,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 		KeepaliveInterval:   &KeepaliveInterval,
-		checkInterval:       50 * time.Millisecond,
+		CheckInterval:       &CheckInterval,
 	}
 
 	aAgent, err := NewAgent(cfg)
@@ -1648,6 +1651,7 @@ func TestLiteLifecycle(t *testing.T) {
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
+	CheckInterval := 500 * time.Millisecond
 	bAgent, err := NewAgent(&AgentConfig{
 		Lite:                true,
 		CandidateTypes:      []CandidateType{CandidateTypeHost},
@@ -1656,7 +1660,7 @@ func TestLiteLifecycle(t *testing.T) {
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
-		checkInterval:       500 * time.Millisecond,
+		CheckInterval:       &CheckInterval,
 	})
 	require.NoError(t, err)
 

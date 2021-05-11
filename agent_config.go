@@ -83,6 +83,10 @@ type AgentConfig struct {
 	// A keepalive interval of 0 means we never send keepalive packets
 	KeepaliveInterval *time.Duration
 
+	// CheckInterval controls how often our task loop runs when in the
+	// connecting state.
+	CheckInterval *time.Duration
+
 	// NetworkTypes is an optional configuration for disabling or enabling
 	// support for specific network types.
 	NetworkTypes []NetworkType
@@ -92,10 +96,6 @@ type AgentConfig struct {
 	CandidateTypes []CandidateType
 
 	LoggerFactory logging.LoggerFactory
-
-	// checkInterval controls how often our internal task loop runs when
-	// in the connecting state. Only useful for testing.
-	checkInterval time.Duration
 
 	// MaxBindingRequests is the max amount of binding requests the agent will send
 	// over a candidate pair for validation or nomination, if after MaxBindingRequests
@@ -205,10 +205,10 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.keepaliveInterval = *config.KeepaliveInterval
 	}
 
-	if config.checkInterval == 0 {
+	if config.CheckInterval == nil {
 		a.checkInterval = defaultCheckInterval
 	} else {
-		a.checkInterval = config.checkInterval
+		a.checkInterval = *config.CheckInterval
 	}
 
 	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
