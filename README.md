@@ -65,6 +65,7 @@ Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contribu
 * [David Zhao](https://github.com/davidzhao)
 * [Juliusz Chroboczek](https://github.com/jech)
 * [Jin Gong](https://github.com/cgojin)
+* [Kyle Carberry](https://github.com/kylecarbs)
 
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
