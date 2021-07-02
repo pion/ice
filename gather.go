@@ -473,6 +473,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				}
 
 				conn, connectErr := dtls.Dial(network, udpAddr, &dtls.Config{
+					ServerName:         url.Host,
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 				if connectErr != nil {
