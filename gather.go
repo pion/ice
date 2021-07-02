@@ -359,6 +359,7 @@ func (a *Agent) gatherCandidatesRelay(urls []*URL, wg *sync.WaitGroup) error {
 				}
 
 				conn, connectErr := dtls.Dial(network, udpAddr, &dtls.Config{
+					ServerName:         url.Host,
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 				if connectErr != nil {
