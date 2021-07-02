@@ -29,43 +29,5 @@ If you need commercial support or don't want to use public methods you can conta
 ### Contributing
 Check out the **[contributing wiki](https://github.com/pion/webrtc/wiki/Contributing)** to join the group of amazing people making this project possible:
 
-* [John Bradley](https://github.com/kc5nra) - *Original Author*
-* [Sean DuBois](https://github.com/Sean-Der) - *Original Author*
-* [Michael MacDonald](https://github.com/mjmac) - *Original Author*
-* [Michiel De Backker](https://github.com/backkem) - *Original Author*
-* [Konstantin Itskov](https://github.com/trivigy) - *Original Author*
-* [Luke Curley](https://github.com/kixelated)
-* [Hugo Arregui](https://github.com/hugoArregui)
-* [Adam Kiss](https://github.com/masterada)
-* [Aleksandr Razumov](https://github.com/ernado)
-* [Yutaka Takeda](https://github.com/enobufs)
-* [Atsushi Watanabe](https://github.com/at-wat)
-* [Robert Eperjesi](https://github.com/epes)
-* [Sebastian Waisbrot](https://github.com/seppo0010)
-* [Zizheng Tai](https://github.com/ZizhengTai)
-* [Aaron France](https://github.com/AeroNotix)
-* [Chao Yuan](https://github.com/yuanchao0310)
-* [Jason Maldonis](https://github.com/jjmaldonis)
-* [Nevio Vesic](https://github.com/0x19)
-* [David Hamilton](https://github.com/dihamilton)
-* [adwpc](https://github.com/adwpc)
-* [Ori Bernstein](https://eigenstate.org)
-* [Sam Lancia](https://github.com/nerd2)
-* [Lander Noterman](https://github.com/LanderN)
-* [BUPTCZQ](https://github.com/buptczq)
-* [Henry](https://github.com/cryptix)
-* [Jerko Steiner](https://github.com/jeremija)
-* [Sidney San Martín](https://github.com/s4y)
-* [JooYoung Lim](https://github.com/DevRockstarZ)
-* [Kory Miller](https://github.com/korymiller1489)
-* [ZHENK](https://github.com/scorpionknifes)
-* [Assad Obaid](https://github.com/assadobaid)
-* [Antoine Baché](https://github.com/Antonito)
-* [Will Forcey](https://github.com/wawesomeNOGUI)
-* [David Zhao](https://github.com/davidzhao)
-* [Juliusz Chroboczek](https://github.com/jech)
-* [Jin Gong](https://github.com/cgojin)
-* [Kyle Carberry](https://github.com/kylecarbs)
-
 ### License
 MIT License - see [LICENSE](LICENSE) for full text
