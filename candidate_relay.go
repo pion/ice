@@ -8,21 +8,23 @@ import (
 type CandidateRelay struct {
 	candidateBase
 
-	onClose func() error
+	relayProtocol string
+	onClose       func() error
 }
 
 // CandidateRelayConfig is the config required to create a new CandidateRelay
 type CandidateRelayConfig struct {
-	CandidateID string
-	Network     string
-	Address     string
-	Port        int
-	Component   uint16
-	Priority    uint32
-	Foundation  string
-	RelAddr     string
-	RelPort     int
-	OnClose     func() error
+	CandidateID   string
+	Network       string
+	Address       string
+	Port          int
+	Component     uint16
+	Priority      uint32
+	Foundation    string
+	RelAddr       string
+	RelPort       int
+	RelayProtocol string
+	OnClose       func() error
 }
 
 // NewCandidateRelay creates a new relay candidate
@@ -59,8 +61,14 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 				Port:    config.RelPort,
 			},
 		},
-		onClose: config.OnClose,
+		relayProtocol: config.RelayProtocol,
+		onClose:       config.OnClose,
 	}, nil
+}
+
+// RelayProtocol returns the protocol used between the endpoint and the relay server.
+func (c *CandidateRelay) RelayProtocol() string {
+	return c.relayProtocol
 }
 
 func (c *CandidateRelay) close() error {

@@ -262,6 +262,7 @@ func TestCandidateMarshal(t *testing.T) {
 					port:           5000,
 					relatedAddress: &CandidateRelatedAddress{"192.168.0.1", 5001},
 				},
+				"",
 				nil,
 			},
 			"848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 5001",
