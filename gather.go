@@ -422,10 +422,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			defer wg.Done()
 			TURNServerAddr := fmt.Sprintf("%s:%d", url.Host, url.Port)
 			var (
-				locConn net.PacketConn
-				err     error
-				RelAddr string
-				RelPort int
+				locConn       net.PacketConn
+				err           error
+				RelAddr       string
+				RelPort       int
+				relayProtocol string
 			)
 
 			switch {
@@ -437,6 +438,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
+				relayProtocol = udp
 			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
 				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
 				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
@@ -447,6 +449,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				if url.Scheme == SchemeTypeTURN {
+					relayProtocol = tcp
+				} else if url.Scheme == SchemeTypeTURNS {
+					relayProtocol = "tls"
+				}
 				locConn = turn.NewSTUNConn(conn)
 
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
@@ -464,6 +471,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
 				udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
@@ -483,6 +491,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.UDPAddr).Port
+				relayProtocol = "dtls"
 				locConn = &fakePacketConn{conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
 				conn, connectErr := tls.Dial(NetworkTypeTCP4.String(), TURNServerAddr, &tls.Config{
@@ -494,6 +503,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				}
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				relayProtocol = "tls"
 				locConn = turn.NewSTUNConn(conn)
 			default:
 				a.log.Warnf("Unable to handle URL in gatherCandidatesRelay %v\n", url)
@@ -528,12 +538,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 			raddr := relayConn.LocalAddr().(*net.UDPAddr)
 			relayConfig := CandidateRelayConfig{
-				Network:   network,
-				Component: ComponentRTP,
-				Address:   raddr.IP.String(),
-				Port:      raddr.Port,
-				RelAddr:   RelAddr,
-				RelPort:   RelPort,
+				Network:       network,
+				Component:     ComponentRTP,
+				Address:       raddr.IP.String(),
+				Port:          raddr.Port,
+				RelAddr:       RelAddr,
+				RelPort:       RelPort,
+				RelayProtocol: relayProtocol,
 				OnClose: func() error {
 					client.Close()
 					return locConn.Close()

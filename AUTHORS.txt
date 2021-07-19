@@ -28,6 +28,7 @@ korymiller1489 <kmiller@unwiredrevolution.com>
 Kyle Carberry <kyle@carberry.com>
 Lander Noterman <lander.noterman@basalte.be>
 Luke Curley <kixelated@gmail.com>
+Meelap Shah <meelapshah@gmail.com>
 Michael MacDonald <github@macdonald.cx>
 Michael MacDonald <mike.macdonald@savantsystems.com>
 Nevio Vesic <nevio@subspace.com>

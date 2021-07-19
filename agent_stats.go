@@ -58,6 +58,10 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 		result := make([]CandidateStats, 0, len(agent.localCandidates))
 		for networkType, localCandidates := range agent.localCandidates {
 			for _, c := range localCandidates {
+				relayProtocol := ""
+				if c.Type() == CandidateTypeRelay {
+					relayProtocol = c.(*CandidateRelay).RelayProtocol()
+				}
 				stat := CandidateStats{
 					Timestamp:     time.Now(),
 					ID:            c.ID(),
@@ -67,7 +71,7 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 					CandidateType: c.Type(),
 					Priority:      c.Priority(),
 					// URL string
-					RelayProtocol: "udp",
+					RelayProtocol: relayProtocol,
 					// Deleted bool
 				}
 				result = append(result, stat)
@@ -98,7 +102,7 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 					CandidateType: c.Type(),
 					Priority:      c.Priority(),
 					// URL string
-					RelayProtocol: "udp",
+					RelayProtocol: "",
 				}
 				result = append(result, stat)
 			}
