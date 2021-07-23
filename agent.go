@@ -808,17 +808,18 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 
 func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net.PacketConn) error {
 	return a.run(ctx, func(ctx context.Context, agent *Agent) {
-		c.start(a, candidateConn, a.startedCh)
-
 		set := a.localCandidates[c.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(c) {
+				a.log.Debugf("Ignore duplicate candidate: %s", c.String())
 				if err := c.close(); err != nil {
 					a.log.Warnf("Failed to close duplicate candidate: %v", err)
 				}
 				return
 			}
 		}
+
+		c.start(a, candidateConn, a.startedCh)
 
 		set = append(set, c)
 		a.localCandidates[c.NetworkType()] = set
