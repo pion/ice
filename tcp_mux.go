@@ -159,7 +159,7 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 
 	n, err := readStreamingPacket(conn, buf)
 	if err != nil {
-		m.params.Logger.Warnf("Error reading first packet: %s", err)
+		m.params.Logger.Warnf("Error reading first packet from %s: %s", conn.RemoteAddr().String(), err)
 		return
 	}
 
