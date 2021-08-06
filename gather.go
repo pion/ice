@@ -114,6 +114,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 				wg.Done()
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
+		default:
 		}
 	}
 	// Block until all STUN and TURN URLs have been gathered (or timed out)

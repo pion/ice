@@ -10,6 +10,7 @@ const (
 	CandidateTypeServerReflexive
 	CandidateTypePeerReflexive
 	CandidateTypeRelay
+	CandidateTypeUnknown
 )
 
 // String makes CandidateType printable
@@ -25,8 +26,9 @@ func (c CandidateType) String() string {
 		return "relay"
 	case CandidateTypeUnspecified:
 		return "Unknown candidate type"
+	default:
+		return "Unknown candidate type"
 	}
-	return "Unknown candidate type"
 }
 
 // Preference returns the preference weight of a CandidateType
@@ -45,8 +47,9 @@ func (c CandidateType) Preference() uint16 {
 		return 100
 	case CandidateTypeRelay, CandidateTypeUnspecified:
 		return 0
+	default:
+		return 0
 	}
-	return 0
 }
 
 func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {

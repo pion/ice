@@ -9,10 +9,6 @@ import (
 // SchemeType indicates the type of server used in the ice.URL structure.
 type SchemeType int
 
-// Unknown defines default public constant to use for "enum" like struct
-// comparisons when no value was defined.
-const Unknown = iota
-
 const (
 	// SchemeTypeSTUN indicates the URL represents a STUN server.
 	SchemeTypeSTUN SchemeType = iota + 1
@@ -25,6 +21,9 @@ const (
 
 	// SchemeTypeTURNS indicates the URL represents a TURNS (secure) server.
 	SchemeTypeTURNS
+
+	// SchemeTypeUnknown indicated an unknown scheme type
+	SchemeTypeUnknown
 )
 
 // NewSchemeType defines a procedure for creating a new SchemeType from a raw
@@ -40,7 +39,7 @@ func NewSchemeType(raw string) SchemeType {
 	case "turns":
 		return SchemeTypeTURNS
 	default:
-		return SchemeType(Unknown)
+		return SchemeTypeUnknown
 	}
 }
 
@@ -69,6 +68,9 @@ const (
 
 	// ProtoTypeTCP indicates the URL uses a TCP transport.
 	ProtoTypeTCP
+
+	// ProtoTypeUnknown indicates an unknown protocol type, which is probably an error
+	ProtoTypeUnknown
 )
 
 // NewProtoType defines a procedure for creating a new ProtoType from a raw
@@ -80,7 +82,7 @@ func NewProtoType(raw string) ProtoType {
 	case "tcp":
 		return ProtoTypeTCP
 	default:
-		return ProtoType(Unknown)
+		return ProtoTypeUnknown
 	}
 }
 
@@ -116,7 +118,7 @@ func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 
 	var u URL
 	u.Scheme = NewSchemeType(rawParts.Scheme)
-	if u.Scheme == SchemeType(Unknown) {
+	if u.Scheme == SchemeTypeUnknown {
 		return nil, ErrSchemeType
 	}
 
@@ -172,7 +174,7 @@ func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 		}
 
 		u.Proto = proto
-		if u.Proto == ProtoType(Unknown) {
+		if u.Proto == ProtoTypeUnknown {
 			u.Proto = ProtoTypeUDP
 		}
 	case SchemeTypeTURNS:
@@ -182,9 +184,11 @@ func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 		}
 
 		u.Proto = proto
-		if u.Proto == ProtoType(Unknown) {
+		if u.Proto == ProtoTypeUnknown {
 			u.Proto = ProtoTypeTCP
 		}
+	default:
+		return nil, ErrSTUNQuery
 	}
 
 	return &u, nil
@@ -193,19 +197,19 @@ func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 func parseProto(raw string) (ProtoType, error) {
 	qArgs, err := url.ParseQuery(raw)
 	if err != nil || len(qArgs) > 1 {
-		return ProtoType(Unknown), ErrInvalidQuery
+		return ProtoTypeUnknown, ErrInvalidQuery
 	}
 
-	var proto ProtoType
+	proto := ProtoTypeUnknown
 	if rawProto := qArgs.Get("transport"); rawProto != "" {
-		if proto = NewProtoType(rawProto); proto == ProtoType(0) {
-			return ProtoType(Unknown), ErrProtoType
+		if proto = NewProtoType(rawProto); proto == ProtoTypeUnknown {
+			return ProtoTypeUnknown, ErrProtoType
 		}
 		return proto, nil
 	}
 
 	if len(qArgs) > 0 {
-		return ProtoType(Unknown), ErrInvalidQuery
+		return ProtoTypeUnknown, ErrInvalidQuery
 	}
 
 	return proto, nil

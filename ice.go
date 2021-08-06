@@ -25,6 +25,9 @@ const (
 
 	// ConnectionStateClosed ICE agent has finished and is no longer handling requests
 	ConnectionStateClosed
+
+	// Unknown State
+	ConnectionStateUnknown
 )
 
 func (c ConnectionState) String() string {
@@ -60,6 +63,9 @@ const (
 
 	// GatheringStateComplete indicates candidate gatering has been completed
 	GatheringStateComplete
+
+	// GatheringStateUnknown probably indicates an error
+	GatheringStateUnknown
 )
 
 func (t GatheringState) String() string {
