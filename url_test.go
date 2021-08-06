@@ -56,6 +56,7 @@ func TestParseURL(t *testing.T) {
 			{"stun:[::1]:123a", ErrPort},
 			{"google.de", ErrSchemeType},
 			{"stun:", ErrHost},
+			{"stan:", ErrSchemeType},
 			{"stun:google.de:abc", ErrPort},
 			{"stun:google.de?transport=udp", ErrSTUNQuery},
 			{"stuns:google.de?transport=udp", ErrSTUNQuery},

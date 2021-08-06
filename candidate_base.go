@@ -172,6 +172,8 @@ func (c *candidateBase) LocalPreference() uint16 {
 				}
 			case CandidateTypeUnspecified:
 				return 0
+			default:
+				return 0
 			}
 			return 0
 		}()
