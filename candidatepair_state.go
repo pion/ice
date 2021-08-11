@@ -20,9 +20,6 @@ const (
 	// CandidatePairStateSucceeded means a check for this pair was already
 	// done and produced a successful result.
 	CandidatePairStateSucceeded
-
-	// CandidatePairStateUnknown probably indicates an error
-	CandidatePairStateUnknown
 )
 
 func (c CandidatePairState) String() string {
@@ -35,7 +32,6 @@ func (c CandidatePairState) String() string {
 		return "failed"
 	case CandidatePairStateSucceeded:
 		return "succeeded"
-	default:
-		return "Unknown candidate pair state"
 	}
+	return "Unknown candidate pair state"
 }

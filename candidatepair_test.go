@@ -131,11 +131,3 @@ func TestNilCandidatePairString(t *testing.T) {
 	var nilCandidatePair *CandidatePair
 	assert.Equal(t, nilCandidatePair.String(), "")
 }
-
-func TestInvalidCandidatePairStateString(t *testing.T) {
-	state := CandidatePairState(0)
-	assert.NotEqual(t, "waiting", state.String())
-	assert.NotEqual(t, "in-progress", state.String())
-	assert.NotEqual(t, "failed", state.String())
-	assert.NotEqual(t, "succeeded", state.String())
-}
