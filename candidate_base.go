@@ -418,6 +418,11 @@ func (c *candidateBase) Marshal() string {
 
 // UnmarshalCandidate creates a Candidate from its string representation
 func UnmarshalCandidate(raw string) (Candidate, error) {
+	if len(raw) > 0 && raw[0] == ' ' {
+		// Foundation not specified: not RFC 8445 compliant but seen in the wild
+		raw = "unspecified" + raw
+	}
+
 	split := strings.Fields(raw)
 	if len(split) < 8 {
 		return nil, fmt.Errorf("%w (%d)", errAttributeTooShortICECandidate, len(split))
