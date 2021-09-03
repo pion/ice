@@ -9,6 +9,7 @@ import (
 const (
 	udp = "udp"
 	tcp = "tcp"
+	ssltcp = "ssltcp"
 )
 
 func supportedNetworkTypes() []NetworkType {
@@ -17,6 +18,8 @@ func supportedNetworkTypes() []NetworkType {
 		NetworkTypeUDP6,
 		NetworkTypeTCP4,
 		NetworkTypeTCP6,
+		NetworkTypeSSLTCP4,
+		NetworkTypeSSLTCP6,
 	}
 }
 
@@ -35,6 +38,12 @@ const (
 
 	// NetworkTypeTCP6 indicates TCP over IPv6.
 	NetworkTypeTCP6
+
+	// NetworkTypeTCP6 indicates SSL+TCP over IPv4.
+	NetworkTypeSSLTCP4
+
+	// NetworkTypeTCP6 indicates SSL+TCP over IPv6.
+	NetworkTypeSSLTCP6
 )
 
 func (t NetworkType) String() string {
@@ -47,6 +56,10 @@ func (t NetworkType) String() string {
 		return "tcp4"
 	case NetworkTypeTCP6:
 		return "tcp6"
+	case NetworkTypeSSLTCP4:
+		return "ssltcp4"
+	case NetworkTypeSSLTCP6:
+		return "ssltcp6"
 	default:
 		return ErrUnknownType.Error()
 	}
@@ -62,6 +75,11 @@ func (t NetworkType) IsTCP() bool {
 	return t == NetworkTypeTCP4 || t == NetworkTypeTCP6
 }
 
+// IsSSLTCP returns true when network is SSLTCP4 or SSLTCP6.
+func (t NetworkType) IsSSLTCP() bool {
+	return t == NetworkTypeSSLTCP4 || t == NetworkTypeSSLTCP6
+}
+
 // NetworkShort returns the short network description
 func (t NetworkType) NetworkShort() string {
 	switch t {
@@ -69,6 +87,8 @@ func (t NetworkType) NetworkShort() string {
 		return udp
 	case NetworkTypeTCP4, NetworkTypeTCP6:
 		return tcp
+	case NetworkTypeSSLTCP4, NetworkTypeSSLTCP6:
+		return ssltcp
 	default:
 		return ErrUnknownType.Error()
 	}
@@ -79,7 +99,7 @@ func (t NetworkType) IsReliable() bool {
 	switch t {
 	case NetworkTypeUDP4, NetworkTypeUDP6:
 		return false
-	case NetworkTypeTCP4, NetworkTypeTCP6:
+	case NetworkTypeTCP4, NetworkTypeTCP6, NetworkTypeSSLTCP4, NetworkTypeSSLTCP6:
 		return true
 	}
 	return false
@@ -88,9 +108,9 @@ func (t NetworkType) IsReliable() bool {
 // IsIPv4 returns whether the network type is IPv4 or not.
 func (t NetworkType) IsIPv4() bool {
 	switch t {
-	case NetworkTypeUDP4, NetworkTypeTCP4:
+	case NetworkTypeUDP4, NetworkTypeTCP4, NetworkTypeSSLTCP4:
 		return true
-	case NetworkTypeUDP6, NetworkTypeTCP6:
+	case NetworkTypeUDP6, NetworkTypeTCP6, NetworkTypeSSLTCP6:
 		return false
 	}
 	return false
@@ -99,9 +119,9 @@ func (t NetworkType) IsIPv4() bool {
 // IsIPv6 returns whether the network type is IPv6 or not.
 func (t NetworkType) IsIPv6() bool {
 	switch t {
-	case NetworkTypeUDP4, NetworkTypeTCP4:
+	case NetworkTypeUDP4, NetworkTypeTCP4, NetworkTypeSSLTCP4:
 		return false
-	case NetworkTypeUDP6, NetworkTypeTCP6:
+	case NetworkTypeUDP6, NetworkTypeTCP6, NetworkTypeSSLTCP6:
 		return true
 	}
 	return false
@@ -124,6 +144,12 @@ func determineNetworkType(network string, ip net.IP) (NetworkType, error) {
 			return NetworkTypeTCP4, nil
 		}
 		return NetworkTypeTCP6, nil
+
+	case strings.HasPrefix(strings.ToLower(network), ssltcp):
+		if ipv4 {
+			return NetworkTypeSSLTCP4, nil
+		}
+		return NetworkTypeSSLTCP6, nil
 	}
 
 	return NetworkType(0), fmt.Errorf("%w from %s %s", errDetermineNetworkType, network, ip)
