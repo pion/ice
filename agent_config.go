@@ -143,6 +143,7 @@ type AgentConfig struct {
 	// TCPMux will be used for multiplexing incoming TCP connections for ICE TCP.
 	// Currently only passive candidates are supported. This functionality is
 	// experimental and the API might change in the future.
+	// TODO: update these docs when active candidate support begins to work
 	TCPMux TCPMux
 
 	// UDPMux is used for multiplexing multiple incoming UDP connections on a single port
