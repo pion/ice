@@ -154,6 +154,11 @@ type AgentConfig struct {
 	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
 	// dial interface in order to support corporate proxies
 	ProxyDialer proxy.Dialer
+
+	// ActiveTCP will initialize an active TCP host candidate on each local
+	// network interface if set to true.
+	// TODO: should it default to true?
+	ActiveTCP bool
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

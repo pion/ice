@@ -130,6 +130,10 @@ type Agent struct {
 	insecureSkipVerify bool
 
 	proxyDialer proxy.Dialer
+
+	tcpConnections map[string]net.Conn
+
+	tcpActive bool
 }
 
 type task struct {
@@ -357,6 +361,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		_ = a.Close()
 		return nil, err
 	}
+
+	a.tcpActive = config.ActiveTCP
+	a.tcpConnections = map[string]net.Conn{}
 
 	return a, nil
 }
@@ -596,6 +603,7 @@ func (a *Agent) pingAllCandidates() {
 		a.log.Warn("pingAllCandidates called with no candidate pairs. Connection is not possible yet.")
 	}
 
+	// TODO: have to get the remote passive TCP candidate into the checklist
 	for _, p := range a.checklist {
 		if p.state == CandidatePairStateWaiting {
 			p.state = CandidatePairStateInProgress
@@ -801,6 +809,21 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 		for _, localCandidate := range localCandidates {
 			a.addPair(localCandidate, c)
 		}
+	}
+
+	// Open a TCP socket if the remote candidate is passive TCP
+	// TODO: only open the socket if the remote actually exists
+	if c.TCPType() == TCPTypePassive {
+		conn, err := net.Dial("tcp", c.Address())
+		if err != nil {
+			// TODO: what is the typical Pion error handling strategy here?
+			a.log.Warnf("Failed to open a TCP connection to %s: %v", c.Address(), err)
+			return
+		}
+
+		a.tcpConnections[c.Address()] = conn
+		// TODO:
+		// a.addPair(
 	}
 
 	a.requestConnectivityCheck()

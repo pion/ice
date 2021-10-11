@@ -55,14 +55,16 @@ func TestTCPMuxAgent(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	loggerFactory.DefaultLogLevel.Set(logging.LogLevelDebug)
 	activeAgent, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		NetworkTypes:   []NetworkType{NetworkTypeTCP4},
 		LoggerFactory:  loggerFactory,
+		ActiveTCP:      true,
 	})
 	require.NoError(t, err)
 
-	conn, muxedConn := connect(activeAgent, muxedPassiveAgent)
+	conn, muxedConn := connect(muxedPassiveAgent, activeAgent)
 
 	pair := muxedPassiveAgent.getSelectedPair()
 	require.NotNil(t, pair)
@@ -90,4 +92,8 @@ func TestTCPMuxAgent(t *testing.T) {
 	require.NoError(t, conn.Close())
 	require.NoError(t, muxedConn.Close())
 	require.NoError(t, tcpMux.Close())
+}
+
+func ActiveTCPIsOnByDefault(t *testing.T) {
+	require.FailNow(t, "TODO: Should Active TCP ICE be on by default?")
 }

@@ -163,6 +163,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			address = a.mDNSName
 		}
 
+		haveSetupActiveTCP := false
+
 		for network := range networks {
 			var port int
 			var conn net.PacketConn
@@ -171,19 +173,37 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 			switch network {
 			case tcp:
-				// Handle ICE TCP passive mode
-				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
-				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
-				if err != nil {
-					if !errors.Is(err, ErrTCPMuxNotInitialized) {
-						a.log.Warnf("error getting tcp conn by ufrag: %s %s %s\n", network, ip, a.localUfrag)
+				// FIXME: the control flow here is kind of jank
+				if a.tcpActive && !haveSetupActiveTCP {
+					a.log.Debugf("Reserving one local active candidate")
+					// TODO: is the nil here ok? we'll be connecting them to remote
+					// candidates later. Maybe reify that in a struct or
+					// something.
+					a.tcpConnections[ip.String()] = nil
+					haveSetupActiveTCP = true
+					tcpType = TCPTypeActive
+					port = 0 // TODO: not sure what to do here yet
+				} else {
+					// Handle ICE TCP passive mode
+					a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
+					conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
+					if err != nil {
+						if !errors.Is(err, ErrTCPMuxNotInitialized) {
+							a.log.Warnf("error getting tcp conn by ufrag: %s %s %s\n", network, ip, a.localUfrag)
+						}
+
+						if !a.tcpActive {
+							continue
+						}
+
+						tcpType = TCPTypeActive
+
 					}
-					continue
+					port = conn.LocalAddr().(*net.TCPAddr).Port
+					tcpType = TCPTypePassive
+					// is there a way to verify that the listen address is even
+					// accessible from the current interface.
 				}
-				port = conn.LocalAddr().(*net.TCPAddr).Port
-				tcpType = TCPTypePassive
-				// is there a way to verify that the listen address is even
-				// accessible from the current interface.
 			case udp:
 				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {

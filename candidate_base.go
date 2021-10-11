@@ -202,6 +202,7 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
 
+	// TODO: should active TCP candidates even do this? I need to read/ask.
 	go c.recvLoop(initializedCh)
 }
 
@@ -219,6 +220,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	log := c.agent().log
 	buffer := make([]byte, receiveMTU)
 	for {
+		// FIXME: exempt active TCP candidates from this entire function
 		n, srcAddr, err := c.conn.ReadFrom(buffer)
 		if err != nil {
 			return
