@@ -45,24 +45,26 @@ func TestTCPMuxAgent(t *testing.T) {
 
 	require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
-	muxedA, err := NewAgent(&AgentConfig{
+	muxedPassiveAgent, err := NewAgent(&AgentConfig{
 		TCPMux:         tcpMux,
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		NetworkTypes: []NetworkType{
-			NetworkTypeUDP4,
+			NetworkTypeTCP4,
 		},
+		LoggerFactory: loggerFactory,
 	})
 	require.NoError(t, err)
 
-	a, err := NewAgent(&AgentConfig{
+	activeAgent, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeHost},
-		NetworkTypes:   supportedNetworkTypes(),
+		NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+		LoggerFactory:  loggerFactory,
 	})
 	require.NoError(t, err)
 
-	conn, muxedConn := connect(a, muxedA)
+	conn, muxedConn := connect(activeAgent, muxedPassiveAgent)
 
-	pair := muxedA.getSelectedPair()
+	pair := muxedPassiveAgent.getSelectedPair()
 	require.NotNil(t, pair)
 	require.Equal(t, muxPort, pair.Local.Port())
 
