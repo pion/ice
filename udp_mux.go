@@ -42,7 +42,7 @@ const maxAddrSize = 512
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
 	Logger  logging.LeveledLogger
-	UDPConn *net.UDPConn
+	UDPConn net.PacketConn
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
