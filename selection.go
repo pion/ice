@@ -179,6 +179,10 @@ func (s *controlledSelector) ContactCandidates() {
 }
 
 func (s *controlledSelector) PingCandidate(local, remote Candidate) {
+	if remote.Port() == 0 {
+		return
+	}
+
 	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
 		AttrControlled(s.agent.tieBreaker),

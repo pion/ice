@@ -207,6 +207,12 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 }
 
 func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
+
+	if c.tcpType == TCPTypeActive {
+		c.agent().log.Debugf("%s is an active TCP candidate, skipping recvLoop", c.ID())
+		return
+	}
+
 	a := c.agent()
 
 	defer close(c.closedCh)
@@ -271,7 +277,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 // close stops the recvLoop
 func (c *candidateBase) close() error {
 	// If conn has never been started will be nil
-	if c.Done() == nil {
+	if c.Done() == nil || c.TCPType() == TCPTypeActive {
 		return nil
 	}
 

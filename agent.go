@@ -4,7 +4,9 @@ package ice
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -91,6 +93,9 @@ type Agent struct {
 	remoteUfrag      string
 	remotePwd        string
 	remoteCandidates map[NetworkType][]Candidate
+
+	activeTCP         bool
+	tcpReadBufferSize int
 
 	checklist []*CandidatePair
 	selector  pairCandidateSelector
@@ -320,6 +325,13 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		insecureSkipVerify: config.InsecureSkipVerify,
 
 		includeLoopback: config.IncludeLoopback,
+		activeTCP:       config.activeTCP,
+	}
+
+	const defaultTCPReadBufferSize = 8
+	a.tcpReadBufferSize = config.tcpReadBufferSize
+	if a.tcpReadBufferSize == 0 {
+		a.tcpReadBufferSize = defaultTCPReadBufferSize
 	}
 
 	a.tcpMux = config.TCPMux
@@ -656,6 +668,43 @@ func (a *Agent) getBestValidCandidatePair() *CandidatePair {
 }
 
 func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
+	if local.TCPType() == TCPTypeActive && remote.TCPType() == TCPTypePassive {
+		a.log.Debugf("artur, addPair: local %s, remote %s", local, remote)
+		addressToConnect := remote.Address() + ":" + fmt.Sprint(remote.Port())
+		a.log.Debugf("artur, addressToConnect %s", addressToConnect)
+
+		// connect
+		conn, err := net.Dial("tcp", addressToConnect)
+		if err != nil {
+			a.log.Errorf("Failed to dial TCP address %s: %v", addressToConnect, err)
+			return nil
+		}
+		a.log.Debugf("artur, socket connected, local %s, remote %s", conn.LocalAddr(), conn.RemoteAddr())
+
+		// create PacketCon from tcp connection
+		packetConn := newTCPPacketConn(tcpPacketParams{
+			ReadBuffer: a.tcpReadBufferSize,
+			LocalAddr:  conn.LocalAddr(),
+			Logger:     a.log,
+		})
+
+		if err = packetConn.AddConn(conn, nil); err != nil {
+			a.log.Errorf("Failed to add TCP connection: %v", err)
+			return nil
+		}
+
+		// updating local candidate with its real local port
+		localPort, err := strconv.Atoi(strings.Split(conn.LocalAddr().String(), ":")[1])
+		if err != nil {
+			panic(err)
+		}
+
+		localCandidateHost := local.(*CandidateHost)
+		localCandidateHost.port = localPort // FIXME: this causes a data race with candidateBase.Port() artur
+
+		local.start(a, packetConn, a.startedCh)
+	}
+
 	p := newCandidatePair(local, remote, a.isControlling)
 	a.checklist = append(a.checklist, p)
 	return p
@@ -722,14 +771,14 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 		return nil
 	}
 
-	// cannot check for network yet because it might not be applied
-	// when mDNS hostname is used.
-	if c.TCPType() == TCPTypeActive {
-		// TCP Candidates with TCP type active will probe server passive ones, so
-		// no need to do anything with them.
-		a.log.Infof("Ignoring remote candidate with tcpType active: %s", c)
-		return nil
-	}
+	// // cannot check for network yet because it might not be applied
+	// // when mDNS hostname is used.
+	// if c.TCPType() == TCPTypeActive {
+	// 	// TCP Candidates with TCP type active will probe server passive ones, so
+	// 	// no need to do anything with them.
+	// 	a.log.Infof("Ignoring remote candidate with tcpType active: %s", c)
+	// 	return nil
+	// }
 
 	// If we have a mDNS Candidate lets fully resolve it before adding it locally
 	if c.Type() == CandidateTypeHost && strings.HasSuffix(c.Address(), ".local") {
@@ -832,7 +881,9 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 			}
 		}
 
-		c.start(a, candidateConn, a.startedCh)
+		if !a.activeTCP {
+			c.start(a, candidateConn, a.startedCh)
+		}
 
 		set = append(set, c)
 		a.localCandidates[c.NetworkType()] = set
@@ -960,7 +1011,14 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 
 	set := a.remoteCandidates[networkType]
 	for _, c := range set {
-		if c.Address() == ip.String() && c.Port() == port {
+		if c.Address() == ip.String() && c.TCPType() == TCPTypeActive && c.Port() == 0 {
+			// remote active TCP candidate, locally port was zero ()
+			// change port to match remote candidate
+			candidateRemote := c.(*CandidateHost)
+			candidateRemote.port = port
+			candidateRemote.resolvedAddr = createAddr(networkType, ip, port)
+			return c
+		} else if c.Address() == ip.String() && c.Port() == port {
 			return c
 		}
 	}
@@ -1091,7 +1149,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			return
 		}
 
-		if remoteCandidate == nil {
+		if remoteCandidate == nil && local.TCPType() != TCPTypePassive {
 			ip, port, networkType, ok := parseAddr(remote)
 			if !ok {
 				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate")

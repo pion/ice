@@ -47,6 +47,11 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	}
 
 	if !strings.HasSuffix(config.Address, ".local") {
+		if config.TCPType == TCPTypeActive {
+			c.candidateBase.networkType = NetworkTypeTCP4
+			return c, nil
+		}
+
 		ip := net.ParseIP(config.Address)
 		if ip == nil {
 			return nil, ErrAddressParseFailed
