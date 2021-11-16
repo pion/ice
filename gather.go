@@ -229,57 +229,52 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 		return errUDPMuxDisabled
 	}
 
-	// find the IP address to advertise
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
-	}
-
-	var candidateIP net.IP
-	if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-		for _, ip := range localIPs {
-			if candidateIP, err = a.extIPMapper.findExternalIP(ip.String()); err == nil {
-				// ok with first mapped IP
-				break
-			} else {
-				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", ip.String())
-			}
-		}
-	}
-
-	if candidateIP == nil && len(localIPs) > 0 {
-		candidateIP = localIPs[0]
-	}
-	if candidateIP == nil {
+	case len(localIPs) == 0:
 		return errCandidateIPNotFound
 	}
 
-	conn, err := a.udpMux.GetConn(a.localUfrag)
-	if err != nil {
-		return err
-	}
-	port := conn.LocalAddr().(*net.UDPAddr).Port
-
-	hostConfig := CandidateHostConfig{
-		Network:   udp,
-		Address:   candidateIP.String(),
-		Port:      port,
-		Component: ComponentRTP,
-	}
-
-	c, err := NewCandidateHost(&hostConfig)
-	if err != nil {
-		closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
-		// already logged error
-		return nil
-	}
-
-	if err := a.addCandidate(ctx, c, conn); err != nil {
-		if closeErr := c.close(); closeErr != nil {
-			a.log.Warnf("Failed to close candidate: %v", closeErr)
+	for _, candidateIP := range localIPs {
+		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+			if mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String()); err != nil {
+				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
+				continue
+			} else {
+				candidateIP = mappedIP
+			}
 		}
-		return err
+
+		conn, err := a.udpMux.GetConn(a.localUfrag)
+		if err != nil {
+			return err
+		}
+		port := conn.LocalAddr().(*net.UDPAddr).Port
+
+		hostConfig := CandidateHostConfig{
+			Network:   udp,
+			Address:   candidateIP.String(),
+			Port:      port,
+			Component: ComponentRTP,
+		}
+
+		c, err := NewCandidateHost(&hostConfig)
+		if err != nil {
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
+			// already logged error
+			return nil
+		}
+
+		if err := a.addCandidate(ctx, c, conn); err != nil {
+			if closeErr := c.close(); closeErr != nil {
+				a.log.Warnf("Failed to close candidate: %v", closeErr)
+			}
+			return err
+		}
 	}
+
 	return nil
 }
 
