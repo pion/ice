@@ -122,9 +122,10 @@ type Agent struct {
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
-	net    *vnet.Net
-	tcpMux TCPMux
-	udpMux UDPMux
+	net         *vnet.Net
+	tcpMux      TCPMux
+	udpMux      UDPMux
+	udpMuxSrflx UDPMux
 
 	interfaceFilter func(string) bool
 
@@ -319,6 +320,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		a.tcpMux = newInvalidTCPMux()
 	}
 	a.udpMux = config.UDPMux
+	a.udpMuxSrflx = config.UDPMuxSrflx
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -892,6 +894,9 @@ func (a *Agent) removeUfragFromMux() {
 	if a.udpMux != nil {
 		a.udpMux.RemoveConnByUfrag(a.localUfrag)
 	}
+	if a.udpMuxSrflx != nil {
+		a.udpMuxSrflx.RemoveConnByUfrag(a.localUfrag)
+	}
 }
 
 // Close cleans up the Agent
@@ -905,7 +910,13 @@ func (a *Agent) Close() error {
 	})
 	a.err.Store(ErrClosed)
 
-	a.removeUfragFromMux()
+	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+	if a.udpMux != nil {
+		a.udpMux.RemoveConnByUfrag(a.localUfrag)
+	}
+	if a.udpMuxSrflx != nil {
+		a.udpMuxSrflx.RemoveConnByUfrag(a.localUfrag)
+	}
 
 	close(a.done)
 	<-a.taskLoopDone
