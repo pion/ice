@@ -292,16 +292,26 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 		go func() {
 			defer wg.Done()
 
-			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
-			if err != nil {
-				a.log.Warnf("Failed to listen %s: %v\n", network, err)
-				return
-			}
+			var conn net.PacketConn
+			var err error
 
+			if a.udpMux != nil {
+				conn, err = a.udpMux.GetConn(a.localUfrag)
+				if err != nil {
+					a.log.Warnf("Failed to listen for %s: %v\n", network, err)
+					return
+				}
+			} else {
+				conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+				if err != nil {
+					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", network, err))
+					return
+				}
+			}
 			laddr := conn.LocalAddr().(*net.UDPAddr)
 			mappedIP, err := a.extIPMapper.findExternalIP(laddr.IP.String())
 			if err != nil {
-				closeConnAndLog(conn, a.log, fmt.Sprintf("1:1 NAT mapping is enabled but no external IP is found for %s\n", laddr.IP.String()))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("1:1 NAT mapping is enabled but no external IP is found for %s\n", laddr.IP.String()))
 				return
 			}
 
@@ -315,7 +325,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 			}
 			c, err := NewCandidateServerReflexive(&srflxConfig)
 			if err != nil {
-				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v\n",
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v\n",
 					network,
 					mappedIP.String(),
 					laddr.Port,
@@ -347,22 +357,31 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 			go func(url URL, network string) {
 				defer wg.Done()
 
+				var conn net.PacketConn
+
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
 					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
 					return
 				}
-
-				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
-				if err != nil {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
-					return
+				if a.udpMux != nil {
+					conn, err = a.udpMux.GetConn(a.localUfrag)
+					if err != nil {
+						a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
+						return
+					}
+				} else {
+					conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
+					if err != nil {
+						closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
+						return
+					}
 				}
 
 				xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
 				if err != nil {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("could not get server reflexive address %s %s: %v\n", network, url, err))
+					closeConnAndLog(nil, a.log, fmt.Sprintf("could not get server reflexive address %s %s: %v\n", network, url, err))
 					return
 				}
 
@@ -380,7 +399,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 				}
 				c, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err))
+					closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err))
 					return
 				}
 
@@ -426,9 +445,16 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 			switch {
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURN:
-				if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
-					a.log.Warnf("Failed to listen %s: %v\n", network, err)
-					return
+				if a.udpMux != nil {
+					locConn, err = a.udpMux.GetConn(a.localUfrag)
+					if err != nil {
+						a.log.Warnf("Failed to listen %s: %v\n", network, err)
+					}
+				} else {
+					if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
+						a.log.Warnf("Failed to listen %s: %v\n", network, err)
+						return
+					}
 				}
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
@@ -514,20 +540,20 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				Net:            a.net,
 			})
 			if err != nil {
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to build new turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to build new turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
 			if err = client.Listen(); err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to listen on turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to listen on turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
 			relayConn, err := client.Allocate()
 			if err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to allocate on turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to allocate on turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
@@ -555,7 +581,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayConnClose()
 
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to create relay candidate: %s %s: %v\n", network, raddr.String(), err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to create relay candidate: %s %s: %v\n", network, raddr.String(), err))
 				return
 			}
 
