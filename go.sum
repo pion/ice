@@ -7,8 +7,8 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/pion/dtls/v2 v2.0.11 h1:kUT7LwOWFh/g+pXCg35+VeSFGG2/FmD9pDW/zz06/3g=
-github.com/pion/dtls/v2 v2.0.11/go.mod h1:5Pe3QJI0Ajsx+uCfxREeewGFlKYBzLrXe9ku7Y0oRXM=
+github.com/pion/dtls/v2 v2.0.12 h1:QMSvNht7FM/XDXij3Ic90SCbl5yL7kppeI4ghfF4in8=
+github.com/pion/dtls/v2 v2.0.12/go.mod h1:5Pe3QJI0Ajsx+uCfxREeewGFlKYBzLrXe9ku7Y0oRXM=
 github.com/pion/logging v0.2.2 h1:M9+AIj/+pxNsDfAT64+MAVgJO0rsyLnoJKCqf//DoeY=
 github.com/pion/logging v0.2.2/go.mod h1:k0/tDVsRCX2Mb2ZEmTqNa7CWsQPc+YYCB7Q+5pahoms=
 github.com/pion/mdns v0.0.5 h1:Q2oj/JB3NqfzY9xGZ1fPzZzK7sDSD8rZPOvcIQ10BCw=
