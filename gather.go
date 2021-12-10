@@ -111,6 +111,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 			wg.Add(1)
 			go func() {
 				a.gatherCandidatesRelay(ctx, a.urls)
+
 				wg.Done()
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
@@ -445,17 +446,17 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 			switch {
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURN:
-				//if a.udpMux != nil {
-				//	locConn, err = a.udpMux.GetConn(a.localUfrag)
-				//	if err != nil {
-				//		a.log.Warnf("Failed to listen %s: %v\n", network, err)
-				//	}
-				//} else {
-				if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
-					a.log.Warnf("Failed to listen %s: %v\n", network, err)
-					return
+				if a.udpMux != nil {
+					locConn, err = a.udpMux.GetConn(a.localUfrag)
+					if err != nil {
+						a.log.Warnf("Failed to listen %s: %v\n", network, err)
+					}
+				} else {
+					if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
+						a.log.Warnf("Failed to listen %s: %v\n", network, err)
+						return
+					}
 				}
-				//}
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
 				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
@@ -540,20 +541,20 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				Net:            a.net,
 			})
 			if err != nil {
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to build new turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to build new turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
 			if err = client.Listen(); err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to listen on turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to listen on turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
 			relayConn, err := client.Allocate()
 			if err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to allocate on turn.Client %s %s\n", TURNServerAddr, err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to allocate on turn.Client %s %s\n", TURNServerAddr, err))
 				return
 			}
 
@@ -581,7 +582,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayConnClose()
 
 				client.Close()
-				closeConnAndLog(locConn, a.log, fmt.Sprintf("Failed to create relay candidate: %s %s: %v\n", network, raddr.String(), err))
+				closeConnAndLog(nil, a.log, fmt.Sprintf("Failed to create relay candidate: %s %s: %v\n", network, raddr.String(), err))
 				return
 			}
 
