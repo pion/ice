@@ -1,3 +1,4 @@
+//go:build !js
 // +build !js
 
 package ice
@@ -408,10 +409,10 @@ func TestCloseConnLog(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
 
-	closeConnAndLog(nil, a.log, "normal nil")
+	closeConnAndLog(nil, false, a.log, "normal nil")
 
 	var nc *net.UDPConn
-	closeConnAndLog(nc, a.log, "nil ptr")
+	closeConnAndLog(nc, false, a.log, "nil ptr")
 
 	assert.NoError(t, a.Close())
 }
