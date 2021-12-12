@@ -367,18 +367,15 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 					return
 				}
 				isUDPMux := a.udpMux != nil
-				if isUDPMux {
+				switch isUDPMux {
+				case true:
 					conn, err = a.udpMux.GetConn(a.localUfrag)
-					if err != nil {
-						a.log.Warnf("Failed to listen for %s: %v\n", serverAddr.String(), err)
-						return
-					}
-				} else {
+				default:
 					conn, err = listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
-					if err != nil {
-						closeConnAndLog(conn, false, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
-						return
-					}
+				}
+				if err != nil {
+					closeConnAndLog(conn, false, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
+					return
 				}
 
 				xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
@@ -454,11 +451,9 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					if err != nil {
 						a.log.Warnf("Failed to listen %s: %v\n", network, err)
 					}
-				} else {
-					if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
-						a.log.Warnf("Failed to listen %s: %v\n", network, err)
-						return
-					}
+				} else if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
+					a.log.Warnf("Failed to listen %s: %v\n", network, err)
+					return
 				}
 
 				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
