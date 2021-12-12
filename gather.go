@@ -263,7 +263,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 
 		c, err := NewCandidateHost(&hostConfig)
 		if err != nil {
-			closeConnAndLog(conn, false, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
+			closeConnAndLog(conn, true, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
 			// already logged error
 			return nil
 		}
