@@ -307,6 +307,7 @@ func TestCandidateMarshal(t *testing.T) {
 		{nil, "4207374051 1 udp INVALID 10.0.75.1 53634 typ host", true},
 		{nil, "4207374051 INVALID udp 2130706431 10.0.75.1 INVALID typ host", true},
 		{nil, "4207374051 1 udp 2130706431 10.0.75.1 53634 typ INVALID", true},
+		{nil, "4207374051 1 INVALID 2130706431 10.0.75.1 53634 typ host", true},
 	} {
 		actualCandidate, err := UnmarshalCandidate(test.marshaled)
 		if test.expectError {

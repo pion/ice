@@ -126,5 +126,5 @@ func determineNetworkType(network string, ip net.IP) (NetworkType, error) {
 		return NetworkTypeTCP6, nil
 	}
 
-	return NetworkType(0), fmt.Errorf("%w from %s %s", errDetermineNetworkType, network, ip)
+	return NetworkType(0), fmt.Errorf("%w from %s %s", ErrDetermineNetworkType, network, ip)
 }
