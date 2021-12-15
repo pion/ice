@@ -496,5 +496,5 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	default:
 	}
 
-	return nil, fmt.Errorf("%w (%s)", errUnknownCandidateTyp, typ)
+	return nil, fmt.Errorf("%w (%s)", ErrUnknownCandidateTyp, typ)
 }

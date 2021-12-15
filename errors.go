@@ -109,6 +109,9 @@ var (
 	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
 	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 
+	// ErrUnknownCandidateTyp indicates that a candidate had a unknown type value.
+	ErrUnknownCandidateTyp = errors.New("unknown candidate typ")
+
 	errSendPacket                    = errors.New("failed to send packet")
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errParseComponent                = errors.New("could not parse component")
@@ -116,7 +119,6 @@ var (
 	errParsePort                     = errors.New("could not parse port")
 	errParseRelatedAddr              = errors.New("could not parse related addresses")
 	errParseTypType                  = errors.New("could not parse typtype")
-	errUnknownCandidateTyp           = errors.New("unknown candidate typ")
 	errGetXorMappedAddrResponse      = errors.New("failed to get XOR-MAPPED-ADDRESS response")
 	errConnectionAddrAlreadyExist    = errors.New("connection with same remote address already exists")
 	errReadingStreamingPacket        = errors.New("error reading streaming packet")
