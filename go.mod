@@ -10,7 +10,7 @@ require (
 	github.com/pion/mdns v0.0.5
 	github.com/pion/randutil v0.1.0
 	github.com/pion/stun v0.3.5
-	github.com/pion/transport v0.12.3
+	github.com/pion/transport v0.13.0
 	github.com/pion/turn/v2 v2.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20211201190559-0a0e4e1bb54c
