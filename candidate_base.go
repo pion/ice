@@ -393,8 +393,13 @@ func (c *candidateBase) copy() (Candidate, error) {
 
 // Marshal returns the string representation of the ICECandidate
 func (c *candidateBase) Marshal() string {
-	val := fmt.Sprintf("%s %d %s %d %s %d typ %s",
-		c.Foundation(),
+	val := c.Foundation()
+	if val == " " {
+		val = ""
+	}
+
+	val = fmt.Sprintf("%s %d %s %d %s %d typ %s",
+		val,
 		c.Component(),
 		c.NetworkType().NetworkShort(),
 		c.Priority(),
@@ -419,7 +424,11 @@ func (c *candidateBase) Marshal() string {
 // UnmarshalCandidate creates a Candidate from its string representation
 func UnmarshalCandidate(raw string) (Candidate, error) {
 	split := strings.Fields(raw)
-	if len(split) < 8 {
+	switch {
+	// Foundation not specified: not RFC 8445 compliant but seen in the wild
+	case len(split) == 7 && raw[0] == ' ':
+		split = append([]string{" "}, split...)
+	case len(split) < 8:
 		return nil, fmt.Errorf("%w (%d)", errAttributeTooShortICECandidate, len(split))
 	}
 

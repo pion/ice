@@ -294,6 +294,22 @@ func TestCandidateMarshal(t *testing.T) {
 			},
 			"1380287402 1 udp 2130706431 e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local 60542 typ host", false,
 		},
+		// Missing Foundation
+		{
+			&CandidateHost{
+				candidateBase{
+					networkType:        NetworkTypeUDP4,
+					candidateType:      CandidateTypeHost,
+					address:            "127.0.0.1",
+					port:               80,
+					priorityOverride:   500,
+					foundationOverride: " ",
+				},
+				"",
+			},
+			" 1 udp 500 127.0.0.1 80 typ host",
+			false,
+		},
 
 		// Invalid candidates
 		{nil, "", true},
@@ -320,4 +336,11 @@ func TestCandidateMarshal(t *testing.T) {
 		assert.True(t, test.candidate.Equal(actualCandidate))
 		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
 	}
+}
+
+func TestMissingCandidateFoundation(t *testing.T) {
+	// " 1 udp 2113939711 2607:f8b0:400e:c0a::7f 19305 typ host generation 0"
+	// " 1 tcp 2113939710 2607:f8b0:400e:c0a::7f 19305 typ host tcptype passive generation 0"
+	// " 1 udp 2113932031 172.253.117.127 19305 typ host generation 0"
+	// " 1 tcp 2113932030 172.253.117.127 19305 typ host tcptype passive generation 0"
 }
