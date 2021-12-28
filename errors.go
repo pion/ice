@@ -109,6 +109,12 @@ var (
 	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
 	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 
+	// ErrUnknownCandidateTyp indicates that a candidate had a unknown type value.
+	ErrUnknownCandidateTyp = errors.New("unknown candidate typ")
+
+	// ErrDetermineNetworkType indicates that the NetworkType was not able to be parsed
+	ErrDetermineNetworkType = errors.New("unable to determine networkType")
+
 	errSendPacket                    = errors.New("failed to send packet")
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errParseComponent                = errors.New("could not parse component")
@@ -116,13 +122,11 @@ var (
 	errParsePort                     = errors.New("could not parse port")
 	errParseRelatedAddr              = errors.New("could not parse related addresses")
 	errParseTypType                  = errors.New("could not parse typtype")
-	errUnknownCandidateTyp           = errors.New("unknown candidate typ")
 	errGetXorMappedAddrResponse      = errors.New("failed to get XOR-MAPPED-ADDRESS response")
 	errConnectionAddrAlreadyExist    = errors.New("connection with same remote address already exists")
 	errReadingStreamingPacket        = errors.New("error reading streaming packet")
 	errWriting                       = errors.New("error writing to")
 	errClosingConnection             = errors.New("error closing connection")
-	errDetermineNetworkType          = errors.New("unable to determine networkType")
 	errMissingProtocolScheme         = errors.New("missing protocol scheme")
 	errTooManyColonsAddr             = errors.New("too many colons in address")
 	errRead                          = errors.New("unexpected error trying to read")
