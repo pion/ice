@@ -893,10 +893,10 @@ func (a *Agent) Close() error {
 	done := make(chan struct{})
 
 	a.afterRun(func(context.Context) {
+		a.gatherCandidateCancel()
 		close(done)
 	})
 
-	a.gatherCandidateCancel()
 	a.err.Store(ErrClosed)
 
 	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
