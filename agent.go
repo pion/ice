@@ -884,6 +884,13 @@ func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) 
 	return
 }
 
+func (a *Agent) removeUfragFromMux() {
+	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+	if a.udpMux != nil {
+		a.udpMux.RemoveConnByUfrag(a.localUfrag)
+	}
+}
+
 // Close cleans up the Agent
 func (a *Agent) Close() error {
 	if err := a.ok(); err != nil {
@@ -899,10 +906,7 @@ func (a *Agent) Close() error {
 
 	a.err.Store(ErrClosed)
 
-	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
-	if a.udpMux != nil {
-		a.udpMux.RemoveConnByUfrag(a.localUfrag)
-	}
+	a.removeUfragFromMux()
 
 	close(a.done)
 
@@ -1216,6 +1220,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		}
 
 		// Clear all agent needed to take back to fresh state
+		a.removeUfragFromMux()
 		agent.localUfrag = ufrag
 		agent.localPwd = pwd
 		agent.remoteUfrag = ""
