@@ -109,8 +109,9 @@ type Agent struct {
 	extIPMapper *externalIPMapper
 
 	// State for closing
-	done chan struct{}
-	err  atomicError
+	done         chan struct{}
+	taskLoopDone chan struct{}
+	err          atomicError
 
 	gatherCandidateCancel func()
 
@@ -213,6 +214,7 @@ func (a *Agent) taskLoop() {
 		close(a.chanState)
 		close(a.chanCandidate)
 		close(a.chanCandidatePair)
+		close(a.taskLoopDone)
 	}()
 
 	for {
@@ -289,6 +291,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		onConnected:       make(chan struct{}),
 		buffer:            packetio.NewBuffer(),
 		done:              make(chan struct{}),
+		taskLoopDone:      make(chan struct{}),
 		startedCh:         startedCtx.Done(),
 		startedFn:         startedFn,
 		portmin:           config.PortMin,
@@ -421,12 +424,12 @@ func (a *Agent) startOnConnectionStateChangeRoutine() {
 					}
 					return
 				}
-				a.onConnectionStateChange(s)
+				go a.onConnectionStateChange(s)
 
 			case c, isOpen := <-a.chanCandidate:
 				if !isOpen {
 					for s := range a.chanState {
-						a.onConnectionStateChange(s)
+						go a.onConnectionStateChange(s)
 					}
 					return
 				}
@@ -897,20 +900,15 @@ func (a *Agent) Close() error {
 		return err
 	}
 
-	done := make(chan struct{})
-
 	a.afterRun(func(context.Context) {
 		a.gatherCandidateCancel()
-		close(done)
 	})
-
 	a.err.Store(ErrClosed)
 
 	a.removeUfragFromMux()
 
 	close(a.done)
-
-	<-done
+	<-a.taskLoopDone
 	return nil
 }
 
