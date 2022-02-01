@@ -337,10 +337,3 @@ func TestCandidateMarshal(t *testing.T) {
 		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
 	}
 }
-
-func TestMissingCandidateFoundation(t *testing.T) {
-	// " 1 udp 2113939711 2607:f8b0:400e:c0a::7f 19305 typ host generation 0"
-	// " 1 tcp 2113939710 2607:f8b0:400e:c0a::7f 19305 typ host tcptype passive generation 0"
-	// " 1 udp 2113932031 172.253.117.127 19305 typ host generation 0"
-	// " 1 tcp 2113932030 172.253.117.127 19305 typ host tcptype passive generation 0"
-}
