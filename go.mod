@@ -13,6 +13,6 @@ require (
 	github.com/pion/transport v0.13.0
 	github.com/pion/turn/v2 v2.0.6
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )
