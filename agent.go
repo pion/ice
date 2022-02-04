@@ -47,6 +47,7 @@ type Agent struct {
 
 	connectionState ConnectionState
 	gatheringState  GatheringState
+	gatheringWait   sync.WaitGroup
 
 	mDNSMode MulticastDNSMode
 	mDNSName string
@@ -909,6 +910,7 @@ func (a *Agent) Close() error {
 
 	close(a.done)
 	<-a.taskLoopDone
+	a.gatheringWait.Wait()
 	return nil
 }
 
@@ -1079,7 +1081,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 		if remoteCandidate == nil {
 			ip, port, networkType, ok := parseAddr(remote)
 			if !ok {
-				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate")
+				a.log.Error("Failed to create parse remote net.Addr when creating remote prflx candidate")
 				return
 			}
 
@@ -1245,6 +1247,9 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 
 func (a *Agent) setGatheringState(newState GatheringState) error {
 	done := make(chan struct{})
+	if newState == GatheringStateComplete {
+		a.gatheringWait.Done()
+	}
 	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		if a.gatheringState != newState && newState == GatheringStateComplete {
 			a.chanCandidate <- nil

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,8 +31,10 @@ func closeConnAndLog(c closeable, log logging.LeveledLogger, msg string) {
 		return
 	}
 
-	log.Warnf(msg)
-	if err := c.Close(); err != nil {
+	if msg != "" {
+		log.Warn(msg)
+	}
+	if err := c.Close(); err != nil && strings.Contains(err.Error(), "use of closed network connection") {
 		log.Warnf("Failed to close conn: %v", err)
 	}
 }
@@ -72,6 +75,7 @@ func (a *Agent) GatherCandidates() error {
 		ctx, cancel := context.WithCancel(ctx)
 		a.gatherCandidateCancel = cancel
 
+		a.gatheringWait.Add(1)
 		go a.gatherCandidates(ctx)
 	}); runErr != nil {
 		return runErr
@@ -91,27 +95,27 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 		case CandidateTypeHost:
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				a.gatherCandidatesLocal(ctx, a.networkTypes)
-				wg.Done()
 			}()
 		case CandidateTypeServerReflexive:
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
-				wg.Done()
 			}()
 			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
 				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
-					wg.Done()
 				}()
 			}
 		case CandidateTypeRelay:
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				a.gatherCandidatesRelay(ctx, a.urls)
-				wg.Done()
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
 		}
@@ -137,7 +141,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	// when UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
 		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
-			a.log.Warnf("could not create host candidate for UDPMux")
+			a.log.Warn("could not create host candidate for UDPMux")
 		}
 		delete(networks, udp)
 	}
@@ -333,7 +337,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -343,24 +347,37 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 		}
 
 		for i := range urls {
-			wg.Add(1)
+			wg.Add(2)
 			go func(url URL, network string) {
 				defer wg.Done()
 
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
+					wg.Done()
 					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
 					return
 				}
 
 				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portmax), int(a.portmin), network, &net.UDPAddr{IP: nil, Port: 0})
 				if err != nil {
+					wg.Done()
 					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
 					return
 				}
 
+				xorDone := make(chan struct{})
+				go func() {
+					defer wg.Done()
+					select {
+					case <-xorDone:
+					case <-ctx.Done():
+						closeConnAndLog(conn, a.log, "")
+					}
+				}()
+
 				xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
+				close(xorDone)
 				if err != nil {
 					closeConnAndLog(conn, a.log, fmt.Sprintf("could not get server reflexive address %s %s: %v\n", network, url, err))
 					return

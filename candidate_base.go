@@ -256,7 +256,7 @@ func handleInboundCandidateMsg(ctx context.Context, c Candidate, buffer []byte, 
 
 	// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
 	if _, err := c.agent().buffer.Write(buffer); err != nil {
-		log.Warnf("failed to write packet")
+		log.Warn("failed to write packet")
 	}
 }
 

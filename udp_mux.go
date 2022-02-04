@@ -228,7 +228,7 @@ func (m *UDPMuxDefault) connWorker() {
 
 		udpAddr, ok := addr.(*net.UDPAddr)
 		if !ok {
-			logger.Errorf("underlying PacketConn did not return a UDPAddr")
+			logger.Error("underlying PacketConn did not return a UDPAddr")
 			return
 		}
 
