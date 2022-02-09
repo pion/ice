@@ -41,7 +41,6 @@ type UDPMuxDefault struct {
 	mu sync.Mutex
 
 	// since we have a shared socket, for srflx candidates it makes sense to have a shared mapped address across all the agents
-	// todo update it periodically
 	// stun.XORMappedAddress indexed by the STUN server addr
 	xorMappedAddr map[string]*xorAddrMap
 }
@@ -238,7 +237,6 @@ func (m *UDPMuxDefault) handleXORMappedResponse(stunAddr *net.UDPAddr, msg *stun
 
 	mappedAddr, ok := m.xorMappedAddr[stunAddr.String()]
 	if !ok {
-		// todo: investigate why remote peers send XORMappedAddr
 		return fmt.Errorf("no address map for %s", stunAddr.String())
 	}
 
