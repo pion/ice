@@ -97,7 +97,11 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 		case CandidateTypeServerReflexive:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
+				if a.udpMuxSrflx != nil {
+					a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes)
+				} else {
+					a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
+				}
 				wg.Done()
 			}()
 			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
@@ -330,6 +334,68 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
 			}
 		}()
+	}
+}
+
+func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	for _, networkType := range networkTypes {
+		if networkType.IsTCP() {
+			continue
+		}
+
+		for i := range urls {
+			wg.Add(1)
+			go func(url URL, network string) {
+				defer wg.Done()
+
+				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
+				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
+				if err != nil {
+					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
+					return
+				}
+
+				xoraddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, stunGatherTimeout)
+				if err != nil {
+					a.log.Warnf("could not get server reflexive address %s %s: %v\n", network, url, err)
+					return
+				}
+
+				conn, err := a.udpMuxSrflx.GetConn(a.localUfrag)
+				if err != nil {
+					a.log.Warnf("could not find local connection in UDPMux %s %s: %v\n", network, url, err)
+					return
+				}
+
+				ip := xoraddr.IP
+				port := xoraddr.Port
+
+				laddr := conn.LocalAddr().(*net.UDPAddr)
+				srflxConfig := CandidateServerReflexiveConfig{
+					Network:   network,
+					Address:   ip.String(),
+					Port:      port,
+					Component: ComponentRTP,
+					RelAddr:   laddr.IP.String(),
+					RelPort:   laddr.Port,
+				}
+				c, err := NewCandidateServerReflexive(&srflxConfig)
+				if err != nil {
+					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v\n", network, ip, port, err))
+					return
+				}
+
+				if err := a.addCandidate(ctx, c, conn); err != nil {
+					if closeErr := c.close(); closeErr != nil {
+						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					}
+					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
+				}
+			}(*urls[i], networkType.String())
+		}
 	}
 }
 
