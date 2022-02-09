@@ -910,13 +910,7 @@ func (a *Agent) Close() error {
 	})
 	a.err.Store(ErrClosed)
 
-	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
-	if a.udpMux != nil {
-		a.udpMux.RemoveConnByUfrag(a.localUfrag)
-	}
-	if a.udpMuxSrflx != nil {
-		a.udpMuxSrflx.RemoveConnByUfrag(a.localUfrag)
-	}
+	a.removeUfragFromMux()
 
 	close(a.done)
 	<-a.taskLoopDone

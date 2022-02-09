@@ -257,11 +257,11 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, n
 	// check that mapped address filled correctly after sent stun
 	udpMux.mu.Lock()
 	mappedAddr, ok := udpMux.xorMappedAddr[remoteConn.LocalAddr().String()]
-	udpMux.mu.Unlock()
 	require.True(t, ok)
 	require.NotNil(t, mappedAddr)
 	require.True(t, mappedAddr.pending())
 	require.False(t, mappedAddr.expired())
+	udpMux.mu.Unlock()
 
 	// clean receiver read buffer
 	buf := make([]byte, receiveMTU)
@@ -289,12 +289,14 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, n
 	require.NoError(t, err)
 	require.NotNil(t, address)
 
+	udpMux.mu.Lock()
 	// check mappedAddr is not pending, we didn't send stun twice
 	require.False(t, mappedAddr.pending())
 
 	// check expiration by TTL
 	time.Sleep(time.Millisecond * 21)
 	require.True(t, mappedAddr.expired())
+	udpMux.mu.Unlock()
 
 	// after expire, we send stun request again
 	// but we not receive response in 5 milliseconds and should get error here

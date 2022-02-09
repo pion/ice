@@ -366,7 +366,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 
 				conn, err := a.udpMuxSrflx.GetConn(a.localUfrag)
 				if err != nil {
-					a.log.Warnf("could not find local connection in UDPMux %s %s: %v\n", network, url, err)
+					a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v\n", network, url, err)
 					return
 				}
 
