@@ -347,6 +347,9 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 		}
 
 		for i := range urls {
+			if !(urls[i].Scheme == SchemeTypeSTUN || urls[i].Scheme == SchemeTypeSTUNS) {
+				continue
+			}
 			wg.Add(1)
 			go func(url URL, network string) {
 				defer wg.Done()
@@ -364,7 +367,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					return
 				}
 
-				conn, err := a.udpMuxSrflx.GetConn(a.localUfrag)
+				conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String())
 				if err != nil {
 					a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v\n", network, url, err)
 					return
