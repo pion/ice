@@ -150,6 +150,12 @@ type AgentConfig struct {
 	// defer to UDPMux for incoming connections
 	UDPMux UDPMux
 
+	// UDPMuxSrflx is used for multiplexing multiple incoming UDP connections of server reflexive candidates
+	// on a single port when this is set, the agent ignores PortMin and PortMax configurations and will
+	// defer to UDPMuxSrflx for incoming connections
+	// It embeds UDPMux to do the actual connection multiplexing
+	UDPMuxSrflx UniversalUDPMux
+
 	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
 	// dial interface in order to support corporate proxies
 	ProxyDialer proxy.Dialer

@@ -135,4 +135,8 @@ var (
 	errICEWriteSTUNMessage           = errors.New("the ICE conn can't write STUN messages")
 	errUDPMuxDisabled                = errors.New("UDPMux is not enabled")
 	errCandidateIPNotFound           = errors.New("could not determine local IP for Mux candidate")
+	errNoXorAddrMapping              = errors.New("no address mapping")
+	errSendSTUNPacket                = errors.New("failed to send STUN packet")
+	errXORMappedAddrTimeout          = errors.New("timeout while waiting for XORMappedAddr")
+	errNotImplemented                = errors.New("not implemented yet")
 )
