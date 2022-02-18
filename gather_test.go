@@ -11,12 +11,14 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/pion/dtls/v2"
 	"github.com/pion/dtls/v2/pkg/crypto/selfsign"
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 	"github.com/pion/transport/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
@@ -483,4 +485,94 @@ func TestTURNProxyDialer(t *testing.T) {
 	<-proxyWasDialed.Done()
 
 	assert.NoError(t, a.Close())
+}
+
+// Assert that UniversalUDPMux is used while gathering when configured in the Agent
+func TestUniversalUDPMuxUsage(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: randomPort(t)})
+	assert.NoError(t, err)
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	udpMuxSrflx := &universalUDPMuxMock{
+		conn: conn,
+	}
+
+	numSTUNS := 3
+	urls := []*URL{}
+	for i := 0; i < numSTUNS; i++ {
+		urls = append(urls, &URL{
+			Scheme: SchemeTypeSTUN,
+			Host:   "127.0.0.1",
+			Port:   3478 + i,
+		})
+	}
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes(),
+		Urls:           urls,
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+		UDPMuxSrflx:    udpMuxSrflx,
+	})
+	assert.NoError(t, err)
+
+	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c == nil {
+			candidateGatheredFunc()
+			return
+		}
+		t.Log(c.NetworkType(), c.Priority(), c)
+	}))
+	assert.NoError(t, a.GatherCandidates())
+
+	<-candidateGathered.Done()
+
+	assert.NoError(t, a.Close())
+	// twice because of 2 STUN servers configured
+	assert.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
+	// one for Restart() when agent has been initialized and one time when Close() the agent
+	assert.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
+	// twice because of 2 STUN servers configured
+	assert.Equal(t, numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
+}
+
+type universalUDPMuxMock struct {
+	UDPMux
+	getXORMappedAddrUsedTimes int
+	removeConnByUfragTimes    int
+	getConnForURLTimes        int
+	mu                        sync.Mutex
+	conn                      *net.UDPConn
+}
+
+func (m *universalUDPMuxMock) GetRelayedAddr(turnAddr net.Addr, deadline time.Duration) (*net.Addr, error) {
+	return nil, errNotImplemented
+}
+
+func (m *universalUDPMuxMock) GetConnForURL(ufrag string, url string) (net.PacketConn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getConnForURLTimes++
+	return m.conn, nil
+}
+
+func (m *universalUDPMuxMock) GetXORMappedAddr(serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getXORMappedAddrUsedTimes++
+	return &stun.XORMappedAddress{IP: net.IP{100, 64, 0, 1}, Port: 77878}, nil
+}
+
+func (m *universalUDPMuxMock) RemoveConnByUfrag(ufrag string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.removeConnByUfragTimes++
 }
