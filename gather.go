@@ -177,7 +177,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			case tcp:
 				// Handle ICE TCP passive mode
 				a.log.Debugf("GetConn by ufrag: %s\n", a.localUfrag)
-				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag)
+				conn, err = a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil)
 				if err != nil {
 					if !errors.Is(err, ErrTCPMuxNotInitialized) {
 						a.log.Warnf("error getting tcp conn by ufrag: %s %s %s\n", network, ip, a.localUfrag)
