@@ -55,7 +55,7 @@ func TestTCPMux_Recv(t *testing.T) {
 	n, err := writeStreamingPacket(conn, msg.Raw)
 	require.NoError(t, err, "error writing tcp stun packet")
 
-	pktConn, err := tcpMux.GetConnByUfrag("myufrag")
+	pktConn, err := tcpMux.GetConnByUfrag("myufrag", false)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
@@ -90,12 +90,12 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 		ReadBufferSize: 20,
 	})
 
-	_, err = tcpMux.GetConnByUfrag("test")
+	_, err = tcpMux.GetConnByUfrag("test", false)
 	require.NoError(t, err, "error getting conn by ufrag")
 
 	require.NoError(t, tcpMux.Close(), "error closing tcpMux")
 
-	conn, err := tcpMux.GetConnByUfrag("test")
+	conn, err := tcpMux.GetConnByUfrag("test", false)
 	assert.Nil(t, conn, "should receive nil because mux is closed")
 	assert.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }
