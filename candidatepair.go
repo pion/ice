@@ -18,12 +18,13 @@ func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair 
 // CandidatePair is a combination of a
 // local and remote candidate
 type CandidatePair struct {
-	iceRoleControlling  bool
-	Remote              Candidate
-	Local               Candidate
-	bindingRequestCount uint16
-	state               CandidatePairState
-	nominated           bool
+	iceRoleControlling       bool
+	Remote                   Candidate
+	Local                    Candidate
+	bindingRequestCount      uint16
+	state                    CandidatePairState
+	nominated                bool
+	nominateOnBindingSuccess bool
 }
 
 func (p *CandidatePair) String() string {
