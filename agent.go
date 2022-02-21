@@ -114,6 +114,7 @@ type Agent struct {
 	err          atomicError
 
 	gatherCandidateCancel func()
+	gatherCandidateDone   chan struct{}
 
 	chanCandidate     chan Candidate
 	chanCandidatePair chan *CandidatePair
@@ -907,6 +908,9 @@ func (a *Agent) Close() error {
 
 	a.afterRun(func(context.Context) {
 		a.gatherCandidateCancel()
+		if a.gatherCandidateDone != nil {
+			<-a.gatherCandidateDone
+		}
 	})
 	a.err.Store(ErrClosed)
 
