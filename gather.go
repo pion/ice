@@ -71,6 +71,7 @@ func (a *Agent) GatherCandidates() error {
 		a.gatherCandidateCancel() // Cancel previous gathering routine
 		ctx, cancel := context.WithCancel(ctx)
 		a.gatherCandidateCancel = cancel
+		a.gatherCandidateDone = make(chan struct{})
 
 		go a.gatherCandidates(ctx)
 	}); runErr != nil {
@@ -80,6 +81,7 @@ func (a *Agent) GatherCandidates() error {
 }
 
 func (a *Agent) gatherCandidates(ctx context.Context) {
+	defer close(a.gatherCandidateDone)
 	if err := a.setGatheringState(GatheringStateGathering); err != nil {
 		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
 		return
@@ -120,6 +122,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
 		}
 	}
+
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
 	wg.Wait()
 
