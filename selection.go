@@ -229,13 +229,17 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 
 	p.state = CandidatePairStateSucceeded
 	s.log.Tracef("Found valid candidate pair: %s", p)
+	if p.nominateOnBindingSuccess {
+		if selectedPair := s.agent.getSelectedPair(); selectedPair == nil {
+			s.agent.setSelectedPair(p)
+		}
+	}
 }
 
 func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
 	useCandidate := m.Contains(stun.AttrUseCandidate)
 
 	p := s.agent.findPair(local, remote)
-
 	if p == nil {
 		p = s.agent.addPair(local, remote)
 	}
@@ -251,7 +255,6 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 			if selectedPair := s.agent.getSelectedPair(); selectedPair == nil {
 				s.agent.setSelectedPair(p)
 			}
-			s.agent.sendBindingSuccess(m, local, remote)
 		} else {
 			// If the received Binding request triggered a new check to be
 			// enqueued in the triggered-check queue (Section 7.3.1.4), once the
@@ -261,12 +264,12 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 			// MUST remove the candidate pair from the valid list, set the
 			// candidate pair state to Failed, and set the checklist state to
 			// Failed.
-			s.PingCandidate(local, remote)
+			p.nominateOnBindingSuccess = true
 		}
-	} else {
-		s.agent.sendBindingSuccess(m, local, remote)
-		s.PingCandidate(local, remote)
 	}
+
+	s.agent.sendBindingSuccess(m, local, remote)
+	s.PingCandidate(local, remote)
 }
 
 type liteSelector struct {
