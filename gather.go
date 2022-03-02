@@ -236,7 +236,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 		return errUDPMuxDisabled
 	}
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.networkTypes)
 	switch {
 	case err != nil:
 		return err
@@ -254,7 +254,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 			}
 		}
 
-		conn, err := a.udpMux.GetConn(a.localUfrag)
+		conn, err := a.udpMux.GetConn(a.localUfrag, candidateIP.To4() == nil)
 		if err != nil {
 			return err
 		}
@@ -351,7 +351,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 
 		for i := range urls {
 			wg.Add(1)
-			go func(url URL, network string) {
+			go func(url URL, network string, isIPv6 bool) {
 				defer wg.Done()
 
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
@@ -367,7 +367,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					return
 				}
 
-				conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String())
+				conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), isIPv6)
 				if err != nil {
 					a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v\n", network, url, err)
 					return
@@ -397,7 +397,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					}
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v\n", err)
 				}
-			}(*urls[i], networkType.String())
+			}(*urls[i], networkType.String(), networkType.IsIPv6())
 		}
 	}
 }

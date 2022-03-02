@@ -14,7 +14,7 @@ import (
 // UDPMux allows multiple connections to go over a single UDP port
 type UDPMux interface {
 	io.Closer
-	GetConn(ufrag string) (net.PacketConn, error)
+	GetConn(ufrag string, isIPv6 bool) (net.PacketConn, error)
 	RemoveConnByUfrag(ufrag string)
 }
 
@@ -25,8 +25,8 @@ type UDPMuxDefault struct {
 	closedChan chan struct{}
 	closeOnce  sync.Once
 
-	// conns is a map of all udpMuxedConn indexed by ufrag|network|candidateType
-	conns map[string]*udpMuxedConn
+	// connsIPv4 and connsIPv6 are maps of all udpMuxedConn indexed by ufrag|network|candidateType
+	connsIPv4, connsIPv6 map[string]*udpMuxedConn
 
 	addressMapMu sync.RWMutex
 	addressMap   map[string]*udpMuxedConn
@@ -54,7 +54,8 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	m := &UDPMuxDefault{
 		addressMap: map[string]*udpMuxedConn{},
 		params:     params,
-		conns:      make(map[string]*udpMuxedConn),
+		connsIPv4:  make(map[string]*udpMuxedConn),
+		connsIPv6:  make(map[string]*udpMuxedConn),
 		closedChan: make(chan struct{}, 1),
 		pool: &sync.Pool{
 			New: func() interface{} {
@@ -76,7 +77,7 @@ func (m *UDPMuxDefault) LocalAddr() net.Addr {
 
 // GetConn returns a PacketConn given the connection's ufrag and network
 // creates the connection if an existing one can't be found
-func (m *UDPMuxDefault) GetConn(ufrag string) (net.PacketConn, error) {
+func (m *UDPMuxDefault) GetConn(ufrag string, isIPv6 bool) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -84,8 +85,8 @@ func (m *UDPMuxDefault) GetConn(ufrag string) (net.PacketConn, error) {
 		return nil, io.ErrClosedPipe
 	}
 
-	if c, ok := m.conns[ufrag]; ok {
-		return c, nil
+	if conn, ok := m.getConn(ufrag, isIPv6); ok {
+		return conn, nil
 	}
 
 	c := m.createMuxedConn(ufrag)
@@ -93,26 +94,30 @@ func (m *UDPMuxDefault) GetConn(ufrag string) (net.PacketConn, error) {
 		<-c.CloseChannel()
 		m.removeConn(ufrag)
 	}()
-	m.conns[ufrag] = c
+
+	if isIPv6 {
+		m.connsIPv6[ufrag] = c
+	} else {
+		m.connsIPv4[ufrag] = c
+	}
+
 	return c, nil
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection
 func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
-	m.mu.Lock()
-	removedConns := make([]*udpMuxedConn, 0)
-	for key := range m.conns {
-		if key != ufrag {
-			continue
-		}
+	removedConns := make([]*udpMuxedConn, 0, 2)
 
-		c := m.conns[key]
-		delete(m.conns, key)
-		if c != nil {
-			removedConns = append(removedConns, c)
-		}
+	// Keep lock section small to avoid deadlock with conn lock
+	m.mu.Lock()
+	if c, ok := m.connsIPv4[ufrag]; ok {
+		delete(m.connsIPv4, ufrag)
+		removedConns = append(removedConns, c)
 	}
-	// keep lock section small to avoid deadlock with conn lock
+	if c, ok := m.connsIPv6[ufrag]; ok {
+		delete(m.connsIPv6, ufrag)
+		removedConns = append(removedConns, c)
+	}
 	m.mu.Unlock()
 
 	m.addressMapMu.Lock()
@@ -143,21 +148,39 @@ func (m *UDPMuxDefault) Close() error {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
-		for _, c := range m.conns {
+		for _, c := range m.connsIPv4 {
 			_ = c.Close()
 		}
-		m.conns = make(map[string]*udpMuxedConn)
+		for _, c := range m.connsIPv6 {
+			_ = c.Close()
+		}
+
+		m.connsIPv4 = make(map[string]*udpMuxedConn)
+		m.connsIPv6 = make(map[string]*udpMuxedConn)
+
 		close(m.closedChan)
 	})
 	return err
 }
 
 func (m *UDPMuxDefault) removeConn(key string) {
-	m.mu.Lock()
-	c := m.conns[key]
-	delete(m.conns, key)
 	// keep lock section small to avoid deadlock with conn lock
-	m.mu.Unlock()
+	c := func() *udpMuxedConn {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		if c, ok := m.connsIPv4[key]; ok {
+			delete(m.connsIPv4, key)
+			return c
+		}
+
+		if c, ok := m.connsIPv6[key]; ok {
+			delete(m.connsIPv6, key)
+			return c
+		}
+
+		return nil
+	}()
 
 	if c == nil {
 		return
@@ -255,9 +278,10 @@ func (m *UDPMuxDefault) connWorker() {
 			}
 
 			ufrag := strings.Split(string(attr), ":")[0]
+			isIPv6 := udpAddr.IP.To4() == nil
 
 			m.mu.Lock()
-			destinationConn = m.conns[ufrag]
+			destinationConn, _ = m.getConn(ufrag, isIPv6)
 			m.mu.Unlock()
 		}
 
@@ -270,6 +294,15 @@ func (m *UDPMuxDefault) connWorker() {
 			m.params.Logger.Errorf("could not write packet: %v", err)
 		}
 	}
+}
+
+func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, ok bool) {
+	if isIPv6 {
+		val, ok = m.connsIPv6[ufrag]
+	} else {
+		val, ok = m.connsIPv4[ufrag]
+	}
+	return
 }
 
 type bufferHolder struct {
