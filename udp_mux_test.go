@@ -65,7 +65,7 @@ func TestUDPMux(t *testing.T) {
 	require.NoError(t, udpMux.Close())
 
 	// can't create more connections
-	_, err = udpMux.GetConn("failufrag")
+	_, err = udpMux.GetConn("failufrag", false)
 	require.Error(t, err)
 }
 
@@ -110,7 +110,7 @@ func TestAddressEncoding(t *testing.T) {
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
-	pktConn, err := udpMux.GetConn(ufrag)
+	pktConn, err := udpMux.GetConn(ufrag, false)
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
