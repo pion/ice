@@ -149,9 +149,9 @@ func (t *tcpPacketConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
 // WriteTo is for active and s-o candidates.
 func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	conn, ok := t.conns[raddr.String()]
+	t.mu.Unlock()
+
 	if !ok {
 		return 0, io.ErrClosedPipe
 		// conn, err := net.DialTCP(tcp, nil, raddr.(*net.TCPAddr))
