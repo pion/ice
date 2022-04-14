@@ -399,7 +399,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -425,6 +425,18 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v\n", serverAddr.String(), err))
 					return
 				}
+				// If the agent closes midway through the connection
+				// we end it early to prevent close delay.
+				cancelCtx, cancelFunc := context.WithCancel(ctx)
+				defer cancelFunc()
+				go func() {
+					select {
+					case <-cancelCtx.Done():
+						return
+					case <-a.done:
+						_ = conn.Close()
+					}
+				}()
 
 				xoraddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
 				if err != nil {
