@@ -159,6 +159,9 @@ type AgentConfig struct {
 	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
 	// dial interface in order to support corporate proxies
 	ProxyDialer proxy.Dialer
+
+	// Accept aggressive nomination in RFC 5245 for compatible with chrome and other browsers
+	AcceptAggressiveNomination bool
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset
