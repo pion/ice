@@ -133,8 +133,6 @@ type Agent struct {
 	insecureSkipVerify bool
 
 	proxyDialer proxy.Dialer
-
-	acceptAggressiveNomination bool
 }
 
 type task struct {
@@ -316,8 +314,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		interfaceFilter: config.InterfaceFilter,
 
 		insecureSkipVerify: config.InsecureSkipVerify,
-
-		acceptAggressiveNomination: config.AcceptAggressiveNomination,
 	}
 
 	a.tcpMux = config.TCPMux
