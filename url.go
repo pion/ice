@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"errors"
 	"net"
 	"net/url"
 	"strconv"
@@ -122,7 +123,8 @@ func ParseURL(raw string) (*URL, error) { //nolint:gocognit
 
 	var rawPort string
 	if u.Host, rawPort, err = net.SplitHostPort(rawParts.Opaque); err != nil {
-		if e, ok := err.(*net.AddrError); ok {
+		var e *net.AddrError
+		if errors.As(err, &e) {
 			if e.Err == "missing port in address" {
 				nextRawURL := u.Scheme.String() + ":" + rawParts.Opaque
 				switch {

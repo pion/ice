@@ -67,7 +67,7 @@ type externalIPMapper struct {
 
 func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIPMapper, error) { //nolint:gocognit
 	if len(ips) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 	if candidateType == CandidateTypeUnspecified {
 		candidateType = CandidateTypeHost // defaults to host

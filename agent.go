@@ -450,7 +450,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		return ErrMultipleStart
 	default:
 	}
-	if err := a.SetRemoteCredentials(remoteUfrag, remotePwd); err != nil {
+	if err := a.SetRemoteCredentials(remoteUfrag, remotePwd); err != nil { //nolint:contextcheck
 		return err
 	}
 
@@ -477,7 +477,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		agent.updateConnectionState(ConnectionStateChecking)
 
 		a.requestConnectivityCheck()
-		go a.connectivityChecks()
+		go a.connectivityChecks() //nolint:contextcheck
 	})
 }
 
@@ -1143,7 +1143,7 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
 func (a *Agent) GetSelectedCandidatePair() (*CandidatePair, error) {
 	selectedPair := a.getSelectedPair()
 	if selectedPair == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	local, err := selectedPair.Local.copy()
@@ -1160,12 +1160,11 @@ func (a *Agent) GetSelectedCandidatePair() (*CandidatePair, error) {
 }
 
 func (a *Agent) getSelectedPair() *CandidatePair {
-	selectedPair := a.selectedPair.Load()
-	if selectedPair == nil {
-		return nil
+	if selectedPair, ok := a.selectedPair.Load().(*CandidatePair); ok {
+		return selectedPair
 	}
 
-	return selectedPair.(*CandidatePair)
+	return nil
 }
 
 func (a *Agent) closeMulticastConn() {

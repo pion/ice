@@ -82,7 +82,7 @@ func (a *Agent) GatherCandidates() error {
 
 func (a *Agent) gatherCandidates(ctx context.Context) {
 	defer close(a.gatherCandidateDone)
-	if err := a.setGatheringState(GatheringStateGathering); err != nil {
+	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
 		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
 		return
 	}
@@ -126,7 +126,7 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
 	wg.Wait()
 
-	if err := a.setGatheringState(GatheringStateComplete); err != nil {
+	if err := a.setGatheringState(GatheringStateComplete); err != nil { //nolint:contextcheck
 		a.log.Warnf("failed to set gatheringState to GatheringStateComplete: %v", err)
 	}
 }
@@ -171,10 +171,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		}
 
 		for network := range networks {
-			var port int
-			var conn net.PacketConn
-			var err error
-			var tcpType TCPType
+			var (
+				port    int
+				conn    net.PacketConn
+				err     error
+				tcpType TCPType
+			)
 
 			switch network {
 			case tcp:
@@ -187,7 +189,13 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					}
 					continue
 				}
-				port = conn.LocalAddr().(*net.TCPAddr).Port
+
+				if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+					port = tcpConn.Port
+				} else {
+					a.log.Warnf("failed to get port of conn from TCPMux: %s %s %s\n", network, ip, a.localUfrag)
+					continue
+				}
 				tcpType = TCPTypePassive
 				// is there a way to verify that the listen address is even
 				// accessible from the current interface.
@@ -198,7 +206,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					continue
 				}
 
-				port = conn.LocalAddr().(*net.UDPAddr).Port
+				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+					port = udpConn.Port
+				} else {
+					a.log.Warnf("failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s\n", network, ip, a.localUfrag)
+					continue
+				}
 			}
 			hostConfig := CandidateHostConfig{
 				Network:   network,
@@ -258,18 +271,23 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		port := conn.LocalAddr().(*net.UDPAddr).Port
+
+		udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+		if !ok {
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s failed to cast\n", candidateIP))
+			return nil
+		}
 
 		hostConfig := CandidateHostConfig{
 			Network:   udp,
 			Address:   candidateIP.String(),
-			Port:      port,
+			Port:      udpAddr.Port,
 			Component: ComponentRTP,
 		}
 
 		c, err := NewCandidateHost(&hostConfig)
 		if err != nil {
-			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, port, err))
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v\n", candidateIP, udpAddr.Port, err))
 			// already logged error
 			return nil
 		}
@@ -305,7 +323,12 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			laddr := conn.LocalAddr().(*net.UDPAddr)
+			laddr, ok := conn.LocalAddr().(*net.UDPAddr)
+			if !ok {
+				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but LocalAddr is not a UDPAddr\n")
+				return
+			}
+
 			mappedIP, err := a.extIPMapper.findExternalIP(laddr.IP.String())
 			if err != nil {
 				closeConnAndLog(conn, a.log, fmt.Sprintf("1:1 NAT mapping is enabled but no external IP is found for %s\n", laddr.IP.String()))
@@ -340,7 +363,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -376,7 +399,12 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 				ip := xoraddr.IP
 				port := xoraddr.Port
 
-				laddr := conn.LocalAddr().(*net.UDPAddr)
+				laddr, ok := conn.LocalAddr().(*net.UDPAddr)
+				if !ok {
+					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: cast failed\n", network, ip, port))
+					return
+				}
+
 				srflxConfig := CandidateServerReflexiveConfig{
 					Network:   network,
 					Address:   ip.String(),
@@ -450,7 +478,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 				ip := xoraddr.IP
 				port := xoraddr.Port
 
-				laddr := conn.LocalAddr().(*net.UDPAddr)
+				laddr := conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
 				srflxConfig := CandidateServerReflexiveConfig{
 					Network:   network,
 					Address:   ip.String(),
@@ -512,8 +540,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String()
-				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port
+				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
+				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = udp
 			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
 				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
@@ -523,8 +551,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				if url.Scheme == SchemeTypeTURN {
 					relayProtocol = tcp
 				} else if url.Scheme == SchemeTypeTURNS {
@@ -545,8 +573,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
@@ -565,8 +593,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String()
-				RelPort = conn.LocalAddr().(*net.UDPAddr).Port
+				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
+				RelPort = conn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "dtls"
 				locConn = &fakePacketConn{conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
@@ -577,8 +605,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					a.log.Warnf("Failed to Dial TLS Addr %s: %v\n", TURNServerAddr, connectErr)
 					return
 				}
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String()
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port
+				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "tls"
 				locConn = turn.NewSTUNConn(conn)
 			default:
@@ -612,7 +640,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				return
 			}
 
-			raddr := relayConn.LocalAddr().(*net.UDPAddr)
+			raddr := relayConn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
 			relayConfig := CandidateRelayConfig{
 				Network:       network,
 				Component:     ComponentRTP,
