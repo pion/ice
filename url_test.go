@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -67,11 +68,15 @@ func TestParseURL(t *testing.T) {
 
 		for i, testCase := range testCases {
 			_, err := ParseURL(testCase.rawURL)
-			switch e := err.(type) {
-			case *url.Error:
-				err = e.Err
-			case *net.AddrError:
-				err = fmt.Errorf(e.Err) //nolint:goerr113
+			var (
+				urlError  *url.Error
+				addrError *net.AddrError
+			)
+			switch {
+			case errors.As(err, &urlError):
+				err = urlError.Err
+			case errors.As(err, &addrError):
+				err = fmt.Errorf(addrError.Err) //nolint:goerr113
 			}
 			assert.EqualError(t, err, testCase.expectedErr.Error(), "testCase: %d %v", i, testCase)
 		}

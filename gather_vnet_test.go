@@ -234,7 +234,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 
 		laddr := [2]*net.UDPAddr{nil, nil}
 		for i, candi := range candidates {
-			laddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr)
+			laddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
 			if candi.Port() != laddr[i].Port {
 				t.Fatalf("Unexpected candidate port: %d", candi.Port())
 			}

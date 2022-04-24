@@ -433,14 +433,14 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 		origHdlr := aAgent.onConnectionStateChangeHdlr.Load()
 		if origHdlr != nil {
-			defer check(aAgent.OnConnectionStateChange(origHdlr.(func(ConnectionState))))
+			defer check(aAgent.OnConnectionStateChange(origHdlr.(func(ConnectionState)))) //nolint:forcetypeassert
 		}
 		check(aAgent.OnConnectionStateChange(func(s ConnectionState) {
 			if s == ConnectionStateChecking {
 				close(accepting)
 			}
 			if origHdlr != nil {
-				origHdlr.(func(ConnectionState))(s)
+				origHdlr.(func(ConnectionState))(s) //nolint:forcetypeassert
 			}
 		}))
 
@@ -1862,7 +1862,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 				for _, candidates := range aAgent.remoteCandidates {
 					for _, candidate := range candidates {
 						if candidate.Equal(c) {
-							candidate.(*CandidateHost).priorityOverride += 1000
+							candidate.(*CandidateHost).priorityOverride += 1000 //nolint:forcetypeassert
 							break incr_priority
 						}
 					}

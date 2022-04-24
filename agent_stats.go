@@ -60,7 +60,9 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 			for _, c := range localCandidates {
 				relayProtocol := ""
 				if c.Type() == CandidateTypeRelay {
-					relayProtocol = c.(*CandidateRelay).RelayProtocol()
+					if cRelay, ok := c.(*CandidateRelay); ok {
+						relayProtocol = cRelay.RelayProtocol()
+					}
 				}
 				stat := CandidateStats{
 					Timestamp:     time.Now(),

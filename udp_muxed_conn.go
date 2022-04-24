@@ -43,7 +43,7 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 }
 
 func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
-	buf := c.params.AddrPool.Get().(*bufferHolder)
+	buf := c.params.AddrPool.Get().(*bufferHolder) //nolint:forcetypeassert
 	defer c.params.AddrPool.Put(buf)
 
 	// read address
@@ -171,7 +171,7 @@ func (c *udpMuxedConn) containsAddress(addr string) bool {
 
 func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	// write two packets, address and data
-	buf := c.params.AddrPool.Get().(*bufferHolder)
+	buf := c.params.AddrPool.Get().(*bufferHolder) //nolint:forcetypeassert
 	defer c.params.AddrPool.Put(buf)
 
 	// format of buffer | data len | data bytes | addr len | addr bytes |
@@ -189,7 +189,7 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	// write address first, leaving room for its length
 	n, err := encodeUDPAddr(addr, buf.buffer[offset+2:])
 	if err != nil {
-		return nil
+		return err
 	}
 	total := offset + n + 2
 

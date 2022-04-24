@@ -44,7 +44,7 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 	if err != nil {
 		return nil, err
 	}
-	err = a.startConnectivityChecks(isControlling, remoteUfrag, remotePwd)
+	err = a.startConnectivityChecks(isControlling, remoteUfrag, remotePwd) //nolint:contextcheck
 	if err != nil {
 		return nil, err
 	}

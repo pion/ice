@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -242,7 +243,7 @@ func (m *UDPMuxDefault) connWorker() {
 		} else if err != nil {
 			if os.IsTimeout(err) {
 				continue
-			} else if err != io.EOF {
+			} else if !errors.Is(err, io.EOF) {
 				logger.Errorf("could not read udp packet: %v", err)
 			}
 

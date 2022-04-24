@@ -218,7 +218,7 @@ func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, po
 		laddr = &net.UDPAddr{IP: laddr.IP, Port: portCurrent}
 		c, e := vnet.ListenUDP(network, laddr)
 		if e == nil {
-			return c, e
+			return c, e //nolint:nilerr
 		}
 		log.Debugf("failed to listen %s: %v", laddr.String(), e)
 		portCurrent++
