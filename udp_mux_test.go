@@ -111,6 +111,50 @@ func TestUDPMux(t *testing.T) {
 	}
 }
 
+func TestUDPMuxOnUnhandledPacket(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	type droppedPacket struct {
+		data []byte
+		addr netip.AddrPort
+	}
+
+	dropped := make(chan droppedPacket, 1)
+	udpConn, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+
+	mux := NewUDPMuxDefault(UDPMuxParams{
+		UDPConn: udpConn,
+		OnUnhandledPacket: func(data []byte, addr netip.AddrPort) {
+			dropped <- droppedPacket{
+				data: append([]byte(nil), data...),
+				addr: addr,
+			}
+		},
+	})
+	defer func() {
+		_ = mux.Close()
+		_ = udpConn.Close()
+	}()
+
+	remote, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() { _ = remote.Close() }()
+
+	payload := []byte("unroutable packet")
+	_, err = remote.WriteToUDP(payload, mux.LocalAddr().(*net.UDPAddr)) //nolint:forcetypeassert
+	require.NoError(t, err)
+
+	select {
+	case packet := <-dropped:
+		require.Equal(t, payload, packet.data)
+		require.Equal(t, remote.LocalAddr().(*net.UDPAddr).AddrPort(), packet.addr) //nolint:forcetypeassert
+	case <-time.After(time.Second):
+		require.FailNow(t, "OnUnhandledPacket was not called")
+	}
+}
+
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport.Net, testCase udpMuxTestCase, ufrag string) { //nolint:lll
 	t.Helper()
 

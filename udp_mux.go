@@ -82,6 +82,10 @@ type UDPMuxParams struct {
 	// in case a un UDPConn is passed which does not
 	// bind to a specific local address.
 	Net transport.Net
+	// OnUnhandledPacket is called synchronously when a packet cannot be routed
+	// to a muxed connection. It must not block. The data slice is reused after
+	// the callback returns and must be copied if it is retained.
+	OnUnhandledPacket func(data []byte, addr netip.AddrPort)
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux.
@@ -598,6 +602,9 @@ func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
 		}
 
 		if destinationConn == nil {
+			if m.params.OnUnhandledPacket != nil {
+				m.params.OnUnhandledPacket(buf[:n], srcAddr)
+			}
 			m.params.Logger.Tracef("Dropping packet from %s", srcAddrPort)
 
 			continue
