@@ -144,7 +144,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	// when UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
 		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
-			a.log.Warnf("could not create host candidate for UDPMux")
+			a.log.Warnf("could not create host candidate for UDPMux: %s", err)
 		}
 		delete(networks, udp)
 	}
