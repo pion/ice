@@ -84,7 +84,7 @@ func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 		return
 	}
 
-	s.log.Tracef("ping STUN (nominate candidate pair) from %s to %s\n", pair.Local.String(), pair.Remote.String())
+	s.log.Tracef("ping STUN (nominate candidate pair) from %s to %s", pair.Local.String(), pair.Remote.String())
 	s.agent.sendBindingRequest(msg, pair.Local, pair.Remote)
 }
 
@@ -101,9 +101,9 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 	if p.state == CandidatePairStateSucceeded && s.nominatedPair == nil && s.agent.getSelectedPair() == nil {
 		bestPair := s.agent.getBestAvailableCandidatePair()
 		if bestPair == nil {
-			s.log.Tracef("No best pair available\n")
+			s.log.Tracef("No best pair available")
 		} else if bestPair.equal(p) && s.isNominatable(p.Local) && s.isNominatable(p.Remote) {
-			s.log.Tracef("The candidate (%s, %s) is the best candidate available, marking it as nominated\n",
+			s.log.Tracef("The candidate (%s, %s) is the best candidate available, marking it as nominated",
 				p.Local.String(), p.Remote.String())
 			s.nominatedPair = p
 			s.nominatePair(p)

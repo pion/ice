@@ -102,7 +102,7 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		}
 
 		if err = msg.Decode(); err != nil {
-			c.logger.Warnf("Failed to handle decode ICE from %s: %v\n", addr.String(), err)
+			c.logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
 			return n, addr, nil
 		}
 
