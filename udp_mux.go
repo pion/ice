@@ -268,13 +268,13 @@ func (m *UDPMuxDefault) connWorker() {
 			}
 
 			if err = msg.Decode(); err != nil {
-				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v\n", addr.String(), err)
+				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
 				continue
 			}
 
 			attr, stunAttrErr := msg.Get(stun.AttrUsername)
 			if stunAttrErr != nil {
-				m.params.Logger.Warnf("No Username attribute in STUN message from %s\n", addr.String())
+				m.params.Logger.Warnf("No Username attribute in STUN message from %s", addr.String())
 				continue
 			}
 

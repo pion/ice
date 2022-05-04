@@ -86,7 +86,7 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 		n, err := readStreamingPacket(conn, buf)
 		// t.params.Logger.Infof("readStreamingPacket read %d bytes", n)
 		if err != nil {
-			t.params.Logger.Infof("%w: %s\n", errReadingStreamingPacket, err)
+			t.params.Logger.Infof("%w: %s", errReadingStreamingPacket, err)
 			t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
 			t.removeConn(conn)
 			return
@@ -167,7 +167,7 @@ func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 
 	n, err = writeStreamingPacket(conn, buf)
 	if err != nil {
-		t.params.Logger.Tracef("%w %s\n", errWriting, raddr)
+		t.params.Logger.Tracef("%w %s", errWriting, raddr)
 		return n, err
 	}
 
