@@ -183,7 +183,7 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline 
 	// or wait for already sent request to complete
 	waitAddrReceived, err := m.sendStun(serverAddr)
 	if err != nil {
-		return nil, errSendSTUNPacket
+		return nil, fmt.Errorf("%w: %s", errSendSTUNPacket, err)
 	}
 
 	// block until response was handled by the connWorker routine and XORMappedAddress was updated
