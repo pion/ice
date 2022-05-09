@@ -44,6 +44,7 @@ Sean DuBois <seaduboi@amazon.com>
 Sean DuBois <sean@siobud.com>
 Sebastian Waisbrot <seppo0010@gmail.com>
 Sidney San Martín <sidney@s4y.us>
+Steffen Vogel <post@steffenvogel.de>
 Will Forcey <wsforc3y@gmail.com>
 Woodrow Douglass <wdouglass@carnegierobotics.com>
 Yutaka Takeda <yt0916@gmail.com>
