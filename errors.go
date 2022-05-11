@@ -25,7 +25,7 @@ var (
 	// Have to be at least 24 bits long
 	ErrLocalUfragInsufficientBits = errors.New("local username fragment is less than 24 bits long")
 
-	// ErrLocalPwdInsufficientBits indicates local passoword insufficient bits are provided.
+	// ErrLocalPwdInsufficientBits indicates local password insufficient bits are provided.
 	// Have to be at least 128 bits long
 	ErrLocalPwdInsufficientBits = errors.New("local password is less than 128 bits long")
 
