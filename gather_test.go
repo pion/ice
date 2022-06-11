@@ -690,91 +690,91 @@ func TestTURNSrflx(t *testing.T) {
 }
 
 func TestGatherCandidatesRelayProducesRelay(t *testing.T) {
-	defer test.CheckRoutines(t)()
+	for _, network := range []NetworkType{NetworkTypeUDP4, NetworkTypeTCP4, NetworkTypeUDP6, NetworkTypeTCP6} {
+		t.Run(network.String(), func(t *testing.T) {
+			defer test.CheckRoutines(t)()
+			host := "127.0.0.1"
+			relayNetwork := NetworkTypeUDP4
+			if network.IsIPv6() {
+				host = "::1"
+				relayNetwork = NetworkTypeUDP6
+			}
+			bindAddr := net.JoinHostPort(host, "0")
+			// Vnet does not support IPv6; exercise real loopback sockets.
+			peer, err := net.ListenPacket(relayNetwork.String(), bindAddr) //nolint:noctx
+			skipOnPermission(t, err, "listening on loopback")
+			if network.IsIPv6() && (errors.Is(err, syscall.EAFNOSUPPORT) ||
+				errors.Is(err, syscall.EADDRNOTAVAIL) || errors.Is(err, syscall.EPROTONOSUPPORT)) {
+				t.Skipf("IPv6 loopback unavailable: %v", err)
+			}
+			require.NoError(t, err)
+			defer peer.Close() //nolint:errcheck
 
-	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
-	skipOnPermission(t, err, "listening for TURN server")
-	require.NoError(t, err)
-	defer func() {
-		_ = listener.Close()
-	}()
+			conf := turn.ServerConfig{
+				Realm:               "pion.ly",
+				AuthHandler:         optimisticAuthHandler,
+				StrictAddressFamily: true,
+			}
+			generator := &turn.RelayAddressGeneratorNone{Address: host}
+			var addr net.Addr
+			proto := stun.ProtoTypeUDP
+			if network.IsUDP() {
+				listener, listenErr := net.ListenPacket(network.String(), bindAddr) //nolint:noctx
+				require.NoError(t, listenErr)
+				defer listener.Close() //nolint:errcheck
+				addr = listener.LocalAddr()
+				conf.PacketConnConfigs = []turn.PacketConnConfig{{PacketConn: listener, RelayAddressGenerator: generator}}
+			} else {
+				listener, listenErr := net.Listen(network.String(), bindAddr) //nolint:noctx
+				require.NoError(t, listenErr)
+				defer listener.Close() //nolint:errcheck
+				addr = listener.Addr()
+				proto = stun.ProtoTypeTCP
+				conf.ListenerConfigs = []turn.ListenerConfig{{Listener: listener, RelayAddressGenerator: generator}}
+			}
+			server, err := turn.NewServer(conf)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, server.Close()) }()
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            listener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
-			},
-		},
-	})
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, server.Close())
-	}()
+			agent, err := NewAgentWithOptions(
+				WithNetworkTypes([]NetworkType{relayNetwork}),
+				WithTURNTransportProtocols([]NetworkType{network}),
+				WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+				WithMulticastDNSMode(MulticastDNSModeDisabled),
+				WithUrls([]*stun.URI{{
+					Scheme: stun.SchemeTypeTURN, Host: host, Port: portFromAddr(t, addr),
+					Proto: proto, Username: "username", Password: "password",
+				}}),
+			)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, agent.Close()) }()
+			candidates := gatherAndCollectCandidates(t, agent)
+			require.Len(t, candidates, 1)
+			candidate := candidates[0]
+			require.Equal(t, CandidateTypeRelay, candidate.Type())
+			require.Equal(t, relayNetwork, candidate.NetworkType())
+			require.Equal(t, host, candidate.Address())
+			require.Positive(t, candidate.Port())
 
-	serverPort := portFromAddr(t, listener.LocalAddr())
-	turnURL := &stun.URI{
-		Scheme:   stun.SchemeTypeTURN,
-		Host:     "127.0.0.1",
-		Port:     serverPort,
-		Username: "username",
-		Password: "password",
-		Proto:    stun.ProtoTypeUDP,
-	}
-
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
-		CandidateTypes: []CandidateType{CandidateTypeRelay},
-		Urls:           []*stun.URI{turnURL},
-	})
-	skipOnPermission(t, err, "creating relay agent")
-	require.NoError(t, err)
-	defer func() {
-		_ = agent.Close()
-	}()
-
-	var (
-		mu       sync.Mutex
-		relays   []Candidate
-		gathered = make(chan struct{})
-	)
-
-	require.NoError(t, agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			close(gathered)
-
-			return
-		}
-		if c.Type() == CandidateTypeRelay {
-			mu.Lock()
-			relays = append(relays, c)
-			mu.Unlock()
-		}
-	}))
-
-	require.NoError(t, agent.GatherCandidates())
-
-	select {
-	case <-gathered:
-	case <-time.After(5 * time.Second):
-		require.FailNow(t, "gatherCandidatesRelay did not finish before timeout")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(relays) == 0 {
-		t.Skip("no relay candidates gathered in this environment")
-	}
-	for _, r := range relays {
-		require.Equal(t, CandidateTypeRelay, r.Type())
-		require.True(t, r.NetworkType().IsUDP())
+			relay, ok := candidate.(*CandidateRelay)
+			require.True(t, ok)
+			require.Equal(t, proto.String(), relay.RelayProtocol())
+			payload := []byte("TURN relay")
+			_, err = relay.conn.WriteTo(payload, peer.LocalAddr())
+			require.NoError(t, err)
+			require.NoError(t, peer.SetReadDeadline(time.Now().Add(5*time.Second)))
+			buffer := make([]byte, 1500)
+			n, source, err := peer.ReadFrom(buffer)
+			require.NoError(t, err)
+			require.Equal(t, payload, buffer[:n])
+			require.Equal(t, net.JoinHostPort(candidate.Address(), strconv.Itoa(candidate.Port())), source.String())
+		})
 	}
 }
 
 type relayGatherNet struct {
-	addr *net.UDPAddr
+	addr           *net.UDPAddr
+	resolveUDPAddr func(string, string) (*net.UDPAddr, error)
 }
 
 type unresolvableRelayGatherNet struct {
@@ -825,6 +825,10 @@ func (n *relayGatherNet) ResolveIPAddr(network, address string) (*net.IPAddr, er
 }
 
 func (n *relayGatherNet) ResolveUDPAddr(network, address string) (*net.UDPAddr, error) {
+	if n.resolveUDPAddr != nil {
+		return n.resolveUDPAddr(network, address)
+	}
+
 	return net.ResolveUDPAddr(network, address)
 }
 
@@ -1415,6 +1419,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 50000})),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithAddressRewriteRules(
 			AddressRewriteRule{
@@ -1427,7 +1432,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		WithUrls([]*stun.URI{
 			{
 				Scheme:   stun.SchemeTypeTURN,
-				Host:     "example.com",
+				Host:     "127.0.0.1",
 				Port:     3478,
 				Username: "username",
 				Password: "password",
@@ -1476,63 +1481,6 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 	assert.True(t, locConn.closed)
 }
 
-func TestGatherCandidatesRelayUsesTurnNet(t *testing.T) {
-	defer test.CheckRoutines(t)()
-
-	stubClient := &stubTurnClient{}
-	turnNet := newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 50000})
-
-	agent, err := NewAgentWithOptions(
-		WithNet(turnNet),
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     "example.com",
-				Port:     3478,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeUDP,
-			},
-		}),
-		WithMulticastDNSMode(MulticastDNSModeDisabled),
-	)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, agent.Close())
-	}()
-
-	stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.IP{203, 0, 113, 9}, Port: 6000})
-	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
-		stubClient.cfgConn = cfg.Conn
-
-		return stubClient, nil
-	}
-
-	candCh := make(chan Candidate, 1)
-	require.NoError(t, agent.OnCandidate(func(c Candidate) {
-		if c != nil && c.Type() == CandidateTypeRelay {
-			candCh <- c
-		}
-	}))
-
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
-
-	select {
-	case cand := <-candCh:
-		relay, ok := cand.(*CandidateRelay)
-		require.True(t, ok)
-		require.Equal(t, turnNet.addr.IP.String(), relay.RelatedAddress().Address)
-
-		addr, ok := stubClient.cfgConn.LocalAddr().(*net.UDPAddr)
-		require.True(t, ok)
-		require.Equal(t, turnNet.addr.IP.String(), addr.IP.String())
-	case <-time.After(time.Second):
-		assert.Fail(t, "expected relay candidate using turn network")
-	}
-}
-
 func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -1542,12 +1490,13 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(netCapture),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 		WithUrls([]*stun.URI{
 			{
 				Scheme:   stun.SchemeTypeTURN,
-				Host:     "example.com",
+				Host:     "127.0.0.1",
 				Port:     3478,
 				Username: "username",
 				Password: "password",
@@ -1581,59 +1530,74 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 	}
 }
 
-func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
+func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 
-	t.Run("uses configured UDP6 network type", func(t *testing.T) {
-		t.Skip("IPv6 TURN is not supported yet")
+	for _, transportType := range []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6} {
+		for _, relayType := range []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6} {
+			for _, candidateNetworks := range [][]NetworkType{nil, {NetworkTypeUDP4}, {NetworkTypeUDP6}} {
+				name := fmt.Sprintf("transport=%s/relay=%s/candidates=%v", transportType, relayType, candidateNetworks)
+				t.Run(name, func(t *testing.T) {
+					transportIP := net.ParseIP("127.0.0.1")
+					if transportType.IsIPv6() {
+						transportIP = net.ParseIP("::1")
+					}
+					relayIP := net.ParseIP("192.0.2.1")
+					if relayType.IsIPv6() {
+						relayIP = net.ParseIP("2001:db8::1")
+					}
+					relayConn := newStubPacketConn(&net.UDPAddr{IP: relayIP, Port: 6000})
+					client := &stubTurnClient{relayConn: relayConn}
+					turnNet := newRelayGatherNet(&net.UDPAddr{IP: transportIP, Port: 50000})
+					serverAddr := net.JoinHostPort(transportIP.String(), "3478")
+					turnNet.resolveUDPAddr = func(network, address string) (*net.UDPAddr, error) {
+						assert.Equal(t, transportType.String(), network)
+						assert.Equal(t, "turn.test:3478", address)
 
-		stubClient := &stubTurnClient{}
-		turnNet := newRelayGatherNet(&net.UDPAddr{IP: net.ParseIP("2001:db8::1"), Port: 50000})
+						return net.ResolveUDPAddr(network, serverAddr)
+					}
+					agent, err := NewAgentWithOptions(
+						WithNet(turnNet),
+						WithNetworkTypes(candidateNetworks),
+						WithTURNTransportProtocols([]NetworkType{transportType}),
+						WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+						WithMulticastDNSMode(MulticastDNSModeDisabled),
+						WithUrls([]*stun.URI{{
+							Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478,
+							Username: "username", Password: "password", Proto: stun.ProtoTypeUDP,
+						}}),
+					)
+					require.NoError(t, err)
+					defer func() { require.NoError(t, agent.Close()) }()
+					agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+						assert.Equal(t, serverAddr, cfg.TURNServerAddr)
+						assert.Same(t, turnNet, cfg.Net)
+						client.cfgConn = cfg.Conn
 
-		agent, err := NewAgentWithOptions(
-			WithNet(turnNet),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP6}),
-			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-			WithUrls([]*stun.URI{
-				{
-					Scheme:   stun.SchemeTypeTURN,
-					Host:     "example.com",
-					Port:     3478,
-					Username: "username",
-					Password: "password",
-					Proto:    stun.ProtoTypeUDP,
-				},
-			}),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-		)
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.ParseIP("2001:db8::100"), Port: 6000})
-		agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
-			stubClient.cfgConn = cfg.Conn
-
-			return stubClient, nil
-		}
-
-		candCh := make(chan Candidate, 1)
-		require.NoError(t, agent.OnCandidate(func(c Candidate) {
-			if c != nil && c.Type() == CandidateTypeRelay {
-				candCh <- c
+						return client, nil
+					}
+					require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+					agent.gatherCandidatesRelay(context.Background(), agent.urls)
+					require.True(t, client.allocateCalled, "TURN transport must remain independent of candidate family")
+					candidates, err := agent.GetLocalCandidates()
+					require.NoError(t, err)
+					if len(candidateNetworks) == 0 || candidateNetworks[0] == relayType {
+						require.Len(t, candidates, 1)
+						require.Equal(t, relayType, candidates[0].NetworkType())
+						require.Equal(t, transportIP.String(), candidates[0].RelatedAddress().Address)
+						require.False(t, client.closeCalled)
+					} else {
+						require.Empty(t, candidates)
+						require.True(t, client.closeCalled)
+						require.True(t, relayConn.closed)
+						controlConn, ok := client.cfgConn.(*stubPacketConn)
+						require.True(t, ok)
+						require.True(t, controlConn.closed)
+					}
+				})
 			}
-		}))
-
-		agent.gatherCandidatesRelay(context.Background(), agent.urls)
-
-		select {
-		case cand := <-candCh:
-			require.Equal(t, NetworkTypeUDP6, cand.NetworkType())
-		case <-time.After(time.Second):
-			assert.Fail(t, "expected relay candidate using UDP6 network type")
 		}
-	})
+	}
 
 	t.Run("skips TCP transport URL when TURN transport protocols allow only UDP", func(t *testing.T) {
 		stubClient := &stubTurnClient{}
@@ -1646,7 +1610,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
 			WithUrls([]*stun.URI{
 				{
 					Scheme:   stun.SchemeTypeTURN,
-					Host:     "example.com",
+					Host:     "127.0.0.1",
 					Port:     3478,
 					Username: "username",
 					Password: "password",
@@ -1694,6 +1658,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(&errorTurnNet{pc: errConn}),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithUrls([]*stun.URI{
 			{
@@ -1842,6 +1807,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 	agent, err := NewAgentWithOptions(
 		WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000})),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
+		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithUrls([]*stun.URI{
 			{
@@ -1902,6 +1868,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(turnNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
+		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithUrls([]*stun.URI{
 			{
@@ -2808,48 +2775,51 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 }
 
 func TestAddRelayCandidatesWithRewrite(t *testing.T) {
-	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"203.0.113.77"},
-			Local:           "198.51.100.77",
-			AsCandidateType: CandidateTypeRelay,
-		},
-	})
-	require.NoError(t, err)
+	for _, networks := range [][]NetworkType{nil, {NetworkTypeUDP4}, {NetworkTypeUDP6}} {
+		t.Run(fmt.Sprint(networks), func(t *testing.T) {
+			defer test.CheckRoutines(t)()
+			agent, err := NewAgentWithOptions(
+				WithNetworkTypes(networks),
+				WithMulticastDNSMode(MulticastDNSModeDisabled),
+				WithAddressRewriteRules(AddressRewriteRule{
+					External: []string{"203.0.113.77"}, Local: "198.51.100.77",
+					AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteAppend,
+				}),
+			)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, agent.Close()) }()
+			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent := &Agent{
-		addressRewriteMapper: mapper,
-		log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
-		loop:                 taskloop.New(func() {}),
-		localCandidates:      make(map[NetworkType][]Candidate),
-		remoteCandidates:     make(map[NetworkType][]Candidate),
-		startedCh:            closedStartedCh(),
-		candidateNotifier: &handlerNotifier{
-			candidateFunc: func(Candidate) {},
-			done:          make(chan struct{}),
-		},
+			closed := 0
+			agent.addRelayCandidates(t.Context(), relayEndpoint{
+				network: udp, address: net.ParseIP("2001:db8::1"), port: 3478,
+				relAddr: "198.51.100.77", relPort: 50000, conn: newStubPacketConn(nil),
+				onClose: func() error {
+					closed++
+
+					return nil
+				},
+			})
+			candidates, err := agent.GetLocalCandidates()
+			require.NoError(t, err)
+			expected := []string{"2001:db8::1", "203.0.113.77"}
+			if len(networks) != 0 {
+				if networks[0] == NetworkTypeUDP4 {
+					expected = expected[1:]
+				} else {
+					expected = expected[:1]
+				}
+			}
+			addresses := []string{}
+			for _, candidate := range candidates {
+				addresses = append(addresses, candidate.Address())
+			}
+			require.ElementsMatch(t, expected, addresses)
+			require.Zero(t, closed)
+			require.NoError(t, agent.Close())
+			require.Equal(t, 1, closed, "the first retained candidate owns TURN cleanup")
+		})
 	}
-
-	ep := relayEndpoint{
-		network: "udp",
-		address: net.IPv4(10, 0, 0, 50),
-		port:    3478,
-		relAddr: "198.51.100.77",
-		relPort: 50000,
-		conn:    newStubPacketConn(nil),
-	}
-
-	ctx := t.Context()
-	t.Cleanup(func() {
-		agent.loop.Close()
-	})
-
-	agent.addRelayCandidates(ctx, ep)
-
-	cands := agent.localCandidates[NetworkTypeUDP4]
-	require.Len(t, cands, 2)
-	assert.Equal(t, "10.0.0.50", cands[0].Address())
-	assert.Equal(t, "203.0.113.77", cands[1].Address())
 }
 
 func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {

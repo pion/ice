@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -1013,11 +1014,6 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 		}
 
 		for _, networkType := range networkTypes {
-			// IPv6 TURN support is not finished yet, so skip for now.
-			if networkType.IsIPv6() {
-				continue
-			}
-
 			network := networkType.String()
 			bindAddrs := []string{}
 			if !useFilteredLocalAddrs { // nolint:nestif
@@ -1056,6 +1052,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 
 					switch {
 					case urlProto == stun.ProtoTypeUDP && url.Scheme == stun.SchemeTypeTURN:
+						serverAddr, resolveErr := a.net.ResolveUDPAddr(network, turnServerAddr)
+						if resolveErr != nil {
+							a.log.Debugf("Failed to resolve TURN host: %s %s: %v", network, turnServerAddr, resolveErr)
+
+							return
+						}
+						turnServerAddr = serverAddr.String()
+
 						if locConn, err = a.net.ListenPacket(network, localBindAddr); err != nil {
 							a.log.Warnf("Failed to listen %s: %v", network, err)
 
@@ -1387,13 +1391,36 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 	return nil
 }
 
-func (a *Agent) addRelayCandidates(ctx context.Context, ep relayEndpoint) {
+func (a *Agent) addRelayCandidates(ctx context.Context, ep relayEndpoint) { //nolint:cyclop
 	if ep.conn == nil || ep.address == nil {
 		return
 	}
 
 	addresses, ok := a.resolveRelayAddresses(ep)
 	if !ok {
+		return
+	}
+
+	// Candidate families are independent of the transport used to reach TURN.
+	allowedNetworks := relayNetworkTypesForConfiguredCandidates(a.networkTypes)
+	addresses = slices.DeleteFunc(addresses, func(ip net.IP) bool {
+		network := NetworkTypeUDP6
+		if ip.To4() != nil {
+			network = NetworkTypeUDP4
+		}
+
+		return !slices.Contains(allowedNetworks, network)
+	})
+	if len(addresses) == 0 {
+		if ep.closeConn != nil {
+			ep.closeConn()
+		}
+		if ep.onClose != nil {
+			if err := ep.onClose(); err != nil {
+				a.log.Warnf("Failed to close filtered relay connection: %v", err)
+			}
+		}
+
 		return
 	}
 

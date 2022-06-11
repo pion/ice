@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -428,7 +429,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 			url := &stun.URI{
 				Scheme:   tc.turnScheme,
 				Proto:    tc.turnProto,
-				Host:     "turn.example.com",
+				Host:     "127.0.0.1",
 				Port:     3478,
 				Username: "user",
 				Password: "pass",
@@ -455,9 +456,9 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 				require.NoError(t, agent.Close())
 			}()
 
-			factoryCalls := 0
+			var factoryCalls atomic.Int32
 			agent.turnClientFactory = func(*turn.ClientConfig) (turnClient, error) {
-				factoryCalls++
+				factoryCalls.Add(1)
 
 				return &stubTurnClient{
 					relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 50), Port: 6000}),
@@ -473,7 +474,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 				}
 			}
 
-			require.GreaterOrEqual(t, factoryCalls, tc.expectFactoryMinCalls)
+			require.GreaterOrEqual(t, int(factoryCalls.Load()), tc.expectFactoryMinCalls)
 			if tc.expectRelayCandidate {
 				require.Greater(t, relayCandidates, 0)
 			} else {
@@ -745,9 +746,9 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 		require.NoError(t, agent.Close())
 	}()
 
-	factoryCalls := 0
+	var factoryCalls atomic.Int32
 	agent.turnClientFactory = func(*turn.ClientConfig) (turnClient, error) {
-		factoryCalls++
+		factoryCalls.Add(1)
 
 		return &stubTurnClient{
 			relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 77), Port: 6100}),
@@ -757,7 +758,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 	candidates := gatherAndCollectCandidates(t, agent)
 
 	require.GreaterOrEqual(t, proxyDialer.count(), 1)
-	require.GreaterOrEqual(t, factoryCalls, 1)
+	require.GreaterOrEqual(t, int(factoryCalls.Load()), 1)
 
 	relayCandidates := 0
 	for _, c := range candidates {
