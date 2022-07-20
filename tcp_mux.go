@@ -61,6 +61,11 @@ type TCPMuxParams struct {
 	Listener       net.Listener
 	Logger         logging.LeveledLogger
 	ReadBufferSize int
+
+	// max buffer size for write op. 0 means no write buffer, the write op will block until the whole packet is written
+	// if the write buffer is full, the subsequent write packet will be dropped until it has enough space.
+	// a default 4MB is recommended.
+	WriteBufferSize int
 }
 
 // NewTCPMuxDefault creates a new instance of TCPMuxDefault.
@@ -127,9 +132,10 @@ func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool) (net.PacketCon
 
 func (m *TCPMuxDefault) createConn(ufrag string, localAddr net.Addr, isIPv6 bool) *tcpPacketConn {
 	conn := newTCPPacketConn(tcpPacketParams{
-		ReadBuffer: m.params.ReadBufferSize,
-		LocalAddr:  localAddr,
-		Logger:     m.params.Logger,
+		ReadBuffer:  m.params.ReadBufferSize,
+		WriteBuffer: m.params.WriteBufferSize,
+		LocalAddr:   localAddr,
+		Logger:      m.params.Logger,
 	})
 
 	if isIPv6 {
