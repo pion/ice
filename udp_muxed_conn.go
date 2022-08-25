@@ -112,9 +112,6 @@ func (c *udpMuxedConn) Close() error {
 		err = c.buffer.Close()
 		close(c.closedChan)
 	})
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.addresses = nil
 	return err
 }
 
