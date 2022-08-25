@@ -93,7 +93,7 @@ func (m *UDPMuxDefault) GetConn(ufrag string, isIPv6 bool) (net.PacketConn, erro
 	c := m.createMuxedConn(ufrag)
 	go func() {
 		<-c.CloseChannel()
-		m.removeConn(ufrag)
+		m.RemoveConnByUfrag(ufrag)
 	}()
 
 	if isIPv6 {
@@ -120,6 +120,11 @@ func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 		removedConns = append(removedConns, c)
 	}
 	m.mu.Unlock()
+
+	if len(removedConns) == 0 {
+		// No need to lock if no connection was found
+		return
+	}
 
 	m.addressMapMu.Lock()
 	defer m.addressMapMu.Unlock()
@@ -162,38 +167,6 @@ func (m *UDPMuxDefault) Close() error {
 		close(m.closedChan)
 	})
 	return err
-}
-
-func (m *UDPMuxDefault) removeConn(key string) {
-	// keep lock section small to avoid deadlock with conn lock
-	c := func() *udpMuxedConn {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-
-		if c, ok := m.connsIPv4[key]; ok {
-			delete(m.connsIPv4, key)
-			return c
-		}
-
-		if c, ok := m.connsIPv6[key]; ok {
-			delete(m.connsIPv6, key)
-			return c
-		}
-
-		return nil
-	}()
-
-	if c == nil {
-		return
-	}
-
-	m.addressMapMu.Lock()
-	defer m.addressMapMu.Unlock()
-
-	addresses := c.getAddresses()
-	for _, addr := range addresses {
-		delete(m.addressMap, addr)
-	}
 }
 
 func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {

@@ -275,7 +275,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 		udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 		if !ok {
 			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s failed to cast", candidateIP))
-			return nil
+			continue
 		}
 
 		hostConfig := CandidateHostConfig{
@@ -288,15 +288,16 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error {
 		c, err := NewCandidateHost(&hostConfig)
 		if err != nil {
 			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
-			// already logged error
-			return nil
+			continue
 		}
 
 		if err := a.addCandidate(ctx, c, conn); err != nil {
 			if closeErr := c.close(); closeErr != nil {
 				a.log.Warnf("Failed to close candidate: %v", closeErr)
 			}
-			return err
+
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
+			continue
 		}
 	}
 
