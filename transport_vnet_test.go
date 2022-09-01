@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/transport/test"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2/test"
+	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
 )
 

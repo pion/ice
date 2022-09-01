@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/test"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2/test"
+	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,8 +24,11 @@ func TestVNetGather(t *testing.T) {
 	// log := loggerFactory.NewLogger("test")
 
 	t.Run("No local IP address", func(t *testing.T) {
+		n, err := vnet.NewNet(&vnet.NetConfig{})
+		assert.NoError(t, err)
+
 		a, err := NewAgent(&AgentConfig{
-			Net: vnet.NewNet(&vnet.NetConfig{}),
+			Net: n,
 		})
 		assert.NoError(t, err)
 
@@ -54,8 +57,8 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create a router: %s", err)
 		}
 
-		nw := vnet.NewNet(&vnet.NetConfig{})
-		if nw == nil {
+		nw, err := vnet.NewNet(&vnet.NetConfig{})
+		if err != nil {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
@@ -97,8 +100,8 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create a router: %s", err)
 		}
 
-		nw := vnet.NewNet(&vnet.NetConfig{})
-		if nw == nil {
+		nw, err := vnet.NewNet(&vnet.NetConfig{})
+		if err != nil {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
@@ -190,10 +193,10 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = wan.AddRouter(lan)
 		assert.NoError(t, err, "should succeed")
 
-		nw := vnet.NewNet(&vnet.NetConfig{
+		nw, err := vnet.NewNet(&vnet.NetConfig{
 			StaticIPs: []string{localIP0, localIP1},
 		})
-		if nw == nil {
+		if err != nil {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
@@ -285,12 +288,12 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = wan.AddRouter(lan)
 		assert.NoError(t, err, "should succeed")
 
-		nw := vnet.NewNet(&vnet.NetConfig{
+		nw, err := vnet.NewNet(&vnet.NetConfig{
 			StaticIPs: []string{
 				"10.0.0.1",
 			},
 		})
-		if nw == nil {
+		if err != nil {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
@@ -366,8 +369,8 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		t.Fatalf("Failed to create a router: %s", err)
 	}
 
-	nw := vnet.NewNet(&vnet.NetConfig{})
-	if nw == nil {
+	nw, err := vnet.NewNet(&vnet.NetConfig{})
+	if err != nil {
 		t.Fatalf("Failed to create a Net: %s", err)
 	}
 

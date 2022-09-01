@@ -15,8 +15,8 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/test"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2/test"
+	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -349,14 +349,16 @@ func TestConnectivityOnStartup(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	net0 := vnet.NewNet(&vnet.NetConfig{
+	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net0))
 
-	net1 := vnet.NewNet(&vnet.NetConfig{
+	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net1))
 
 	assert.NoError(t, wan.Start())
@@ -366,10 +368,9 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
-		NetworkTypes:     supportedNetworkTypes(),
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net0,
-
+		NetworkTypes:      supportedNetworkTypes(),
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		Net:               net0,
 		KeepaliveInterval: &KeepaliveInterval,
 		CheckInterval:     &KeepaliveInterval,
 	}
@@ -1707,9 +1708,10 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	net := vnet.NewNet(&vnet.NetConfig{
+	net, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net))
 
 	assert.NoError(t, wan.Start())
@@ -1765,14 +1767,16 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	net0 := vnet.NewNet(&vnet.NetConfig{
+	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net0))
 
-	net1 := vnet.NewNet(&vnet.NetConfig{
+	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2", "192.168.0.3", "192.168.0.4"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net1))
 
 	assert.NoError(t, wan.Start())

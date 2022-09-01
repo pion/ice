@@ -8,7 +8,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2"
 )
 
 type atomicError struct{ v atomic.Value }
@@ -144,9 +144,9 @@ func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)
 	return res, nil
 }
 
-func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType, includeLoopback bool) ([]net.IP, error) { //nolint:gocognit
+func localInterfaces(n transport.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType, includeLoopback bool) ([]net.IP, error) { //nolint:gocognit
 	ips := []net.IP{}
-	ifaces, err := vnet.Interfaces()
+	ifaces, err := n.Interfaces()
 	if err != nil {
 		return ips, err
 	}
@@ -211,9 +211,9 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter
 	return ips, nil
 }
 
-func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, portMin int, network string, lAddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
+func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, portMin int, network string, lAddr *net.UDPAddr) (transport.UDPConn, error) {
 	if (lAddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
-		return vnet.ListenUDP(network, lAddr)
+		return n.ListenUDP(network, lAddr)
 	}
 	var i, j int
 	i = portMin
@@ -232,7 +232,7 @@ func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, po
 	portCurrent := portStart
 	for {
 		lAddr = &net.UDPAddr{IP: lAddr.IP, Port: portCurrent}
-		c, e := vnet.ListenUDP(network, lAddr)
+		c, e := n.ListenUDP(network, lAddr)
 		if e == nil {
 			return c, e //nolint:nilerr
 		}

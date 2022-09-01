@@ -13,8 +13,8 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/test"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2/test"
+	"github.com/pion/transport/v2/vnet"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 )
@@ -54,9 +54,12 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		return nil, err
 	}
 
-	wanNet := vnet.NewNet(&vnet.NetConfig{
+	wanNet, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIP: vnetSTUNServerIP, // will be assigned to eth0
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	err = wan.AddNet(wanNet)
 	if err != nil {
@@ -83,9 +86,13 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		return nil, err
 	}
 
-	net0 := vnet.NewNet(&vnet.NetConfig{
+	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{vnetLocalIPA},
 	})
+	if err != nil {
+		return nil, err
+	}
+
 	err = lan0.AddNet(net0)
 	if err != nil {
 		return nil, err
@@ -116,9 +123,13 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 		return nil, err
 	}
 
-	net1 := vnet.NewNet(&vnet.NetConfig{
+	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{vnetLocalIPB},
 	})
+	if err != nil {
+		return nil, err
+	}
+
 	err = lan1.AddNet(net1)
 	if err != nil {
 		return nil, err
@@ -475,14 +486,16 @@ func TestDisconnectedToConnected(t *testing.T) {
 		return atomic.LoadUint64(&dropAllData) != 1
 	})
 
-	net0 := vnet.NewNet(&vnet.NetConfig{
+	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net0))
 
-	net1 := vnet.NewNet(&vnet.NetConfig{
+	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net1))
 
 	assert.NoError(t, wan.Start())
@@ -581,14 +594,16 @@ func TestWriteUseValidPair(t *testing.T) {
 		return true
 	})
 
-	net0 := vnet.NewNet(&vnet.NetConfig{
+	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net0))
 
-	net1 := vnet.NewNet(&vnet.NetConfig{
+	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
+	assert.NoError(t, err)
 	assert.NoError(t, wan.AddNet(net1))
 
 	assert.NoError(t, wan.Start())

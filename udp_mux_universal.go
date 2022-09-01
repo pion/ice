@@ -7,6 +7,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
+	"github.com/pion/transport/v2"
 )
 
 // UniversalUDPMux allows multiple connections to go over a single UDP port for
@@ -35,6 +36,7 @@ type UniversalUDPMuxParams struct {
 	Logger                logging.LeveledLogger
 	UDPConn               net.PacketConn
 	XORMappedAddrCacheTTL time.Duration
+	Net                   transport.Net
 }
 
 // NewUniversalUDPMuxDefault creates an implementation of UniversalUDPMux embedding UDPMux
@@ -63,6 +65,7 @@ func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDef
 	udpMuxParams := UDPMuxParams{
 		Logger:  params.Logger,
 		UDPConn: m.params.UDPConn,
+		Net:     m.params.Net,
 	}
 	m.UDPMuxDefault = NewUDPMuxDefault(udpMuxParams)
 
