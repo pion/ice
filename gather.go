@@ -579,13 +579,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				locConn = turn.NewSTUNConn(conn)
 
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
-				tcpAddr, connectErr := net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve TCP Addr %s: %v", TURNServerAddr, connectErr)
 					return
 				}
 
-				conn, connectErr := net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
+				conn, connectErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to Dial TCP Addr %s: %v", TURNServerAddr, connectErr)
 					return
@@ -596,18 +596,24 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
-				udpAddr, connectErr := net.ResolveUDPAddr(network, TURNServerAddr)
+				udpAddr, connectErr := a.net.ResolveUDPAddr(network, TURNServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve UDP Addr %s: %v", TURNServerAddr, connectErr)
 					return
 				}
 
-				conn, connectErr := dtls.Dial(network, udpAddr, &dtls.Config{ //nolint:contextcheck
+				udpConn, dialErr := a.net.DialUDP("udp", nil, udpAddr)
+				if dialErr != nil {
+					a.log.Warnf("Failed to dial DTLS Address %s: %v", TURNServerAddr, connectErr)
+					return
+				}
+
+				conn, connectErr := dtls.ClientWithContext(ctx, udpConn, &dtls.Config{
 					ServerName:         url.Host,
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 				if connectErr != nil {
-					a.log.Warnf("Failed to Dial DTLS Addr %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to create DTLS client: %v", TURNServerAddr, connectErr)
 					return
 				}
 
@@ -616,13 +622,28 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = "dtls"
 				locConn = &fakePacketConn{conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
-				conn, connectErr := tls.Dial(NetworkTypeTCP4.String(), TURNServerAddr, &tls.Config{
-					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
-				})
-				if connectErr != nil {
-					a.log.Warnf("Failed to Dial TLS Addr %s: %v", TURNServerAddr, connectErr)
+				tcpAddr, err := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				if err != nil {
+					a.log.Warnf("Failed to resolve relay address %s: %v", TURNServerAddr, err)
 					return
 				}
+
+				tcpConn, dialErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
+				if dialErr != nil {
+					a.log.Warnf("Failed to connect to relay: %v", dialErr)
+					return
+				}
+
+				conn := tls.Client(tcpConn, &tls.Config{
+					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
+				})
+
+				if err := conn.HandshakeContext(ctx); err != nil {
+					tcpConn.Close()
+					a.log.Warnf("Failed to connect to relay: %v", dialErr)
+					return
+				}
+
 				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
 				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "tls"

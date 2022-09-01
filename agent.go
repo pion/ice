@@ -4,6 +4,7 @@ package ice
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -13,8 +14,10 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
-	"github.com/pion/transport/packetio"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2"
+	"github.com/pion/transport/v2/packetio"
+	"github.com/pion/transport/v2/stdnet"
+	"github.com/pion/transport/v2/vnet"
 	"golang.org/x/net/proxy"
 )
 
@@ -123,7 +126,7 @@ type Agent struct {
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
-	net         *vnet.Net
+	net         transport.Net
 	tcpMux      TCPMux
 	udpMux      UDPMux
 	udpMuxSrflx UniversalUDPMux
@@ -262,21 +265,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	}
 	log := loggerFactory.NewLogger("ice")
 
-	var mDNSConn *mdns.Conn
-	mDNSConn, mDNSMode, err = createMulticastDNS(mDNSMode, mDNSName, log)
-	// Opportunistic mDNS: If we can't open the connection, that's ok: we
-	// can continue without it.
-	if err != nil {
-		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
-	}
-	closeMDNSConn := func() {
-		if mDNSConn != nil {
-			if mdnsCloseErr := mDNSConn.Close(); mdnsCloseErr != nil {
-				log.Warnf("Failed to close mDNS: %v", mdnsCloseErr)
-			}
-		}
-	}
-
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	a := &Agent{
@@ -307,7 +295,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
-		mDNSConn: mDNSConn,
 
 		gatherCandidateCancel: func() {},
 
@@ -330,11 +317,28 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	a.udpMuxSrflx = config.UDPMuxSrflx
 
 	if a.net == nil {
-		a.net = vnet.NewNet(nil)
-	} else if a.net.IsVirtual() {
-		a.log.Warn("vnet is enabled")
+		a.net, err = stdnet.NewNet()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create network: %w", err)
+		}
+	} else if _, isVirtual := a.net.(*vnet.Net); isVirtual {
+		a.log.Warn("virtual network is enabled")
 		if a.mDNSMode != MulticastDNSModeDisabled {
-			a.log.Warn("vnet does not support mDNS yet")
+			a.log.Warn("virtual network does not support mDNS yet")
+		}
+	}
+
+	a.mDNSConn, mDNSMode, err = createMulticastDNS(a.net, mDNSMode, mDNSName, log)
+	// Opportunistic mDNS: If we can't open the connection, that's ok: we
+	// can continue without it.
+	if err != nil {
+		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
+	}
+	closeMDNSConn := func() {
+		if a.mDNSConn != nil {
+			if mdnsCloseErr := a.mDNSConn.Close(); mdnsCloseErr != nil {
+				log.Warnf("Failed to close mDNS: %v", mdnsCloseErr)
+			}
 		}
 	}
 

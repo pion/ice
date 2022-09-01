@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/test"
+	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/require"
 )
 

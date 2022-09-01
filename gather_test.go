@@ -21,7 +21,7 @@ import (
 	"github.com/pion/dtls/v2/pkg/crypto/selfsign"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/test"
+	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

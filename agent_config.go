@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/vnet"
+	"github.com/pion/transport/v2"
 	"golang.org/x/net/proxy"
 )
 
@@ -130,8 +130,8 @@ type AgentConfig struct {
 	RelayAcceptanceMinWait *time.Duration
 
 	// Net is the our abstracted network interface for internal development purpose only
-	// (see github.com/pion/transport/vnet)
-	Net *vnet.Net
+	// (see https://github.com/pion/transport)
+	Net transport.Net
 
 	// InterfaceFilter is a function that you can use in order to whitelist or blacklist
 	// the interfaces which are used to gather ICE candidates.
