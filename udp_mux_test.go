@@ -122,8 +122,12 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 	})
 	require.NoError(t, err, "error dialing test udp connection")
 
+	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
+}
+
+func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net.UDPConn, ufrag string) {
 	// initial messages are dropped
-	_, err = remoteConn.Write([]byte("dropped bytes"))
+	_, err := remoteConn.Write([]byte("dropped bytes"))
 	require.NoError(t, err)
 	// wait for packet to be consumed
 	time.Sleep(time.Millisecond)

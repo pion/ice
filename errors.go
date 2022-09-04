@@ -139,4 +139,6 @@ var (
 	errSendSTUNPacket                = errors.New("failed to send STUN packet")
 	errXORMappedAddrTimeout          = errors.New("timeout while waiting for XORMappedAddr")
 	errNotImplemented                = errors.New("not implemented yet")
+	errNoUDPMuxAvailable             = errors.New("no UDP mux is available")
+	errNoTCPMuxAvailable             = errors.New("no TCP mux is available")
 )

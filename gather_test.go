@@ -488,6 +488,119 @@ func TestTURNProxyDialer(t *testing.T) {
 	assert.NoError(t, a.Close())
 }
 
+// Assert that candidates are given for each mux in a MultiUDPMux
+func TestMultiUDPMuxUsage(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	var expectedPorts []int
+	var udpMuxInstances []UDPMux
+	for i := 0; i < 3; i++ {
+		port := randomPort(t)
+		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: port})
+		assert.NoError(t, err)
+		defer func() {
+			_ = conn.Close()
+		}()
+
+		expectedPorts = append(expectedPorts, port)
+		udpMuxInstances = append(udpMuxInstances, NewUDPMuxDefault(UDPMuxParams{
+			UDPConn: conn,
+		}))
+	}
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes(),
+		CandidateTypes: []CandidateType{CandidateTypeHost},
+		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
+	})
+	assert.NoError(t, err)
+
+	candidateCh := make(chan Candidate)
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(candidateCh)
+			return
+		}
+		candidateCh <- c
+	}))
+	assert.NoError(t, a.GatherCandidates())
+
+	portFound := make(map[int]bool)
+	for c := range candidateCh {
+		portFound[c.Port()] = true
+		assert.True(t, c.NetworkType().IsUDP(), "All candidates should be UDP")
+	}
+	assert.Len(t, portFound, len(expectedPorts))
+	for _, port := range expectedPorts {
+		assert.True(t, portFound[port], "There should be a candidate for each UDP mux port")
+	}
+
+	assert.NoError(t, a.Close())
+}
+
+// Assert that candidates are given for each mux in a MultiTCPMux
+func TestMultiTCPMuxUsage(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	var expectedPorts []int
+	var tcpMuxInstances []TCPMux
+	for i := 0; i < 3; i++ {
+		port := randomPort(t)
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   net.IP{127, 0, 0, 1},
+			Port: port,
+		})
+		assert.NoError(t, err)
+		defer func() {
+			_ = listener.Close()
+		}()
+
+		expectedPorts = append(expectedPorts, port)
+		tcpMuxInstances = append(tcpMuxInstances, NewTCPMuxDefault(TCPMuxParams{
+			Listener:       listener,
+			ReadBufferSize: 8,
+		}))
+	}
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:   supportedNetworkTypes(),
+		CandidateTypes: []CandidateType{CandidateTypeHost},
+		TCPMux:         NewMultiTCPMuxDefault(tcpMuxInstances...),
+	})
+	assert.NoError(t, err)
+
+	candidateCh := make(chan Candidate)
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(candidateCh)
+			return
+		}
+		candidateCh <- c
+	}))
+	assert.NoError(t, a.GatherCandidates())
+
+	portFound := make(map[int]bool)
+	for c := range candidateCh {
+		if c.NetworkType().IsTCP() {
+			portFound[c.Port()] = true
+		}
+	}
+	assert.Len(t, portFound, len(expectedPorts))
+	for _, port := range expectedPorts {
+		assert.True(t, portFound[port], "There should be a candidate for each TCP mux port")
+	}
+
+	assert.NoError(t, a.Close())
+}
+
 // Assert that UniversalUDPMux is used while gathering when configured in the Agent
 func TestUniversalUDPMuxUsage(t *testing.T) {
 	report := test.CheckRoutines(t)
