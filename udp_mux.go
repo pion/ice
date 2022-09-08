@@ -30,7 +30,7 @@ type UDPMuxDefault struct {
 	connsIPv4, connsIPv6 map[string]*udpMuxedConn
 
 	addressMapMu sync.RWMutex
-	addressMap   map[string]*udpMuxedConn
+	addressMap   map[string][]*udpMuxedConn
 
 	// buffer pool to recycle buffers for net.UDPAddr encodes/decodes
 	pool *sync.Pool
@@ -53,7 +53,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	}
 
 	m := &UDPMuxDefault{
-		addressMap: map[string]*udpMuxedConn{},
+		addressMap: map[string][]*udpMuxedConn{},
 		params:     params,
 		connsIPv4:  make(map[string]*udpMuxedConn),
 		connsIPv6:  make(map[string]*udpMuxedConn),
@@ -132,7 +132,15 @@ func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	for _, c := range removedConns {
 		addresses := c.getAddresses()
 		for _, addr := range addresses {
-			delete(m.addressMap, addr)
+			if connList, ok := m.addressMap[addr]; ok {
+				var newList []*udpMuxedConn
+				for _, conn := range connList {
+					if conn.params.Key != ufrag {
+						newList = append(newList, conn)
+					}
+				}
+				m.addressMap[addr] = newList
+			}
 		}
 	}
 }
@@ -182,10 +190,11 @@ func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) 
 	defer m.addressMapMu.Unlock()
 
 	existing, ok := m.addressMap[addr]
-	if ok {
-		existing.removeAddress(addr)
+	if !ok {
+		existing = []*udpMuxedConn{}
 	}
-	m.addressMap[addr] = conn
+	existing = append(existing, conn)
+	m.addressMap[addr] = existing
 
 	m.params.Logger.Debugf("Registered %s for %s", addr, conn.params.Key)
 }
@@ -229,13 +238,25 @@ func (m *UDPMuxDefault) connWorker() {
 			return
 		}
 
-		// If we have already seen this address dispatch to the appropriate destination
+		// If we have already seen this address, dispatch to the possible destinations.
+		// If you are using the same socket for the Host and SRFLX candidates,
+		// there might be more than one muxed connection for the same remote endpoint
+		// (UDPMuxDefault registerConnForAddress() has been called twice or more).
+		// We will then forward STUN packets to each of these connections.
 		m.addressMapMu.Lock()
-		destinationConn := m.addressMap[addr.String()]
+		var destinationConnList []*udpMuxedConn
+		// copy the list
+		if connList, ok := m.addressMap[addr.String()]; ok {
+			for _, conn := range connList {
+				destinationConnList = append(destinationConnList, conn)
+			}
+		}
 		m.addressMapMu.Unlock()
 
-		// If we haven't seen this address before but is a STUN packet lookup by ufrag
-		if destinationConn == nil && stun.IsMessage(buf[:n]) {
+		// We need the following block to discover Peer Reflexive Candidates for which we don't know the Endpoint upfront.
+		// However, we can take a username attribute from the STUN message, which contains ufrag.
+		// We can use ufrag to identify the destination conn to route the packet.
+		if len(destinationConnList) == 0 && stun.IsMessage(buf[:n]) {
 			msg := &stun.Message{
 				Raw: append([]byte{}, buf[:n]...),
 			}
@@ -255,17 +276,33 @@ func (m *UDPMuxDefault) connWorker() {
 			isIPv6 := udpAddr.IP.To4() == nil
 
 			m.mu.Lock()
-			destinationConn, _ = m.getConn(ufrag, isIPv6)
+			if destinationConn, ok := m.getConn(ufrag, isIPv6); ok {
+				// check if the ufrag conn is already in the destination list (probably won't ever happen).
+				exists := false
+				for _, conn := range destinationConnList {
+					if conn.params.Key == destinationConn.params.Key {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					destinationConnList = append(destinationConnList, destinationConn)
+				}
+			}
 			m.mu.Unlock()
 		}
 
-		if destinationConn == nil {
+		if len(destinationConnList) == 0 {
 			m.params.Logger.Tracef("dropping packet from %s, addr: %s", udpAddr.String(), addr.String())
 			continue
 		}
 
-		if err = destinationConn.writePacket(buf[:n], udpAddr); err != nil {
-			m.params.Logger.Errorf("could not write packet: %v", err)
+		// Forward STUN packets to each destination connections even thought the STUN packet might not belong there.
+		// It will be discarded by the further ICE candidate logic if so.
+		for _, conn := range destinationConnList {
+			if err = conn.writePacket(buf[:n], udpAddr); err != nil {
+				m.params.Logger.Errorf("could not write packet: %v", err)
+			}
 		}
 	}
 }
