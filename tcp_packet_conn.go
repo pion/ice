@@ -133,10 +133,18 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 
 	t.wg.Add(1)
 	go func() {
-		if firstPacketData != nil {
-			t.recvChan <- streamingPacket{firstPacketData, conn.RemoteAddr(), nil}
-		}
 		defer t.wg.Done()
+		if firstPacketData != nil {
+			select {
+			case <-t.closedChan:
+				// NOTE: recvChan can fill up and never drain in edge
+				// cases while closing a connection, which can cause the
+				// packetConn to never finish closing. Bail out early
+				// here to prevent that.
+				return
+			case t.recvChan <- streamingPacket{firstPacketData, conn.RemoteAddr(), nil}:
+			}
+		}
 		t.startReading(conn)
 	}()
 

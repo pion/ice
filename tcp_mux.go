@@ -14,9 +14,9 @@ import (
 // TCPMux is allows grouping multiple TCP net.Conns and using them like UDP
 // net.PacketConns. The main implementation of this is TCPMuxDefault, and this
 // interface exists to:
-// 1. prevent SEGV panics when TCPMuxDefault is not initialized by using the
-//    invalidTCPMux implementation, and
-// 2. allow mocking in tests.
+//  1. prevent SEGV panics when TCPMuxDefault is not initialized by using the
+//     invalidTCPMux implementation, and
+//  2. allow mocking in tests.
 type TCPMux interface {
 	io.Closer
 	GetConnByUfrag(ufrag string, isIPv6 bool) (net.PacketConn, error)
@@ -252,17 +252,24 @@ func (m *TCPMuxDefault) Close() error {
 
 // RemoveConnByUfrag closes and removes a net.PacketConn by Ufrag.
 func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
+	removedConns := make([]*tcpPacketConn, 0, 2)
+
+	// Keep lock section small to avoid deadlock with conn lock
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if conn, ok := m.connsIPv4[ufrag]; ok {
-		m.closeAndLogError(conn)
 		delete(m.connsIPv4, ufrag)
+		removedConns = append(removedConns, conn)
 	}
-
 	if conn, ok := m.connsIPv6[ufrag]; ok {
-		m.closeAndLogError(conn)
 		delete(m.connsIPv6, ufrag)
+		removedConns = append(removedConns, conn)
+	}
+	m.mu.Unlock()
+
+	// Close the connections outside the critical section to avoid
+	// deadlocking TCP mux if (*tcpPacketConn).Close() blocks.
+	for _, conn := range removedConns {
+		m.closeAndLogError(conn)
 	}
 }
 
@@ -281,11 +288,12 @@ const streamingPacketHeaderLen = 2
 // readStreamingPacket reads 1 packet from stream
 // read packet  bytes https://tools.ietf.org/html/rfc4571#section-2
 // 2-byte length header prepends each packet:
-//     0                   1                   2                   3
-//     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//    -----------------------------------------------------------------
-//    |             LENGTH            |  RTP or RTCP packet ...       |
-//    -----------------------------------------------------------------
+//
+//	 0                   1                   2                   3
+//	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//	-----------------------------------------------------------------
+//	|             LENGTH            |  RTP or RTCP packet ...       |
+//	-----------------------------------------------------------------
 func readStreamingPacket(conn net.Conn, buf []byte) (int, error) {
 	header := make([]byte, streamingPacketHeaderLen)
 	var bytesRead, n int
