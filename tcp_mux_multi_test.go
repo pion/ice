@@ -53,7 +53,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				_ = multiMux.Close()
 			}()
 
-			pktConns, err := multiMux.GetAllConns("myufrag", false)
+			pktConns, err := multiMux.GetAllConns("myufrag", false, net.IP{127, 0, 0, 1})
 			require.NoError(t, err, "error retrieving muxed connection for ufrag")
 
 			for _, pktConn := range pktConns {
@@ -117,12 +117,12 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	}
 	muxMulti := NewMultiTCPMuxDefault(tcpMuxInstances...)
 
-	_, err := muxMulti.GetAllConns("test", false)
+	_, err := muxMulti.GetAllConns("test", false, net.IP{127, 0, 0, 1})
 	require.NoError(t, err, "error getting conn by ufrag")
 
 	require.NoError(t, muxMulti.Close(), "error closing tcpMux")
 
-	conn, err := muxMulti.GetAllConns("test", false)
+	conn, err := muxMulti.GetAllConns("test", false, net.IP{127, 0, 0, 1})
 	assert.Nil(t, conn, "should receive nil because mux is closed")
 	assert.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }

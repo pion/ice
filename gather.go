@@ -186,7 +186,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				var muxConns []net.PacketConn
 				if multi, ok := a.tcpMux.(AllConnsGetter); ok {
 					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
-					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil)
+					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
 						if !errors.Is(err, ErrTCPMuxNotInitialized) {
 							a.log.Warnf("error getting all tcp conns by ufrag: %s %s %s", network, ip, a.localUfrag)
@@ -195,7 +195,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					}
 				} else {
 					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
-					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil)
+					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
 						if !errors.Is(err, ErrTCPMuxNotInitialized) {
 							a.log.Warnf("error getting tcp conn by ufrag: %s %s %s", network, ip, a.localUfrag)
@@ -282,6 +282,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 	}
 
 	for _, candidateIP := range localIPs {
+		localIP := candidateIP
 		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 			if mappedIP, innerErr := a.extIPMapper.findExternalIP(candidateIP.String()); innerErr != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
@@ -293,7 +294,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 
 		var conns []net.PacketConn
 		if multi, ok := a.udpMux.(AllConnsGetter); ok {
-			conns, err = multi.GetAllConns(a.localUfrag, candidateIP.To4() == nil)
+			conns, err = multi.GetAllConns(a.localUfrag, candidateIP.To4() == nil, localIP)
 			if err != nil {
 				return err
 			}
@@ -302,7 +303,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				continue
 			}
 		} else {
-			conn, err := a.udpMux.GetConn(a.localUfrag, candidateIP.To4() == nil)
+			conn, err := a.udpMux.GetConn(a.localUfrag, candidateIP.To4() == nil, localIP)
 			if err != nil {
 				return err
 			}

@@ -23,7 +23,7 @@ func TestMuxAgent(t *testing.T) {
 
 	const muxPort = 7686
 
-	c, err := net.ListenUDP(udp, &net.UDPAddr{
+	c, err := net.ListenUDP("udp4", &net.UDPAddr{
 		Port: muxPort,
 	})
 

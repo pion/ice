@@ -252,7 +252,8 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 			// previously sent by this pair produced a successful response and
 			// generated a valid pair (Section 7.2.5.3.2).  The agent sets the
 			// nominated flag value of the valid pair to true.
-			if selectedPair := s.agent.getSelectedPair(); selectedPair == nil || selectedPair.priority() < p.priority() {
+			if selectedPair := s.agent.getSelectedPair(); selectedPair == nil ||
+				(selectedPair != p && selectedPair.priority() <= p.priority()) {
 				s.agent.setSelectedPair(p)
 			} else if selectedPair != p {
 				s.log.Tracef("ignore nominate new pair %s, already nominated pair %s", p, selectedPair)

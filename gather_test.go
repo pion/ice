@@ -510,6 +510,10 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		udpMuxInstances = append(udpMuxInstances, NewUDPMuxDefault(UDPMuxParams{
 			UDPConn: conn,
 		}))
+		idx := i
+		defer func() {
+			_ = udpMuxInstances[idx].Close()
+		}()
 	}
 
 	a, err := NewAgent(&AgentConfig{

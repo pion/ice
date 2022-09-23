@@ -1610,9 +1610,11 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	isComplete := make(chan interface{})
 	isTested := make(chan interface{})
 	if err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
-		_, _, errCred := aAgent.GetLocalUserCredentials()
-		assert.NoError(t, errCred)
-		close(isTested)
+		go func() {
+			_, _, errCred := aAgent.GetLocalUserCredentials()
+			assert.NoError(t, errCred)
+			close(isTested)
+		}()
 	}); err != nil {
 		t.Error(err)
 	}
