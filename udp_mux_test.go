@@ -40,7 +40,7 @@ func TestUDPMux(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	require.NotNil(t, udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+	require.NotNil(t, udpMux.LocalAddr(), "udpMux.LocalAddr() is nil")
 
 	wg := sync.WaitGroup{}
 
@@ -66,7 +66,7 @@ func TestUDPMux(t *testing.T) {
 	require.NoError(t, udpMux.Close())
 
 	// can't create more connections
-	_, err = udpMux.GetConn("failufrag", false)
+	_, err = udpMux.GetConn("failufrag", false, net.IPv4zero)
 	require.Error(t, err)
 }
 
@@ -111,16 +111,16 @@ func TestAddressEncoding(t *testing.T) {
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
-	pktConn, err := udpMux.GetConn(ufrag, false)
-	require.NoError(t, err, "error retrieving muxed connection for ufrag")
-	defer func() {
-		_ = pktConn.Close()
-	}()
-
 	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
 		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
 	})
 	require.NoError(t, err, "error dialing test udp connection")
+
+	pktConn, err := udpMux.GetConn(ufrag, false, remoteConn.RemoteAddr().(*net.UDPAddr).IP)
+	require.NoError(t, err, "error retrieving muxed connection for ufrag")
+	defer func() {
+		_ = pktConn.Close()
+	}()
 
 	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 }

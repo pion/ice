@@ -10,7 +10,7 @@ import "net"
 // a UDPMux, in which case it will return a single connection for one
 // of the ports.
 type AllConnsGetter interface {
-	GetAllConns(ufrag string, isIPv6 bool) ([]net.PacketConn, error)
+	GetAllConns(ufrag string, isIPv6 bool, local net.IP) ([]net.PacketConn, error)
 }
 
 // MultiUDPMuxDefault implements both UDPMux and AllConnsGetter,
@@ -32,13 +32,13 @@ func NewMultiUDPMuxDefault(muxs ...UDPMux) *MultiUDPMuxDefault {
 // creates the connection if an existing one can't be found. This, unlike
 // GetAllConns, will only return a single PacketConn from the first
 // mux that was passed in to NewMultiUDPMuxDefault.
-func (m *MultiUDPMuxDefault) GetConn(ufrag string, isIPv6 bool) (net.PacketConn, error) {
+func (m *MultiUDPMuxDefault) GetConn(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error) {
 	// NOTE: We always use the first element here in order to maintain the
 	// behavior of using an existing connection if one exists.
 	if len(m.muxs) == 0 {
 		return nil, errNoUDPMuxAvailable
 	}
-	return m.muxs[0].GetConn(ufrag, isIPv6)
+	return m.muxs[0].GetConn(ufrag, isIPv6, local)
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection
@@ -50,14 +50,14 @@ func (m *MultiUDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 }
 
 // GetAllConns returns a PacketConn for each underlying UDPMux
-func (m *MultiUDPMuxDefault) GetAllConns(ufrag string, isIPv6 bool) ([]net.PacketConn, error) {
+func (m *MultiUDPMuxDefault) GetAllConns(ufrag string, isIPv6 bool, local net.IP) ([]net.PacketConn, error) {
 	if len(m.muxs) == 0 {
 		// Make sure that we either return at least one connection or an error.
 		return nil, errNoUDPMuxAvailable
 	}
 	var conns []net.PacketConn
 	for _, mux := range m.muxs {
-		conn, err := mux.GetConn(ufrag, isIPv6)
+		conn, err := mux.GetConn(ufrag, isIPv6, local)
 		if err != nil {
 			// For now, this implementation is all or none.
 			return nil, err

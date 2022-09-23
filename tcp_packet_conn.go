@@ -111,7 +111,7 @@ func newTCPPacketConn(params tcpPacketParams) *tcpPacketConn {
 }
 
 func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
-	t.params.Logger.Infof("AddConn: %s %s", conn.RemoteAddr().Network(), conn.RemoteAddr())
+	t.params.Logger.Infof("AddConn: %s remote %s to local %s", conn.RemoteAddr().Network(), conn.RemoteAddr(), conn.LocalAddr())
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
