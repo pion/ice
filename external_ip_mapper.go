@@ -17,6 +17,7 @@ func validateIPString(ipStr string) (net.IP, bool, error) {
 type ipMapping struct {
 	ipSole net.IP            // when non-nil, this is the sole external IP for one local IP assumed
 	ipMap  map[string]net.IP // local-to-external IP mapping (k: local, v: external)
+	valid  bool              // if not set any external IP, valid is false
 }
 
 func (m *ipMapping) setSoleIP(ip net.IP) error {
@@ -25,6 +26,7 @@ func (m *ipMapping) setSoleIP(ip net.IP) error {
 	}
 
 	m.ipSole = ip
+	m.valid = true
 
 	return nil
 }
@@ -42,11 +44,16 @@ func (m *ipMapping) addIPMapping(locIP, extIP net.IP) error {
 	}
 
 	m.ipMap[locIPStr] = extIP
+	m.valid = true
 
 	return nil
 }
 
 func (m *ipMapping) findExternalIP(locIP net.IP) (net.IP, error) {
+	if !m.valid {
+		return locIP, nil
+	}
+
 	if m.ipSole != nil {
 		return m.ipSole, nil
 	}
