@@ -365,12 +365,19 @@ func (m *UDPMuxDefault) connWorker() { //nolint:gocognit
 		var destinationConn *udpMuxedConn
 		m.addressMapMu.Lock()
 		if conns, ok := m.addressMap[addr.String()]; ok {
-			destinationConn = conns[ipAddr(localHost.String())]
+			if localHost.IsUnspecified() {
+				for _, c := range conns {
+					destinationConn = c
+					break
+				}
+			} else {
+				destinationConn = conns[ipAddr(localHost.String())]
+			}
 		}
 		m.addressMapMu.Unlock()
 
 		// If we haven't seen this address before but is a STUN packet lookup by ufrag
-		if destinationConn == nil && stun.IsMessage(buf[:n]) {
+		if destinationConn == nil && stun.IsMessage(buf[:n]) && !localHost.IsUnspecified() {
 			msg := &stun.Message{
 				Raw: append([]byte{}, buf[:n]...),
 			}
