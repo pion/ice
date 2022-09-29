@@ -1,6 +1,7 @@
 package ice
 
 import (
+	"net"
 	"time"
 
 	"github.com/pion/logging"
@@ -132,9 +133,13 @@ type AgentConfig struct {
 	// (see github.com/pion/transport/vnet)
 	Net *vnet.Net
 
-	// InterfaceFilter is a function that you can use in order to  whitelist or blacklist
+	// InterfaceFilter is a function that you can use in order to whitelist or blacklist
 	// the interfaces which are used to gather ICE candidates.
 	InterfaceFilter func(string) bool
+
+	// IPFilter is a function that you can use in order to whitelist or blacklist
+	// the ips which are used to gather ICE candidates.
+	IPFilter func(net.IP) bool
 
 	// InsecureSkipVerify controls if self-signed certificates are accepted when connecting
 	// to TURN servers via TLS or DTLS
