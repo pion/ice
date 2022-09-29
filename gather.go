@@ -149,7 +149,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		delete(networks, udp)
 	}
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, networkTypes)
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes)
 	if err != nil {
 		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
 		return
@@ -273,7 +273,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		return errUDPMuxDisabled
 	}
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.networkTypes)
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, a.networkTypes)
 	switch {
 	case err != nil:
 		return err

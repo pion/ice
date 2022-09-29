@@ -31,7 +31,7 @@ func TestListenUDP(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, []NetworkType{NetworkTypeUDP4})
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
 	assert.NotEqual(t, len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
 	assert.NoError(t, err)
 

@@ -132,7 +132,7 @@ func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)
 	return res, nil
 }
 
-func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkTypes []NetworkType) ([]net.IP, error) { //nolint:gocognit
+func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType) ([]net.IP, error) { //nolint:gocognit
 	ips := []net.IP{}
 	ifaces, err := vnet.Interfaces()
 	if err != nil {
@@ -186,6 +186,10 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, networkT
 					continue
 				}
 			} else if !IPv4Requested {
+				continue
+			}
+
+			if ipFilter != nil && !ipFilter(ip) {
 				continue
 			}
 

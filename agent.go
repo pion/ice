@@ -129,6 +129,7 @@ type Agent struct {
 	udpMuxSrflx UniversalUDPMux
 
 	interfaceFilter func(string) bool
+	ipFilter        func(net.IP) bool
 
 	insecureSkipVerify bool
 
@@ -312,6 +313,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		forceCandidateContact: make(chan bool, 1),
 
 		interfaceFilter: config.InterfaceFilter,
+
+		ipFilter: config.IPFilter,
 
 		insecureSkipVerify: config.InsecureSkipVerify,
 	}
