@@ -365,13 +365,12 @@ func (m *UDPMuxDefault) connWorker() { //nolint:gocognit
 		var destinationConn *udpMuxedConn
 		m.addressMapMu.Lock()
 		if conns, ok := m.addressMap[addr.String()]; ok {
-			if localHost.IsUnspecified() {
+			destinationConn, ok = conns[ipAddr(localHost.String())]
+			if !ok {
 				for _, c := range conns {
 					destinationConn = c
 					break
 				}
-			} else {
-				destinationConn = conns[ipAddr(localHost.String())]
 			}
 		}
 		m.addressMapMu.Unlock()
