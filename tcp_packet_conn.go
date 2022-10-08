@@ -158,7 +158,7 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 		n, err := readStreamingPacket(conn, buf)
 		// t.params.Logger.Infof("readStreamingPacket read %d bytes", n)
 		if err != nil {
-			t.params.Logger.Infof("%w: %s", errReadingStreamingPacket, err)
+			t.params.Logger.Infof("%v: %s", errReadingStreamingPacket, err)
 			t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
 			t.removeConn(conn)
 			return
@@ -249,7 +249,7 @@ func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 func (t *tcpPacketConn) closeAndLogError(closer io.Closer) {
 	err := closer.Close()
 	if err != nil {
-		t.params.Logger.Warnf("%w: %s", errClosingConnection, err)
+		t.params.Logger.Warnf("%v: %s", errClosingConnection, err)
 	}
 }
 
