@@ -5,6 +5,14 @@ package ice
 
 import "net"
 
+// AllConnsGetter allows multiple fixed TCP ports to be used,
+// each which is multiplexed like TCPMux. AllConnsGetter also acts as
+// a TCPMux, in which case it will return a single connection for one
+// of the ports.
+type AllConnsGetter interface {
+	GetAllConns(ufrag string, isIPv6 bool, localIP net.IP) ([]net.PacketConn, error)
+}
+
 // MultiTCPMuxDefault implements both TCPMux and AllConnsGetter,
 // allowing users to pass multiple TCPMux instances to the ICE agent
 // configuration.

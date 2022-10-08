@@ -273,16 +273,14 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		return errUDPMuxDisabled
 	}
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, a.networkTypes)
-	switch {
-	case err != nil:
-		return err
-	case len(localIPs) == 0:
-		return errCandidateIPNotFound
-	}
+	localAddresses := a.udpMux.GetListenAddresses()
 
-	for _, candidateIP := range localIPs {
-		localIP := candidateIP
+	for _, addr := range localAddresses {
+		udpAddr, ok := addr.(*net.UDPAddr)
+		if !ok {
+			return errInvalidAddress
+		}
+		candidateIP := udpAddr.IP
 		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 			if mappedIP, innerErr := a.extIPMapper.findExternalIP(candidateIP.String()); innerErr != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
@@ -292,52 +290,30 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			}
 		}
 
-		var conns []net.PacketConn
-		if multi, ok := a.udpMux.(AllConnsGetter); ok {
-			conns, err = multi.GetAllConns(a.localUfrag, candidateIP.To4() == nil, localIP)
-			if err != nil {
-				return err
-			}
-			if len(conns) == 0 {
-				a.log.Warnf("Failed to get any connections from MultiUDPMux for candidate: %s", candidateIP)
-				continue
-			}
-		} else {
-			conn, err := a.udpMux.GetConn(a.localUfrag, candidateIP.To4() == nil, localIP)
-			if err != nil {
-				return err
-			}
-			conns = []net.PacketConn{conn}
+		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
+		if err != nil {
+			return err
+		}
+		hostConfig := CandidateHostConfig{
+			Network:   udp,
+			Address:   candidateIP.String(),
+			Port:      udpAddr.Port,
+			Component: ComponentRTP,
 		}
 
-		for _, conn := range conns {
-			udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
-			if !ok {
-				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s failed to cast", candidateIP))
-				continue
+		c, err := NewCandidateHost(&hostConfig)
+		if err != nil {
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
+			continue
+		}
+
+		if err := a.addCandidate(ctx, c, conn); err != nil {
+			if closeErr := c.close(); closeErr != nil {
+				a.log.Warnf("Failed to close candidate: %v", closeErr)
 			}
 
-			hostConfig := CandidateHostConfig{
-				Network:   udp,
-				Address:   candidateIP.String(),
-				Port:      udpAddr.Port,
-				Component: ComponentRTP,
-			}
-
-			c, err := NewCandidateHost(&hostConfig)
-			if err != nil {
-				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
-				continue
-			}
-
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
-					a.log.Warnf("Failed to close candidate: %v", closeErr)
-				}
-
-				closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
-				continue
-			}
+			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
+			continue
 		}
 	}
 
@@ -414,59 +390,60 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 		}
 
 		for i := range urls {
-			wg.Add(1)
-			go func(url URL, network string, isIPv6 bool) {
-				defer wg.Done()
-
-				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
-				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
-				if err != nil {
-					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
-					return
-				}
-
-				xoraddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, stunGatherTimeout)
-				if err != nil {
-					a.log.Warnf("could not get server reflexive address %s %s: %v", network, url, err)
-					return
-				}
-
-				conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), isIPv6)
-				if err != nil {
-					a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v", network, url, err)
-					return
-				}
-
-				ip := xoraddr.IP
-				port := xoraddr.Port
-
-				laddr, ok := conn.LocalAddr().(*net.UDPAddr)
+			for _, listenAddr := range a.udpMuxSrflx.GetListenAddresses() {
+				udpAddr, ok := listenAddr.(*net.UDPAddr)
 				if !ok {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: cast failed", network, ip, port))
-					return
+					a.log.Warn("Failed to cast udpMuxSrflx listen address to UDPAddr")
+					continue
 				}
+				wg.Add(1)
+				go func(url URL, network string, localAddr *net.UDPAddr) {
+					defer wg.Done()
 
-				srflxConfig := CandidateServerReflexiveConfig{
-					Network:   network,
-					Address:   ip.String(),
-					Port:      port,
-					Component: ComponentRTP,
-					RelAddr:   laddr.IP.String(),
-					RelPort:   laddr.Port,
-				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
-				if err != nil {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err))
-					return
-				}
-
-				if err := a.addCandidate(ctx, c, conn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
+					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
+					if err != nil {
+						a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
+						return
 					}
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
-				}
-			}(*urls[i], networkType.String(), networkType.IsIPv6())
+
+					xoraddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, stunGatherTimeout)
+					if err != nil {
+						a.log.Warnf("could not get server reflexive address %s %s: %v", network, url, err)
+						return
+					}
+
+					conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), localAddr)
+					if err != nil {
+						a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v", network, url, err)
+						return
+					}
+
+					ip := xoraddr.IP
+					port := xoraddr.Port
+
+					srflxConfig := CandidateServerReflexiveConfig{
+						Network:   network,
+						Address:   ip.String(),
+						Port:      port,
+						Component: ComponentRTP,
+						RelAddr:   localAddr.IP.String(),
+						RelPort:   localAddr.Port,
+					}
+					c, err := NewCandidateServerReflexive(&srflxConfig)
+					if err != nil {
+						closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err))
+						return
+					}
+
+					if err := a.addCandidate(ctx, c, conn); err != nil {
+						if closeErr := c.close(); closeErr != nil {
+							a.log.Warnf("Failed to close candidate: %v", closeErr)
+						}
+						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+					}
+				}(*urls[i], networkType.String(), udpAddr)
+			}
 		}
 	}
 }

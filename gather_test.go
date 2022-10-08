@@ -507,9 +507,9 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		}()
 
 		expectedPorts = append(expectedPorts, port)
-		udpMuxInstances = append(udpMuxInstances, NewUDPMuxDefault(UDPMuxParams{
-			UDPConn: conn,
-		}))
+		muxDefault, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn})
+		assert.NoError(t, err)
+		udpMuxInstances = append(udpMuxInstances, muxDefault)
 		idx := i
 		defer func() {
 			_ = udpMuxInstances[idx].Close()
@@ -675,7 +675,7 @@ func (m *universalUDPMuxMock) GetRelayedAddr(turnAddr net.Addr, deadline time.Du
 	return nil, errNotImplemented
 }
 
-func (m *universalUDPMuxMock) GetConnForURL(ufrag string, url string, isIPv6 bool) (net.PacketConn, error) {
+func (m *universalUDPMuxMock) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getConnForURLTimes++
@@ -693,4 +693,8 @@ func (m *universalUDPMuxMock) RemoveConnByUfrag(ufrag string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeConnByUfragTimes++
+}
+
+func (m *universalUDPMuxMock) GetListenAddresses() []net.Addr {
+	return []net.Addr{m.conn.LocalAddr()}
 }

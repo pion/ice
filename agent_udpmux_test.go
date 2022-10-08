@@ -24,11 +24,14 @@ func TestMuxAgent(t *testing.T) {
 	const muxPort = 7686
 
 	c, err := net.ListenUDP("udp4", &net.UDPAddr{
+		IP:   net.IPv4(127, 0, 0, 1),
 		Port: muxPort,
 	})
 
+	require.NoError(t, err)
+
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	udpMux := NewUDPMuxDefault(UDPMuxParams{
+	udpMux, err := NewUDPMuxDefault(UDPMuxParams{
 		Logger:  loggerFactory.NewLogger("ice"),
 		UDPConn: c,
 	})

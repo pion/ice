@@ -16,7 +16,6 @@ type udpMuxedConnParams struct {
 	AddrPool  *sync.Pool
 	Key       string
 	LocalAddr net.Addr
-	LocalIP   net.IP
 	Logger    logging.LeveledLogger
 }
 
