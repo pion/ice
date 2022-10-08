@@ -14,10 +14,10 @@ import (
 )
 
 func TestUniversalUDPMux(t *testing.T) {
-	conn, err := net.ListenUDP(udp, &net.UDPAddr{})
+	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 
-	udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
+	udpMux, err := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
 		Logger:  nil,
 		UDPConn: conn,
 	})
@@ -41,7 +41,7 @@ func TestUniversalUDPMux(t *testing.T) {
 }
 
 func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag string, network string) {
-	pktConn, err := udpMux.GetConn(ufrag, false, net.IPv4zero)
+	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()

@@ -5,6 +5,7 @@ package ice
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,16 +21,32 @@ func TestMultiUDPMux(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	conn1, err := net.ListenUDP(udp, &net.UDPAddr{})
+	conn1, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 
-	conn2, err := net.ListenUDP(udp, &net.UDPAddr{})
+	conn2, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 
-	udpMuxMulti := NewMultiUDPMuxDefault(
-		NewUDPMuxDefault(UDPMuxParams{UDPConn: conn1}),
-		NewUDPMuxDefault(UDPMuxParams{UDPConn: conn2}),
-	)
+	conn3, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6loopback})
+	if err != nil {
+		// ipv6 is not supported on this machine
+		t.Log("ipv6 is not supported on this machine")
+	}
+
+	muxes := []UDPMux{}
+	muxV41, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn1})
+	require.NoError(t, err)
+	muxes = append(muxes, muxV41)
+	muxV42, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn2})
+	require.NoError(t, err)
+	muxes = append(muxes, muxV42)
+	if conn3 != nil {
+		muxV6, v6err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn3})
+		require.NoError(t, v6err)
+		muxes = append(muxes, muxV6)
+	}
+
+	udpMuxMulti := NewMultiUDPMuxDefault(muxes...)
 	defer func() {
 		_ = udpMuxMulti.Close()
 		_ = conn1.Close()
@@ -60,32 +77,77 @@ func TestMultiUDPMux(t *testing.T) {
 	require.NoError(t, udpMuxMulti.Close())
 
 	// can't create more connections
-	_, err = udpMuxMulti.GetConn("failufrag", false, net.IP{})
+	_, err = udpMuxMulti.GetConn("failufrag", conn1.LocalAddr())
 	require.Error(t, err)
 }
 
 func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, ufrag string, network string) {
-	pktConns, err := udpMuxMulti.GetAllConns(ufrag, false, net.IP{127, 0, 0, 1})
-	require.NoError(t, err, "error retrieving muxed connection for ufrag")
+	addrs := udpMuxMulti.GetListenAddresses()
+	pktConns := make([]net.PacketConn, 0, len(addrs))
+	for _, addr := range addrs {
+		udpAddr, ok := addr.(*net.UDPAddr)
+		require.True(t, ok)
+		if network == "udp4" && udpAddr.IP.To4() == nil {
+			continue
+		} else if network == "udp6" && udpAddr.IP.To4() != nil {
+			continue
+		}
+		c, err := udpMuxMulti.GetConn(ufrag, addr)
+		require.NoError(t, err, "error retrieving muxed connection for ufrag")
+		pktConns = append(pktConns, c)
+	}
 	defer func() {
 		for _, c := range pktConns {
 			_ = c.Close()
 		}
 	}()
-	require.Len(t, pktConns, len(udpMuxMulti.muxs), "there should be a PacketConn for every mux")
 
 	// Try talking with each PacketConn
-	for i, pktConn := range pktConns {
-		remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
-			Port: pktConn.LocalAddr().(*net.UDPAddr).Port,
-		})
+	for _, pktConn := range pktConns {
+		remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr))
 		require.NoError(t, err, "error dialing test udp connection")
-		localConn, err := udpMuxMulti.muxs[i].GetConn(ufrag, false, remoteConn.RemoteAddr().(*net.UDPAddr).IP)
-		require.NoError(t, err, "error retrieving muxed connection for ufrag")
-		defer func() {
-			_ = pktConn.Close()
-		}()
-
-		testMuxConnectionPair(t, localConn, remoteConn, ufrag)
+		testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 	}
+}
+
+func TestUnspecifiedUDPMux(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	muxPort := 7778
+	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
+		return !strings.Contains(s, "docker")
+	}))
+	require.NoError(t, err)
+
+	require.GreaterOrEqual(t, len(udpMuxMulti.muxs), 1, "at least have 1 muxs")
+	defer func() {
+		_ = udpMuxMulti.Close()
+	}()
+
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag1", udp)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", "udp4")
+	}()
+
+	// skip ipv6 test on i386
+	const ptrSize = 32 << (^uintptr(0) >> 63)
+	if ptrSize != 32 {
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", "udp6")
+	}
+
+	wg.Wait()
+
+	require.NoError(t, udpMuxMulti.Close())
 }
