@@ -140,6 +140,6 @@ var (
 	errNotImplemented                = errors.New("not implemented yet")
 	errNoUDPMuxAvailable             = errors.New("no UDP mux is available")
 	errNoTCPMuxAvailable             = errors.New("no TCP mux is available")
-	errListenUnspecified             = errors.New("can't listen on unspecified address")
-	errInvalidAddress                = errors.New("invalid address")
+	// errListenUnspecified             = errors.New("can't listen on unspecified address")
+	errInvalidAddress = errors.New("invalid address")
 )
