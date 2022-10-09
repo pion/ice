@@ -213,6 +213,12 @@ func parseProto(raw string) (ProtoType, error) {
 	return proto, nil
 }
 
+// HostPortString returns a string in the format "host:port" or "[host]:port" if
+// a literal IPv6 address is given
+func (u URL) HostPortString() string {
+	return net.JoinHostPort(u.Host, strconv.Itoa(u.Port))
+}
+
 func (u URL) String() string {
 	rawURL := u.Scheme.String() + ":" + net.JoinHostPort(u.Host, strconv.Itoa(u.Port))
 	if u.Scheme == SchemeTypeTURN || u.Scheme == SchemeTypeTURNS {
