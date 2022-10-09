@@ -78,18 +78,67 @@ func TestUDPMux(t *testing.T) {
 	}
 }
 
-func TestCantMuxUnspecifiedAddr(t *testing.T) {
-	conn, err := net.ListenUDP(udp, &net.UDPAddr{})
+func TestUDPMuxUnspecifiedAddr(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	conn, err := net.ListenUDP(udp, nil)
 	require.NoError(t, err)
 
-	_, err = NewUDPMuxDefault(UDPMuxParams{
-		Logger:  nil,
-		UDPConn: conn,
-	})
+	conn4, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4zero})
+	require.NoError(t, err)
 
-	require.Equal(t, errListenUnspecified, err)
+	conn6, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6unspecified})
+	if err != nil {
+		t.Log("IPv6 is not supported on this machine")
+	}
 
-	_ = conn.Close()
+	for network, c := range map[string]net.PacketConn{udp: conn, udp4: conn4, udp6: conn6} {
+		if udpConn, ok := c.(*net.UDPConn); !ok || udpConn == nil {
+			continue
+		}
+		conn := c
+		t.Run(network, func(t *testing.T) {
+			udpMux, err := NewUDPMuxDefault(UDPMuxParams{
+				Logger:  nil,
+				UDPConn: conn,
+			})
+
+			require.NoError(t, err)
+
+			defer func() {
+				_ = udpMux.Close()
+				_ = conn.Close()
+			}()
+
+			require.NotNil(t, udpMux.LocalAddr(), "udpMux.LocalAddr() is nil")
+
+			wg := sync.WaitGroup{}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				testMuxConnection(t, udpMux, "ufrag1", udp)
+			}()
+
+			// skip ipv6 test on i386
+			const ptrSize = 32 << (^uintptr(0) >> 63)
+			if ptrSize != 32 || network != udp6 {
+				testMuxConnection(t, udpMux, "ufrag2", network)
+			}
+
+			wg.Wait()
+
+			require.NoError(t, udpMux.Close())
+
+			// can't create more connections
+			_, err = udpMux.GetConn("failufrag", udpMux.LocalAddr())
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestAddressEncoding(t *testing.T) {
@@ -139,7 +188,12 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 		_ = pktConn.Close()
 	}()
 
-	remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr))
+	addr, ok := pktConn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok, "pktConn.LocalAddr() is not a net.UDPAddr")
+	if addr.IP.IsUnspecified() {
+		addr = &net.UDPAddr{Port: addr.Port}
+	}
+	remoteConn, err := net.DialUDP(network, nil, addr)
 	require.NoError(t, err, "error dialing test udp connection")
 
 	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
