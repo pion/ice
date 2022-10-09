@@ -124,7 +124,7 @@ func (m *UDPMuxDefault) GetListenAddresses() []net.Addr {
 // creates the connection if an existing one can't be found
 func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	// don't check addr for mux using unspecified address
-	if len(m.localAddrsForUnspecified) == 0 && m.params.UDPConn.LocalAddr() != addr {
+	if len(m.localAddrsForUnspecified) == 0 && m.params.UDPConn.LocalAddr().String() != addr.String() {
 		return nil, errInvalidAddress
 	}
 	m.mu.Lock()
