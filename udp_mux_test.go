@@ -33,8 +33,8 @@ func TestUDPMux(t *testing.T) {
 		t.Log("IPv6 is not supported on this machine")
 	}
 
-	for network, c := range map[string]net.PacketConn{"udp4": conn4, "udp6": conn6} {
-		if c == nil {
+	for network, c := range map[string]net.PacketConn{udp4: conn4, udp6: conn6} {
+		if udpConn, ok := c.(*net.UDPConn); !ok || udpConn == nil {
 			continue
 		}
 		conn := c
@@ -63,7 +63,7 @@ func TestUDPMux(t *testing.T) {
 
 			// skip ipv6 test on i386
 			const ptrSize = 32 << (^uintptr(0) >> 63)
-			if ptrSize != 32 || network != "udp6" {
+			if ptrSize != 32 || network != udp6 {
 				testMuxConnection(t, udpMux, "ufrag2", network)
 			}
 
