@@ -7,8 +7,12 @@ import (
 )
 
 const (
-	udp = "udp"
-	tcp = "tcp"
+	udp  = "udp"
+	tcp  = "tcp"
+	udp4 = "udp4"
+	udp6 = "udp6"
+	tcp4 = "tcp4"
+	tcp6 = "tcp6"
 )
 
 func supportedNetworkTypes() []NetworkType {
@@ -40,13 +44,13 @@ const (
 func (t NetworkType) String() string {
 	switch t {
 	case NetworkTypeUDP4:
-		return "udp4"
+		return udp4
 	case NetworkTypeUDP6:
-		return "udp6"
+		return udp6
 	case NetworkTypeTCP4:
-		return "tcp4"
+		return tcp4
 	case NetworkTypeTCP6:
-		return "tcp6"
+		return tcp6
 	default:
 		return ErrUnknownType.Error()
 	}

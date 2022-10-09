@@ -63,13 +63,13 @@ func TestMultiUDPMux(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", "udp4")
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
 	// skip ipv6 test on i386
 	const ptrSize = 32 << (^uintptr(0) >> 63)
 	if ptrSize != 32 {
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", "udp6")
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
 	}
 
 	wg.Wait()
@@ -87,9 +87,9 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 	for _, addr := range addrs {
 		udpAddr, ok := addr.(*net.UDPAddr)
 		require.True(t, ok)
-		if network == "udp4" && udpAddr.IP.To4() == nil {
+		if network == udp4 && udpAddr.IP.To4() == nil {
 			continue
-		} else if network == "udp6" && udpAddr.IP.To4() != nil {
+		} else if network == udp6 && udpAddr.IP.To4() != nil {
 			continue
 		}
 		c, err := udpMuxMulti.GetConn(ufrag, addr)
@@ -138,13 +138,13 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", "udp4")
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
 	// skip ipv6 test on i386
 	const ptrSize = 32 << (^uintptr(0) >> 63)
 	if ptrSize != 32 {
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", "udp6")
+		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
 	}
 
 	wg.Wait()
