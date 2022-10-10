@@ -140,6 +140,9 @@ var (
 	errNotImplemented                = errors.New("not implemented yet")
 	errNoUDPMuxAvailable             = errors.New("no UDP mux is available")
 	errNoTCPMuxAvailable             = errors.New("no TCP mux is available")
+	errInvalidAddress                = errors.New("invalid address")
+
+	// UDPMuxDefault should not listen on unspecified address, but to keep backward compatibility, don't return error now.
+	// will be used in the future.
 	// errListenUnspecified             = errors.New("can't listen on unspecified address")
-	errInvalidAddress = errors.New("invalid address")
 )

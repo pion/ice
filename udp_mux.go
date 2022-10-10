@@ -52,16 +52,15 @@ type UDPMuxParams struct {
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
-func NewUDPMuxDefault(params UDPMuxParams) (*UDPMuxDefault, error) {
+func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	if params.Logger == nil {
 		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
 	}
 
 	var localAddrsForUnspecified []net.Addr
 	if addr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok {
-		return nil, errInvalidAddress
+		params.Logger.Errorf("LocalAddr is not a net.UDPAddr, got %T", params.UDPConn.LocalAddr())
 	} else if ok && addr.IP.IsUnspecified() {
-		// return nil, errListenUnspecified
 		// For unspecified addresses, the correct behavior is to return errListenUnspecified, but
 		// it will break the applications that are already using unspecified UDP connection
 		// with UDPMuxDefault, so print a warn log and create a local address list for mux.
@@ -75,15 +74,18 @@ func NewUDPMuxDefault(params UDPMuxParams) (*UDPMuxDefault, error) {
 			networks = []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}
 
 		default:
-			return nil, errInvalidAddress
+			params.Logger.Errorf("LocalAddr expected IPV4 or IPV6, got %T", params.UDPConn.LocalAddr())
 		}
-		muxNet := vnet.NewNet(nil)
-		ips, err := localInterfaces(muxNet, nil, nil, networks)
-		if err != nil {
-			return nil, err
-		}
-		for _, ip := range ips {
-			localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{IP: ip, Port: addr.Port})
+		if len(networks) > 0 {
+			muxNet := vnet.NewNet(nil)
+			ips, err := localInterfaces(muxNet, nil, nil, networks)
+			if err == nil {
+				for _, ip := range ips {
+					localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{IP: ip, Port: addr.Port})
+				}
+			} else {
+				params.Logger.Errorf("failed to get local interfaces for unspecified addr: %v", err)
+			}
 		}
 	}
 
@@ -103,7 +105,7 @@ func NewUDPMuxDefault(params UDPMuxParams) (*UDPMuxDefault, error) {
 
 	go m.connWorker()
 
-	return m, nil
+	return m
 }
 
 // LocalAddr returns the listening address of this UDPMuxDefault

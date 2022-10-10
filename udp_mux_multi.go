@@ -111,19 +111,8 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 
 	muxs := make([]UDPMux, 0, len(conns))
 	for _, conn := range conns {
-		mux, muxErr := NewUDPMuxDefault(UDPMuxParams{Logger: params.logger, UDPConn: conn})
-		if muxErr != nil {
-			err = muxErr
-			break
-		}
+		mux := NewUDPMuxDefault(UDPMuxParams{Logger: params.logger, UDPConn: conn})
 		muxs = append(muxs, mux)
-	}
-
-	if err != nil {
-		for _, mux := range muxs {
-			_ = mux.Close()
-		}
-		return nil, err
 	}
 
 	return NewMultiUDPMuxDefault(muxs...), nil

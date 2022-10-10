@@ -62,12 +62,10 @@ func TestUDPMux(t *testing.T) {
 			continue
 		}
 		t.Run(subTest.name, func(t *testing.T) {
-			udpMux, err := NewUDPMuxDefault(UDPMuxParams{
+			udpMux := NewUDPMuxDefault(UDPMuxParams{
 				Logger:  nil,
 				UDPConn: conn,
 			})
-
-			require.NoError(t, err)
 
 			defer func() {
 				_ = udpMux.Close()

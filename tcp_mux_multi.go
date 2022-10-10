@@ -6,7 +6,7 @@ package ice
 import "net"
 
 // AllConnsGetter allows multiple fixed TCP ports to be used,
-// each which is multiplexed like TCPMux. AllConnsGetter also acts as
+// each of which is multiplexed like TCPMux. AllConnsGetter also acts as
 // a TCPMux, in which case it will return a single connection for one
 // of the ports.
 type AllConnsGetter interface {
