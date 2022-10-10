@@ -122,7 +122,7 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 	}
-	return
+	return n, addr, err
 }
 
 // isXORMappedResponse indicates whether the message is a XORMappedAddress and is coming from the known STUN server.
