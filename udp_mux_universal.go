@@ -38,7 +38,7 @@ type UniversalUDPMuxParams struct {
 }
 
 // NewUniversalUDPMuxDefault creates an implementation of UniversalUDPMux embedding UDPMux
-func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) (*UniversalUDPMuxDefault, error) {
+func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDefault {
 	if params.Logger == nil {
 		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
 	}
@@ -64,13 +64,9 @@ func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) (*UniversalUDPMuxDe
 		Logger:  params.Logger,
 		UDPConn: m.params.UDPConn,
 	}
-	muxDefault, err := NewUDPMuxDefault(udpMuxParams)
-	if err != nil {
-		return nil, err
-	}
-	m.UDPMuxDefault = muxDefault
+	m.UDPMuxDefault = NewUDPMuxDefault(udpMuxParams)
 
-	return m, nil
+	return m
 }
 
 // udpConn is a wrapper around UDPMux conn that overrides ReadFrom and handles STUN/TURN packets
@@ -107,7 +103,8 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 		if err = msg.Decode(); err != nil {
 			c.logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
-			return n, addr, nil
+			err = nil
+			return
 		}
 
 		udpAddr, ok := addr.(*net.UDPAddr)
@@ -120,12 +117,12 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			err = c.mux.handleXORMappedResponse(udpAddr, msg)
 			if err != nil {
 				c.logger.Debugf("%w: %v", errGetXorMappedAddrResponse, err)
-				return n, addr, nil
+				err = nil
 			}
 			return
 		}
 	}
-	return n, addr, err
+	return
 }
 
 // isXORMappedResponse indicates whether the message is a XORMappedAddress and is coming from the known STUN server.

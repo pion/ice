@@ -34,15 +34,12 @@ func TestMultiUDPMux(t *testing.T) {
 	}
 
 	muxes := []UDPMux{}
-	muxV41, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn1})
-	require.NoError(t, err)
+	muxV41 := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn1})
 	muxes = append(muxes, muxV41)
-	muxV42, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn2})
-	require.NoError(t, err)
+	muxV42 := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn2})
 	muxes = append(muxes, muxV42)
 	if conn3 != nil {
-		muxV6, v6err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn3})
-		require.NoError(t, v6err)
+		muxV6 := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn3})
 		muxes = append(muxes, muxV6)
 	}
 

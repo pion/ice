@@ -35,16 +35,10 @@ func TestMuxAgent(t *testing.T) {
 			require.NoError(t, err)
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
-			udpMux, err := NewUDPMuxDefault(UDPMuxParams{
+			udpMux := NewUDPMuxDefault(UDPMuxParams{
 				Logger:  loggerFactory.NewLogger("ice"),
 				UDPConn: c,
 			})
-
-			require.NoError(t, err)
-			defer func() {
-				_ = udpMux.Close()
-				_ = c.Close()
-			}()
 
 			muxedA, err := NewAgent(&AgentConfig{
 				UDPMux:         udpMux,

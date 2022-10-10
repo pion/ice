@@ -17,12 +17,11 @@ func TestUniversalUDPMux(t *testing.T) {
 	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 
-	udpMux, err := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
+	udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
 		Logger:  nil,
 		UDPConn: conn,
 	})
 
-	require.NoError(t, err)
 	defer func() {
 		_ = udpMux.Close()
 		_ = conn.Close()

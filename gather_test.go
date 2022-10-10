@@ -507,8 +507,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		}()
 
 		expectedPorts = append(expectedPorts, port)
-		muxDefault, err := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn})
-		assert.NoError(t, err)
+		muxDefault := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn})
 		udpMuxInstances = append(udpMuxInstances, muxDefault)
 		idx := i
 		defer func() {
