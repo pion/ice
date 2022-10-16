@@ -79,3 +79,16 @@ func (c *CandidateRelay) close() error {
 	}
 	return err
 }
+
+func (c *CandidateRelay) copy() (Candidate, error) {
+	cc, err := c.candidateBase.copy()
+	if err != nil {
+		return nil, err
+	}
+
+	if ccr, ok := cc.(*CandidateRelay); ok {
+		ccr.relayProtocol = c.relayProtocol
+	}
+
+	return cc, nil
+}
