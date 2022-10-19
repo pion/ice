@@ -1,6 +1,6 @@
 module github.com/pion/ice/v2
 
-go 1.13
+go 1.19
 
 require (
 	github.com/google/uuid v1.3.0
