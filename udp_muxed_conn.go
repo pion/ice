@@ -42,7 +42,7 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 	return p
 }
 
-func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
+func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 	buf := c.params.AddrPool.Get().(*bufferHolder) //nolint:forcetypeassert
 	defer c.params.AddrPool.Put(buf)
 
@@ -66,24 +66,24 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
 	addrLen := int(binary.LittleEndian.Uint16(buf.buffer[offset : offset+2]))
 	offset += 2
 
-	if raddr, err = decodeUDPAddr(buf.buffer[offset : offset+addrLen]); err != nil {
+	if rAddr, err = decodeUDPAddr(buf.buffer[offset : offset+addrLen]); err != nil {
 		return 0, nil, err
 	}
 
-	return dataLen, raddr, nil
+	return dataLen, rAddr, nil
 }
 
-func (c *udpMuxedConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
+func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	if c.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
 	// each time we write to a new address, we'll register it with the mux
-	addr := raddr.String()
+	addr := rAddr.String()
 	if !c.containsAddress(addr) {
 		c.addAddress(addr)
 	}
 
-	return c.params.Mux.writeTo(buf, raddr)
+	return c.params.Mux.writeTo(buf, rAddr)
 }
 
 func (c *udpMuxedConn) LocalAddr() net.Addr {

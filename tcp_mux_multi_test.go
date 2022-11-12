@@ -72,9 +72,9 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				require.NoError(t, err, "error writing tcp stun packet")
 
 				recv := make([]byte, n)
-				n2, raddr, err := pktConn.ReadFrom(recv)
+				n2, rAddr, err := pktConn.ReadFrom(recv)
 				require.NoError(t, err, "error receiving data")
-				assert.Equal(t, conn.LocalAddr(), raddr, "remote tcp address mismatch")
+				assert.Equal(t, conn.LocalAddr(), rAddr, "remote tcp address mismatch")
 				assert.Equal(t, n, n2, "received byte size mismatch")
 				assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
 
