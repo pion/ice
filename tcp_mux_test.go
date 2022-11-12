@@ -18,11 +18,11 @@ var (
 )
 
 func TestTCPMux_Recv(t *testing.T) {
-	for name, buffersize := range map[string]int{
+	for name, bufSize := range map[string]int{
 		"no buffer":    0,
 		"buffered 4MB": 4 * 1024 * 1024,
 	} {
-		bufSize := buffersize
+		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
 			report := test.CheckRoutines(t)
 			defer report()

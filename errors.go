@@ -118,7 +118,7 @@ var (
 	errParsePriority                 = errors.New("could not parse priority")
 	errParsePort                     = errors.New("could not parse port")
 	errParseRelatedAddr              = errors.New("could not parse related addresses")
-	errParseTypType                  = errors.New("could not parse typtype")
+	errParseTCPType                  = errors.New("could not parse TCP type")
 	errGetXorMappedAddrResponse      = errors.New("failed to get XOR-MAPPED-ADDRESS response")
 	errConnectionAddrAlreadyExist    = errors.New("connection with same remote address already exists")
 	errReadingStreamingPacket        = errors.New("error reading streaming packet")

@@ -484,7 +484,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 			relatedPort = int(rawRelatedPort)
 		} else if split[0] == "tcptype" {
 			if len(split) < 2 {
-				return nil, fmt.Errorf("%w: incorrect length", errParseTypType)
+				return nil, fmt.Errorf("%w: incorrect length", errParseTCPType)
 			}
 
 			tcpType = NewTCPType(split[1])

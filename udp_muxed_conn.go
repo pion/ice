@@ -200,18 +200,18 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 }
 
 func encodeUDPAddr(addr *net.UDPAddr, buf []byte) (int, error) {
-	ipdata, err := addr.IP.MarshalText()
+	ipData, err := addr.IP.MarshalText()
 	if err != nil {
 		return 0, err
 	}
-	total := 2 + len(ipdata) + 2 + len(addr.Zone)
+	total := 2 + len(ipData) + 2 + len(addr.Zone)
 	if total > len(buf) {
 		return 0, io.ErrShortBuffer
 	}
 
-	binary.LittleEndian.PutUint16(buf, uint16(len(ipdata)))
+	binary.LittleEndian.PutUint16(buf, uint16(len(ipData)))
 	offset := 2
-	n := copy(buf[offset:], ipdata)
+	n := copy(buf[offset:], ipData)
 	offset += n
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(addr.Port))
 	offset += 2
