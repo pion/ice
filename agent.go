@@ -722,9 +722,9 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	}
 
 	// cannot check for network yet because it might not be applied
-	// when mDNS hostame is used.
+	// when mDNS hostname is used.
 	if c.TCPType() == TCPTypeActive {
-		// TCP Candidates with tcptype active will probe server passive ones, so
+		// TCP Candidates with TCP type active will probe server passive ones, so
 		// no need to do anything with them.
 		a.log.Infof("Ignoring remote candidate with tcpType active: %s", c)
 		return nil
