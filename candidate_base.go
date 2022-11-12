@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pion/logging"
 	"github.com/pion/stun"
 )
 
@@ -206,9 +205,9 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 }
 
 func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
-	defer func() {
-		close(c.closedCh)
-	}()
+	a := c.agent()
+
+	defer close(c.closedCh)
 
 	select {
 	case <-initializedCh:
@@ -216,47 +215,52 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 		return
 	}
 
-	log := c.agent().log
-	buffer := make([]byte, receiveMTU)
+	buf := make([]byte, receiveMTU)
 	for {
-		n, srcAddr, err := c.conn.ReadFrom(buffer)
+		n, srcAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
+			a.log.Warnf("Failed to read from candidate %s: %v", c, err)
 			return
 		}
 
-		handleInboundCandidateMsg(c, c, buffer[:n], srcAddr, log)
+		c.handleInboundPacket(buf[:n], srcAddr)
 	}
 }
 
-func handleInboundCandidateMsg(ctx context.Context, c Candidate, buffer []byte, srcAddr net.Addr, log logging.LeveledLogger) {
-	if stun.IsMessage(buffer) {
+func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
+	a := c.agent()
+
+	if stun.IsMessage(buf) {
 		m := &stun.Message{
-			Raw: make([]byte, len(buffer)),
+			Raw: make([]byte, len(buf)),
 		}
+
 		// Explicitly copy raw buffer so Message can own the memory.
-		copy(m.Raw, buffer)
+		copy(m.Raw, buf)
+
 		if err := m.Decode(); err != nil {
-			log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+			a.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
 			return
 		}
-		err := c.agent().run(ctx, func(ctx context.Context, agent *Agent) {
-			agent.handleInbound(m, c, srcAddr)
-		})
-		if err != nil {
-			log.Warnf("Failed to handle message: %v", err)
+
+		if err := a.run(c, func(ctx context.Context, a *Agent) {
+			a.handleInbound(m, c, srcAddr)
+		}); err != nil {
+			a.log.Warnf("Failed to handle message: %v", err)
 		}
 
 		return
 	}
 
-	if !c.agent().validateNonSTUNTraffic(c, srcAddr) { //nolint:contextcheck
-		log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+	if !a.validateNonSTUNTraffic(c, srcAddr) { //nolint:contextcheck
+		a.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
 		return
 	}
 
-	// NOTE This will return packetio.ErrFull if the buffer ever manages to fill up.
-	if _, err := c.agent().buffer.Write(buffer); err != nil {
-		log.Warnf("failed to write packet")
+	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
+	if _, err := a.buffer.Write(buf); err != nil {
+		a.log.Warnf("Failed to write packet: %s", err)
+		return
 	}
 }
 
