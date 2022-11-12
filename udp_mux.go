@@ -227,8 +227,8 @@ func (m *UDPMuxDefault) Close() error {
 	return err
 }
 
-func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {
-	return m.params.UDPConn.WriteTo(buf, raddr)
+func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
+	return m.params.UDPConn.WriteTo(buf, rAddr)
 }
 
 func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) {

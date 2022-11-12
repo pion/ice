@@ -198,7 +198,7 @@ func (t *tcpPacketConn) isClosed() bool {
 }
 
 // WriteTo is for passive and s-o candidates.
-func (t *tcpPacketConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
+func (t *tcpPacketConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 	pkt, ok := <-t.recvChan
 
 	if !ok {
@@ -219,14 +219,14 @@ func (t *tcpPacketConn) ReadFrom(b []byte) (n int, raddr net.Addr, err error) {
 }
 
 // WriteTo is for active and s-o candidates.
-func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
+func (t *tcpPacketConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	t.mu.Lock()
-	conn, ok := t.conns[raddr.String()]
+	conn, ok := t.conns[rAddr.String()]
 	t.mu.Unlock()
 
 	if !ok {
 		return 0, io.ErrClosedPipe
-		// conn, err := net.DialTCP(tcp, nil, raddr.(*net.TCPAddr))
+		// conn, err := net.DialTCP(tcp, nil, rAddr.(*net.TCPAddr))
 
 		// if err != nil {
 		// 	t.params.Logger.Tracef("DialTCP error: %s", err)
@@ -234,12 +234,12 @@ func (t *tcpPacketConn) WriteTo(buf []byte, raddr net.Addr) (n int, err error) {
 		// }
 
 		// go t.startReading(conn)
-		// t.conns[raddr.String()] = conn
+		// t.conns[rAddr.String()] = conn
 	}
 
 	n, err = writeStreamingPacket(conn, buf)
 	if err != nil {
-		t.params.Logger.Tracef("%w %s", errWriting, raddr)
+		t.params.Logger.Tracef("%w %s", errWriting, rAddr)
 		return n, err
 	}
 
