@@ -94,8 +94,8 @@ func getXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, deadline time.Du
 	}()
 	resp, err := stunRequest(
 		func(p []byte) (int, error) {
-			n, _, errr := conn.ReadFrom(p)
-			return n, errr
+			n, _, err := conn.ReadFrom(p)
+			return n, err
 		},
 		func(b []byte) (int, error) {
 			return conn.WriteTo(b, serverAddr)
