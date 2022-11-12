@@ -64,8 +64,8 @@ type Agent struct {
 	prflxAcceptanceMinWait time.Duration
 	relayAcceptanceMinWait time.Duration
 
-	portmin uint16
-	portmax uint16
+	portMin uint16
+	portMax uint16
 
 	candidateTypes []CandidateType
 
@@ -297,8 +297,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		taskLoopDone:      make(chan struct{}),
 		startedCh:         startedCtx.Done(),
 		startedFn:         startedFn,
-		portmin:           config.PortMin,
-		portmax:           config.PortMax,
+		portMin:           config.PortMin,
+		portMax:           config.PortMax,
 		loggerFactory:     loggerFactory,
 		log:               log,
 		net:               config.Net,
