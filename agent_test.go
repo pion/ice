@@ -235,7 +235,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 	lim := test.TimeOut(time.Second * 2)
 	defer lim.Stop()
 
-	t.Run("UDP pflx candidate from handleInbound()", func(t *testing.T) {
+	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
@@ -920,7 +920,7 @@ func TestCandidatePairStats(t *testing.T) {
 	}
 
 	if prflxPairStat.State != CandidatePairStateFailed {
-		t.Fatalf("expected host-prfflx pair to have state failed, it has state %s instead",
+		t.Fatalf("expected host-prflx pair to have state failed, it has state %s instead",
 			prflxPairStat.State.String())
 	}
 
@@ -1232,7 +1232,7 @@ func TestAgentCredentials(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	// Make sure to pass travis check by disabling the logs
+	// Make sure to pass Travis check by disabling the logs
 	log := logging.NewDefaultLoggerFactory()
 	log.DefaultLogLevel = logging.LogLevelDisabled
 
@@ -1467,7 +1467,7 @@ func TestAgentRestart(t *testing.T) {
 		<-aConnected
 		<-bConnected
 
-		// Assert that we have new candiates each time
+		// Assert that we have new candidates each time
 		assert.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
 		assert.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
 

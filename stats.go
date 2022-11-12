@@ -104,7 +104,7 @@ type CandidatePairStats struct {
 	// ResponsesReceived represents the total number of connectivity check responses received.
 	ResponsesReceived uint64
 
-	// ResponsesSent epresents the total number of connectivity check responses sent.
+	// ResponsesSent represents the total number of connectivity check responses sent.
 	// Since we cannot distinguish connectivity check requests and consent requests,
 	// all responses are counted.
 	ResponsesSent uint64

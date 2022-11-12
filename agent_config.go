@@ -109,14 +109,14 @@ type AgentConfig struct {
 	// NAT1To1IPCandidateType is used along with NAT1To1IPs to specify which candidate type
 	// the 1:1 NAT IP addresses should be mapped to.
 	// If unspecified or CandidateTypeHost, NAT1To1IPs are used to replace host candidate IPs.
-	// If CandidateTypeServerReflexive, it will insert a srflx candidate (as if it was dervied
+	// If CandidateTypeServerReflexive, it will insert a srflx candidate (as if it was derived
 	// from a STUN server) with its port number being the one for the actual host candidate.
 	// Other values will result in an error.
 	NAT1To1IPCandidateType CandidateType
 
 	// NAT1To1IPs contains a list of public IP addresses that are to be used as a host
 	// candidate or srflx candidate. This is used typically for servers that are behind
-	// 1:1 D-NAT (e.g. AWS EC2 instances) and to eliminate the need of server reflexisive
+	// 1:1 D-NAT (e.g. AWS EC2 instances) and to eliminate the need of server reflexive
 	// candidate gathering.
 	NAT1To1IPs []string
 
