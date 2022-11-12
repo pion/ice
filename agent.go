@@ -1000,12 +1000,11 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	}
 }
 
-/* Removes pending binding requests that are over maxBindingRequestTimeout old
-
-   Let HTO be the transaction timeout, which SHOULD be 2*RTT if
-   RTT is known or 500 ms otherwise.
-   https://tools.ietf.org/html/rfc8445#appendix-B.1
-*/
+// Removes pending binding requests that are over maxBindingRequestTimeout old
+//
+// Let HTO be the transaction timeout, which SHOULD be 2*RTT if
+// RTT is known or 500 ms otherwise.
+// https://tools.ietf.org/html/rfc8445#appendix-B.1
 func (a *Agent) invalidatePendingBindingRequests(filterTime time.Time) {
 	initialSize := len(a.pendingBindingRequests)
 
