@@ -100,7 +100,7 @@ type Agent struct {
 	urls         []*URL
 	networkTypes []NetworkType
 
-	buffer *packetio.Buffer
+	buf *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
@@ -205,7 +205,7 @@ func (a *Agent) taskLoop() {
 		a.deleteAllCandidates()
 		a.startedFn()
 
-		if err := a.buffer.Close(); err != nil {
+		if err := a.buf.Close(); err != nil {
 			a.log.Warnf("failed to close buffer: %v", err)
 		}
 
@@ -292,7 +292,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		urls:              config.Urls,
 		networkTypes:      config.NetworkTypes,
 		onConnected:       make(chan struct{}),
-		buffer:            packetio.NewBuffer(),
+		buf:               packetio.NewBuffer(),
 		done:              make(chan struct{}),
 		taskLoopDone:      make(chan struct{}),
 		startedCh:         startedCtx.Done(),
@@ -340,7 +340,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	// Make sure the buffer doesn't grow indefinitely.
 	// NOTE: We actually won't get anywhere close to this limit.
 	// SRTP will constantly read from the endpoint and drop packets if it's full.
-	a.buffer.SetLimitSize(maxBufferSize)
+	a.buf.SetLimitSize(maxBufferSize)
 
 	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
 		closeMDNSConn()

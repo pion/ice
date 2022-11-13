@@ -338,11 +338,11 @@ func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, o
 }
 
 type bufferHolder struct {
-	buffer []byte
+	buf []byte
 }
 
 func newBufferHolder(size int) *bufferHolder {
 	return &bufferHolder{
-		buffer: make([]byte, size),
+		buf: make([]byte, size),
 	}
 }

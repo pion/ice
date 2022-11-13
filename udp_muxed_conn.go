@@ -26,7 +26,7 @@ type udpMuxedConn struct {
 	addresses []string
 
 	// channel holding incoming packets
-	buffer     *packetio.Buffer
+	buf        *packetio.Buffer
 	closedChan chan struct{}
 	closeOnce  sync.Once
 	mu         sync.Mutex
@@ -35,7 +35,7 @@ type udpMuxedConn struct {
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 	p := &udpMuxedConn{
 		params:     params,
-		buffer:     packetio.NewBuffer(),
+		buf:        packetio.NewBuffer(),
 		closedChan: make(chan struct{}),
 	}
 
@@ -47,26 +47,26 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 	defer c.params.AddrPool.Put(buf)
 
 	// read address
-	total, err := c.buffer.Read(buf.buffer)
+	total, err := c.buf.Read(buf.buf)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	dataLen := int(binary.LittleEndian.Uint16(buf.buffer[:2]))
+	dataLen := int(binary.LittleEndian.Uint16(buf.buf[:2]))
 	if dataLen > total || dataLen > len(b) {
 		return 0, nil, io.ErrShortBuffer
 	}
 
 	// read data and then address
 	offset := 2
-	copy(b, buf.buffer[offset:offset+dataLen])
+	copy(b, buf.buf[offset:offset+dataLen])
 	offset += dataLen
 
 	// read address len & decode address
-	addrLen := int(binary.LittleEndian.Uint16(buf.buffer[offset : offset+2]))
+	addrLen := int(binary.LittleEndian.Uint16(buf.buf[offset : offset+2]))
 	offset += 2
 
-	if rAddr, err = decodeUDPAddr(buf.buffer[offset : offset+addrLen]); err != nil {
+	if rAddr, err = decodeUDPAddr(buf.buf[offset : offset+addrLen]); err != nil {
 		return 0, nil, err
 	}
 
@@ -109,7 +109,7 @@ func (c *udpMuxedConn) CloseChannel() <-chan struct{} {
 func (c *udpMuxedConn) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
-		err = c.buffer.Close()
+		err = c.buf.Close()
 		close(c.closedChan)
 	})
 	return err
@@ -172,28 +172,28 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	defer c.params.AddrPool.Put(buf)
 
 	// format of buffer | data len | data bytes | addr len | addr bytes |
-	if len(buf.buffer) < len(data)+maxAddrSize {
+	if len(buf.buf) < len(data)+maxAddrSize {
 		return io.ErrShortBuffer
 	}
 	// data len
-	binary.LittleEndian.PutUint16(buf.buffer, uint16(len(data)))
+	binary.LittleEndian.PutUint16(buf.buf, uint16(len(data)))
 	offset := 2
 
 	// data
-	copy(buf.buffer[offset:], data)
+	copy(buf.buf[offset:], data)
 	offset += len(data)
 
 	// write address first, leaving room for its length
-	n, err := encodeUDPAddr(addr, buf.buffer[offset+2:])
+	n, err := encodeUDPAddr(addr, buf.buf[offset+2:])
 	if err != nil {
 		return err
 	}
 	total := offset + n + 2
 
 	// address len
-	binary.LittleEndian.PutUint16(buf.buffer[offset:], uint16(n))
+	binary.LittleEndian.PutUint16(buf.buf[offset:], uint16(n))
 
-	if _, err := c.buffer.Write(buf.buffer[:total]); err != nil {
+	if _, err := c.buf.Write(buf.buf[:total]); err != nil {
 		return err
 	}
 	return nil
