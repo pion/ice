@@ -258,7 +258,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
-	if _, err := a.buffer.Write(buf); err != nil {
+	if _, err := a.buf.Write(buf); err != nil {
 		a.log.Warnf("Failed to write packet: %s", err)
 		return
 	}

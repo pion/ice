@@ -70,7 +70,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	n, err := c.agent.buffer.Read(p)
+	n, err := c.agent.buf.Read(p)
 	atomic.AddUint64(&c.bytesReceived, uint64(n))
 	return n, err
 }

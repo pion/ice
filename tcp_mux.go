@@ -403,11 +403,11 @@ func readStreamingPacket(conn net.Conn, buf []byte) (int, error) {
 }
 
 func writeStreamingPacket(conn net.Conn, buf []byte) (int, error) {
-	bufferCopy := make([]byte, streamingPacketHeaderLen+len(buf))
-	binary.BigEndian.PutUint16(bufferCopy, uint16(len(buf)))
-	copy(bufferCopy[2:], buf)
+	bufCopy := make([]byte, streamingPacketHeaderLen+len(buf))
+	binary.BigEndian.PutUint16(bufCopy, uint16(len(buf)))
+	copy(bufCopy[2:], buf)
 
-	n, err := conn.Write(bufferCopy)
+	n, err := conn.Write(bufCopy)
 	if err != nil {
 		return 0, err
 	}

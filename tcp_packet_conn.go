@@ -15,20 +15,20 @@ import (
 
 type bufferedConn struct {
 	net.Conn
-	buffer *packetio.Buffer
+	buf    *packetio.Buffer
 	logger logging.LeveledLogger
 	closed int32
 }
 
-func newBufferedConn(conn net.Conn, bufferSize int, logger logging.LeveledLogger) net.Conn {
-	buffer := packetio.NewBuffer()
-	if bufferSize > 0 {
-		buffer.SetLimitSize(bufferSize)
+func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) net.Conn {
+	buf := packetio.NewBuffer()
+	if bufSize > 0 {
+		buf.SetLimitSize(bufSize)
 	}
 
 	bc := &bufferedConn{
 		Conn:   conn,
-		buffer: buffer,
+		buf:    buf,
 		logger: logger,
 	}
 
@@ -37,7 +37,7 @@ func newBufferedConn(conn net.Conn, bufferSize int, logger logging.LeveledLogger
 }
 
 func (bc *bufferedConn) Write(b []byte) (int, error) {
-	n, err := bc.buffer.Write(b)
+	n, err := bc.buf.Write(b)
 	if err != nil {
 		return n, err
 	}
@@ -47,7 +47,7 @@ func (bc *bufferedConn) Write(b []byte) (int, error) {
 func (bc *bufferedConn) writeProcess() {
 	pktBuf := make([]byte, receiveMTU)
 	for atomic.LoadInt32(&bc.closed) == 0 {
-		n, err := bc.buffer.Read(pktBuf)
+		n, err := bc.buf.Read(pktBuf)
 		if errors.Is(err, io.EOF) {
 			return
 		}
@@ -66,7 +66,7 @@ func (bc *bufferedConn) writeProcess() {
 
 func (bc *bufferedConn) Close() error {
 	atomic.StoreInt32(&bc.closed, 1)
-	_ = bc.buffer.Close()
+	_ = bc.buf.Close()
 	return bc.Conn.Close()
 }
 
