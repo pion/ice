@@ -227,8 +227,8 @@ func (m *UDPMuxDefault) Close() error {
 	return err
 }
 
-func (m *UDPMuxDefault) writeTo(buf []byte, raddr net.Addr) (n int, err error) {
-	return m.params.UDPConn.WriteTo(buf, raddr)
+func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
+	return m.params.UDPConn.WriteTo(buf, rAddr)
 }
 
 func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr string) {
@@ -338,11 +338,11 @@ func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, o
 }
 
 type bufferHolder struct {
-	buffer []byte
+	buf []byte
 }
 
 func newBufferHolder(size int) *bufferHolder {
 	return &bufferHolder{
-		buffer: make([]byte, size),
+		buf: make([]byte, size),
 	}
 }

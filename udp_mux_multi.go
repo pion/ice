@@ -14,21 +14,21 @@ import (
 // allowing users to pass multiple UDPMux instances to the ICE agent
 // configuration.
 type MultiUDPMuxDefault struct {
-	muxs           []UDPMux
+	muxes          []UDPMux
 	localAddrToMux map[string]UDPMux
 }
 
 // NewMultiUDPMuxDefault creates an instance of MultiUDPMuxDefault that
 // uses the provided UDPMux instances.
-func NewMultiUDPMuxDefault(muxs ...UDPMux) *MultiUDPMuxDefault {
+func NewMultiUDPMuxDefault(muxes ...UDPMux) *MultiUDPMuxDefault {
 	addrToMux := make(map[string]UDPMux)
-	for _, mux := range muxs {
+	for _, mux := range muxes {
 		for _, addr := range mux.GetListenAddresses() {
 			addrToMux[addr.String()] = mux
 		}
 	}
 	return &MultiUDPMuxDefault{
-		muxs:           muxs,
+		muxes:          muxes,
 		localAddrToMux: addrToMux,
 	}
 }
@@ -46,7 +46,7 @@ func (m *MultiUDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketCon
 // RemoveConnByUfrag stops and removes the muxed packet connection
 // from all underlying UDPMux instances.
 func (m *MultiUDPMuxDefault) RemoveConnByUfrag(ufrag string) {
-	for _, mux := range m.muxs {
+	for _, mux := range m.muxes {
 		mux.RemoveConnByUfrag(ufrag)
 	}
 }
@@ -54,7 +54,7 @@ func (m *MultiUDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 // Close the multi mux, no further connections could be created
 func (m *MultiUDPMuxDefault) Close() error {
 	var err error
-	for _, mux := range m.muxs {
+	for _, mux := range m.muxes {
 		if e := mux.Close(); e != nil {
 			err = e
 		}
@@ -65,7 +65,7 @@ func (m *MultiUDPMuxDefault) Close() error {
 // GetListenAddresses returns the list of addresses that this mux is listening on
 func (m *MultiUDPMuxDefault) GetListenAddresses() []net.Addr {
 	addrs := make([]net.Addr, 0, len(m.localAddrToMux))
-	for _, mux := range m.muxs {
+	for _, mux := range m.muxes {
 		addrs = append(addrs, mux.GetListenAddresses()...)
 	}
 	return addrs
@@ -109,13 +109,13 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		return nil, err
 	}
 
-	muxs := make([]UDPMux, 0, len(conns))
+	muxes := make([]UDPMux, 0, len(conns))
 	for _, conn := range conns {
 		mux := NewUDPMuxDefault(UDPMuxParams{Logger: params.logger, UDPConn: conn})
-		muxs = append(muxs, mux)
+		muxes = append(muxes, mux)
 	}
 
-	return NewMultiUDPMuxDefault(muxs...), nil
+	return NewMultiUDPMuxDefault(muxes...), nil
 }
 
 // UDPMuxFromPortOption provide options for NewMultiUDPMuxFromPort

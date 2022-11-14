@@ -27,9 +27,9 @@ func TestStressDuplex(t *testing.T) {
 }
 
 func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
-	const pollrate = 100 * time.Millisecond
+	const pollRate = 100 * time.Millisecond
 	const margin = 20 * time.Millisecond // allow 20msec error in time
-	ticker := time.NewTicker(pollrate)
+	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
 		err := c.Close()
@@ -40,7 +40,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 	startedAt := time.Now()
 
-	for cnt := time.Duration(0); cnt <= timeout+defaultKeepaliveInterval+pollrate; cnt += pollrate {
+	for cnt := time.Duration(0); cnt <= timeout+defaultKeepaliveInterval+pollRate; cnt += pollRate {
 		<-ticker.C
 
 		var cs ConnectionState

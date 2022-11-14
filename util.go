@@ -94,8 +94,8 @@ func getXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, deadline time.Du
 	}()
 	resp, err := stunRequest(
 		func(p []byte) (int, error) {
-			n, _, errr := conn.ReadFrom(p)
-			return n, errr
+			n, _, err := conn.ReadFrom(p)
+			return n, err
 		},
 		func(b []byte) (int, error) {
 			return conn.WriteTo(b, serverAddr)
@@ -199,9 +199,9 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter
 	return ips, nil
 }
 
-func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, portMin int, network string, laddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
-	if (laddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
-		return vnet.ListenUDP(network, laddr)
+func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, portMin int, network string, lAddr *net.UDPAddr) (vnet.UDPPacketConn, error) {
+	if (lAddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
+		return vnet.ListenUDP(network, lAddr)
 	}
 	var i, j int
 	i = portMin
@@ -219,12 +219,12 @@ func listenUDPInPortRange(vnet *vnet.Net, log logging.LeveledLogger, portMax, po
 	portStart := globalMathRandomGenerator.Intn(j-i+1) + i
 	portCurrent := portStart
 	for {
-		laddr = &net.UDPAddr{IP: laddr.IP, Port: portCurrent}
-		c, e := vnet.ListenUDP(network, laddr)
+		lAddr = &net.UDPAddr{IP: lAddr.IP, Port: portCurrent}
+		c, e := vnet.ListenUDP(network, lAddr)
 		if e == nil {
 			return c, e //nolint:nilerr
 		}
-		log.Debugf("failed to listen %s: %v", laddr.String(), e)
+		log.Debugf("failed to listen %s: %v", lAddr.String(), e)
 		portCurrent++
 		if portCurrent > j {
 			portCurrent = i

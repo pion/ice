@@ -120,7 +120,7 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	require.GreaterOrEqual(t, len(udpMuxMulti.muxs), 1, "at least have 1 muxs")
+	require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
 	defer func() {
 		_ = udpMuxMulti.Close()
 	}()

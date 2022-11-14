@@ -18,11 +18,11 @@ var (
 )
 
 func TestTCPMux_Recv(t *testing.T) {
-	for name, buffersize := range map[string]int{
+	for name, bufSize := range map[string]int{
 		"no buffer":    0,
 		"buffered 4MB": 4 * 1024 * 1024,
 	} {
-		bufSize := buffersize
+		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
 			report := test.CheckRoutines(t)
 			defer report()
@@ -69,9 +69,9 @@ func TestTCPMux_Recv(t *testing.T) {
 			}()
 
 			recv := make([]byte, n)
-			n2, raddr, err := pktConn.ReadFrom(recv)
+			n2, rAddr, err := pktConn.ReadFrom(recv)
 			require.NoError(t, err, "error receiving data")
-			assert.Equal(t, conn.LocalAddr(), raddr, "remote tcp address mismatch")
+			assert.Equal(t, conn.LocalAddr(), rAddr, "remote tcp address mismatch")
 			assert.Equal(t, n, n2, "received byte size mismatch")
 			assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
 

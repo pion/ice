@@ -66,18 +66,18 @@ func TestMuxAgent(t *testing.T) {
 			_, err = conn.Write(data)
 			require.NoError(t, err)
 
-			buffer := make([]byte, 1024)
-			n, err := muxedConn.Read(buffer)
+			buf := make([]byte, 1024)
+			n, err := muxedConn.Read(buf)
 			require.NoError(t, err)
-			require.Equal(t, data, buffer[:n])
+			require.Equal(t, data, buf[:n])
 
 			// send a packet from Mux
 			_, err = muxedConn.Write(data)
 			require.NoError(t, err)
 
-			n, err = conn.Read(buffer)
+			n, err = conn.Read(buf)
 			require.NoError(t, err)
-			require.Equal(t, data, buffer[:n])
+			require.Equal(t, data, buf[:n])
 
 			// close it down
 			require.NoError(t, conn.Close())

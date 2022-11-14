@@ -93,8 +93,8 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	var res []CandidateStats
 	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
 		result := make([]CandidateStats, 0, len(agent.remoteCandidates))
-		for networkType, localCandidates := range agent.remoteCandidates {
-			for _, c := range localCandidates {
+		for networkType, remoteCandidates := range agent.remoteCandidates {
+			for _, c := range remoteCandidates {
 				stat := CandidateStats{
 					Timestamp:     time.Now(),
 					ID:            c.ID(),

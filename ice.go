@@ -52,13 +52,13 @@ func (c ConnectionState) String() string {
 type GatheringState int
 
 const (
-	// GatheringStateNew indicates candidate gatering is not yet started
+	// GatheringStateNew indicates candidate gathering is not yet started
 	GatheringStateNew GatheringState = iota + 1
 
-	// GatheringStateGathering indicates candidate gatering is ongoing
+	// GatheringStateGathering indicates candidate gathering is ongoing
 	GatheringStateGathering
 
-	// GatheringStateComplete indicates candidate gatering has been completed
+	// GatheringStateComplete indicates candidate gathering has been completed
 	GatheringStateComplete
 )
 

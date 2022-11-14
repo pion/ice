@@ -232,10 +232,10 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			t.Fatal("There must be two candidates")
 		}
 
-		laddr := [2]*net.UDPAddr{nil, nil}
+		lAddr := [2]*net.UDPAddr{nil, nil}
 		for i, candi := range candidates {
-			laddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-			if candi.Port() != laddr[i].Port {
+			lAddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+			if candi.Port() != lAddr[i].Port {
 				t.Fatalf("Unexpected candidate port: %d", candi.Port())
 			}
 		}
@@ -244,21 +244,21 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			if candidates[1].Address() != externalIP1 {
 				t.Fatalf("Unexpected candidate IP: %s", candidates[1].Address())
 			}
-			if laddr[0].IP.String() != localIP0 {
-				t.Fatalf("Unexpected listen IP: %s", laddr[0].IP.String())
+			if lAddr[0].IP.String() != localIP0 {
+				t.Fatalf("Unexpected listen IP: %s", lAddr[0].IP.String())
 			}
-			if laddr[1].IP.String() != localIP1 {
-				t.Fatalf("Unexpected listen IP: %s", laddr[1].IP.String())
+			if lAddr[1].IP.String() != localIP1 {
+				t.Fatalf("Unexpected listen IP: %s", lAddr[1].IP.String())
 			}
 		} else if candidates[0].Address() == externalIP1 {
 			if candidates[1].Address() != externalIP0 {
 				t.Fatalf("Unexpected candidate IP: %s", candidates[1].Address())
 			}
-			if laddr[0].IP.String() != localIP1 {
-				t.Fatalf("Unexpected listen IP: %s", laddr[0].IP.String())
+			if lAddr[0].IP.String() != localIP1 {
+				t.Fatalf("Unexpected listen IP: %s", lAddr[0].IP.String())
 			}
-			if laddr[1].IP.String() != localIP0 {
-				t.Fatalf("Unexpected listen IP: %s", laddr[1].IP.String())
+			if lAddr[1].IP.String() != localIP0 {
+				t.Fatalf("Unexpected listen IP: %s", lAddr[1].IP.String())
 			}
 		}
 	})
