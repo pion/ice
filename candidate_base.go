@@ -2,8 +2,10 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -219,7 +221,9 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
-			a.log.Warnf("Failed to read from candidate %s: %v", c, err)
+			if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
+				a.log.Warnf("Failed to read from candidate %s: %v", c, err)
+			}
 			return
 		}
 
