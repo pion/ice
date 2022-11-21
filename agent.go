@@ -824,6 +824,9 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 				if err := c.close(); err != nil {
 					a.log.Warnf("Failed to close duplicate candidate: %v", err)
 				}
+				if err := candidateConn.Close(); err != nil {
+					a.log.Warnf("Failed to close duplicate candidate connection: %v", err)
+				}
 				return
 			}
 		}
