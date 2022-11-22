@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestListenUDP(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(t, err)
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 	assert.NotEqual(t, len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
 	assert.NoError(t, err)
 
@@ -84,6 +85,88 @@ func TestListenUDP(t *testing.T) {
 	assert.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
 	assert.NoError(t, a.Close())
+}
+
+func TestLoopbackCandidate(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+	type testCase struct {
+		name        string
+		agentConfig *AgentConfig
+		loExpected  bool
+	}
+	mux, err := NewMultiUDPMuxFromPort(12500)
+	assert.NoError(t, err)
+	muxWithLo, errlo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
+	assert.NoError(t, errlo)
+	testCases := []testCase{
+		{
+			name: "mux should not have loopback candidate",
+			agentConfig: &AgentConfig{
+				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				UDPMux:       mux,
+			},
+			loExpected: false,
+		},
+		{
+			name: "mux with loopback should not have loopback candidate",
+			agentConfig: &AgentConfig{
+				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				UDPMux:       muxWithLo,
+			},
+			loExpected: true,
+		},
+		{
+			name: "includeloopback enabled",
+			agentConfig: &AgentConfig{
+				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				IncludeLoopback: true,
+			},
+			loExpected: true,
+		},
+		{
+			name: "includeloopback disabled",
+			agentConfig: &AgentConfig{
+				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				IncludeLoopback: false,
+			},
+			loExpected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		tcase := tc
+		t.Run(tcase.name, func(t *testing.T) {
+			a, err := NewAgent(tc.agentConfig)
+			assert.NoError(t, err)
+
+			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+			var loopback int32
+			assert.NoError(t, a.OnCandidate(func(c Candidate) {
+				if c != nil {
+					if net.ParseIP(c.Address()).IsLoopback() {
+						atomic.StoreInt32(&loopback, 1)
+					}
+				} else {
+					candidateGatheredFunc()
+					return
+				}
+				t.Log(c.NetworkType(), c.Priority(), c)
+			}))
+			assert.NoError(t, a.GatherCandidates())
+
+			<-candidateGathered.Done()
+
+			assert.NoError(t, a.Close())
+			assert.Equal(t, tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
+		})
+	}
+
+	assert.NoError(t, mux.Close())
+	assert.NoError(t, muxWithLo.Close())
 }
 
 // Assert that STUN gathering is done concurrently

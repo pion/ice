@@ -130,6 +130,7 @@ type Agent struct {
 
 	interfaceFilter func(string) bool
 	ipFilter        func(net.IP) bool
+	includeLoopback bool
 
 	insecureSkipVerify bool
 
@@ -317,6 +318,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		ipFilter: config.IPFilter,
 
 		insecureSkipVerify: config.InsecureSkipVerify,
+
+		includeLoopback: config.IncludeLoopback,
 	}
 
 	a.tcpMux = config.TCPMux

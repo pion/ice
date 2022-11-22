@@ -78,7 +78,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		}
 		if len(networks) > 0 {
 			muxNet := vnet.NewNet(nil)
-			ips, err := localInterfaces(muxNet, nil, nil, networks)
+			ips, err := localInterfaces(muxNet, nil, nil, networks, true)
 			if err == nil {
 				for _, ip := range ips {
 					localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{IP: ip, Port: addr.Port})
