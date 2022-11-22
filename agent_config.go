@@ -165,8 +165,11 @@ type AgentConfig struct {
 	// dial interface in order to support corporate proxies
 	ProxyDialer proxy.Dialer
 
-	// Accept aggressive nomination in RFC 5245 for compatible with chrome and other browsers
+	// Deprecated: AcceptAggressiveNomination always enabled.
 	AcceptAggressiveNomination bool
+
+	// Include loopback addresses in the candidate list.
+	IncludeLoopback bool
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

@@ -29,7 +29,7 @@ func TestVNetGather(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) > 0 {
 			t.Fatal("should return no local IP")
 		} else if err != nil {
@@ -69,7 +69,7 @@ func TestVNetGather(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) == 0 {
 			t.Fatal("should have one local IP")
 		} else if err != nil {
@@ -112,7 +112,7 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create agent: %s", err)
 		}
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) == 0 {
 			t.Fatal("localInterfaces found no interfaces, unable to test")
 		} else if err != nil {
@@ -385,7 +385,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if err != nil {
 			t.Fatal(err)
 		} else if len(localIPs) != 0 {
@@ -405,7 +405,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if err != nil {
 			t.Fatal(err)
 		} else if len(localIPs) != 0 {
@@ -425,7 +425,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4})
+		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if err != nil {
 			t.Fatal(err)
 		} else if len(localIPs) == 0 {

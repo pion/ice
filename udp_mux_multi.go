@@ -81,7 +81,7 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		opt.apply(&params)
 	}
 	muxNet := vnet.NewNet(nil)
-	ips, err := localInterfaces(muxNet, params.ifFilter, params.ipFilter, params.networks)
+	ips, err := localInterfaces(muxNet, params.ifFilter, params.ipFilter, params.networks, params.includeLoopback)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +130,7 @@ type multiUDPMuxFromPortParam struct {
 	readBufferSize  int
 	writeBufferSize int
 	logger          logging.LeveledLogger
+	includeLoopback bool
 }
 
 type udpMuxFromPortOption struct {
@@ -190,6 +191,15 @@ func UDPMuxFromPortWithLogger(logger logging.LeveledLogger) UDPMuxFromPortOption
 	return &udpMuxFromPortOption{
 		f: func(p *multiUDPMuxFromPortParam) {
 			p.logger = logger
+		},
+	}
+}
+
+// UDPMuxFromPortWithLoopback set loopback interface should be included
+func UDPMuxFromPortWithLoopback() UDPMuxFromPortOption {
+	return &udpMuxFromPortOption{
+		f: func(p *multiUDPMuxFromPortParam) {
+			p.includeLoopback = true
 		},
 	}
 }

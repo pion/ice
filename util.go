@@ -132,7 +132,7 @@ func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)
 	return res, nil
 }
 
-func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType) ([]net.IP, error) { //nolint:gocognit
+func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType, includeLoopback bool) ([]net.IP, error) { //nolint:gocognit
 	ips := []net.IP{}
 	ifaces, err := vnet.Interfaces()
 	if err != nil {
@@ -154,7 +154,7 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter
 		if iface.Flags&net.FlagUp == 0 {
 			continue // interface down
 		}
-		if iface.Flags&net.FlagLoopback != 0 {
+		if (iface.Flags&net.FlagLoopback != 0) && !includeLoopback {
 			continue // loopback interface
 		}
 
@@ -175,7 +175,7 @@ func localInterfaces(vnet *vnet.Net, interfaceFilter func(string) bool, ipFilter
 			case *net.IPAddr:
 				ip = addr.IP
 			}
-			if ip == nil || ip.IsLoopback() {
+			if ip == nil || (ip.IsLoopback() && !includeLoopback) {
 				continue
 			}
 
