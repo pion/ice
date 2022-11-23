@@ -99,8 +99,10 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 		case CandidateTypeServerReflexive:
 			wg.Add(1)
 			go func() {
-				if a.udpMuxSrflx != nil {
-					a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes)
+				if a.udpMuxSrflxGroup != nil {
+					a.udpMuxSrflxGroup.OnMux(func(mux UniversalUDPMux) {
+						a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes, mux)
+					})
 				} else {
 					a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
 				}
@@ -121,6 +123,11 @@ func (a *Agent) gatherCandidates(ctx context.Context) {
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
 		}
+	}
+
+	if a.continuous {
+		// never mark as complete
+		return
 	}
 
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
@@ -380,7 +387,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
+func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType, mux UniversalUDPMux) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -390,7 +397,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 		}
 
 		for i := range urls {
-			for _, listenAddr := range a.udpMuxSrflx.GetListenAddresses() {
+			for _, listenAddr := range mux.GetListenAddresses() {
 				udpAddr, ok := listenAddr.(*net.UDPAddr)
 				if !ok {
 					a.log.Warn("Failed to cast udpMuxSrflx listen address to UDPAddr")
@@ -407,13 +414,13 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 						return
 					}
 
-					xorAddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, stunGatherTimeout)
+					xorAddr, err := mux.GetXORMappedAddr(serverAddr, stunGatherTimeout)
 					if err != nil {
 						a.log.Warnf("could not get server reflexive address %s %s: %v", network, url, err)
 						return
 					}
 
-					conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), localAddr)
+					conn, err := mux.GetConnForURL(a.localUfrag, url.String(), localAddr)
 					if err != nil {
 						a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v", network, url, err)
 						return

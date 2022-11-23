@@ -159,7 +159,7 @@ type AgentConfig struct {
 	// on a single port when this is set, the agent ignores PortMin and PortMax configurations and will
 	// defer to UDPMuxSrflx for incoming connections
 	// It embeds UDPMux to do the actual connection multiplexing
-	UDPMuxSrflx UniversalUDPMux
+	UDPMuxSrflx UniversalUDPMuxGroup
 
 	// Proxy Dialer is a dialer that should be implemented by the user based on golang.org/x/net/proxy
 	// dial interface in order to support corporate proxies
@@ -167,6 +167,9 @@ type AgentConfig struct {
 
 	// Accept aggressive nomination in RFC 5245 for compatible with chrome and other browsers
 	AcceptAggressiveNomination bool
+
+	// Enable continuous nomination
+	ContinuousNomination bool
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

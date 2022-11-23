@@ -636,7 +636,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
-		UDPMuxSrflx:    udpMuxSrflx,
+		UDPMuxSrflx:    NewUniversalUDPMuxGroup(udpMuxSrflx),
 	})
 	assert.NoError(t, err)
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -1891,6 +1892,170 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	select {
 	case selected := <-selectedCh:
 		assert.True(t, selected.Equal(expectNewSelectedCandidate))
+	default:
+		t.Fatal("No selected candidate pair")
+	}
+
+	assert.NoError(t, wan.Stop())
+	if !closePipe(t, aConn, bConn) {
+		return
+	}
+}
+
+func TestContinuousNomination(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	// Create a network with two interfaces
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "0.0.0.0/0",
+		LoggerFactory: logging.NewDefaultLoggerFactory(),
+	})
+	assert.NoError(t, err)
+
+	net0 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.1"},
+	})
+	assert.NoError(t, wan.AddNet(net0))
+
+	net1 := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.2", "192.168.0.3", "192.168.0.4"},
+	})
+	assert.NoError(t, wan.AddNet(net1))
+
+	disabledDestinations := &sync.Map{}
+	wan.AddChunkFilter(func(c vnet.Chunk) bool {
+		// induce some fake latency
+		time.Sleep(time.Duration(c.SourceAddr().String()[10] - '0') * 10 * time.Millisecond)
+		if _, ok := disabledDestinations.Load(c.DestinationAddr().String()); ok {
+			log.Printf("filtering chunk going to %s", c.DestinationAddr().String())
+			return false
+		}
+		return true
+	})
+
+	assert.NoError(t, wan.Start())
+
+	aNotifier, aConnected := onConnected()
+	bNotifier, bConnected := onConnected()
+
+	KeepaliveInterval := 500 * time.Millisecond
+	cfg0 := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              net0,
+
+		KeepaliveInterval:          &KeepaliveInterval,
+		CheckInterval:              &KeepaliveInterval,
+		AcceptAggressiveNomination: true, // must accept aggressive nomination for continuous nomination to work
+	}
+
+	var aAgent, bAgent *Agent
+	aAgent, err = NewAgent(cfg0)
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+
+	cfg1 := &AgentConfig{
+		NetworkTypes:         supportedNetworkTypes(),
+		MulticastDNSMode:     MulticastDNSModeDisabled,
+		Net:                  net1,
+		KeepaliveInterval:    &KeepaliveInterval,
+		CheckInterval:        &KeepaliveInterval,
+		ContinuousNomination: true,
+	}
+
+	bAgent, err = NewAgent(cfg1)
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+
+	// in continuous nomination, the gather stage never completes. we must only assert that
+	// all the candidates have been gathered.
+	var wg sync.WaitGroup
+	wg.Add(5) // expect three candidates from agent A, one from agent B, one nil from B (controlled agent)
+	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
+		log.Printf("A: %v", candidate)
+		wg.Done()
+	}))
+	require.NoError(t, aAgent.GatherCandidates())
+
+	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
+		log.Printf("B: %v", candidate)
+		wg.Done()
+	}))
+	require.NoError(t, bAgent.GatherCandidates())
+
+	wg.Wait()
+
+	selectedCh := make(chan Candidate, 1)
+	err = bAgent.OnSelectedCandidatePairChange(func(local, remote Candidate) {
+		log.Printf("on selected candidate pair change: %v %v", local, remote)
+		selectedCh <- local
+	})
+	require.NoError(t, err)
+
+	candidates, err := aAgent.GetLocalCandidates()
+	check(err)
+	for _, c := range candidates {
+		candidateCopy, copyErr := c.copy()
+		check(copyErr)
+		check(bAgent.AddRemoteCandidate(candidateCopy))
+	}
+
+	candidates, err = bAgent.GetLocalCandidates()
+	check(err)
+	for _, c := range candidates {
+		candidateCopy, copyErr := c.copy()
+		check(copyErr)
+		check(aAgent.AddRemoteCandidate(candidateCopy))
+	}
+
+	accepted := make(chan struct{})
+	var aConn *Conn
+
+	go func() {
+		var acceptErr error
+		bUfrag, bPwd, acceptErr := bAgent.GetLocalUserCredentials()
+		check(acceptErr)
+		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
+		check(acceptErr)
+		close(accepted)
+	}()
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	check(err)
+	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
+	check(err)
+
+	// Ensure accepted
+	<-accepted
+	// Ensure pair selected
+	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
+	<-aConnected
+	<-bConnected
+
+	time.Sleep(1 * time.Second)
+	var selected, nextSelected Candidate
+	select {
+	case selected = <-selectedCh:
+		// 192.168.0.2 should be selected
+		assert.Equal(t, "192.168.0.2", selected.Address())
+
+		// disable the destination of the selected candidate
+		disabledDestinations.Store(selected.addr().String(), struct{}{})
+	default:
+		t.Fatal("No selected candidate pair")
+	}
+
+	time.Sleep(2 * time.Second)
+	select {
+	case nextSelected = <-selectedCh:
+		// next highest latency
+		assert.Equal(t, "192.168.0.3", nextSelected.Address())
+
+		// disable the destination of the selected candidate
+		disabledDestinations.Store(nextSelected.addr().String(), struct{}{})
 	default:
 		t.Fatal("No selected candidate pair")
 	}

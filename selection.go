@@ -45,6 +45,13 @@ func (s *controllingSelector) isNominatable(c Candidate) bool {
 }
 
 func (s *controllingSelector) ContactCandidates() {
+	if s.agent.continuous {
+		// in continuous nomination, we constantly nominate everyone
+		for _, p := range s.agent.checklist {
+			s.nominatePair(p)
+		}
+		return
+	}
 	switch {
 	case s.agent.getSelectedPair() != nil:
 		if s.agent.validateSelectedPair() {
@@ -137,8 +144,9 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 	}
 
 	p.state = CandidatePairStateSucceeded
-	s.log.Tracef("Found valid candidate pair: %s", p)
-	if pendingRequest.isUseCandidate && s.agent.getSelectedPair() == nil {
+	s.log.Tracef("Found valid candidate pair: %s %v", p, time.Since(p.Local.LastSent()))
+	// shorter round trip time is preferable.
+	if q := s.agent.getSelectedPair(); pendingRequest.isUseCandidate && (q == nil || time.Since(p.Local.LastSent()) < time.Since(q.Local.LastSent())) && p != q {
 		s.agent.setSelectedPair(p)
 	}
 }

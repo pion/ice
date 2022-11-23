@@ -5,6 +5,8 @@ package ice
 
 import (
 	"net"
+	"sync"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/vnet"
@@ -116,6 +118,119 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 	}
 
 	return NewMultiUDPMuxDefault(muxes...), nil
+}
+
+type UniversalUDPMuxGroupDefault struct {
+	sync.Mutex
+
+	muxes     []UniversalUDPMux
+	listeners []func(UniversalUDPMux)
+	closed    bool
+}
+
+var _ UniversalUDPMuxGroup = (*UniversalUDPMuxGroupDefault)(nil)
+
+func NewContinousUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*UniversalUDPMuxGroupDefault, error) {
+	params := multiUDPMuxFromPortParam{
+		networks: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+	}
+	for _, opt := range opts {
+		opt.apply(&params)
+	}
+	mux := &UniversalUDPMuxGroupDefault{}
+	go func() {
+		for ; true; <-time.After(1 * time.Second) {
+			muxNet := vnet.NewNet(nil)
+			ips, err := localInterfaces(muxNet, params.ifFilter, params.ipFilter, params.networks)
+			if err != nil {
+				continue
+			}
+			mux.Lock()
+			if mux.closed {
+				mux.Unlock()
+				return
+			}
+
+			for _, ip := range ips {
+				conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: ip, Port: port})
+				if err != nil {
+					// this may happen if the port is already in use, which is fine.
+					break
+				}
+				if params.readBufferSize > 0 {
+					_ = conn.SetReadBuffer(params.readBufferSize)
+				}
+				if params.writeBufferSize > 0 {
+					_ = conn.SetWriteBuffer(params.writeBufferSize)
+				}
+
+				udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{Logger: params.logger, UDPConn: conn})
+
+				mux.muxes = append(mux.muxes, udpMux)
+
+				go func() {
+					<-udpMux.closedChan
+					mux.Lock()
+					defer mux.Unlock()
+					for i, m := range mux.muxes {
+						if m == udpMux {
+							mux.muxes = append(mux.muxes[:i], mux.muxes[i+1:]...)
+							break
+						}
+					}
+				}()
+
+				for _, listener := range mux.listeners {
+					go listener(udpMux)
+				}
+			}
+			mux.Unlock()
+		}
+	}()
+	return mux, nil
+}
+
+func NewUniversalUDPMuxGroup(muxes ...UniversalUDPMux) UniversalUDPMuxGroup {
+	return &UniversalUDPMuxGroupDefault{muxes: muxes}
+}
+
+// RemoveConnByUfrag stops and removes the muxed packet connection
+// from all underlying UDPMux instances.
+func (m *UniversalUDPMuxGroupDefault) RemoveConnByUfrag(ufrag string) {
+	m.Lock()
+	defer m.Unlock()
+
+	for _, mux := range m.muxes {
+		mux.RemoveConnByUfrag(ufrag)
+	}
+}
+
+// Close the multi mux, no further connections could be created
+func (m *UniversalUDPMuxGroupDefault) Close() error {
+	m.Lock()
+	defer m.Unlock()
+
+	var err error
+	for _, mux := range m.muxes {
+		if e := mux.Close(); e != nil {
+			err = e
+		}
+	}
+	m.closed = true
+	return err
+}
+
+// GetListenAddresses returns the list of addresses that this mux is listening on
+func (m *UniversalUDPMuxGroupDefault) OnMux(listener func(UniversalUDPMux)) {
+	m.Lock()
+	defer m.Unlock()
+
+	// send all the current muxes
+	for _, mux := range m.muxes {
+		go listener(mux)
+	}
+
+	m.listeners = append(m.listeners, listener)
 }
 
 // UDPMuxFromPortOption provide options for NewMultiUDPMuxFromPort

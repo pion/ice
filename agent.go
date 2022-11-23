@@ -44,6 +44,7 @@ type Agent struct {
 
 	tieBreaker uint64
 	lite       bool
+	continuous bool
 
 	connectionState ConnectionState
 	gatheringState  GatheringState
@@ -123,10 +124,10 @@ type Agent struct {
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
-	net         *vnet.Net
-	tcpMux      TCPMux
-	udpMux      UDPMux
-	udpMuxSrflx UniversalUDPMux
+	net              *vnet.Net
+	tcpMux           TCPMux
+	udpMux           UDPMux
+	udpMuxSrflxGroup UniversalUDPMuxGroup
 
 	interfaceFilter func(string) bool
 	ipFilter        func(net.IP) bool
@@ -285,6 +286,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		chanCandidatePair: make(chan *CandidatePair),
 		tieBreaker:        globalMathRandomGenerator.Uint64(),
 		lite:              config.Lite,
+		continuous:        config.ContinuousNomination,
 		gatheringState:    GatheringStateNew,
 		connectionState:   ConnectionStateNew,
 		localCandidates:   make(map[NetworkType][]Candidate),
@@ -324,7 +326,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		a.tcpMux = newInvalidTCPMux()
 	}
 	a.udpMux = config.UDPMux
-	a.udpMuxSrflx = config.UDPMuxSrflx
+	a.udpMuxSrflxGroup = config.UDPMuxSrflx
 
 	if a.net == nil {
 		a.net = vnet.NewNet(nil)
@@ -901,8 +903,8 @@ func (a *Agent) removeUfragFromMux() {
 	if a.udpMux != nil {
 		a.udpMux.RemoveConnByUfrag(a.localUfrag)
 	}
-	if a.udpMuxSrflx != nil {
-		a.udpMuxSrflx.RemoveConnByUfrag(a.localUfrag)
+	if a.udpMuxSrflxGroup != nil {
+		a.udpMuxSrflxGroup.RemoveConnByUfrag(a.localUfrag)
 	}
 }
 

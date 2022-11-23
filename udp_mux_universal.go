@@ -19,6 +19,11 @@ type UniversalUDPMux interface {
 	GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error)
 }
 
+type UniversalUDPMuxGroup interface {
+	RemoveConnByUfrag(ufrag string)
+	OnMux(func(mux UniversalUDPMux))
+}
+
 // UniversalUDPMuxDefault handles STUN and TURN servers packets by wrapping the original UDPConn overriding ReadFrom.
 // It the passes packets to the UDPMux that does the actual connection muxing.
 type UniversalUDPMuxDefault struct {
