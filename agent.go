@@ -692,6 +692,7 @@ func (a *Agent) validateSelectedPair() bool {
 		a.updateConnectionState(ConnectionStateFailed)
 	case a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout:
 		a.updateConnectionState(ConnectionStateDisconnected)
+		a.setSelectedPair(nil)  // we must clear the selected pair to allow higher latency connections to take over
 	default:
 		a.updateConnectionState(ConnectionStateConnected)
 	}
