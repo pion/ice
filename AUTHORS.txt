@@ -38,6 +38,7 @@ Meelap Shah <meelapshah@gmail.com>
 Michael MacDonald <github@macdonald.cx>
 Michael MacDonald <mike.macdonald@savantsystems.com>
 Mikhail Bragin <misha@wiretrustee.com>
+Miroslav Šedivý <sedivy.miro@gmail.com>
 Nevio Vesic <nevio@subspace.com>
 Ori Bernstein <ori@eigenstate.org>
 Robert Eperjesi <eperjesi@uber.com>
