@@ -1,10 +1,13 @@
 package ice
 
 import (
+	"net"
 	"testing"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCandidatePriority(t *testing.T) {
@@ -336,4 +339,44 @@ func TestCandidateMarshal(t *testing.T) {
 		assert.True(t, test.candidate.Equal(actualCandidate))
 		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
 	}
+}
+
+func TestCandidateWriteTo(t *testing.T) {
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.IP{127, 0, 0, 1},
+		Port: 0,
+	})
+	require.NoError(t, err, "error creating test tcp listener")
+
+	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
+	require.NoError(t, err, "error dialing test tcp conn")
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	packetConn := newTCPPacketConn(tcpPacketParams{
+		ReadBuffer: 2048,
+		Logger:     loggerFactory.NewLogger("tcp-packet-conn"),
+	})
+
+	err = packetConn.AddConn(conn, nil)
+	require.NoError(t, err, "error adding test tcp conn to packet conn")
+
+	c1 := &candidateBase{
+		conn: packetConn,
+		currAgent: &Agent{
+			log: loggerFactory.NewLogger("agent"),
+		},
+	}
+
+	c2 := &candidateBase{
+		resolvedAddr: listener.Addr(),
+	}
+
+	_, err = c1.writeTo([]byte("test"), c2)
+	assert.NoError(t, err, "writing to open conn")
+
+	err = packetConn.Close()
+	require.NoError(t, err, "error closing test tcp conn")
+
+	_, err = c1.writeTo([]byte("test"), c2)
+	assert.Error(t, err, "writing to closed conn")
 }
