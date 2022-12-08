@@ -83,6 +83,14 @@ func TestMuxAgent(t *testing.T) {
 			require.NoError(t, conn.Close())
 			require.NoError(t, muxedConn.Close())
 			require.NoError(t, udpMux.Close())
+
+			// expect error when reading from closed mux
+			_, err = muxedConn.Read(data)
+			require.Error(t, err)
+
+			// expect error when writing to closed mux
+			_, err = muxedConn.Write(data)
+			require.Error(t, err)
 		})
 	}
 }
