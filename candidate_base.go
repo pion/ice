@@ -308,6 +308,10 @@ func (c *candidateBase) close() error {
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
+		// If the connection is closed, we should return the error
+		if errors.Is(err, io.ErrClosedPipe) {
+			return n, err
+		}
 		c.agent().log.Infof("%s: %v", errSendPacket, err)
 		return n, nil
 	}
