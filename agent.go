@@ -1135,19 +1135,18 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,
 // and returns true if it is an actual remote candidate
-func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
-	var isValidCandidate uint64
+func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) (Candidate, bool) {
+	var remoteCandidate Candidate
 	if err := a.run(local.context(), func(ctx context.Context, agent *Agent) {
-		remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
+		remoteCandidate = a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
-			atomic.AddUint64(&isValidCandidate, 1)
 		}
 	}); err != nil {
 		a.log.Warnf("failed to validate remote candidate: %v", err)
 	}
 
-	return atomic.LoadUint64(&isValidCandidate) == 1
+	return remoteCandidate, remoteCandidate != nil
 }
 
 // GetSelectedCandidatePair returns the selected pair or nil if there is none

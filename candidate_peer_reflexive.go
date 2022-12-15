@@ -56,6 +56,7 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 				Address: config.RelAddr,
 				Port:    config.RelPort,
 			},
+			remoteCandidateCaches: map[AddrPort]Candidate{},
 		},
 	}, nil
 }

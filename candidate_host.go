@@ -34,14 +34,15 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 
 	c := &CandidateHost{
 		candidateBase: candidateBase{
-			id:                 candidateID,
-			address:            config.Address,
-			candidateType:      CandidateTypeHost,
-			component:          config.Component,
-			port:               config.Port,
-			tcpType:            config.TCPType,
-			foundationOverride: config.Foundation,
-			priorityOverride:   config.Priority,
+			id:                    candidateID,
+			address:               config.Address,
+			candidateType:         CandidateTypeHost,
+			component:             config.Component,
+			port:                  config.Port,
+			tcpType:               config.TCPType,
+			foundationOverride:    config.Foundation,
+			priorityOverride:      config.Priority,
+			remoteCandidateCaches: map[AddrPort]Candidate{},
 		},
 		network: config.Network,
 	}
