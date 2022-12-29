@@ -230,8 +230,11 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 	p.state = CandidatePairStateSucceeded
 	s.log.Tracef("Found valid candidate pair: %s", p)
 	if p.nominateOnBindingSuccess {
-		if selectedPair := s.agent.getSelectedPair(); selectedPair == nil {
+		if selectedPair := s.agent.getSelectedPair(); selectedPair == nil ||
+			(selectedPair != p && selectedPair.priority() <= p.priority()) {
 			s.agent.setSelectedPair(p)
+		} else if selectedPair != p {
+			s.log.Tracef("ignore nominate new pair %s, already nominated pair %s", p, selectedPair)
 		}
 	}
 }
