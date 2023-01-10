@@ -344,7 +344,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 
 // String makes the candidateBase printable
 func (c *candidateBase) String() string {
-	return fmt.Sprintf("%s %s %s:%d%s", c.NetworkType(), c.Type(), c.Address(), c.Port(), c.relatedAddress)
+	return fmt.Sprintf("%s %s %s%s", c.NetworkType(), c.Type(), net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())), c.relatedAddress)
 }
 
 // LastReceived returns a time.Time indicating the last time
