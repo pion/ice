@@ -18,6 +18,7 @@ cnderrauber <zengjie9004@gmail.com>
 David Hamilton <davidhamiltron@gmail.com>
 David Zhao <david@davidzhao.com>
 David Zhao <dz@livekit.io>
+Genteure <github@genteure.com>
 Henry <cryptix@riseup.net>
 hexiang <hexiang.zhang@chukong-inc.com>
 hn8 <10730886+hn8@users.noreply.github.com>
