@@ -1,3 +1,4 @@
+// Package main implements a simple example demonstrating a Pion-to-Pion ICE connection
 package main
 
 import (
@@ -14,7 +15,7 @@ import (
 	"github.com/pion/randutil"
 )
 
-//nolint
+// nolint:gochecknoglobals
 var (
 	isControlling                 bool
 	iceAgent                      *ice.Agent
@@ -43,7 +44,7 @@ func remoteCandidate(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	if err := iceAgent.AddRemoteCandidate(c); err != nil {
+	if err := iceAgent.AddRemoteCandidate(c); err != nil { //nolint:contextcheck
 		panic(err)
 	}
 }
@@ -69,7 +70,7 @@ func main() { //nolint
 	http.HandleFunc("/remoteAuth", remoteAuth)
 	http.HandleFunc("/remoteCandidate", remoteCandidate)
 	go func() {
-		if err = http.ListenAndServe(fmt.Sprintf(":%d", localHTTPPort), nil); err != nil {
+		if err = http.ListenAndServe(fmt.Sprintf(":%d", localHTTPPort), nil); err != nil { //nolint:gosec
 			panic(err)
 		}
 	}()

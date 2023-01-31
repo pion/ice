@@ -622,9 +622,9 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = "dtls"
 				locConn = &fakePacketConn{conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
-				tcpAddr, err := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
-				if err != nil {
-					a.log.Warnf("Failed to resolve relay address %s: %v", TURNServerAddr, err)
+				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				if resolvErr != nil {
+					a.log.Warnf("Failed to resolve relay address %s: %v", TURNServerAddr, resolvErr)
 					return
 				}
 
@@ -638,9 +638,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 
-				if err := conn.HandshakeContext(ctx); err != nil {
-					tcpConn.Close()
-					a.log.Warnf("Failed to connect to relay: %v", dialErr)
+				if hsErr := conn.HandshakeContext(ctx); hsErr != nil {
+					if closeErr := tcpConn.Close(); closeErr != nil {
+						a.log.Errorf("Failed to close relay connection: %v", closeErr)
+					}
+					a.log.Warnf("Failed to connect to relay: %v", hsErr)
 					return
 				}
 
