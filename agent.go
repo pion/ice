@@ -328,10 +328,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		}
 	}
 
-	a.mDNSConn, mDNSMode, err = createMulticastDNS(a.net, mDNSMode, mDNSName, log)
 	// Opportunistic mDNS: If we can't open the connection, that's ok: we
 	// can continue without it.
-	if err != nil {
+	if a.mDNSConn, a.mDNSMode, err = createMulticastDNS(a.net, mDNSMode, mDNSName, log); err != nil {
 		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
 	}
 	closeMDNSConn := func() {
