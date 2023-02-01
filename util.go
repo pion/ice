@@ -44,6 +44,18 @@ func isZeros(ip net.IP) bool {
 	return true
 }
 
+func parseMulticastAnswerAddr(in net.Addr) (net.IP, bool) {
+	switch addr := in.(type) {
+	case *net.IPAddr:
+		return addr.IP, true
+	case *net.UDPAddr:
+		return addr.IP, true
+	case *net.TCPAddr:
+		return addr.IP, true
+	}
+	return nil, false
+}
+
 func parseAddr(in net.Addr) (net.IP, int, NetworkType, bool) {
 	switch addr := in.(type) {
 	case *net.UDPAddr:

@@ -770,8 +770,8 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 		return
 	}
 
-	ip, _, _, _ := parseAddr(src) //nolint:dogsled
-	if ip == nil {
+	ip, ipOk := parseMulticastAnswerAddr(src)
+	if !ipOk {
 		a.log.Warnf("Failed to discover mDNS candidate %s: failed to parse IP", c.Address())
 		return
 	}
