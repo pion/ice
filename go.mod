@@ -7,7 +7,7 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/pion/dtls/v2 v2.1.5
 	github.com/pion/logging v0.2.2
-	github.com/pion/mdns v0.0.6
+	github.com/pion/mdns v0.0.7
 	github.com/pion/randutil v0.1.0
 	github.com/pion/stun v0.4.0
 	github.com/pion/transport v0.14.1
