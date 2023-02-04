@@ -588,14 +588,12 @@ func (a *Agent) setSelectedPair(p *CandidatePair) {
 	a.updateConnectionState(ConnectionStateConnected)
 
 	// Notify when the selected pair changes
-	if p != nil {
-		a.afterRun(func(ctx context.Context) {
-			select {
-			case a.chanCandidatePair <- p:
-			case <-ctx.Done():
-			}
-		})
-	}
+	a.afterRun(func(ctx context.Context) {
+		select {
+		case a.chanCandidatePair <- p:
+		case <-ctx.Done():
+		}
+	})
 
 	// Signal connected
 	a.onConnectedOnce.Do(func() { close(a.onConnected) })

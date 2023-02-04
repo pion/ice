@@ -8,6 +8,7 @@ Adam Kiss <masterada@gmail.com>
 adwpc <adwpc@hotmail.com>
 Aleksandr Razumov <ar@gortc.io>
 Antoine Baché <antoine@tenten.app>
+Artur Shellunts <shellunts.artur@gmail.com>
 Assad Obaid <assad@lap5cg901003r.se.axis.com>
 Atsushi Watanabe <atsushi.w@ieee.org>
 backkem <mail@backkem.me>
