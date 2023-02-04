@@ -116,7 +116,9 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 
 	muxPort := 7778
 	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
-		return !strings.Contains(s, "docker")
+		defaultDockerBridgeNetwork := strings.Contains(s, "docker")
+		customDockerBridgeNetwork := strings.Contains(s, "br-")
+		return !defaultDockerBridgeNetwork && !customDockerBridgeNetwork
 	}))
 	require.NoError(t, err)
 
