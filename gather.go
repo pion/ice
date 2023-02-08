@@ -604,7 +604,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				udpConn, dialErr := a.net.DialUDP("udp", nil, udpAddr)
 				if dialErr != nil {
-					a.log.Warnf("Failed to dial DTLS Address %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to dial DTLS Address %s: %v", TURNServerAddr, dialErr)
 					return
 				}
 
