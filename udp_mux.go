@@ -50,7 +50,11 @@ const maxAddrSize = 512
 type UDPMuxParams struct {
 	Logger  logging.LeveledLogger
 	UDPConn net.PacketConn
-	Net     transport.Net
+
+	// Required for gathering local addresses
+	// in case a un UDPConn is passed which does not
+	// bind to a specific local address.
+	Net transport.Net
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
