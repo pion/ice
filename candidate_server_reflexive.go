@@ -1,6 +1,3 @@
-// Package ice ...
-//
-//nolint:dupl
 package ice
 
 import "net"
