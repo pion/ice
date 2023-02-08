@@ -218,7 +218,7 @@ func UDPMuxFromPortWithLoopback() UDPMuxFromPortOption {
 	}
 }
 
-// UDPMuxFromPortWithNet set loopback interface should be included
+// UDPMuxFromPortWithNet sets the network transport to use.
 func UDPMuxFromPortWithNet(n transport.Net) UDPMuxFromPortOption {
 	return &udpMuxFromPortOption{
 		f: func(p *multiUDPMuxFromPortParam) {
