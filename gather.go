@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pion/dtls/v2"
+	"github.com/pion/ice/v2/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
 )
@@ -34,25 +35,6 @@ func closeConnAndLog(c closeable, log logging.LeveledLogger, msg string) {
 	if err := c.Close(); err != nil {
 		log.Warnf("Failed to close conn: %v", err)
 	}
-}
-
-// fakePacketConn wraps a net.Conn and emulates net.PacketConn
-type fakePacketConn struct {
-	nextConn net.Conn
-}
-
-func (f *fakePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, err = f.nextConn.Read(p)
-	addr = f.nextConn.RemoteAddr()
-	return
-}
-func (f *fakePacketConn) Close() error                       { return f.nextConn.Close() }
-func (f *fakePacketConn) LocalAddr() net.Addr                { return f.nextConn.LocalAddr() }
-func (f *fakePacketConn) SetDeadline(t time.Time) error      { return f.nextConn.SetDeadline(t) }
-func (f *fakePacketConn) SetReadDeadline(t time.Time) error  { return f.nextConn.SetReadDeadline(t) }
-func (f *fakePacketConn) SetWriteDeadline(t time.Time) error { return f.nextConn.SetWriteDeadline(t) }
-func (f *fakePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	return f.nextConn.Write(p)
 }
 
 // GatherCandidates initiates the trickle based gathering process.
@@ -620,7 +602,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
 				RelPort = conn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "dtls"
-				locConn = &fakePacketConn{conn}
+				locConn = &fakenet.PacketConn{Conn: conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
 				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
 				if resolvErr != nil {
