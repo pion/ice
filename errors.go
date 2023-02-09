@@ -128,7 +128,6 @@ var (
 	errTooManyColonsAddr             = errors.New("too many colons in address")
 	errRead                          = errors.New("unexpected error trying to read")
 	errUnknownRole                   = errors.New("unknown role")
-	errMismatchUsername              = errors.New("username mismatch")
 	errICEWriteSTUNMessage           = errors.New("the ICE conn can't write STUN messages")
 	errUDPMuxDisabled                = errors.New("UDPMux is not enabled")
 	errNoXorAddrMapping              = errors.New("no address mapping")

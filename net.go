@@ -1,12 +1,9 @@
 package ice
 
 import (
-	"fmt"
 	"net"
-	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/stun"
 	"github.com/pion/transport/v2"
 )
 
@@ -30,106 +27,6 @@ func isZeros(ip net.IP) bool {
 		}
 	}
 	return true
-}
-
-func parseMulticastAnswerAddr(in net.Addr) (net.IP, bool) {
-	switch addr := in.(type) {
-	case *net.IPAddr:
-		return addr.IP, true
-	case *net.UDPAddr:
-		return addr.IP, true
-	case *net.TCPAddr:
-		return addr.IP, true
-	}
-	return nil, false
-}
-
-func parseAddr(in net.Addr) (net.IP, int, NetworkType, bool) {
-	switch addr := in.(type) {
-	case *net.UDPAddr:
-		return addr.IP, addr.Port, NetworkTypeUDP4, true
-	case *net.TCPAddr:
-		return addr.IP, addr.Port, NetworkTypeTCP4, true
-	}
-	return nil, 0, 0, false
-}
-
-func createAddr(network NetworkType, ip net.IP, port int) net.Addr {
-	switch {
-	case network.IsTCP():
-		return &net.TCPAddr{IP: ip, Port: port}
-	default:
-		return &net.UDPAddr{IP: ip, Port: port}
-	}
-}
-
-func addrEqual(a, b net.Addr) bool {
-	aIP, aPort, aType, aOk := parseAddr(a)
-	if !aOk {
-		return false
-	}
-
-	bIP, bPort, bType, bOk := parseAddr(b)
-	if !bOk {
-		return false
-	}
-
-	return aType == bType && aIP.Equal(bIP) && aPort == bPort
-}
-
-// getXORMappedAddr initiates a stun requests to serverAddr using conn, reads the response and returns
-// the XORMappedAddress returned by the stun server.
-//
-// Adapted from stun v0.2.
-func getXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
-	if deadline > 0 {
-		if err := conn.SetReadDeadline(time.Now().Add(deadline)); err != nil {
-			return nil, err
-		}
-	}
-	defer func() {
-		if deadline > 0 {
-			_ = conn.SetReadDeadline(time.Time{})
-		}
-	}()
-	resp, err := stunRequest(
-		func(p []byte) (int, error) {
-			n, _, err := conn.ReadFrom(p)
-			return n, err
-		},
-		func(b []byte) (int, error) {
-			return conn.WriteTo(b, serverAddr)
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	var addr stun.XORMappedAddress
-	if err = addr.GetFrom(resp); err != nil {
-		return nil, fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err)
-	}
-	return &addr, nil
-}
-
-func stunRequest(read func([]byte) (int, error), write func([]byte) (int, error)) (*stun.Message, error) {
-	req, err := stun.Build(stun.BindingRequest, stun.TransactionID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = write(req.Raw); err != nil {
-		return nil, err
-	}
-	const maxMessageSize = 1280
-	bs := make([]byte, maxMessageSize)
-	n, err := read(bs)
-	if err != nil {
-		return nil, err
-	}
-	res := &stun.Message{Raw: bs[:n]}
-	if err := res.Decode(); err != nil {
-		return nil, err
-	}
-	return res, nil
 }
 
 func localInterfaces(n transport.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType, includeLoopback bool) ([]net.IP, error) { //nolint:gocognit

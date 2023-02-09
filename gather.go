@@ -13,6 +13,7 @@ import (
 
 	"github.com/pion/dtls/v2"
 	"github.com/pion/ice/v2/internal/fakenet"
+	stunx "github.com/pion/ice/v2/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
 )
@@ -466,7 +467,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 					}
 				}()
 
-				xorAddr, err := getXORMappedAddr(conn, serverAddr, stunGatherTimeout)
+				xorAddr, err := stunx.GetXORMappedAddr(conn, serverAddr, stunGatherTimeout)
 				if err != nil {
 					closeConnAndLog(conn, a.log, fmt.Sprintf("could not get server reflexive address %s %s: %v", network, url, err))
 					return
