@@ -3,24 +3,12 @@ package ice
 import (
 	"fmt"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2"
 )
-
-type atomicError struct{ v atomic.Value }
-
-func (a *atomicError) Store(err error) {
-	a.v.Store(struct{ error }{err})
-}
-
-func (a *atomicError) Load() error {
-	err, _ := a.v.Load().(struct{ error })
-	return err.error
-}
 
 // The conditions of invalidation written below are defined in
 // https://tools.ietf.org/html/rfc8445#section-5.1.1.1
