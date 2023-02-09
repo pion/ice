@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"sync"
@@ -20,12 +21,8 @@ const (
 	stunGatherTimeout = time.Second * 5
 )
 
-type closeable interface {
-	Close() error
-}
-
 // Close a net.Conn and log if we have a failure
-func closeConnAndLog(c closeable, log logging.LeveledLogger, msg string) {
+func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string) {
 	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
 		log.Warnf("Conn is not allocated (%s)", msg)
 		return
