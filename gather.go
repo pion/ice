@@ -52,16 +52,31 @@ func (a *Agent) GatherCandidates() error {
 		}
 
 		a.gatherCandidateCancel() // Cancel previous gathering routine
-		ctx, cancel := context.WithCancel(ctx)
-		a.gatherCandidateCancel = cancel
+		ctx, a.gatherCandidateCancel = context.WithCancel(ctx)
 		done := make(chan struct{})
 		a.gatherCandidateDone = done
 
-		go a.gatherCandidates(ctx, done)
+		if a.gatherer != nil {
+			go a.gatherCandidatesWithGatherer(ctx, done)
+		} else {
+			go a.gatherCandidates(ctx, done)
+		}
 	}); runErr != nil {
 		return runErr
 	}
 	return gatherErr
+}
+
+func (a *Agent) gatherCandidatesWithGatherer(ctx context.Context, done chan struct{}) {
+	defer close(a.gatherCandidateDone)
+	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
+		a.log.Warnf("Failed to set gatheringState to GatheringStateGathering: %v", err)
+		return
+	}
+
+	if err := a.gatherer.Gather(ctx, a.addCandidate); err != nil {
+		a.log.Errorf("Failed to gather candidates: %s", err)
+	}
 }
 
 func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {

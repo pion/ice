@@ -140,6 +140,8 @@ type Agent struct {
 	ipFilter        func(net.IP) bool
 	includeLoopback bool
 
+	gatherer Gatherer
+
 	insecureSkipVerify bool
 
 	proxyDialer proxy.Dialer
@@ -308,13 +310,11 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		forceCandidateContact: make(chan bool, 1),
 
-		interfaceFilter: config.InterfaceFilter,
-
-		ipFilter: config.IPFilter,
-
+		interfaceFilter:    config.InterfaceFilter,
+		ipFilter:           config.IPFilter,
 		insecureSkipVerify: config.InsecureSkipVerify,
-
-		includeLoopback: config.IncludeLoopback,
+		includeLoopback:    config.IncludeLoopback,
+		gatherer:           config.Gatherer,
 	}
 
 	if a.net == nil {
@@ -739,6 +739,7 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 	a.requestConnectivityCheck()
 }
 
+// TODO: Rename to addLocalCandidate
 func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net.PacketConn) error {
 	return a.run(ctx, func(ctx context.Context, agent *Agent) {
 		set := a.localCandidates[c.NetworkType()]

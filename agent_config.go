@@ -174,6 +174,9 @@ type AgentConfig struct {
 
 	// Include loopback addresses in the candidate list.
 	IncludeLoopback bool
+
+	// Gatherer is used for custom candidate gathering logic
+	Gatherer Gatherer
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset
