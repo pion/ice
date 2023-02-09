@@ -12,6 +12,7 @@ import (
 	"time"
 
 	atomicx "github.com/pion/ice/v2/internal/atomic"
+	stunx "github.com/pion/ice/v2/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
@@ -1075,7 +1076,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 	if m.Type.Class == stun.ClassSuccessResponse {
-		if err = assertInboundMessageIntegrity(m, []byte(a.remotePwd)); err != nil {
+		if err = stun.MessageIntegrity([]byte(a.remotePwd)).Check(m); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
 		}
@@ -1087,10 +1088,10 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 		a.selector.HandleSuccessResponse(m, local, remoteCandidate, remote)
 	} else if m.Type.Class == stun.ClassRequest {
-		if err = assertInboundUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
+		if err = stunx.AssertUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
-		} else if err = assertInboundMessageIntegrity(m, []byte(a.localPwd)); err != nil {
+		} else if err = stun.MessageIntegrity([]byte(a.localPwd)).Check(m); err != nil {
 			a.log.Warnf("discard message from (%s), %v", remote, err)
 			return
 		}
