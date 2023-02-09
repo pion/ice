@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	atomicx "github.com/pion/ice/v2/internal/atomic"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
@@ -114,7 +115,7 @@ type Agent struct {
 	// State for closing
 	done         chan struct{}
 	taskLoopDone chan struct{}
-	err          atomicError
+	err          atomicx.Error
 
 	gatherCandidateCancel func()
 	gatherCandidateDone   chan struct{}
