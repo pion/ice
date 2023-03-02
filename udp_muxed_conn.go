@@ -30,6 +30,7 @@ type udpMuxedConn struct {
 	closedChan chan struct{}
 	closeOnce  sync.Once
 	mu         sync.Mutex
+	readMu     sync.Mutex
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {

@@ -207,7 +207,6 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 }
 
 func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
-	a := c.agent()
 
 	defer close(c.closedCh)
 
@@ -219,16 +218,28 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 
 	buf := make([]byte, receiveMTU)
 	for {
-		n, srcAddr, err := c.conn.ReadFrom(buf)
-		if err != nil {
-			if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
-				a.log.Warnf("Failed to read from candidate %s: %v", c, err)
-			}
+		if err := c.readAndHandlePacket(buf); err != nil {
 			return
 		}
-
-		c.handleInboundPacket(buf[:n], srcAddr)
 	}
+}
+
+func (c *candidateBase) readAndHandlePacket(buf []byte) error {
+	a := c.agent()
+	muxedConn, isUdpMuxed := c.conn.(*udpMuxedConn)
+	if isUdpMuxed {
+		muxedConn.readMu.Lock()
+		muxedConn.readMu.Unlock()
+	}
+	n, srcAddr, err := c.conn.ReadFrom(buf)
+	if err != nil {
+		if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
+			a.log.Warnf("Failed to read from candidate %s: %v", c, err)
+		}
+	}
+
+	c.handleInboundPacket(buf[:n], srcAddr)
+	return err
 }
 
 func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
