@@ -229,7 +229,7 @@ func (c *candidateBase) readAndHandlePacket(buf []byte) error {
 	muxedConn, isUdpMuxed := c.conn.(*udpMuxedConn)
 	if isUdpMuxed {
 		muxedConn.readMu.Lock()
-		muxedConn.readMu.Unlock()
+		defer muxedConn.readMu.Unlock()
 	}
 	n, srcAddr, err := c.conn.ReadFrom(buf)
 	if err != nil {
