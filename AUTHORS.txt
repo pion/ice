@@ -44,6 +44,7 @@ Mikhail Bragin <misha@wiretrustee.com>
 Miroslav Šedivý <sedivy.miro@gmail.com>
 Nevio Vesic <nevio@subspace.com>
 Ori Bernstein <ori@eigenstate.org>
+Rasmus Hanning <rasmus@hanning.se>
 Robert Eperjesi <eperjesi@uber.com>
 Sam Lancia <sam@gpsm.co.uk>
 Sam Lancia <sam@vaion.com>
