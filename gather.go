@@ -51,17 +51,18 @@ func (a *Agent) GatherCandidates() error {
 		a.gatherCandidateCancel() // Cancel previous gathering routine
 		ctx, cancel := context.WithCancel(ctx)
 		a.gatherCandidateCancel = cancel
-		a.gatherCandidateDone = make(chan struct{})
+		done := make(chan struct{})
+		a.gatherCandidateDone = done
 
-		go a.gatherCandidates(ctx)
+		go a.gatherCandidates(ctx, done)
 	}); runErr != nil {
 		return runErr
 	}
 	return gatherErr
 }
 
-func (a *Agent) gatherCandidates(ctx context.Context) {
-	defer close(a.gatherCandidateDone)
+func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {
+	defer close(done)
 	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
 		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
 		return
