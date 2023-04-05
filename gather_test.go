@@ -87,6 +87,34 @@ func TestListenUDP(t *testing.T) {
 	assert.NoError(t, a.Close())
 }
 
+func TestGatherConcurrency(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	a, err := NewAgent(&AgentConfig{
+		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+		IncludeLoopback: true,
+	})
+	assert.NoError(t, err)
+
+	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		candidateGatheredFunc()
+	}))
+
+	// tesing for panic
+	for i := 0; i < 10; i++ {
+		_ = a.GatherCandidates()
+	}
+
+	<-candidateGathered.Done()
+
+	assert.NoError(t, a.Close())
+}
+
 func TestLoopbackCandidate(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
