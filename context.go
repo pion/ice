@@ -32,6 +32,6 @@ func (a agentContext) Deadline() (deadline time.Time, ok bool) {
 }
 
 // Value implements context.Context
-func (a agentContext) Value(key interface{}) interface{} {
+func (a agentContext) Value(interface{}) interface{} {
 	return nil
 }

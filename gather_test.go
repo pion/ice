@@ -536,16 +536,16 @@ type mockProxy struct {
 
 type mockConn struct{}
 
-func (m *mockConn) Read(b []byte) (n int, err error)   { return 0, io.EOF }
-func (m *mockConn) Write(b []byte) (int, error)        { return 0, io.EOF }
-func (m *mockConn) Close() error                       { return io.EOF }
-func (m *mockConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (m *mockConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
-func (m *mockConn) SetDeadline(t time.Time) error      { return io.EOF }
-func (m *mockConn) SetReadDeadline(t time.Time) error  { return io.EOF }
-func (m *mockConn) SetWriteDeadline(t time.Time) error { return io.EOF }
+func (m *mockConn) Read([]byte) (n int, err error)   { return 0, io.EOF }
+func (m *mockConn) Write([]byte) (int, error)        { return 0, io.EOF }
+func (m *mockConn) Close() error                     { return io.EOF }
+func (m *mockConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (m *mockConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (m *mockConn) SetDeadline(time.Time) error      { return io.EOF }
+func (m *mockConn) SetReadDeadline(time.Time) error  { return io.EOF }
+func (m *mockConn) SetWriteDeadline(time.Time) error { return io.EOF }
 
-func (m *mockProxy) Dial(network, addr string) (net.Conn, error) {
+func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 	m.proxyWasDialed()
 	return &mockConn{}, nil
 }
@@ -781,25 +781,25 @@ type universalUDPMuxMock struct {
 	conn                      *net.UDPConn
 }
 
-func (m *universalUDPMuxMock) GetRelayedAddr(turnAddr net.Addr, deadline time.Duration) (*net.Addr, error) {
+func (m *universalUDPMuxMock) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr, error) {
 	return nil, errNotImplemented
 }
 
-func (m *universalUDPMuxMock) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
+func (m *universalUDPMuxMock) GetConnForURL(string, string, net.Addr) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getConnForURLTimes++
 	return m.conn, nil
 }
 
-func (m *universalUDPMuxMock) GetXORMappedAddr(serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func (m *universalUDPMuxMock) GetXORMappedAddr(net.Addr, time.Duration) (*stun.XORMappedAddress, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getXORMappedAddrUsedTimes++
 	return &stun.XORMappedAddress{IP: net.IP{100, 64, 0, 1}, Port: 77878}, nil
 }
 
-func (m *universalUDPMuxMock) RemoveConnByUfrag(ufrag string) {
+func (m *universalUDPMuxMock) RemoveConnByUfrag(string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeConnByUfragTimes++

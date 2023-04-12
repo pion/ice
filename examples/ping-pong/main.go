@@ -24,7 +24,7 @@ var (
 )
 
 // HTTP Listener to get ICE Credentials from remote Peer
-func remoteAuth(w http.ResponseWriter, r *http.Request) {
+func remoteAuth(_ http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		panic(err)
 	}
@@ -34,7 +34,7 @@ func remoteAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 // HTTP Listener to get ICE Candidate from remote Peer
-func remoteCandidate(w http.ResponseWriter, r *http.Request) {
+func remoteCandidate(_ http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		panic(err)
 	}
