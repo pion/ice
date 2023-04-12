@@ -255,6 +255,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 	}
 
 	localAddresses := a.udpMux.GetListenAddresses()
+	existingConfigs := make(map[CandidateHostConfig]struct{})
 
 	for _, addr := range localAddresses {
 		udpAddr, ok := addr.(*net.UDPAddr)
@@ -272,15 +273,24 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			candidateIP = mappedIP
 		}
 
-		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
-		if err != nil {
-			return err
-		}
 		hostConfig := CandidateHostConfig{
 			Network:   udp,
 			Address:   candidateIP.String(),
 			Port:      udpAddr.Port,
 			Component: ComponentRTP,
+		}
+
+		// Detect a duplicate candidate before calling addCandidate().
+		// otherwise, addCandidate() detects the duplicate candidate
+		// and close its connection, invalidating all candidates
+		// that share the same connection.
+		if _, ok := existingConfigs[hostConfig]; ok {
+			continue
+		}
+
+		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
+		if err != nil {
+			return err
 		}
 
 		c, err := NewCandidateHost(&hostConfig)
@@ -297,6 +307,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err))
 			continue
 		}
+
+		existingConfigs[hostConfig] = struct{}{}
 	}
 
 	return nil
