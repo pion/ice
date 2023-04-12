@@ -81,7 +81,7 @@ type udpConn struct {
 
 // GetRelayedAddr creates relayed connection to the given TURN service and returns the relayed addr.
 // Not implemented yet.
-func (m *UniversalUDPMuxDefault) GetRelayedAddr(turnAddr net.Addr, deadline time.Duration) (*net.Addr, error) {
+func (m *UniversalUDPMuxDefault) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr, error) {
 	return nil, errNotImplemented
 }
 
@@ -187,7 +187,7 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline 
 	// or wait for already sent request to complete
 	waitAddrReceived, err := m.sendStun(serverAddr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", errSendSTUNPacket, err)
+		return nil, fmt.Errorf("%w: %s", errSendSTUNPacket, err) //nolint:errorlint
 	}
 
 	// block until response was handled by the connWorker routine and XORMappedAddress was updated

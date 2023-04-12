@@ -23,13 +23,13 @@ import (
 
 type mockPacketConn struct{}
 
-func (m *mockPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
-func (m *mockPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error)  { return 0, nil }
-func (m *mockPacketConn) Close() error                                        { return nil }
-func (m *mockPacketConn) LocalAddr() net.Addr                                 { return nil }
-func (m *mockPacketConn) SetDeadline(t time.Time) error                       { return nil }
-func (m *mockPacketConn) SetReadDeadline(t time.Time) error                   { return nil }
-func (m *mockPacketConn) SetWriteDeadline(t time.Time) error                  { return nil }
+func (m *mockPacketConn) ReadFrom([]byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
+func (m *mockPacketConn) WriteTo([]byte, net.Addr) (n int, err error)       { return 0, nil }
+func (m *mockPacketConn) Close() error                                      { return nil }
+func (m *mockPacketConn) LocalAddr() net.Addr                               { return nil }
+func (m *mockPacketConn) SetDeadline(time.Time) error                       { return nil }
+func (m *mockPacketConn) SetReadDeadline(time.Time) error                   { return nil }
+func (m *mockPacketConn) SetWriteDeadline(time.Time) error                  { return nil }
 
 func TestOnSelectedCandidatePairChange(t *testing.T) {
 	report := test.CheckRoutines(t)

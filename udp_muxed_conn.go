@@ -90,15 +90,15 @@ func (c *udpMuxedConn) LocalAddr() net.Addr {
 	return c.params.LocalAddr
 }
 
-func (c *udpMuxedConn) SetDeadline(tm time.Time) error {
+func (c *udpMuxedConn) SetDeadline(time.Time) error {
 	return nil
 }
 
-func (c *udpMuxedConn) SetReadDeadline(tm time.Time) error {
+func (c *udpMuxedConn) SetReadDeadline(time.Time) error {
 	return nil
 }
 
-func (c *udpMuxedConn) SetWriteDeadline(tm time.Time) error {
+func (c *udpMuxedConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
 
