@@ -263,12 +263,13 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		}
 		candidateIP := udpAddr.IP
 		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-			if mappedIP, innerErr := a.extIPMapper.findExternalIP(candidateIP.String()); innerErr != nil {
+			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
+			if err != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
 				continue
-			} else {
-				candidateIP = mappedIP
 			}
+
+			candidateIP = mappedIP
 		}
 
 		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
