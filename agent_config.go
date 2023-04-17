@@ -170,6 +170,9 @@ type AgentConfig struct {
 
 	// Include loopback addresses in the candidate list.
 	IncludeLoopback bool
+
+	// Predict srflx addr number
+	SrflxPredictNumber int
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset
@@ -233,6 +236,8 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 	} else {
 		a.candidateTypes = config.CandidateTypes
 	}
+
+	a.srflxPredictNumber = config.SrflxPredictNumber
 }
 
 func (config *AgentConfig) initExtIPMapping(a *Agent) error {

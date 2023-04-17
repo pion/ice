@@ -72,6 +72,8 @@ type Agent struct {
 	portMin uint16
 	portMax uint16
 
+	srflxPredictNumber int
+
 	candidateTypes []CandidateType
 
 	// How long connectivity checks can fail before the ICE Agent
@@ -850,6 +852,12 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 
 		a.requestConnectivityCheck()
 
+		a.chanCandidate <- c
+	})
+}
+
+func (a *Agent) addPredictCandidate(ctx context.Context, c Candidate) error {
+	return a.run(ctx, func(ctx context.Context, agent *Agent) {
 		a.chanCandidate <- c
 	})
 }

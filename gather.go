@@ -455,6 +455,12 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v", serverAddr.String(), err))
 					return
 				}
+				conn2, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: nil, Port: 0})
+				if err != nil {
+					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to listen for %s: %v", serverAddr.String(), err))
+					return
+				}
+				defer conn2.Close()
 				// If the agent closes midway through the connection
 				// we end it early to prevent close delay.
 				cancelCtx, cancelFunc := context.WithCancel(ctx)
@@ -468,35 +474,47 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 					}
 				}()
 
-				xorAddr, err := stunx.GetXORMappedAddr(conn, serverAddr, stunGatherTimeout)
+				xorAddrs, err := stunx.GetXORMappedAddrs(conn, conn2, serverAddr, stunGatherTimeout, a.srflxPredictNumber)
 				if err != nil {
 					closeConnAndLog(conn, a.log, fmt.Sprintf("could not get server reflexive address %s %s: %v", network, url, err))
 					return
 				}
 
-				ip := xorAddr.IP
-				port := xorAddr.Port
+				for i := range xorAddrs {
+					xorAddr := xorAddrs[i]
+					ip := xorAddr.IP
+					port := xorAddr.Port
 
-				lAddr := conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-				srflxConfig := CandidateServerReflexiveConfig{
-					Network:   network,
-					Address:   ip.String(),
-					Port:      port,
-					Component: ComponentRTP,
-					RelAddr:   lAddr.IP.String(),
-					RelPort:   lAddr.Port,
-				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
-				if err != nil {
-					closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err))
-					return
-				}
-
-				if err := a.addCandidate(ctx, c, conn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					lAddr := conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+					srflxConfig := CandidateServerReflexiveConfig{
+						Network:   network,
+						Address:   ip.String(),
+						Port:      port,
+						Component: ComponentRTP,
+						RelAddr:   lAddr.IP.String(),
+						RelPort:   lAddr.Port,
 					}
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+					c, err := NewCandidateServerReflexive(&srflxConfig)
+					if err != nil {
+						closeConnAndLog(conn, a.log, fmt.Sprintf("Failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err))
+						return
+					}
+
+					if i == 0 {
+						if err := a.addCandidate(ctx, c, conn); err != nil {
+							if closeErr := c.close(); closeErr != nil {
+								a.log.Warnf("Failed to close candidate: %v", closeErr)
+							}
+							a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+						}
+					} else {
+						if err := a.addPredictCandidate(ctx, c); err != nil {
+							if closeErr := c.close(); closeErr != nil {
+								a.log.Warnf("Failed to close candidate: %v", closeErr)
+							}
+							a.log.Warnf("Failed to append predictCandidates and run onCandidateHdlr: %v", err)
+						}
+					}
 				}
 			}(*urls[i], networkType.String())
 		}
