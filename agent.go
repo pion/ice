@@ -11,8 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	atomicx "github.com/pion/ice/v2/internal/atomic"
-	stunx "github.com/pion/ice/v2/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
@@ -20,6 +18,8 @@ import (
 	"github.com/pion/transport/v2/packetio"
 	"github.com/pion/transport/v2/stdnet"
 	"github.com/pion/transport/v2/vnet"
+	atomicx "gitlab.mty.wang/kepler/ice/internal/atomic"
+	stunx "gitlab.mty.wang/kepler/ice/internal/stun"
 	"golang.org/x/net/proxy"
 )
 

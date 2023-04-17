@@ -23,3 +23,4 @@ cover.out
 examples/sfu-ws/cert.pem
 examples/sfu-ws/key.pem
 wasm_exec.js
+go.sum
