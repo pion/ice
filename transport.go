@@ -130,16 +130,16 @@ func (c *Conn) RemoteAddr() net.Addr {
 }
 
 // SetDeadline is a stub
-func (c *Conn) SetDeadline(t time.Time) error {
+func (c *Conn) SetDeadline(time.Time) error {
 	return nil
 }
 
 // SetReadDeadline is a stub
-func (c *Conn) SetReadDeadline(t time.Time) error {
+func (c *Conn) SetReadDeadline(time.Time) error {
 	return nil
 }
 
 // SetWriteDeadline is a stub
-func (c *Conn) SetWriteDeadline(t time.Time) error {
+func (c *Conn) SetWriteDeadline(time.Time) error {
 	return nil
 }

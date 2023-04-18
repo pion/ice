@@ -291,15 +291,15 @@ func (t *tcpPacketConn) LocalAddr() net.Addr {
 	return t.params.LocalAddr
 }
 
-func (t *tcpPacketConn) SetDeadline(tm time.Time) error {
+func (t *tcpPacketConn) SetDeadline(time.Time) error {
 	return nil
 }
 
-func (t *tcpPacketConn) SetReadDeadline(tm time.Time) error {
+func (t *tcpPacketConn) SetReadDeadline(time.Time) error {
 	return nil
 }
 
-func (t *tcpPacketConn) SetWriteDeadline(tm time.Time) error {
+func (t *tcpPacketConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
 

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func optimisticAuthHandler(username string, realm string, srcAddr net.Addr) (key []byte, ok bool) {
+func optimisticAuthHandler(string, string, net.Addr) (key []byte, ok bool) {
 	return turn.GenerateAuthKey("username", "pion.ly", "password"), true
 }
 

@@ -50,7 +50,7 @@ func GetXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, timeout time.Dur
 
 	var addr stun.XORMappedAddress
 	if err = addr.GetFrom(res); err != nil {
-		return nil, fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err)
+		return nil, fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err) //nolint:errorlint
 	}
 
 	return &addr, nil

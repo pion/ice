@@ -61,7 +61,7 @@ func (c *candidateBase) Deadline() (deadline time.Time, ok bool) {
 }
 
 // Value implements context.Context
-func (c *candidateBase) Value(key interface{}) interface{} {
+func (c *candidateBase) Value(interface{}) interface{} {
 	return nil
 }
 
@@ -448,7 +448,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Component
 	rawComponent, err := strconv.ParseUint(split[1], 10, 16)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParseComponent, err)
+		return nil, fmt.Errorf("%w: %v", errParseComponent, err) //nolint:errorlint
 	}
 	component := uint16(rawComponent)
 
@@ -458,7 +458,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Priority
 	priorityRaw, err := strconv.ParseUint(split[3], 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParsePriority, err)
+		return nil, fmt.Errorf("%w: %v", errParsePriority, err) //nolint:errorlint
 	}
 	priority := uint32(priorityRaw)
 
@@ -468,7 +468,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 	// Port
 	rawPort, err := strconv.ParseUint(split[5], 10, 16)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParsePort, err)
+		return nil, fmt.Errorf("%w: %v", errParsePort, err) //nolint:errorlint
 	}
 	port := int(rawPort)
 	typ := split[7]
@@ -491,7 +491,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 			// RelatedPort
 			rawRelatedPort, parseErr := strconv.ParseUint(split[3], 10, 16)
 			if parseErr != nil {
-				return nil, fmt.Errorf("%w: %v", errParsePort, parseErr)
+				return nil, fmt.Errorf("%w: %v", errParsePort, parseErr) //nolint:errorlint
 			}
 			relatedPort = int(rawRelatedPort)
 		} else if split[0] == "tcptype" {

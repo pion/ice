@@ -536,16 +536,16 @@ type mockProxy struct {
 
 type mockConn struct{}
 
-func (m *mockConn) Read(b []byte) (n int, err error)   { return 0, io.EOF }
-func (m *mockConn) Write(b []byte) (int, error)        { return 0, io.EOF }
-func (m *mockConn) Close() error                       { return io.EOF }
-func (m *mockConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (m *mockConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
-func (m *mockConn) SetDeadline(t time.Time) error      { return io.EOF }
-func (m *mockConn) SetReadDeadline(t time.Time) error  { return io.EOF }
-func (m *mockConn) SetWriteDeadline(t time.Time) error { return io.EOF }
+func (m *mockConn) Read([]byte) (n int, err error)   { return 0, io.EOF }
+func (m *mockConn) Write([]byte) (int, error)        { return 0, io.EOF }
+func (m *mockConn) Close() error                     { return io.EOF }
+func (m *mockConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (m *mockConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (m *mockConn) SetDeadline(time.Time) error      { return io.EOF }
+func (m *mockConn) SetReadDeadline(time.Time) error  { return io.EOF }
+func (m *mockConn) SetWriteDeadline(time.Time) error { return io.EOF }
 
-func (m *mockProxy) Dial(network, addr string) (net.Conn, error) {
+func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 	m.proxyWasDialed()
 	return &mockConn{}, nil
 }
@@ -595,6 +595,51 @@ func TestTURNProxyDialer(t *testing.T) {
 	assert.NoError(t, a.GatherCandidates())
 	<-candidateGatherFinish.Done()
 	<-proxyWasDialed.Done()
+
+	assert.NoError(t, a.Close())
+}
+
+// TestUDPMuxDefaultWithNAT1To1IPsUsage asserts that candidates
+// are given and connections are valid when using UDPMuxDefault and NAT1To1IPs.
+func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
+	report := test.CheckRoutines(t)
+	defer report()
+
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	conn, err := net.ListenPacket("udp4", ":0")
+	assert.NoError(t, err)
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	mux := NewUDPMuxDefault(UDPMuxParams{
+		UDPConn: conn,
+	})
+	defer func() {
+		_ = mux.Close()
+	}()
+
+	a, err := NewAgent(&AgentConfig{
+		NAT1To1IPs:             []string{"1.2.3.4"},
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		UDPMux:                 mux,
+	})
+	assert.NoError(t, err)
+
+	gatherCandidateDone := make(chan struct{})
+	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(gatherCandidateDone)
+		} else {
+			assert.Equal(t, "1.2.3.4", c.Address())
+		}
+	}))
+	assert.NoError(t, a.GatherCandidates())
+	<-gatherCandidateDone
+
+	assert.NotEqual(t, 0, len(mux.connsIPv4))
 
 	assert.NoError(t, a.Close())
 }
@@ -781,25 +826,25 @@ type universalUDPMuxMock struct {
 	conn                      *net.UDPConn
 }
 
-func (m *universalUDPMuxMock) GetRelayedAddr(turnAddr net.Addr, deadline time.Duration) (*net.Addr, error) {
+func (m *universalUDPMuxMock) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr, error) {
 	return nil, errNotImplemented
 }
 
-func (m *universalUDPMuxMock) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
+func (m *universalUDPMuxMock) GetConnForURL(string, string, net.Addr) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getConnForURLTimes++
 	return m.conn, nil
 }
 
-func (m *universalUDPMuxMock) GetXORMappedAddr(serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func (m *universalUDPMuxMock) GetXORMappedAddr(net.Addr, time.Duration) (*stun.XORMappedAddress, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getXORMappedAddrUsedTimes++
 	return &stun.XORMappedAddress{IP: net.IP{100, 64, 0, 1}, Port: 77878}, nil
 }
 
-func (m *universalUDPMuxMock) RemoveConnByUfrag(ufrag string) {
+func (m *universalUDPMuxMock) RemoveConnByUfrag(string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeConnByUfragTimes++

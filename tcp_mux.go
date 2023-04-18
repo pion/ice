@@ -40,12 +40,12 @@ func (m *invalidTCPMux) Close() error {
 }
 
 // GetConnByUfrag implements TCPMux interface.
-func (m *invalidTCPMux) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error) {
+func (m *invalidTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
 	return nil, ErrTCPMuxNotInitialized
 }
 
 // RemoveConnByUfrag implements TCPMux interface.
-func (m *invalidTCPMux) RemoveConnByUfrag(ufrag string) {}
+func (m *invalidTCPMux) RemoveConnByUfrag(string) {}
 
 type ipAddr string
 
