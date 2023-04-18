@@ -32,7 +32,7 @@ func TestMultiUDPMux(t *testing.T) {
 
 	conn3, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6loopback})
 	if err != nil {
-		// ipv6 is not supported on this machine
+		// IPv6 is not supported on this machine
 		t.Log("ipv6 is not supported on this machine")
 	}
 
@@ -66,7 +66,7 @@ func TestMultiUDPMux(t *testing.T) {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
-	// skip ipv6 test on i386
+	// Skip ipv6 test on i386
 	const ptrSize = 32 << (^uintptr(0) >> 63)
 	if ptrSize != 32 {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
@@ -76,7 +76,7 @@ func TestMultiUDPMux(t *testing.T) {
 
 	require.NoError(t, udpMuxMulti.Close())
 
-	// can't create more connections
+	// Can't create more connections
 	_, err = udpMuxMulti.GetConn("failufrag", conn1.LocalAddr())
 	require.Error(t, err)
 }
@@ -143,7 +143,7 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
-	// skip ipv6 test on i386
+	// Skip IPv6 test on i386
 	const ptrSize = 32 << (^uintptr(0) >> 63)
 	if ptrSize != 32 {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)

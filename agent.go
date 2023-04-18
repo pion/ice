@@ -47,7 +47,7 @@ type Agent struct {
 	onConnected     chan struct{}
 	onConnectedOnce sync.Once
 
-	// force candidate to be contacted immediately (instead of waiting for task ticker)
+	// Force candidate to be contacted immediately (instead of waiting for task ticker)
 	forceCandidateContact chan bool
 
 	tieBreaker uint64
@@ -718,7 +718,7 @@ func (a *Agent) checkKeepalive() {
 	if (a.keepaliveInterval != 0) &&
 		((time.Since(selectedPair.Local.LastSent()) > a.keepaliveInterval) ||
 			(time.Since(selectedPair.Remote.LastReceived()) > a.keepaliveInterval)) {
-		// we use binding request instead of indication to support refresh consent schemas
+		// We use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
 		a.selector.PingCandidate(selectedPair.Local, selectedPair.Remote)
 	}
@@ -730,7 +730,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 		return nil
 	}
 
-	// cannot check for network yet because it might not be applied
+	// Cannot check for network yet because it might not be applied
 	// when mDNS hostname is used.
 	if c.TCPType() == TCPTypeActive {
 		// TCP Candidates with TCP type active will probe server passive ones, so

@@ -52,7 +52,7 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 		return nil, err
 	}
 
-	// block until pair selected
+	// Block until pair selected
 	select {
 	case <-a.done:
 		return nil, a.getErr()

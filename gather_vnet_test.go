@@ -24,7 +24,6 @@ func TestVNetGather(t *testing.T) {
 	defer report()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	// log := loggerFactory.NewLogger("test")
 
 	t.Run("No local IP address", func(t *testing.T) {
 		n, err := vnet.NewNet(&vnet.NetConfig{})
@@ -214,7 +213,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			Net:        nw,
 		})
 		assert.NoError(t, err, "should succeed")
-		defer a.Close() // nolint:errcheck
+		defer a.Close() //nolint:errcheck
 
 		done := make(chan struct{})
 		err = a.OnCandidate(func(c Candidate) {
@@ -314,7 +313,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			Net:                    nw,
 		})
 		assert.NoError(t, err, "should succeed")
-		defer a.Close() // nolint:errcheck
+		defer a.Close() //nolint:errcheck
 
 		done := make(chan struct{})
 		err = a.OnCandidate(func(c Candidate) {

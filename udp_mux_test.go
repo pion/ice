@@ -91,7 +91,7 @@ func TestUDPMux(t *testing.T) {
 					defer wg.Done()
 					testMuxConnection(t, udpMux, "ufrag2", udp4)
 				}()
-				// skip ipv6 test on i386
+				// Skip IPv6 test on i386
 				if ptrSize != 32 {
 					testMuxConnection(t, udpMux, "ufrag3", udp6)
 				}
@@ -103,7 +103,7 @@ func TestUDPMux(t *testing.T) {
 
 			require.NoError(t, udpMux.Close())
 
-			// can't create more connections
+			// Can't create more connections
 			_, err = udpMux.GetConn("failufrag", udpMux.LocalAddr())
 			require.Error(t, err)
 		})
@@ -169,13 +169,13 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 }
 
 func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net.UDPConn, ufrag string) {
-	// initial messages are dropped
+	// Initial messages are dropped
 	_, err := remoteConn.Write([]byte("dropped bytes"))
 	require.NoError(t, err)
-	// wait for packet to be consumed
+	// Wait for packet to be consumed
 	time.Sleep(time.Millisecond)
 
-	// write out to establish connection
+	// Write out to establish connection
 	msg := stun.New()
 	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
 	msg.Add(stun.AttrUsername, []byte(ufrag+":otherufrag"))
@@ -183,18 +183,18 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 	_, err = pktConn.WriteTo(msg.Raw, remoteConn.LocalAddr())
 	require.NoError(t, err)
 
-	// ensure received
+	// Ensure received
 	buf := make([]byte, receiveMTU)
 	n, err := remoteConn.Read(buf)
 	require.NoError(t, err)
 	require.Equal(t, msg.Raw, buf[:n])
 
-	// start writing packets through mux
+	// Start writing packets through mux
 	targetSize := 1 * 1024 * 1024
 	readDone := make(chan struct{}, 1)
 	remoteReadDone := make(chan struct{}, 1)
 
-	// read packets from the muxed side
+	// Read packets from the muxed side
 	go func() {
 		defer func() {
 			t.Logf("closing read chan for: %s", ufrag)
@@ -209,7 +209,7 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 
 			verifyPacket(t, readBuf[:n], nextSeq)
 
-			// write it back to sender
+			// Write it back to sender
 			_, err = pktConn.WriteTo(readBuf[:n], remoteConn.LocalAddr())
 			require.NoError(t, err)
 
@@ -239,9 +239,9 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 	sequence := 0
 	for written := 0; written < targetSize; {
 		buf := make([]byte, receiveMTU)
-		// byte0-4: sequence
-		// bytes4-24: sha1 checksum
-		// bytes24-mtu: random data
+		// Byte 0-4: sequence
+		// Bytes 4-24: sha1 checksum
+		// Bytes2 4-mtu: random data
 		_, err := rand.Read(buf[24:])
 		require.NoError(t, err)
 		h := sha1.Sum(buf[24:]) //nolint:gosec
