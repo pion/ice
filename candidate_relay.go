@@ -63,6 +63,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 				Address: config.RelAddr,
 				Port:    config.RelPort,
 			},
+			remoteCandidateCaches: map[AddrPort]Candidate{},
 		},
 		relayProtocol: config.RelayProtocol,
 		onClose:       config.OnClose,
