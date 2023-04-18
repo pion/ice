@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+// SPDX-License-Identifier: MIT
+
 // Package ice implements the Interactive Connectivity Establishment (ICE)
 // protocol defined in rfc5245.
 package ice
