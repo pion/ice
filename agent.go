@@ -297,6 +297,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		log:               log,
 		net:               config.Net,
 		proxyDialer:       config.ProxyDialer,
+		tcpMux:            config.TCPMux,
+		udpMux:            config.UDPMux,
+		udpMuxSrflx:       config.UDPMuxSrflx,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
@@ -313,13 +316,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		includeLoopback: config.IncludeLoopback,
 	}
-
-	a.tcpMux = config.TCPMux
-	if a.tcpMux == nil {
-		a.tcpMux = newInvalidTCPMux()
-	}
-	a.udpMux = config.UDPMux
-	a.udpMuxSrflx = config.UDPMuxSrflx
 
 	if a.net == nil {
 		a.net, err = stdnet.NewNet()
@@ -906,7 +902,9 @@ func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) 
 }
 
 func (a *Agent) removeUfragFromMux() {
-	a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+	if a.tcpMux != nil {
+		a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+	}
 	if a.udpMux != nil {
 		a.udpMux.RemoveConnByUfrag(a.localUfrag)
 	}

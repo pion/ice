@@ -20,35 +20,12 @@ var ErrGetTransportAddress = errors.New("failed to get local transport address")
 
 // TCPMux is allows grouping multiple TCP net.Conns and using them like UDP
 // net.PacketConns. The main implementation of this is TCPMuxDefault, and this
-// interface exists to:
-//  1. prevent SEGV panics when TCPMuxDefault is not initialized by using the
-//     invalidTCPMux implementation, and
-//  2. allow mocking in tests.
+// interface exists to allow mocking in tests.
 type TCPMux interface {
 	io.Closer
 	GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error)
 	RemoveConnByUfrag(ufrag string)
 }
-
-// invalidTCPMux is an implementation of TCPMux that always returns ErrTCPMuxNotInitialized.
-type invalidTCPMux struct{}
-
-func newInvalidTCPMux() *invalidTCPMux {
-	return &invalidTCPMux{}
-}
-
-// Close implements TCPMux interface.
-func (m *invalidTCPMux) Close() error {
-	return ErrTCPMuxNotInitialized
-}
-
-// GetConnByUfrag implements TCPMux interface.
-func (m *invalidTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
-	return nil, ErrTCPMuxNotInitialized
-}
-
-// RemoveConnByUfrag implements TCPMux interface.
-func (m *invalidTCPMux) RemoveConnByUfrag(string) {}
 
 type ipAddr string
 
