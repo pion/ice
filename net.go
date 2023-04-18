@@ -52,10 +52,10 @@ func localInterfaces(n transport.Net, interfaceFilter func(string) bool, ipFilte
 
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 {
-			continue // interface down
+			continue // Interface down
 		}
 		if (iface.Flags&net.FlagLoopback != 0) && !includeLoopback {
-			continue // loopback interface
+			continue // Loopback interface
 		}
 
 		if interfaceFilter != nil && !interfaceFilter(iface.Name) {

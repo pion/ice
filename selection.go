@@ -198,7 +198,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 }
 
 func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
-	// nolint:godox
+	//nolint:godox
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 	// If the controlled agent does not accept the request from the
@@ -288,8 +288,8 @@ type liteSelector struct {
 // A lite selector should not contact candidates
 func (s *liteSelector) ContactCandidates() {
 	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
-		// nolint:godox
-		// pion/ice#96
+		//nolint:godox
+		// https://github.com/pion/ice/issues/96
 		// TODO: implement lite controlling agent. For now falling back to full agent.
 		// This only happens if both peers are lite. See RFC 8445 S6.1.1 and S6.2
 		s.pairCandidateSelector.ContactCandidates()

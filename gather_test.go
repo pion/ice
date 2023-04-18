@@ -108,7 +108,7 @@ func TestGatherConcurrency(t *testing.T) {
 		candidateGatheredFunc()
 	}))
 
-	// tesing for panic
+	// Testing for panic
 	for i := 0; i < 10; i++ {
 		_ = a.GatherCandidates()
 	}
@@ -812,11 +812,11 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	<-candidateGathered.Done()
 
 	assert.NoError(t, a.Close())
-	// twice because of 2 STUN servers configured
+	// Twice because of 2 STUN servers configured
 	assert.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
-	// one for Restart() when agent has been initialized and one time when Close() the agent
+	// One for Restart() when agent has been initialized and one time when Close() the agent
 	assert.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
-	// twice because of 2 STUN servers configured
+	// Twice because of 2 STUN servers configured
 	assert.Equal(t, numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
 }
 

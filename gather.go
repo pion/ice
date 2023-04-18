@@ -124,7 +124,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		}
 	}
 
-	// when UDPMux is enabled, skip other UDP candidates
+	// When UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
 		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
 			a.log.Warnf("could not create host candidate for UDPMux: %s", err)
@@ -201,7 +201,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					continue
 				}
 				tcpType = TCPTypePassive
-				// is there a way to verify that the listen address is even
+				// Is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
 				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: ip, Port: 0})

@@ -18,7 +18,7 @@ import (
 	"github.com/pion/randutil"
 )
 
-// nolint:gochecknoglobals
+//nolint:gochecknoglobals
 var (
 	isControlling                 bool
 	iceAgent                      *ice.Agent

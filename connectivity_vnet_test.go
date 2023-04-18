@@ -41,8 +41,8 @@ type virtualNet struct {
 }
 
 func (v *virtualNet) close() {
-	v.server.Close() // nolint:errcheck,gosec
-	v.wan.Stop()     // nolint:errcheck,gosec
+	v.server.Close() //nolint:errcheck,gosec
+	v.wan.Stop()     //nolint:errcheck,gosec
 }
 
 func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
@@ -58,7 +58,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	}
 
 	wanNet, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIP: vnetSTUNServerIP, // will be assigned to eth0
+		StaticIP: vnetSTUNServerIP, // Will be assigned to eth0
 	})
 	if err != nil {
 		return nil, err

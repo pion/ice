@@ -31,7 +31,7 @@ func TestStressDuplex(t *testing.T) {
 
 func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	const pollRate = 100 * time.Millisecond
-	const margin = 20 * time.Millisecond // allow 20msec error in time
+	const margin = 20 * time.Millisecond // Allow 20msec error in time
 	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
@@ -52,7 +52,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 			cs = agent.connectionState
 		})
 		if err != nil {
-			// we should never get here.
+			// We should never get here.
 			panic(err)
 		}
 
@@ -86,7 +86,7 @@ func TestTimeout(t *testing.T) {
 		ca, cb := pipe(nil)
 		err := cb.Close()
 		if err != nil {
-			// we should never get here.
+			// We should never get here.
 			panic(err)
 		}
 
@@ -97,7 +97,7 @@ func TestTimeout(t *testing.T) {
 		ca, cb := pipeWithTimeout(5*time.Second, 3*time.Second)
 		err := cb.Close()
 		if err != nil {
-			// we should never get here.
+			// We should never get here.
 			panic(err)
 		}
 
@@ -118,13 +118,13 @@ func TestReadClosed(t *testing.T) {
 
 	err := ca.Close()
 	if err != nil {
-		// we should never get here.
+		// We should never get here.
 		panic(err)
 	}
 
 	err = cb.Close()
 	if err != nil {
-		// we should never get here.
+		// We should never get here.
 		panic(err)
 	}
 
@@ -354,13 +354,13 @@ func TestConnStats(t *testing.T) {
 
 	err := ca.Close()
 	if err != nil {
-		// we should never get here.
+		// We should never get here.
 		panic(err)
 	}
 
 	err = cb.Close()
 	if err != nil {
-		// we should never get here.
+		// We should never get here.
 		panic(err)
 	}
 }

@@ -47,7 +47,7 @@ type Agent struct {
 	onConnected     chan struct{}
 	onConnectedOnce sync.Once
 
-	// force candidate to be contacted immediately (instead of waiting for task ticker)
+	// Force candidate to be contacted immediately (instead of waiting for task ticker)
 	forceCandidateContact chan bool
 
 	tieBreaker uint64
@@ -714,7 +714,7 @@ func (a *Agent) checkKeepalive() {
 	if (a.keepaliveInterval != 0) &&
 		((time.Since(selectedPair.Local.LastSent()) > a.keepaliveInterval) ||
 			(time.Since(selectedPair.Remote.LastReceived()) > a.keepaliveInterval)) {
-		// we use binding request instead of indication to support refresh consent schemas
+		// We use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
 		a.selector.PingCandidate(selectedPair.Local, selectedPair.Remote)
 	}
@@ -726,7 +726,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 		return nil
 	}
 
-	// cannot check for network yet because it might not be applied
+	// Cannot check for network yet because it might not be applied
 	// when mDNS hostname is used.
 	if c.TCPType() == TCPTypeActive {
 		// TCP Candidates with TCP type active will probe server passive ones, so
@@ -1136,19 +1136,18 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,
 // and returns true if it is an actual remote candidate
-func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) bool {
-	var isValidCandidate uint64
+func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) (Candidate, bool) {
+	var remoteCandidate Candidate
 	if err := a.run(local.context(), func(ctx context.Context, agent *Agent) {
-		remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
+		remoteCandidate = a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
-			atomic.AddUint64(&isValidCandidate, 1)
 		}
 	}); err != nil {
 		a.log.Warnf("failed to validate remote candidate: %v", err)
 	}
 
-	return atomic.LoadUint64(&isValidCandidate) == 1
+	return remoteCandidate, remoteCandidate != nil
 }
 
 // GetSelectedCandidatePair returns the selected pair or nil if there is none

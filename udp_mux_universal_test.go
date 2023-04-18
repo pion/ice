@@ -57,7 +57,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 		_ = remoteConn.Close()
 	}()
 
-	// use small value for TTL to check expiration of the address
+	// Use small value for TTL to check expiration of the address
 	udpMux.params.XORMappedAddrCacheTTL = time.Millisecond * 20
 	testXORIP := net.ParseIP("213.141.156.236")
 	testXORPort := 21254
@@ -73,10 +73,10 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 		require.Equal(t, address.Port, testXORPort)
 	}()
 
-	// wait until GetXORMappedAddr calls sendStun method
+	// Wait until GetXORMappedAddr calls sendStun method
 	time.Sleep(time.Millisecond)
 
-	// check that mapped address filled correctly after sent stun
+	// Check that mapped address filled correctly after sent stun
 	udpMux.mu.Lock()
 	mappedAddr, ok := udpMux.xorMappedMap[remoteConn.LocalAddr().String()]
 	require.True(t, ok)
@@ -85,12 +85,12 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	require.False(t, mappedAddr.expired())
 	udpMux.mu.Unlock()
 
-	// clean receiver read buffer
+	// Clean receiver read buffer
 	buf := make([]byte, receiveMTU)
 	_, err = remoteConn.Read(buf)
 	require.NoError(t, err)
 
-	// write back to udpMux XOR message with address
+	// Write back to udpMux XOR message with address
 	msg := stun.New()
 	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
 	msg.Add(stun.AttrUsername, []byte(ufrag+":otherufrag"))
@@ -105,24 +105,24 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	_, err = remoteConn.Write(msg.Raw)
 	require.NoError(t, err)
 
-	// wait for the packet to be consumed and parsed by udpMux
+	// Wait for the packet to be consumed and parsed by udpMux
 	wg.Wait()
 
-	// we should get address immediately from the cached map
+	// We should get address immediately from the cached map
 	address, err := udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, address)
 
 	udpMux.mu.Lock()
-	// check mappedAddr is not pending, we didn't send stun twice
+	// Check mappedAddr is not pending, we didn't send stun twice
 	require.False(t, mappedAddr.pending())
 
-	// check expiration by TTL
+	// Check expiration by TTL
 	time.Sleep(time.Millisecond * 21)
 	require.True(t, mappedAddr.expired())
 	udpMux.mu.Unlock()
 
-	// after expire, we send stun request again
+	// After expire, we send stun request again
 	// but we not receive response in 5 milliseconds and should get error here
 	address, err = udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Millisecond*5)
 	require.NotNil(t, err)

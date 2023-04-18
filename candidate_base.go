@@ -41,6 +41,8 @@ type candidateBase struct {
 
 	foundationOverride string
 	priorityOverride   uint32
+
+	remoteCandidateCaches map[AddrPort]Candidate
 }
 
 // Done implements context.Context
@@ -234,6 +236,21 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	}
 }
 
+func (c *candidateBase) validateSTUNTrafficCache(addr net.Addr) bool {
+	if candidate, ok := c.remoteCandidateCaches[toAddrPort(addr)]; ok {
+		candidate.seen(false)
+		return true
+	}
+	return false
+}
+
+func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net.Addr) {
+	if c.validateSTUNTrafficCache(srcAddr) {
+		return
+	}
+	c.remoteCandidateCaches[toAddrPort(srcAddr)] = candidate
+}
+
 func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 	a := c.agent()
 
@@ -259,9 +276,13 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 		return
 	}
 
-	if !a.validateNonSTUNTraffic(c, srcAddr) { //nolint:contextcheck
-		a.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
-		return
+	if !c.validateSTUNTrafficCache(srcAddr) {
+		remoteCandidate, valid := a.validateNonSTUNTraffic(c, srcAddr) //nolint:contextcheck
+		if !valid {
+			a.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+			return
+		}
+		c.addRemoteCandidateCache(remoteCandidate, srcAddr)
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.

@@ -55,6 +55,7 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 				Address: config.RelAddr,
 				Port:    config.RelPort,
 			},
+			remoteCandidateCaches: map[AddrPort]Candidate{},
 		},
 	}, nil
 }

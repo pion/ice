@@ -159,7 +159,6 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 
 	for {
 		n, err := readStreamingPacket(conn, buf)
-		// t.params.Logger.Infof("readStreamingPacket read %d bytes", n)
 		if err != nil {
 			t.params.Logger.Infof("%v: %s", errReadingStreamingPacket, err)
 			t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
@@ -170,7 +169,6 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		// t.params.Logger.Infof("Writing read streaming packet to recvChan: %d bytes", len(data))
 		t.handleRecv(streamingPacket{data, conn.RemoteAddr(), nil})
 	}
 }
@@ -229,15 +227,6 @@ func (t *tcpPacketConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 
 	if !ok {
 		return 0, io.ErrClosedPipe
-		// conn, err := net.DialTCP(tcp, nil, rAddr.(*net.TCPAddr))
-
-		// if err != nil {
-		// 	t.params.Logger.Tracef("DialTCP error: %s", err)
-		// 	return 0, err
-		// }
-
-		// go t.startReading(conn)
-		// t.conns[rAddr.String()] = conn
 	}
 
 	n, err = writeStreamingPacket(conn, buf)

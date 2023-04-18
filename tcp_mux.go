@@ -48,7 +48,7 @@ type TCPMuxParams struct {
 	Logger         logging.LeveledLogger
 	ReadBufferSize int
 
-	// max buffer size for write op. 0 means no write buffer, the write op will block until the whole packet is written
+	// Maximum buffer size for write op. 0 means no write buffer, the write op will block until the whole packet is written
 	// if the write buffer is full, the subsequent write packet will be dropped until it has enough space.
 	// a default 4MB is recommended.
 	WriteBufferSize int
@@ -184,7 +184,7 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 		return
 	}
 
-	if m == nil || msg.Type.Method != stun.MethodBinding { // not a stun
+	if m == nil || msg.Type.Method != stun.MethodBinding { // Not a STUN
 		m.closeAndLogError(conn)
 		m.params.Logger.Warnf("Not a STUN message from %s to %s", conn.RemoteAddr(), conn.LocalAddr())
 		return

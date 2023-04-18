@@ -38,7 +38,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	// avoid deadlocks?
+	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
@@ -77,7 +77,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 		t.Fatalf("Failed to construct remote relay candidate: %s", err)
 	}
 
-	// select the pair
+	// Select the pair
 	if err = a.run(context.Background(), func(ctx context.Context, agent *Agent) {
 		p := newCandidatePair(hostLocal, relayRemote, false)
 		agent.setSelectedPair(p)
@@ -85,7 +85,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 		t.Fatalf("Failed to setValidPair(): %s", err)
 	}
 
-	// ensure that the callback fired on setting the pair
+	// Ensure that the callback fired on setting the pair
 	<-callbackCalled
 	assert.NoError(t, a.Close())
 }
@@ -154,12 +154,12 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 			a.handleInbound(msg, local, remote)
 
-			// length of remote candidate list must be one now
+			// Length of remote candidate list must be one now
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("failed to add a network type to the remote candidate list")
 			}
 
-			// length of remote candidate list for a network type must be 1
+			// Length of remote candidate list for a network type must be 1
 			set := a.remoteCandidates[local.NetworkType()]
 			if len(set) != 1 {
 				t.Fatal("failed to add prflx candidate to remote candidate list")
@@ -247,7 +247,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 }
 
 // Assert that Agent on startup sends message, and doesn't wait for connectivityTicker to fire
-// github.com/pion/ice/issues/15
+// https://github.com/pion/ice/issues/15
 func TestConnectivityOnStartup(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
@@ -685,7 +685,7 @@ func TestCandidatePairStats(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	// avoid deadlocks?
+	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
@@ -818,7 +818,7 @@ func TestLocalCandidateStats(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	// avoid deadlocks?
+	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
@@ -899,7 +899,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	// avoid deadlocks?
+	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
@@ -1077,7 +1077,7 @@ func TestInitExtIPMapping(t *testing.T) {
 
 	// NewAgent should return if newExternalIPMapper() returns an error.
 	_, err = NewAgent(&AgentConfig{
-		NAT1To1IPs:             []string{"bad.2.3.4"}, // bad IP
+		NAT1To1IPs:             []string{"bad.2.3.4"}, // Bad IP
 		NAT1To1IPCandidateType: CandidateTypeHost,
 	})
 	if !errors.Is(err, ErrInvalidNAT1To1IPMapping) {
@@ -1096,16 +1096,16 @@ func TestBindingRequestTimeout(t *testing.T) {
 
 	now := time.Now()
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now, // valid
+		timestamp: now, // Valid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-3900 * time.Millisecond), // valid
+		timestamp: now.Add(-3900 * time.Millisecond), // Valid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-4100 * time.Millisecond), // invalid
+		timestamp: now.Add(-4100 * time.Millisecond), // Invalid
 	})
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp: now.Add(-75 * time.Hour), // invalid
+		timestamp: now.Add(-75 * time.Hour), // Invalid
 	})
 
 	a.invalidatePendingBindingRequests(now)
