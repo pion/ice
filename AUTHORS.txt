@@ -7,6 +7,7 @@ Aaron France <aaron.l.france@gmail.com>
 Adam Kiss <masterada@gmail.com>
 adwpc <adwpc@hotmail.com>
 Aleksandr Razumov <ar@gortc.io>
+aler9 <46489434+aler9@users.noreply.github.com>
 Antoine Baché <antoine@tenten.app>
 Artur Shellunts <shellunts.artur@gmail.com>
 Assad Obaid <assad@lap5cg901003r.se.axis.com>
