@@ -334,13 +334,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	if a.mDNSConn, a.mDNSMode, err = createMulticastDNS(a.net, mDNSMode, mDNSName, log); err != nil {
 		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
 	}
-	closeMDNSConn := func() {
-		if a.mDNSConn != nil {
-			if mdnsCloseErr := a.mDNSConn.Close(); mdnsCloseErr != nil {
-				log.Warnf("Failed to close mDNS: %v", mdnsCloseErr)
-			}
-		}
-	}
 
 	config.initWithDefaults(a)
 
@@ -350,17 +343,17 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	a.buf.SetLimitSize(maxBufferSize)
 
 	if a.lite && (len(a.candidateTypes) != 1 || a.candidateTypes[0] != CandidateTypeHost) {
-		closeMDNSConn()
+		a.closeMulticastConn()
 		return nil, ErrLiteUsingNonHostCandidates
 	}
 
 	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
-		closeMDNSConn()
+		a.closeMulticastConn()
 		return nil, ErrUselessUrlsProvided
 	}
 
 	if err = config.initExtIPMapping(a); err != nil {
-		closeMDNSConn()
+		a.closeMulticastConn()
 		return nil, err
 	}
 
@@ -369,7 +362,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 	// Restart is also used to initialize the agent for the first time
 	if err := a.Restart(config.LocalUfrag, config.LocalPwd); err != nil {
-		closeMDNSConn()
+		a.closeMulticastConn()
 		_ = a.Close()
 		return nil, err
 	}
