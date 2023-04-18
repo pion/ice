@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/guoguov/ice/internal/fakenet"
+	stunx "github.com/guoguov/ice/internal/stun"
 	"github.com/pion/dtls/v2"
 	"github.com/pion/logging"
 	"github.com/pion/turn/v2"
-	"gitlab.mty.wang/kepler/ice/internal/fakenet"
-	stunx "gitlab.mty.wang/kepler/ice/internal/stun"
 )
 
 const (

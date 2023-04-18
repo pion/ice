@@ -1,4 +1,4 @@
-module gitlab.mty.wang/kepler/ice
+module github.com/guoguov/ice
 
 go 1.13
 

@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"gitlab.mty.wang/kepler/ice"
+	"github.com/guoguov/ice"
 )
 
 var (
