@@ -81,7 +81,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				assert.Equal(t, n, n2, "received byte size mismatch")
 				assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
 
-				// check echo response
+				// Check echo response
 				n, err = pktConn.WriteTo(recv, conn.LocalAddr())
 				require.NoError(t, err, "error writing echo stun packet")
 				recvEcho := make([]byte, n)

@@ -38,12 +38,12 @@ type UDPMuxDefault struct {
 	addressMapMu sync.RWMutex
 	addressMap   map[string]*udpMuxedConn
 
-	// buffer pool to recycle buffers for net.UDPAddr encodes/decodes
+	// Buffer pool to recycle buffers for net.UDPAddr encodes/decodes
 	pool *sync.Pool
 
 	mu sync.Mutex
 
-	// for UDP connection listen at unspecified address
+	// For UDP connection listen at unspecified address
 	localAddrsForUnspecified []net.Addr
 }
 
@@ -112,7 +112,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		closedChan: make(chan struct{}, 1),
 		pool: &sync.Pool{
 			New: func() interface{} {
-				// big enough buffer to fit both packet and address
+				// Big enough buffer to fit both packet and address
 				return newBufferHolder(receiveMTU + maxAddrSize)
 			},
 		},

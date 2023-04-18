@@ -64,7 +64,7 @@ func TestMuxAgent(t *testing.T) {
 			require.NotNil(t, pair)
 			require.Equal(t, muxPort, pair.Local.Port())
 
-			// send a packet to Mux
+			// Send a packet to Mux
 			data := []byte("hello world")
 			_, err = conn.Write(data)
 			require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestMuxAgent(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, data, buf[:n])
 
-			// send a packet from Mux
+			// Send a packet from Mux
 			_, err = muxedConn.Write(data)
 			require.NoError(t, err)
 
@@ -82,16 +82,16 @@ func TestMuxAgent(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, data, buf[:n])
 
-			// close it down
+			// Close it down
 			require.NoError(t, conn.Close())
 			require.NoError(t, muxedConn.Close())
 			require.NoError(t, udpMux.Close())
 
-			// expect error when reading from closed mux
+			// Expect error when reading from closed mux
 			_, err = muxedConn.Read(data)
 			require.Error(t, err)
 
-			// expect error when writing to closed mux
+			// Expect error when writing to closed mux
 			_, err = muxedConn.Write(data)
 			require.Error(t, err)
 		})
