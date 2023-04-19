@@ -542,8 +542,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			var (
 				locConn       net.PacketConn
 				err           error
-				RelAddr       string
-				RelPort       int
+				relAddr       string
+				relPort       int
 				relayProtocol string
 			)
 
@@ -554,8 +554,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
-				RelPort = locConn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
+				relAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
+				relPort = locConn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = udp
 			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
 				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
@@ -565,8 +565,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
+				relAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				if url.Scheme == SchemeTypeTURN {
 					relayProtocol = tcp
 				} else if url.Scheme == SchemeTypeTURNS {
@@ -587,8 +587,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
+				relAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
@@ -613,8 +613,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
-				RelPort = conn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
+				relAddr = conn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
+				relPort = conn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "dtls"
 				locConn = &fakenet.PacketConn{Conn: conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
@@ -643,8 +643,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					return
 				}
 
-				RelAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
-				RelPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
+				relAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
+				relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "tls"
 				locConn = turn.NewSTUNConn(conn)
 			default:
@@ -684,8 +684,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				Component:     ComponentRTP,
 				Address:       rAddr.IP.String(),
 				Port:          rAddr.Port,
-				RelAddr:       RelAddr,
-				RelPort:       RelPort,
+				RelAddr:       relAddr,
+				RelPort:       relPort,
 				RelayProtocol: relayProtocol,
 				OnClose: func() error {
 					client.Close()
