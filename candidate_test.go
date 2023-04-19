@@ -349,10 +349,10 @@ func TestCandidateWriteTo(t *testing.T) {
 		IP:   net.IP{127, 0, 0, 1},
 		Port: 0,
 	})
-	require.NoError(t, err, "error creating test tcp listener")
+	require.NoError(t, err, "error creating test TCP listener")
 
 	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
-	require.NoError(t, err, "error dialing test tcp conn")
+	require.NoError(t, err, "error dialing test TCP connection")
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	packetConn := newTCPPacketConn(tcpPacketParams{
@@ -361,7 +361,7 @@ func TestCandidateWriteTo(t *testing.T) {
 	})
 
 	err = packetConn.AddConn(conn, nil)
-	require.NoError(t, err, "error adding test tcp conn to packet conn")
+	require.NoError(t, err, "error adding test TCP connection to packet connection")
 
 	c1 := &candidateBase{
 		conn: packetConn,
@@ -378,7 +378,7 @@ func TestCandidateWriteTo(t *testing.T) {
 	assert.NoError(t, err, "writing to open conn")
 
 	err = packetConn.Close()
-	require.NoError(t, err, "error closing test tcp conn")
+	require.NoError(t, err, "error closing test TCP connection")
 
 	_, err = c1.writeTo([]byte("test"), c2)
 	assert.Error(t, err, "writing to closed conn")

@@ -175,14 +175,14 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
 					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
-						a.log.Warnf("error getting all tcp conns by ufrag: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("error getting all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
 						continue
 					}
 				} else {
 					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
 					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
-						a.log.Warnf("error getting tcp conn by ufrag: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("error getting TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
 						continue
 					}
 					muxConns = []net.PacketConn{conn}
@@ -399,7 +399,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 					if err != nil {
-						a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
+						a.log.Warnf("failed to resolve STUN host: %s: %v", hostPort, err)
 						return
 					}
 
@@ -461,7 +461,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
-					a.log.Warnf("failed to resolve stun host: %s: %v", hostPort, err)
+					a.log.Warnf("failed to resolve STUN host: %s: %v", hostPort, err)
 					return
 				}
 

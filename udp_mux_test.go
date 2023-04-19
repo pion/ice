@@ -163,7 +163,7 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 		addr = &net.UDPAddr{Port: addr.Port}
 	}
 	remoteConn, err := net.DialUDP(network, nil, addr)
-	require.NoError(t, err, "error dialing test udp connection")
+	require.NoError(t, err, "error dialing test UDP connection")
 
 	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 }

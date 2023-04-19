@@ -188,7 +188,7 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline 
 
 	// Otherwise, make a STUN request to discover the address
 	// or wait for already sent request to complete
-	waitAddrReceived, err := m.sendStun(serverAddr)
+	waitAddrReceived, err := m.sendSTUN(serverAddr)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errSendSTUNPacket, err) //nolint:errorlint
 	}
@@ -209,11 +209,11 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline 
 	}
 }
 
-// sendStun sends a STUN request via UDP conn.
+// sendSTUN sends a STUN request via UDP conn.
 //
 // The returned channel is closed when the STUN response has been received.
 // Method is safe for concurrent use.
-func (m *UniversalUDPMuxDefault) sendStun(serverAddr net.Addr) (chan struct{}, error) {
+func (m *UniversalUDPMuxDefault) sendSTUN(serverAddr net.Addr) (chan struct{}, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

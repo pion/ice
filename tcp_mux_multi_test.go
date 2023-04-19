@@ -64,7 +64,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 					_ = pktConn.Close()
 				}()
 				conn, err := net.DialTCP("tcp", nil, pktConn.LocalAddr().(*net.TCPAddr))
-				require.NoError(t, err, "error dialing test tcp connection")
+				require.NoError(t, err, "error dialing test TCP connection")
 
 				msg := stun.New()
 				msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
@@ -72,18 +72,18 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				msg.Encode()
 
 				n, err := writeStreamingPacket(conn, msg.Raw)
-				require.NoError(t, err, "error writing tcp stun packet")
+				require.NoError(t, err, "error writing TCP STUN packet")
 
 				recv := make([]byte, n)
 				n2, rAddr, err := pktConn.ReadFrom(recv)
 				require.NoError(t, err, "error receiving data")
-				assert.Equal(t, conn.LocalAddr(), rAddr, "remote tcp address mismatch")
+				assert.Equal(t, conn.LocalAddr(), rAddr, "remote TCP address mismatch")
 				assert.Equal(t, n, n2, "received byte size mismatch")
 				assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
 
 				// Check echo response
 				n, err = pktConn.WriteTo(recv, conn.LocalAddr())
-				require.NoError(t, err, "error writing echo stun packet")
+				require.NoError(t, err, "error writing echo STUN packet")
 				recvEcho := make([]byte, n)
 				n3, err := readStreamingPacket(conn, recvEcho)
 				require.NoError(t, err, "error receiving echo data")

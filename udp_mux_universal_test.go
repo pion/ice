@@ -52,7 +52,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
 		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
 	})
-	require.NoError(t, err, "error dialing test udp connection")
+	require.NoError(t, err, "error dialing test UDP connection")
 	defer func() {
 		_ = remoteConn.Close()
 	}()
@@ -73,10 +73,10 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 		require.Equal(t, address.Port, testXORPort)
 	}()
 
-	// Wait until GetXORMappedAddr calls sendStun method
+	// Wait until GetXORMappedAddr calls sendSTUN method
 	time.Sleep(time.Millisecond)
 
-	// Check that mapped address filled correctly after sent stun
+	// Check that mapped address filled correctly after sent STUN
 	udpMux.mu.Lock()
 	mappedAddr, ok := udpMux.xorMappedMap[remoteConn.LocalAddr().String()]
 	require.True(t, ok)
@@ -114,7 +114,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	require.NotNil(t, address)
 
 	udpMux.mu.Lock()
-	// Check mappedAddr is not pending, we didn't send stun twice
+	// Check mappedAddr is not pending, we didn't send STUN twice
 	require.False(t, mappedAddr.pending())
 
 	// Check expiration by TTL
@@ -122,7 +122,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	require.True(t, mappedAddr.expired())
 	udpMux.mu.Unlock()
 
-	// After expire, we send stun request again
+	// After expire, we send STUN request again
 	// but we not receive response in 5 milliseconds and should get error here
 	address, err = udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Millisecond*5)
 	require.NotNil(t, err)
