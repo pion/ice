@@ -48,7 +48,7 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 		res = result
 	})
 	if err != nil {
-		a.log.Errorf("error getting candidate pairs stats %v", err)
+		a.log.Errorf("Failed to get candidate pairs stats: %v", err)
 		return []CandidatePairStats{}
 	}
 	return res
@@ -85,7 +85,7 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 		res = result
 	})
 	if err != nil {
-		a.log.Errorf("error getting candidate pairs stats %v", err)
+		a.log.Errorf("Failed to get candidate pair stats: %v", err)
 		return []CandidateStats{}
 	}
 	return res
@@ -115,7 +115,7 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 		res = result
 	})
 	if err != nil {
-		a.log.Errorf("error getting candidate pairs stats %v", err)
+		a.log.Errorf("Failed to get candidate pair stats: %v", err)
 		return []CandidateStats{}
 	}
 	return res

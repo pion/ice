@@ -127,7 +127,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	// When UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
 		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
-			a.log.Warnf("could not create host candidate for UDPMux: %s", err)
+			a.log.Warnf("Failed to create host candidate for UDPMux: %s", err)
 		}
 		delete(networks, udp)
 	}
@@ -175,14 +175,14 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
 					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
-						a.log.Warnf("error getting all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
 						continue
 					}
 				} else {
 					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
 					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
 					if err != nil {
-						a.log.Warnf("error getting TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
 						continue
 					}
 					muxConns = []net.PacketConn{conn}
@@ -206,7 +206,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			case udp:
 				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: ip, Port: 0})
 				if err != nil {
-					a.log.Warnf("could not listen %s %s", network, ip)
+					a.log.Warnf("Failed to listen %s %s", network, ip)
 					continue
 				}
 
@@ -405,13 +405,13 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 
 					xorAddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, stunGatherTimeout)
 					if err != nil {
-						a.log.Warnf("could not get server reflexive address %s %s: %v", network, url, err)
+						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
 						return
 					}
 
 					conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), localAddr)
 					if err != nil {
-						a.log.Warnf("could not find connection in UDPMuxSrflx %s %s: %v", network, url, err)
+						a.log.Warnf("Failed to find connection in UDPMuxSrflx %s %s: %v", network, url, err)
 						return
 					}
 
