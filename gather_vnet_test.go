@@ -226,9 +226,9 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = a.GatherCandidates()
 		assert.NoError(t, err, "should succeed")
 
-		log.Debug("wait for gathering is done...")
+		log.Debug("Wait until gathering is complete...")
 		<-done
-		log.Debug("gathering is done")
+		log.Debug("Gathering is done")
 
 		candidates, err := a.GetLocalCandidates()
 		assert.NoError(t, err, "should succeed")
@@ -326,9 +326,9 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = a.GatherCandidates()
 		assert.NoError(t, err, "should succeed")
 
-		log.Debug("wait for gathering is done...")
+		log.Debug("Wait until gathering is complete...")
 		<-done
-		log.Debug("gathering is done")
+		log.Debug("Gathering is done")
 
 		candidates, err := a.GetLocalCandidates()
 		assert.NoError(t, err, "should succeed")
