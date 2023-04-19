@@ -105,7 +105,7 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 	// Try talking with each PacketConn
 	for _, pktConn := range pktConns {
 		remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr))
-		require.NoError(t, err, "error dialing test udp connection")
+		require.NoError(t, err, "error dialing test UDP connection")
 		testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 	}
 }

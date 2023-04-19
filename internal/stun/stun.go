@@ -18,7 +18,7 @@ var (
 	errMismatchUsername         = errors.New("username mismatch")
 )
 
-// GetXORMappedAddr initiates a stun requests to serverAddr using conn, reads the response and returns
+// GetXORMappedAddr initiates a STUN requests to serverAddr using conn, reads the response and returns
 // the XORMappedAddress returned by the STUN server.
 func GetXORMappedAddr(conn net.PacketConn, serverAddr net.Addr, timeout time.Duration) (*stun.XORMappedAddress, error) {
 	if timeout > 0 {

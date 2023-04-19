@@ -52,7 +52,7 @@ func TestTCPMux_Recv(t *testing.T) {
 			require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 			conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
-			require.NoError(t, err, "error dialing test tcp connection")
+			require.NoError(t, err, "error dialing test TCP connection")
 
 			msg := stun.New()
 			msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
@@ -60,7 +60,7 @@ func TestTCPMux_Recv(t *testing.T) {
 			msg.Encode()
 
 			n, err := writeStreamingPacket(conn, msg.Raw)
-			require.NoError(t, err, "error writing tcp stun packet")
+			require.NoError(t, err, "error writing TCP STUN packet")
 
 			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listener.Addr().(*net.TCPAddr).IP)
 			require.NoError(t, err, "error retrieving muxed connection for ufrag")
@@ -77,7 +77,7 @@ func TestTCPMux_Recv(t *testing.T) {
 
 			// Check echo response
 			n, err = pktConn.WriteTo(recv, conn.LocalAddr())
-			require.NoError(t, err, "error writing echo stun packet")
+			require.NoError(t, err, "error writing echo STUN packet")
 			recvEcho := make([]byte, n)
 			n3, err := readStreamingPacket(conn, recvEcho)
 			require.NoError(t, err, "error receiving echo data")

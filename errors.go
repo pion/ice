@@ -13,7 +13,7 @@ var (
 	ErrSchemeType = errors.New("unknown scheme type")
 
 	// ErrSTUNQuery indicates query arguments are provided in a STUN URL.
-	ErrSTUNQuery = errors.New("queries not supported in stun address")
+	ErrSTUNQuery = errors.New("queries not supported in STUN address")
 
 	// ErrInvalidQuery indicates an malformed query is provided.
 	ErrInvalidQuery = errors.New("invalid query")

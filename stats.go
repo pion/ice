@@ -167,7 +167,7 @@ type CandidateStats struct {
 
 	// RelayProtocol is the protocol used by the endpoint to communicate with the
 	// TURN server. This is only present for local candidates. Valid values for
-	// the TURN URL protocol is one of udp, tcp, or tls.
+	// the TURN URL protocol is one of UDP, TCP, or TLS.
 	RelayProtocol string
 
 	// Deleted is true if the candidate has been deleted/freed. For host candidates,
