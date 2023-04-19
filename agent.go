@@ -215,7 +215,7 @@ func (a *Agent) taskLoop() {
 		a.startedFn()
 
 		if err := a.buf.Close(); err != nil {
-			a.log.Warnf("failed to close buffer: %v", err)
+			a.log.Warnf("Failed to close buffer: %v", err)
 		}
 
 		a.closeMulticastConn()
@@ -323,9 +323,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 			return nil, fmt.Errorf("failed to create network: %w", err)
 		}
 	} else if _, isVirtual := a.net.(*vnet.Net); isVirtual {
-		a.log.Warn("virtual network is enabled")
+		a.log.Warn("Virtual network is enabled")
 		if a.mDNSMode != MulticastDNSModeDisabled {
-			a.log.Warn("virtual network does not support mDNS yet")
+			a.log.Warn("Virtual network does not support mDNS yet")
 		}
 	}
 
@@ -656,7 +656,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	// If we have a mDNS Candidate lets fully resolve it before adding it locally
 	if c.Type() == CandidateTypeHost && strings.HasSuffix(c.Address(), ".local") {
 		if a.mDNSMode == MulticastDNSModeDisabled {
-			a.log.Warnf("remote mDNS candidate added, but mDNS is disabled: (%s)", c.Address())
+			a.log.Warnf("Remote mDNS candidate added, but mDNS is disabled: (%s)", c.Address())
 			return nil
 		}
 
@@ -980,15 +980,15 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 	if a.isControlling {
 		if m.Contains(stun.AttrICEControlling) {
-			a.log.Debug("inbound isControlling && a.isControlling == true")
+			a.log.Debug("Inbound STUN message: isControlling && a.isControlling == true")
 			return
 		} else if m.Contains(stun.AttrUseCandidate) {
-			a.log.Debug("useCandidate && a.isControlling == true")
+			a.log.Debug("Inbound STUN message: useCandidate && a.isControlling == true")
 			return
 		}
 	} else {
 		if m.Contains(stun.AttrICEControlled) {
-			a.log.Debug("inbound isControlled && a.isControlling == false")
+			a.log.Debug("Inbound STUN message: isControlled && a.isControlling == false")
 			return
 		}
 	}
@@ -996,22 +996,22 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 	if m.Type.Class == stun.ClassSuccessResponse {
 		if err = stun.MessageIntegrity([]byte(a.remotePwd)).Check(m); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
 		}
 
 		if remoteCandidate == nil {
-			a.log.Warnf("discard success message from (%s), no such remote", remote)
+			a.log.Warnf("Discard success message from (%s), no such remote", remote)
 			return
 		}
 
 		a.selector.HandleSuccessResponse(m, local, remoteCandidate, remote)
 	} else if m.Type.Class == stun.ClassRequest {
 		if err = stunx.AssertUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
 		} else if err = stun.MessageIntegrity([]byte(a.localPwd)).Check(m); err != nil {
-			a.log.Warnf("discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
 		}
 
@@ -1038,7 +1038,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			}
 			remoteCandidate = prflxCandidate
 
-			a.log.Debugf("adding a new peer-reflexive candidate: %s ", remote)
+			a.log.Debugf("Adding a new peer-reflexive candidate: %s ", remote)
 			a.addRemoteCandidate(remoteCandidate)
 		}
 
@@ -1062,7 +1062,7 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) (Candid
 			remoteCandidate.seen(false)
 		}
 	}); err != nil {
-		a.log.Warnf("failed to validate remote candidate: %v", err)
+		a.log.Warnf("Failed to validate remote candidate: %v", err)
 	}
 
 	return remoteCandidate, remoteCandidate != nil
@@ -1099,7 +1099,7 @@ func (a *Agent) getSelectedPair() *CandidatePair {
 func (a *Agent) closeMulticastConn() {
 	if a.mDNSConn != nil {
 		if err := a.mDNSConn.Close(); err != nil {
-			a.log.Warnf("failed to close mDNS Conn: %v", err)
+			a.log.Warnf("Failed to close mDNS Conn: %v", err)
 		}
 	}
 }

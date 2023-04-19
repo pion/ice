@@ -66,7 +66,7 @@ func (a *Agent) GatherCandidates() error {
 func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
-		a.log.Warnf("failed to set gatheringState to GatheringStateGathering: %v", err)
+		a.log.Warnf("Failed to set gatheringState to GatheringStateGathering: %v", err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {
 	wg.Wait()
 
 	if err := a.setGatheringState(GatheringStateComplete); err != nil { //nolint:contextcheck
-		a.log.Warnf("failed to set gatheringState to GatheringStateComplete: %v", err)
+		a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
 	}
 }
 
@@ -134,7 +134,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes, a.includeLoopback)
 	if err != nil {
-		a.log.Warnf("failed to iterate local interfaces, host candidates will not be gathered %s", err)
+		a.log.Warnf("Failed to iterate local interfaces, host candidates will not be gathered %s", err)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 						conns = append(conns, connAndPort{conn, tcpConn.Port})
 					} else {
-						a.log.Warnf("failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
 					}
 				}
 				if len(conns) == 0 {
@@ -213,7 +213,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 					conns = append(conns, connAndPort{conn, udpConn.Port})
 				} else {
-					a.log.Warnf("failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
+					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
 					continue
 				}
 			}
@@ -399,7 +399,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 					if err != nil {
-						a.log.Warnf("failed to resolve STUN host: %s: %v", hostPort, err)
+						a.log.Warnf("Failed to resolve STUN host: %s: %v", hostPort, err)
 						return
 					}
 
@@ -461,7 +461,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
-					a.log.Warnf("failed to resolve STUN host: %s: %v", hostPort, err)
+					a.log.Warnf("Failed to resolve STUN host: %s: %v", hostPort, err)
 					return
 				}
 

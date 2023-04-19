@@ -124,7 +124,7 @@ func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, p
 		if e == nil {
 			return c, e //nolint:nilerr
 		}
-		log.Debugf("failed to listen %s: %v", lAddr.String(), e)
+		log.Debugf("Failed to listen %s: %v", lAddr.String(), e)
 		portCurrent++
 		if portCurrent > j {
 			portCurrent = i
