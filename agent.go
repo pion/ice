@@ -439,7 +439,7 @@ func (a *Agent) connectivityChecks() {
 
 			a.selector.ContactCandidates()
 		}); err != nil {
-			a.log.Warnf("taskLoop failed: %v", err)
+			a.log.Warnf("Failed to start connectivity checks: %v", err)
 		}
 	}
 
@@ -525,7 +525,7 @@ func (a *Agent) pingAllCandidates() {
 	a.log.Trace("pinging all candidates")
 
 	if len(a.checklist) == 0 {
-		a.log.Warn("pingAllCandidates called with no candidate pairs. Connection is not possible yet.")
+		a.log.Warn("Failed to ping without candidate pairs. Connection is not possible yet.")
 	}
 
 	for _, p := range a.checklist {
@@ -878,7 +878,7 @@ func (a *Agent) deleteAllCandidates() {
 func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
 	ip, port, _, ok := parseAddr(addr)
 	if !ok {
-		a.log.Warnf("Error parsing addr: %s", addr)
+		a.log.Warnf("Failed to parse address: %s", addr)
 		return nil
 	}
 
@@ -910,7 +910,7 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 
 	ip, port, _, ok := parseAddr(base.addr())
 	if !ok {
-		a.log.Warnf("Error parsing addr: %s", base.addr())
+		a.log.Warnf("Failed to parse address: %s", base.addr())
 		return
 	}
 
