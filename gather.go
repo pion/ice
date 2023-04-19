@@ -27,13 +27,13 @@ const (
 // Close a net.Conn and log if we have a failure
 func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string) {
 	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
-		log.Warnf("Conn is not allocated (%s)", msg)
+		log.Warnf("Connection is not allocated (%s)", msg)
 		return
 	}
 
 	log.Warnf(msg)
 	if err := c.Close(); err != nil {
-		log.Warnf("Failed to close conn: %v", err)
+		log.Warnf("Failed to close connection: %v", err)
 	}
 }
 
@@ -193,7 +193,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 						conns = append(conns, connAndPort{conn, tcpConn.Port})
 					} else {
-						a.log.Warnf("failed to get port of conn from TCPMux: %s %s %s", network, ip, a.localUfrag)
+						a.log.Warnf("failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
 					}
 				}
 				if len(conns) == 0 {
@@ -561,7 +561,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
 				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to Dial TCP Addr %s via proxy dialer: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to dial TCP address %s via proxy dialer: %v", TURNServerAddr, connectErr)
 					return
 				}
 
@@ -577,13 +577,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
 				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to resolve TCP Addr %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to resolve TCP address %s: %v", TURNServerAddr, connectErr)
 					return
 				}
 
 				conn, connectErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to Dial TCP Addr %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to dial TCP address %s: %v", TURNServerAddr, connectErr)
 					return
 				}
 
@@ -594,13 +594,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
 				udpAddr, connectErr := a.net.ResolveUDPAddr(network, TURNServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to resolve UDP Addr %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to resolve UDP address %s: %v", TURNServerAddr, connectErr)
 					return
 				}
 
 				udpConn, dialErr := a.net.DialUDP("udp", nil, udpAddr)
 				if dialErr != nil {
-					a.log.Warnf("Failed to dial DTLS Address %s: %v", TURNServerAddr, dialErr)
+					a.log.Warnf("Failed to dial DTLS address %s: %v", TURNServerAddr, dialErr)
 					return
 				}
 
