@@ -538,7 +538,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 		wg.Add(1)
 		go func(url URL) {
 			defer wg.Done()
-			TURNServerAddr := fmt.Sprintf("%s:%d", url.Host, url.Port)
+			turnServerAddr := fmt.Sprintf("%s:%d", url.Host, url.Port)
 			var (
 				locConn       net.PacketConn
 				err           error
@@ -559,9 +559,9 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = udp
 			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
 				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
-				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), TURNServerAddr)
+				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to dial TCP address %s via proxy dialer: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to dial TCP address %s via proxy dialer: %v", turnServerAddr, connectErr)
 					return
 				}
 
@@ -575,15 +575,15 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				locConn = turn.NewSTUNConn(conn)
 
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
-				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to resolve TCP address %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to resolve TCP address %s: %v", turnServerAddr, connectErr)
 					return
 				}
 
 				conn, connectErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to dial TCP address %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to dial TCP address %s: %v", turnServerAddr, connectErr)
 					return
 				}
 
@@ -592,15 +592,15 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
 			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
-				udpAddr, connectErr := a.net.ResolveUDPAddr(network, TURNServerAddr)
+				udpAddr, connectErr := a.net.ResolveUDPAddr(network, turnServerAddr)
 				if connectErr != nil {
-					a.log.Warnf("Failed to resolve UDP address %s: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to resolve UDP address %s: %v", turnServerAddr, connectErr)
 					return
 				}
 
 				udpConn, dialErr := a.net.DialUDP("udp", nil, udpAddr)
 				if dialErr != nil {
-					a.log.Warnf("Failed to dial DTLS address %s: %v", TURNServerAddr, dialErr)
+					a.log.Warnf("Failed to dial DTLS address %s: %v", turnServerAddr, dialErr)
 					return
 				}
 
@@ -609,7 +609,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 				if connectErr != nil {
-					a.log.Warnf("Failed to create DTLS client: %v", TURNServerAddr, connectErr)
+					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
 					return
 				}
 
@@ -618,9 +618,9 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relayProtocol = "dtls"
 				locConn = &fakenet.PacketConn{Conn: conn}
 			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
-				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), TURNServerAddr)
+				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if resolvErr != nil {
-					a.log.Warnf("Failed to resolve relay address %s: %v", TURNServerAddr, resolvErr)
+					a.log.Warnf("Failed to resolve relay address %s: %v", turnServerAddr, resolvErr)
 					return
 				}
 
@@ -653,7 +653,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			}
 
 			client, err := turn.NewClient(&turn.ClientConfig{
-				TURNServerAddr: TURNServerAddr,
+				TURNServerAddr: turnServerAddr,
 				Conn:           locConn,
 				Username:       url.Username,
 				Password:       url.Password,
@@ -661,20 +661,20 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				Net:            a.net,
 			})
 			if err != nil {
-				closeConnAndLog(locConn, a.log, "failed to create new TURN client %s %s", TURNServerAddr, err)
+				closeConnAndLog(locConn, a.log, "failed to create new TURN client %s %s", turnServerAddr, err)
 				return
 			}
 
 			if err = client.Listen(); err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, "failed to listen on TURN client %s %s", TURNServerAddr, err)
+				closeConnAndLog(locConn, a.log, "failed to listen on TURN client %s %s", turnServerAddr, err)
 				return
 			}
 
 			relayConn, err := client.Allocate()
 			if err != nil {
 				client.Close()
-				closeConnAndLog(locConn, a.log, "failed to allocate on TURN client %s %s", TURNServerAddr, err)
+				closeConnAndLog(locConn, a.log, "failed to allocate on TURN client %s %s", turnServerAddr, err)
 				return
 			}
 
