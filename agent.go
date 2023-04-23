@@ -358,7 +358,13 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	}
 
 	go a.taskLoop()
-	a.startOnConnectionStateChangeRoutine()
+
+	// CandidatePair and ConnectionState are usually changed at once.
+	// Blocking one by the other one causes deadlock.
+	// Hence, we call handlers from independent Goroutines.
+	go a.candidatePairRoutine()
+	go a.connectionStateRoutine()
+	go a.candidateRoutine()
 
 	// Restart is also used to initialize the agent for the first time
 	if err := a.Restart(config.LocalUfrag, config.LocalPwd); err != nil {
