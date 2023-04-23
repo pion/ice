@@ -41,39 +41,20 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 	}
 }
 
-func (a *Agent) startOnConnectionStateChangeRoutine() {
-	go func() {
-		for {
-			// CandidatePair and ConnectionState are usually changed at once.
-			// Blocking one by the other one causes deadlock.
-			p, isOpen := <-a.chanCandidatePair
-			if !isOpen {
-				return
-			}
-			a.onSelectedCandidatePairChange(p)
-		}
-	}()
-	go func() {
-		for {
-			select {
-			case s, isOpen := <-a.chanState:
-				if !isOpen {
-					for c := range a.chanCandidate {
-						a.onCandidate(c)
-					}
-					return
-				}
-				go a.onConnectionStateChange(s)
+func (a *Agent) candidatePairRoutine() {
+	for p := range a.chanCandidatePair {
+		a.onSelectedCandidatePairChange(p)
+	}
+}
 
-			case c, isOpen := <-a.chanCandidate:
-				if !isOpen {
-					for s := range a.chanState {
-						go a.onConnectionStateChange(s)
-					}
-					return
-				}
-				a.onCandidate(c)
-			}
-		}
-	}()
+func (a *Agent) connectionStateRoutine() {
+	for s := range a.chanState {
+		go a.onConnectionStateChange(s)
+	}
+}
+
+func (a *Agent) candidateRoutine() {
+	for c := range a.chanCandidate {
+		a.onCandidate(c)
+	}
 }
