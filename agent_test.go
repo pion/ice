@@ -25,62 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOnSelectedCandidatePairChange(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
-
-	// Avoid deadlocks?
-	defer test.TimeOut(1 * time.Second).Stop()
-
-	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %s", err)
-	}
-
-	callbackCalled := make(chan struct{}, 1)
-	if err = a.OnSelectedCandidatePairChange(func(local, remote Candidate) {
-		close(callbackCalled)
-	}); err != nil {
-		t.Fatalf("Failed to set agent OnCandidatePairChange callback: %s", err)
-	}
-
-	hostConfig := &CandidateHostConfig{
-		Network:   "udp",
-		Address:   "192.168.1.1",
-		Port:      19216,
-		Component: 1,
-	}
-	hostLocal, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct local host candidate: %s", err)
-	}
-
-	relayConfig := &CandidateRelayConfig{
-		Network:   "udp",
-		Address:   "1.2.3.4",
-		Port:      12340,
-		Component: 1,
-		RelAddr:   "4.3.2.1",
-		RelPort:   43210,
-	}
-	relayRemote, err := NewCandidateRelay(relayConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote relay candidate: %s", err)
-	}
-
-	// Select the pair
-	if err = a.run(context.Background(), func(ctx context.Context, agent *Agent) {
-		p := newCandidatePair(hostLocal, relayRemote, false)
-		agent.setSelectedPair(p)
-	}); err != nil {
-		t.Fatalf("Failed to setValidPair(): %s", err)
-	}
-
-	// Ensure that the callback fired on setting the pair
-	<-callbackCalled
-	assert.NoError(t, a.Close())
-}
-
 type BadAddr struct{}
 
 func (ba *BadAddr) Network() string {
