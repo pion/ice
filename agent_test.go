@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/ice/v2/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
@@ -23,16 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type mockPacketConn struct{}
-
-func (m *mockPacketConn) ReadFrom([]byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
-func (m *mockPacketConn) WriteTo([]byte, net.Addr) (n int, err error)       { return 0, nil }
-func (m *mockPacketConn) Close() error                                      { return nil }
-func (m *mockPacketConn) LocalAddr() net.Addr                               { return nil }
-func (m *mockPacketConn) SetDeadline(time.Time) error                       { return nil }
-func (m *mockPacketConn) SetReadDeadline(time.Time) error                   { return nil }
-func (m *mockPacketConn) SetWriteDeadline(time.Time) error                  { return nil }
 
 func TestOnSelectedCandidatePairChange(t *testing.T) {
 	report := test.CheckRoutines(t)
@@ -133,7 +124,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Component: 1,
 			}
 			local, err := NewCandidateHost(&hostConfig)
-			local.conn = &mockPacketConn{}
+			local.conn = &fakenet.MockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -224,7 +215,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Component: 1,
 			}
 			local, err := NewCandidateHost(&hostConfig)
-			local.conn = &mockPacketConn{}
+			local.conn = &fakenet.MockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -445,7 +436,7 @@ func TestInboundValidity(t *testing.T) {
 		Component: 1,
 	}
 	local, err := NewCandidateHost(&hostConfig)
-	local.conn = &mockPacketConn{}
+	local.conn = &fakenet.MockPacketConn{}
 	if err != nil {
 		t.Fatalf("failed to create a new candidate: %v", err)
 	}
@@ -547,7 +538,7 @@ func TestInboundValidity(t *testing.T) {
 			Component: 1,
 		}
 		local, err := NewCandidateHost(&hostConfig)
-		local.conn = &mockPacketConn{}
+		local.conn = &fakenet.MockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)
 		}
