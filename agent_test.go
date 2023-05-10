@@ -582,6 +582,7 @@ func TestConnectionStateCallback(t *testing.T) {
 			close(isFailed)
 		case ConnectionStateClosed:
 			close(isClosed)
+		default:
 		}
 	})
 	if err != nil {
@@ -1161,9 +1162,9 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 			isFailed.Done()
 		case ConnectionStateChecking:
 			isChecking.Done()
-		case ConnectionStateConnected:
 		case ConnectionStateCompleted:
 			t.Errorf("Unexpected ConnectionState: %v", c)
+		default:
 		}
 	}
 
@@ -1357,6 +1358,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 			assert.NoError(t, aAgent.Close())
 		case ConnectionStateClosed:
 			close(isClosed)
+		default:
 		}
 	})
 	if err != nil {
@@ -1513,6 +1515,7 @@ func TestLiteLifecycle(t *testing.T) {
 			close(bDisconnected)
 		case ConnectionStateFailed:
 			close(bFailed)
+		default:
 		}
 	}))
 

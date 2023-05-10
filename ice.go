@@ -9,7 +9,7 @@ type ConnectionState int
 // List of supported States
 const (
 	// ConnectionStateUnknown represents an unknown state
-	ConnectionStateUnknown = iota
+	ConnectionStateUnknown ConnectionState = iota
 
 	// ConnectionStateNew ICE agent is gathering addresses
 	ConnectionStateNew

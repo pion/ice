@@ -435,6 +435,7 @@ func (a *Agent) connectivityChecks() {
 					a.updateConnectionState(ConnectionStateFailed)
 					return
 				}
+			default:
 			}
 
 			a.selector.ContactCandidates()
