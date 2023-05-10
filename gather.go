@@ -25,6 +25,12 @@ const (
 	stunGatherTimeout = time.Second * 5
 )
 
+type connAndPort struct {
+	conn    net.PacketConn
+	port    int
+	tcpType TCPType
+}
+
 // Close a net.Conn and log if we have a failure
 func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ...interface{}) {
 	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
@@ -155,53 +161,21 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		}
 
 		for network := range networks {
-			type connAndPort struct {
-				conn net.PacketConn
-				port int
-			}
-			var (
-				conns   []connAndPort
-				tcpType TCPType
-			)
+			var connectionConfigurations []connAndPort
 
 			switch network {
 			case tcp:
-				if a.tcpMux == nil {
-					continue
-				}
+				// Handle ICE TCP active mode
+				connectionConfigurations = append(connectionConfigurations, connAndPort{nil, 0, TCPTypeActive})
 
 				// Handle ICE TCP passive mode
-				var muxConns []net.PacketConn
-				if multi, ok := a.tcpMux.(AllConnsGetter); ok {
-					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
-					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
-					if err != nil {
-						a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
-						continue
-					}
-				} else {
-					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
-					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
-					if err != nil {
-						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
-						continue
-					}
-					muxConns = []net.PacketConn{conn}
+				if a.tcpMux != nil {
+					connectionConfigurations = a.getTCPMuxConnections(mappedIP, ip, network, connectionConfigurations)
 				}
-
-				// Extract the port for each PacketConn we got.
-				for _, conn := range muxConns {
-					if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-						conns = append(conns, connAndPort{conn, tcpConn.Port})
-					} else {
-						a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
-					}
-				}
-				if len(conns) == 0 {
+				if len(connectionConfigurations) == 0 {
 					// Didn't succeed with any, try the next network.
 					continue
 				}
-				tcpType = TCPTypePassive
 				// Is there a way to verify that the listen address is even
 				// accessible from the current interface.
 			case udp:
@@ -212,36 +186,36 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				}
 
 				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-					conns = append(conns, connAndPort{conn, udpConn.Port})
+					connectionConfigurations = append(connectionConfigurations, connAndPort{conn, udpConn.Port, TCPTypeUnspecified})
 				} else {
 					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
 					continue
 				}
 			}
 
-			for _, connAndPort := range conns {
+			for _, connectionConfiguration := range connectionConfigurations {
 				hostConfig := CandidateHostConfig{
 					Network:   network,
 					Address:   address,
-					Port:      connAndPort.port,
+					Port:      connectionConfiguration.port,
 					Component: ComponentRTP,
-					TCPType:   tcpType,
+					TCPType:   connectionConfiguration.tcpType,
 				}
 
 				c, err := NewCandidateHost(&hostConfig)
 				if err != nil {
-					closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
+					closeConnAndLog(connectionConfiguration.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connectionConfiguration.port, err)
 					continue
 				}
 
 				if a.mDNSMode == MulticastDNSModeQueryAndGather {
 					if err = c.setIP(ip); err != nil {
-						closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
+						closeConnAndLog(connectionConfiguration.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connectionConfiguration.port, err)
 						continue
 					}
 				}
 
-				if err := a.addCandidate(ctx, c, connAndPort.conn); err != nil {
+				if err := a.addCandidate(ctx, c, connectionConfiguration.conn); err != nil {
 					if closeErr := c.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
@@ -250,6 +224,37 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 		}
 	}
+}
+
+func (a *Agent) getTCPMuxConnections(mappedIP net.IP, ip net.IP, network string, conns []connAndPort) []connAndPort {
+	var muxConns []net.PacketConn
+	if multi, ok := a.tcpMux.(AllConnsGetter); ok {
+		a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
+		var err error
+		muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
+		if err != nil {
+			a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+			return conns
+		}
+	} else {
+		a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
+		conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
+		if err != nil {
+			a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+			return conns
+		}
+		muxConns = []net.PacketConn{conn}
+	}
+
+	// Extract the port for each PacketConn we got.
+	for _, conn := range muxConns {
+		if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+			conns = append(conns, connAndPort{conn, tcpConn.Port, TCPTypePassive})
+		} else {
+			a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
+		}
+	}
+	return conns
 }
 
 func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolint:gocognit

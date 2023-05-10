@@ -1637,7 +1637,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
-		NetworkTypes:     supportedNetworkTypes(),
+		NetworkTypes:     []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
 
@@ -1652,7 +1652,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
-		NetworkTypes:      supportedNetworkTypes(),
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
 		KeepaliveInterval: &KeepaliveInterval,
