@@ -263,7 +263,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 		copy(m.Raw, buf)
 
 		if err := m.Decode(); err != nil {
-			a.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+			a.log.Warnf("Failed to handle decode ICE from %s to %s: %v", srcAddr, c.addr(), err)
 			return
 		}
 
@@ -279,7 +279,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 	if !c.validateSTUNTrafficCache(srcAddr) {
 		remoteCandidate, valid := a.validateNonSTUNTraffic(c, srcAddr) //nolint:contextcheck
 		if !valid {
-			a.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+			a.log.Warnf("Discarded message to %s, not a valid remote candidate", c.addr())
 			return
 		}
 		c.addRemoteCandidateCache(remoteCandidate, srcAddr)
