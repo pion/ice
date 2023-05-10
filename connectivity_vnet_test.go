@@ -226,7 +226,7 @@ func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 }
 
 type agentTestConfig struct {
-	urls                   []*URL
+	urls                   []*stun.URI
 	nat1To1IPCandidateType CandidateType
 }
 
@@ -305,20 +305,20 @@ func TestConnectivityVNet(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	stunServerURL := &URL{
-		Scheme: SchemeTypeSTUN,
+	stunServerURL := &stun.URI{
+		Scheme: stun.SchemeTypeSTUN,
 		Host:   vnetSTUNServerIP,
 		Port:   vnetSTUNServerPort,
-		Proto:  ProtoTypeUDP,
+		Proto:  stun.ProtoTypeUDP,
 	}
 
-	turnServerURL := &URL{
-		Scheme:   SchemeTypeTURN,
+	turnServerURL := &stun.URI{
+		Scheme:   stun.SchemeTypeTURN,
 		Host:     vnetSTUNServerIP,
 		Port:     vnetSTUNServerPort,
 		Username: "user",
 		Password: "pass",
-		Proto:    ProtoTypeUDP,
+		Proto:    stun.ProtoTypeUDP,
 	}
 
 	t.Run("Full-cone NATs on both ends", func(t *testing.T) {
@@ -339,12 +339,12 @@ func TestConnectivityVNet(t *testing.T) {
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
-			urls: []*URL{
+			urls: []*stun.URI{
 				stunServerURL,
 			},
 		}
 		a1TestConfig := &agentTestConfig{
-			urls: []*URL{
+			urls: []*stun.URI{
 				stunServerURL,
 			},
 		}
@@ -376,13 +376,13 @@ func TestConnectivityVNet(t *testing.T) {
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
-			urls: []*URL{
+			urls: []*stun.URI{
 				stunServerURL,
 				turnServerURL,
 			},
 		}
 		a1TestConfig := &agentTestConfig{
-			urls: []*URL{
+			urls: []*stun.URI{
 				stunServerURL,
 			},
 		}
@@ -416,11 +416,11 @@ func TestConnectivityVNet(t *testing.T) {
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
-			urls:                   []*URL{},
+			urls:                   []*stun.URI{},
 			nat1To1IPCandidateType: CandidateTypeHost, // Use 1:1 NAT IP as a host candidate
 		}
 		a1TestConfig := &agentTestConfig{
-			urls: []*URL{},
+			urls: []*stun.URI{},
 		}
 		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
 
@@ -452,11 +452,11 @@ func TestConnectivityVNet(t *testing.T) {
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
-			urls:                   []*URL{},
+			urls:                   []*stun.URI{},
 			nat1To1IPCandidateType: CandidateTypeServerReflexive, // Use 1:1 NAT IP as a srflx candidate
 		}
 		a1TestConfig := &agentTestConfig{
-			urls: []*URL{},
+			urls: []*stun.URI{},
 		}
 		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
 

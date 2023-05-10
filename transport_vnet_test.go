@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
@@ -37,11 +38,11 @@ func TestRemoteLocalAddr(t *testing.T) {
 	}
 	defer v.close()
 
-	stunServerURL := &URL{
-		Scheme: SchemeTypeSTUN,
+	stunServerURL := &stun.URI{
+		Scheme: stun.SchemeTypeSTUN,
 		Host:   vnetSTUNServerIP,
 		Port:   vnetSTUNServerPort,
-		Proto:  ProtoTypeUDP,
+		Proto:  stun.ProtoTypeUDP,
 	}
 
 	t.Run("Disconnected Returns nil", func(t *testing.T) {
@@ -58,10 +59,10 @@ func TestRemoteLocalAddr(t *testing.T) {
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
 		ca, cb := pipeWithVNet(v,
 			&agentTestConfig{
-				urls: []*URL{stunServerURL},
+				urls: []*stun.URI{stunServerURL},
 			},
 			&agentTestConfig{
-				urls: []*URL{stunServerURL},
+				urls: []*stun.URI{stunServerURL},
 			},
 		)
 

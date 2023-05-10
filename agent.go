@@ -105,7 +105,7 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls         []*URL
+	urls         []*stun.URI
 	networkTypes []NetworkType
 
 	buf *packetio.Buffer

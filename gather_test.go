@@ -224,16 +224,16 @@ func TestSTUNConcurrency(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	urls := []*URL{}
+	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
-		urls = append(urls, &URL{
-			Scheme: SchemeTypeSTUN,
+		urls = append(urls, &stun.URI{
+			Scheme: stun.SchemeTypeSTUN,
 			Host:   "127.0.0.1",
 			Port:   serverPort + 1,
 		})
 	}
-	urls = append(urls, &URL{
-		Scheme: SchemeTypeSTUN,
+	urls = append(urls, &stun.URI{
+		Scheme: stun.SchemeTypeSTUN,
 		Host:   "127.0.0.1",
 		Port:   serverPort,
 	})
@@ -284,7 +284,7 @@ func TestTURNConcurrency(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	runTest := func(protocol ProtoType, scheme SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
+	runTest := func(protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
 		packetConnConfigs := []turn.PacketConnConfig{}
 		if packetConn != nil {
 			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
@@ -309,9 +309,9 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		urls := []*URL{}
+		urls := []*stun.URI{}
 		for i := 0; i <= 10; i++ {
-			urls = append(urls, &URL{
+			urls = append(urls, &stun.URI{
 				Scheme:   scheme,
 				Host:     "127.0.0.1",
 				Username: "username",
@@ -320,7 +320,7 @@ func TestTURNConcurrency(t *testing.T) {
 				Port:     serverPort + 1 + i,
 			})
 		}
-		urls = append(urls, &URL{
+		urls = append(urls, &stun.URI{
 			Scheme:   scheme,
 			Host:     "127.0.0.1",
 			Username: "username",
@@ -356,7 +356,7 @@ func TestTURNConcurrency(t *testing.T) {
 		serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
-		runTest(ProtoTypeUDP, SchemeTypeTURN, serverListener, nil, serverPort)
+		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURN, serverListener, nil, serverPort)
 	})
 
 	t.Run("TCP Relay", func(t *testing.T) {
@@ -364,7 +364,7 @@ func TestTURNConcurrency(t *testing.T) {
 		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
-		runTest(ProtoTypeTCP, SchemeTypeTURN, nil, serverListener, serverPort)
+		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURN, nil, serverListener, serverPort)
 	})
 
 	t.Run("TLS Relay", func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		runTest(ProtoTypeTCP, SchemeTypeTURNS, nil, serverListener, serverPort)
+		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 
 	t.Run("DTLS Relay", func(t *testing.T) {
@@ -390,7 +390,7 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		runTest(ProtoTypeUDP, SchemeTypeTURNS, nil, serverListener, serverPort)
+		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 }
 
@@ -418,17 +418,17 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	urls := []*URL{}
+	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
-		urls = append(urls, &URL{
-			Scheme: SchemeTypeSTUN,
+		urls = append(urls, &stun.URI{
+			Scheme: stun.SchemeTypeSTUN,
 			Host:   "127.0.0.1",
 			Port:   serverPort + 1,
 		})
 	}
-	urls = append(urls, &URL{
-		Scheme:   SchemeTypeTURN,
-		Proto:    ProtoTypeUDP,
+	urls = append(urls, &stun.URI{
+		Scheme:   stun.SchemeTypeTURN,
+		Proto:    stun.ProtoTypeUDP,
 		Host:     "127.0.0.1",
 		Port:     serverPort,
 		Username: "username",
@@ -490,9 +490,9 @@ func TestTURNSrflx(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	urls := []*URL{{
-		Scheme:   SchemeTypeTURN,
-		Proto:    ProtoTypeUDP,
+	urls := []*stun.URI{{
+		Scheme:   stun.SchemeTypeTURN,
+		Proto:    stun.ProtoTypeUDP,
 		Host:     "127.0.0.1",
 		Port:     serverPort,
 		Username: "username",
@@ -574,13 +574,13 @@ func TestTURNProxyDialer(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeRelay},
 		NetworkTypes:   supportedNetworkTypes(),
-		Urls: []*URL{
+		Urls: []*stun.URI{
 			{
-				Scheme:   SchemeTypeTURN,
+				Scheme:   stun.SchemeTypeTURN,
 				Host:     "127.0.0.1",
 				Username: "username",
 				Password: "password",
-				Proto:    ProtoTypeTCP,
+				Proto:    stun.ProtoTypeTCP,
 				Port:     5000,
 			},
 		},
@@ -782,9 +782,9 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	}
 
 	numSTUNS := 3
-	urls := []*URL{}
+	urls := []*stun.URI{}
 	for i := 0; i < numSTUNS; i++ {
-		urls = append(urls, &URL{
+		urls = append(urls, &stun.URI{
 			Scheme: SchemeTypeSTUN,
 			Host:   "127.0.0.1",
 			Port:   3478 + i,

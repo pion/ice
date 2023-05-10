@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2"
 	"golang.org/x/net/proxy"
 )
@@ -54,7 +55,7 @@ func defaultCandidateTypes() []CandidateType {
 // AgentConfig collects the arguments to ice.Agent construction into
 // a single structure, for future-proofness of the interface
 type AgentConfig struct {
-	Urls []*URL
+	Urls []*stun.URI
 
 	// PortMin and PortMax are optional. Leave them 0 for the default UDP port allocation strategy.
 	PortMin uint16

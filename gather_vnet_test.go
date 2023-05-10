@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
@@ -445,13 +446,13 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
 
-	turnServerURL := &URL{
-		Scheme:   SchemeTypeTURN,
+	turnServerURL := &stun.URI{
+		Scheme:   stun.SchemeTypeTURN,
 		Host:     vnetSTUNServerIP,
 		Port:     vnetSTUNServerPort,
 		Username: "user",
 		Password: "pass",
-		Proto:    ProtoTypeUDP,
+		Proto:    stun.ProtoTypeUDP,
 	}
 
 	// buildVNet with a Symmetric NATs for both LANs
@@ -467,7 +468,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	defer v.close()
 
 	cfg0 := &AgentConfig{
-		Urls: []*URL{
+		Urls: []*stun.URI{
 			turnServerURL,
 		},
 		NetworkTypes:     supportedNetworkTypes(),
@@ -480,7 +481,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 		return
 	}
 
-	aAgent.gatherCandidatesRelay(context.Background(), []*URL{turnServerURL})
+	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL})
 	// Assert relay conn leak on close.
 	assert.NoError(t, aAgent.Close())
 }

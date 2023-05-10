@@ -124,8 +124,6 @@ var (
 	errReadingStreamingPacket        = errors.New("error reading streaming packet")
 	errWriting                       = errors.New("error writing to")
 	errClosingConnection             = errors.New("error closing connection")
-	errMissingProtocolScheme         = errors.New("missing protocol scheme")
-	errTooManyColonsAddr             = errors.New("too many colons in address")
 	errRead                          = errors.New("unexpected error trying to read")
 	errUnknownRole                   = errors.New("unknown role")
 	errICEWriteSTUNMessage           = errors.New("the ICE conn can't write STUN messages")
