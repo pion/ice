@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
@@ -47,14 +48,14 @@ func TestRelayOnlyConnection(t *testing.T) {
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
-		Urls: []*URL{
+		Urls: []*stun.URI{
 			{
-				Scheme:   SchemeTypeTURN,
+				Scheme:   stun.SchemeTypeTURN,
 				Host:     "127.0.0.1",
 				Username: "username",
 				Password: "password",
 				Port:     serverPort,
-				Proto:    ProtoTypeUDP,
+				Proto:    stun.ProtoTypeUDP,
 			},
 		},
 		CandidateTypes: []CandidateType{CandidateTypeRelay},

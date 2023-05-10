@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 )
 
@@ -228,7 +229,7 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 }
 
 func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
-	var urls []*URL
+	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -261,7 +262,7 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 }
 
 func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
-	var urls []*URL
+	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
