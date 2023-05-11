@@ -14,7 +14,7 @@ func TestConnectedState_String(t *testing.T) {
 		connectionState ConnectionState
 		expectedString  string
 	}{
-		{ConnectionState(Unknown), "Invalid"},
+		{ConnectionStateUnknown, "Invalid"},
 		{ConnectionStateNew, "New"},
 		{ConnectionStateChecking, "Checking"},
 		{ConnectionStateConnected, "Connected"},
@@ -38,7 +38,7 @@ func TestGatheringState_String(t *testing.T) {
 		gatheringState GatheringState
 		expectedString string
 	}{
-		{GatheringState(Unknown), ErrUnknownType.Error()},
+		{GatheringStateUnknown, ErrUnknownType.Error()},
 		{GatheringStateNew, "new"},
 		{GatheringStateGathering, "gathering"},
 		{GatheringStateComplete, "complete"},

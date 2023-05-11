@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/ice/v2/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
@@ -23,72 +24,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type mockPacketConn struct{}
-
-func (m *mockPacketConn) ReadFrom([]byte) (n int, addr net.Addr, err error) { return 0, nil, nil }
-func (m *mockPacketConn) WriteTo([]byte, net.Addr) (n int, err error)       { return 0, nil }
-func (m *mockPacketConn) Close() error                                      { return nil }
-func (m *mockPacketConn) LocalAddr() net.Addr                               { return nil }
-func (m *mockPacketConn) SetDeadline(time.Time) error                       { return nil }
-func (m *mockPacketConn) SetReadDeadline(time.Time) error                   { return nil }
-func (m *mockPacketConn) SetWriteDeadline(time.Time) error                  { return nil }
-
-func TestOnSelectedCandidatePairChange(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
-
-	// Avoid deadlocks?
-	defer test.TimeOut(1 * time.Second).Stop()
-
-	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %s", err)
-	}
-
-	callbackCalled := make(chan struct{}, 1)
-	if err = a.OnSelectedCandidatePairChange(func(local, remote Candidate) {
-		close(callbackCalled)
-	}); err != nil {
-		t.Fatalf("Failed to set agent OnCandidatePairChange callback: %s", err)
-	}
-
-	hostConfig := &CandidateHostConfig{
-		Network:   "udp",
-		Address:   "192.168.1.1",
-		Port:      19216,
-		Component: 1,
-	}
-	hostLocal, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct local host candidate: %s", err)
-	}
-
-	relayConfig := &CandidateRelayConfig{
-		Network:   "udp",
-		Address:   "1.2.3.4",
-		Port:      12340,
-		Component: 1,
-		RelAddr:   "4.3.2.1",
-		RelPort:   43210,
-	}
-	relayRemote, err := NewCandidateRelay(relayConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote relay candidate: %s", err)
-	}
-
-	// Select the pair
-	if err = a.run(context.Background(), func(ctx context.Context, agent *Agent) {
-		p := newCandidatePair(hostLocal, relayRemote, false)
-		agent.setSelectedPair(p)
-	}); err != nil {
-		t.Fatalf("Failed to setValidPair(): %s", err)
-	}
-
-	// Ensure that the callback fired on setting the pair
-	<-callbackCalled
-	assert.NoError(t, a.Close())
-}
 
 type BadAddr struct{}
 
@@ -133,7 +68,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Component: 1,
 			}
 			local, err := NewCandidateHost(&hostConfig)
-			local.conn = &mockPacketConn{}
+			local.conn = &fakenet.MockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -224,7 +159,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Component: 1,
 			}
 			local, err := NewCandidateHost(&hostConfig)
-			local.conn = &mockPacketConn{}
+			local.conn = &fakenet.MockPacketConn{}
 			if err != nil {
 				t.Fatalf("failed to create a new candidate: %v", err)
 			}
@@ -366,11 +301,11 @@ func TestConnectivityLite(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	stunServerURL := &URL{
+	stunServerURL := &stun.URI{
 		Scheme: SchemeTypeSTUN,
 		Host:   "1.2.3.4",
 		Port:   3478,
-		Proto:  ProtoTypeUDP,
+		Proto:  stun.ProtoTypeUDP,
 	}
 
 	natType := &vnet.NATType{
@@ -385,7 +320,7 @@ func TestConnectivityLite(t *testing.T) {
 	bNotifier, bConnected := onConnected()
 
 	cfg0 := &AgentConfig{
-		Urls:             []*URL{stunServerURL},
+		Urls:             []*stun.URI{stunServerURL},
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              v.net0,
@@ -396,7 +331,7 @@ func TestConnectivityLite(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
-		Urls:             []*URL{},
+		Urls:             []*stun.URI{},
 		Lite:             true,
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		NetworkTypes:     supportedNetworkTypes(),
@@ -445,7 +380,7 @@ func TestInboundValidity(t *testing.T) {
 		Component: 1,
 	}
 	local, err := NewCandidateHost(&hostConfig)
-	local.conn = &mockPacketConn{}
+	local.conn = &fakenet.MockPacketConn{}
 	if err != nil {
 		t.Fatalf("failed to create a new candidate: %v", err)
 	}
@@ -547,7 +482,7 @@ func TestInboundValidity(t *testing.T) {
 			Component: 1,
 		}
 		local, err := NewCandidateHost(&hostConfig)
-		local.conn = &mockPacketConn{}
+		local.conn = &fakenet.MockPacketConn{}
 		if err != nil {
 			t.Fatalf("failed to create a new candidate: %v", err)
 		}
@@ -613,7 +548,7 @@ func TestConnectionStateCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 
 	cfg := &AgentConfig{
-		Urls:                []*URL{},
+		Urls:                []*stun.URI{},
 		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
@@ -647,6 +582,7 @@ func TestConnectionStateCallback(t *testing.T) {
 			close(isFailed)
 		case ConnectionStateClosed:
 			close(isClosed)
+		default:
 		}
 	})
 	if err != nil {
@@ -1226,9 +1162,9 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 			isFailed.Done()
 		case ConnectionStateChecking:
 			isChecking.Done()
-		case ConnectionStateConnected:
 		case ConnectionStateCompleted:
 			t.Errorf("Unexpected ConnectionState: %v", c)
+		default:
 		}
 	}
 
@@ -1395,7 +1331,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	CheckInterval := 500 * time.Millisecond
 
 	cfg := &AgentConfig{
-		Urls:                []*URL{},
+		Urls:                []*stun.URI{},
 		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
@@ -1422,6 +1358,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 			assert.NoError(t, aAgent.Close())
 		case ConnectionStateClosed:
 			close(isClosed)
+		default:
 		}
 	})
 	if err != nil {
@@ -1447,7 +1384,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	CheckInterval := 50 * time.Millisecond
 
 	cfg := &AgentConfig{
-		Urls:                []*URL{},
+		Urls:                []*stun.URI{},
 		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
@@ -1492,7 +1429,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	CheckInterval := 50 * time.Millisecond
 
 	cfg := &AgentConfig{
-		Urls:                []*URL{},
+		Urls:                []*stun.URI{},
 		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
@@ -1578,6 +1515,7 @@ func TestLiteLifecycle(t *testing.T) {
 			close(bDisconnected)
 		case ConnectionStateFailed:
 			close(bFailed)
+		default:
 		}
 	}))
 

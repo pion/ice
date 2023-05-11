@@ -105,7 +105,7 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls         []*URL
+	urls         []*stun.URI
 	networkTypes []NetworkType
 
 	buf *packetio.Buffer
@@ -441,6 +441,7 @@ func (a *Agent) connectivityChecks() {
 					a.updateConnectionState(ConnectionStateFailed)
 					return
 				}
+			default:
 			}
 
 			a.selector.ContactCandidates()

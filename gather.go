@@ -17,6 +17,7 @@ import (
 	"github.com/pion/ice/v2/internal/fakenet"
 	stunx "github.com/pion/ice/v2/internal/stun"
 	"github.com/pion/logging"
+	"github.com/pion/stun"
 	"github.com/pion/turn/v2"
 )
 
@@ -376,7 +377,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
+func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -393,7 +394,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 					continue
 				}
 				wg.Add(1)
-				go func(url URL, network string, localAddr *net.UDPAddr) {
+				go func(url stun.URI, network string, localAddr *net.UDPAddr) {
 					defer wg.Done()
 
 					hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
@@ -444,7 +445,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*URL, ne
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkTypes []NetworkType) { //nolint:gocognit
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -455,7 +456,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 
 		for i := range urls {
 			wg.Add(1)
-			go func(url URL, network string) {
+			go func(url stun.URI, network string) {
 				defer wg.Done()
 
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
@@ -518,14 +519,14 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*URL, networkT
 	}
 }
 
-func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //nolint:gocognit
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { //nolint:gocognit
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	network := NetworkTypeUDP4.String()
 	for i := range urls {
 		switch {
-		case urls[i].Scheme != SchemeTypeTURN && urls[i].Scheme != SchemeTypeTURNS:
+		case urls[i].Scheme != stun.SchemeTypeTURN && urls[i].Scheme != stun.SchemeTypeTURNS:
 			continue
 		case urls[i].Username == "":
 			a.log.Errorf("Failed to gather relay candidates: %v", ErrUsernameEmpty)
@@ -536,7 +537,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 		}
 
 		wg.Add(1)
-		go func(url URL) {
+		go func(url stun.URI) {
 			defer wg.Done()
 			turnServerAddr := fmt.Sprintf("%s:%d", url.Host, url.Port)
 			var (
@@ -548,7 +549,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 			)
 
 			switch {
-			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURN:
+			case url.Proto == stun.ProtoTypeUDP && url.Scheme == stun.SchemeTypeTURN:
 				if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
 					a.log.Warnf("Failed to listen %s: %v", network, err)
 					return
@@ -557,8 +558,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
 				relPort = locConn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = udp
-			case a.proxyDialer != nil && url.Proto == ProtoTypeTCP &&
-				(url.Scheme == SchemeTypeTURN || url.Scheme == SchemeTypeTURNS):
+			case a.proxyDialer != nil && url.Proto == stun.ProtoTypeTCP &&
+				(url.Scheme == stun.SchemeTypeTURN || url.Scheme == stun.SchemeTypeTURNS):
 				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to dial TCP address %s via proxy dialer: %v", turnServerAddr, connectErr)
@@ -567,14 +568,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 
 				relAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
 				relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
-				if url.Scheme == SchemeTypeTURN {
+				if url.Scheme == stun.SchemeTypeTURN {
 					relayProtocol = tcp
-				} else if url.Scheme == SchemeTypeTURNS {
+				} else if url.Scheme == stun.SchemeTypeTURNS {
 					relayProtocol = "tls"
 				}
 				locConn = turn.NewSTUNConn(conn)
 
-			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURN:
+			case url.Proto == stun.ProtoTypeTCP && url.Scheme == stun.SchemeTypeTURN:
 				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve TCP address %s: %v", turnServerAddr, connectErr)
@@ -591,7 +592,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = tcp
 				locConn = turn.NewSTUNConn(conn)
-			case url.Proto == ProtoTypeUDP && url.Scheme == SchemeTypeTURNS:
+			case url.Proto == stun.ProtoTypeUDP && url.Scheme == stun.SchemeTypeTURNS:
 				udpAddr, connectErr := a.net.ResolveUDPAddr(network, turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve UDP address %s: %v", turnServerAddr, connectErr)
@@ -617,7 +618,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*URL) { //noli
 				relPort = conn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 				relayProtocol = "dtls"
 				locConn = &fakenet.PacketConn{Conn: conn}
-			case url.Proto == ProtoTypeTCP && url.Scheme == SchemeTypeTURNS:
+			case url.Proto == stun.ProtoTypeTCP && url.Scheme == stun.SchemeTypeTURNS:
 				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if resolvErr != nil {
 					a.log.Warnf("Failed to resolve relay address %s: %v", turnServerAddr, resolvErr)

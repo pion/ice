@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
@@ -43,7 +44,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 
 	cfg := &AgentConfig{
 		NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		Urls: []*URL{
+		Urls: []*stun.URI{
 			{
 				Scheme: SchemeTypeSTUN,
 				Host:   "127.0.0.1",
