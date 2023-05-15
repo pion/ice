@@ -623,7 +623,7 @@ func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
 			a.log.Errorf("Failed to cast local candidate to CandidateHost")
 			return nil
 		}
-		localCandidateHost.port = localAddress.Port // this causes a data race with candidateBase.Port()
+		localCandidateHost.port = localAddress.Port // This causes a data race with candidateBase.Port()
 		local.start(a, packetConn, a.startedCh)
 	}
 	p := newCandidatePair(local, remote, a.isControlling)

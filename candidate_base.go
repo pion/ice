@@ -188,6 +188,44 @@ func (c *candidateBase) LocalPreference() uint16 {
 	return defaultLocalPreference
 }
 
+// TypePreference returns the type preference for this candidate
+func (c *candidateBase) TypePreference() uint16 {
+	pref := c.Type().Preference()
+	if pref == 0 {
+		return 0
+	}
+
+	if c.NetworkType().IsTCP() {
+		var tcpPriorityOffset uint16 = defaultTCPPriorityOffset
+		if c.agent() != nil {
+			tcpPriorityOffset = c.agent().tcpPriorityOffset
+		}
+
+		pref -= tcpPriorityOffset
+	}
+
+	return pref
+}
+
+// Priority computes the priority for this ICE Candidate
+// See: https://www.rfc-editor.org/rfc/rfc8445#section-5.1.2.1
+func (c *candidateBase) Priority() uint32 {
+	if c.priorityOverride != 0 {
+		return c.priorityOverride
+	}
+
+	// The local preference MUST be an integer from 0 (lowest preference) to
+	// 65535 (highest preference) inclusive.  When there is only a single IP
+	// address, this value SHOULD be set to 65535.  If there are multiple
+	// candidates for a particular component for a particular data stream
+	// that have the same type, the local preference MUST be unique for each
+	// one.
+
+	return (1<<24)*uint32(c.TypePreference()) +
+		(1<<8)*uint32(c.LocalPreference()) +
+		(1<<0)*uint32(256-c.Component())
+}
+
 // RelatedAddress returns *CandidateRelatedAddress
 func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 	return c.relatedAddress
@@ -341,29 +379,6 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	}
 	c.seen(true)
 	return n, nil
-}
-
-// Priority computes the priority for this ICE Candidate
-func (c *candidateBase) Priority() uint32 {
-	if c.priorityOverride != 0 {
-		return c.priorityOverride
-	}
-
-	// The local preference MUST be an integer from 0 (lowest preference) to
-	// 65535 (highest preference) inclusive.  When there is only a single IP
-	// address, this value SHOULD be set to 65535.  If there are multiple
-	// candidates for a particular component for a particular data stream
-	// that have the same type, the local preference MUST be unique for each
-	// one.
-
-	var tcpPriorityOffset uint16 = defaultTCPPriorityOffset
-	if c.agent() != nil {
-		tcpPriorityOffset = c.agent().tcpPriorityOffset
-	}
-
-	return (1<<24)*uint32(c.Type().Preference(c.networkType, tcpPriorityOffset)) +
-		(1<<8)*uint32(c.LocalPreference()) +
-		uint32(256-c.Component())
 }
 
 // Equal is used to compare two candidateBases
