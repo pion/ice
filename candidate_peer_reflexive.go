@@ -24,6 +24,7 @@ type CandidatePeerReflexiveConfig struct {
 	Foundation  string
 	RelAddr     string
 	RelPort     int
+	TCPType     TCPType
 }
 
 // NewCandidatePeerReflexive creates a new peer reflective candidate
@@ -49,6 +50,7 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 			id:                 candidateID,
 			networkType:        networkType,
 			candidateType:      CandidateTypePeerReflexive,
+			tcpType:            config.TCPType,
 			address:            config.Address,
 			port:               config.Port,
 			resolvedAddr:       createAddr(networkType, ip, config.Port),

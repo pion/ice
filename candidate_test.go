@@ -36,7 +36,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypeActive,
 				},
 			},
-			WantPriority: 2128609279,
+			WantPriority: 1675624447,
 		},
 		{
 			Candidate: &CandidateHost{
@@ -47,7 +47,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypePassive,
 				},
 			},
-			WantPriority: 2124414975,
+			WantPriority: 1671430143,
 		},
 		{
 			Candidate: &CandidateHost{
@@ -58,7 +58,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypeSimultaneousOpen,
 				},
 			},
-			WantPriority: 2120220671,
+			WantPriority: 1667235839,
 		},
 		{
 			Candidate: &CandidatePeerReflexive{
@@ -78,7 +78,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypeSimultaneousOpen,
 				},
 			},
-			WantPriority: 1860173823,
+			WantPriority: 1407188991,
 		},
 		{
 			Candidate: &CandidatePeerReflexive{
@@ -89,7 +89,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypeActive,
 				},
 			},
-			WantPriority: 1855979519,
+			WantPriority: 1402994687,
 		},
 		{
 			Candidate: &CandidatePeerReflexive{
@@ -100,7 +100,7 @@ func TestCandidatePriority(t *testing.T) {
 					tcpType:       TCPTypePassive,
 				},
 			},
-			WantPriority: 1851785215,
+			WantPriority: 1398800383,
 		},
 		{
 			Candidate: &CandidateServerReflexive{
@@ -285,7 +285,7 @@ func TestCandidateMarshal(t *testing.T) {
 				},
 				"",
 			},
-			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active",
+			"1052353102 1 tcp 1675624447 192.168.0.196 0 typ host tcptype active",
 			false,
 		},
 		{
