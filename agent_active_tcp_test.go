@@ -48,6 +48,7 @@ func TestAgentActiveTCP(t *testing.T) {
 		listenIPAddress         net.IP
 		selectedPairNetworkType string
 	}
+
 	testCases := []testCase{
 		{
 			name:                    "TCP4 connection",
@@ -56,7 +57,7 @@ func TestAgentActiveTCP(t *testing.T) {
 			selectedPairNetworkType: tcp,
 		},
 		{
-			name:                    "UDP is preferred over TCP4", // fails some time
+			name:                    "UDP is preferred over TCP4", // This fails some time
 			networkTypes:            supportedNetworkTypes(),
 			listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP4),
 			selectedPairNetworkType: udp,
@@ -64,21 +65,20 @@ func TestAgentActiveTCP(t *testing.T) {
 	}
 
 	if ipv6Available(t) {
-		tcpv6Cases := []testCase{
-			{
+		testCases = append(testCases,
+			testCase{
 				name:                    "TCP6 connection",
 				networkTypes:            []NetworkType{NetworkTypeTCP6},
 				listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP6),
 				selectedPairNetworkType: tcp,
 			},
-			{
-				name:                    "UDP is preferred over TCP6", // fails some time
+			testCase{
+				name:                    "UDP is preferred over TCP6", // This fails some time
 				networkTypes:            supportedNetworkTypes(),
 				listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP6),
 				selectedPairNetworkType: udp,
 			},
-		}
-		testCases = append(testCases, tcpv6Cases...)
+		)
 	}
 
 	for _, testCase := range testCases {

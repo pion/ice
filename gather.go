@@ -25,7 +25,7 @@ const (
 	stunGatherTimeout = time.Second * 5
 )
 
-type connAndPort struct {
+type connConfig struct {
 	conn    net.PacketConn
 	port    int
 	tcpType TCPType
@@ -161,18 +161,18 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		}
 
 		for network := range networks {
-			var connectionConfigurations []connAndPort
+			var connConfigs []connConfig
 
 			switch network {
 			case tcp:
 				// Handle ICE TCP active mode
-				connectionConfigurations = append(connectionConfigurations, connAndPort{nil, 0, TCPTypeActive})
+				connConfigs = append(connConfigs, connConfig{nil, 0, TCPTypeActive})
 
 				// Handle ICE TCP passive mode
 				if a.tcpMux != nil {
-					connectionConfigurations = a.getTCPMuxConnections(mappedIP, ip, network, connectionConfigurations)
+					connConfigs = a.getTCPMuxConns(mappedIP, ip, network, connConfigs)
 				}
-				if len(connectionConfigurations) == 0 {
+				if len(connConfigs) == 0 {
 					// Didn't succeed with any, try the next network.
 					continue
 				}
@@ -186,36 +186,36 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				}
 
 				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-					connectionConfigurations = append(connectionConfigurations, connAndPort{conn, udpConn.Port, TCPTypeUnspecified})
+					connConfigs = append(connConfigs, connConfig{conn, udpConn.Port, TCPTypeUnspecified})
 				} else {
 					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
 					continue
 				}
 			}
 
-			for _, connectionConfiguration := range connectionConfigurations {
+			for _, connConfig := range connConfigs {
 				hostConfig := CandidateHostConfig{
 					Network:   network,
 					Address:   address,
-					Port:      connectionConfiguration.port,
+					Port:      connConfig.port,
 					Component: ComponentRTP,
-					TCPType:   connectionConfiguration.tcpType,
+					TCPType:   connConfig.tcpType,
 				}
 
 				c, err := NewCandidateHost(&hostConfig)
 				if err != nil {
-					closeConnAndLog(connectionConfiguration.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connectionConfiguration.port, err)
+					closeConnAndLog(connConfig.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connConfig.port, err)
 					continue
 				}
 
 				if a.mDNSMode == MulticastDNSModeQueryAndGather {
 					if err = c.setIP(ip); err != nil {
-						closeConnAndLog(connectionConfiguration.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connectionConfiguration.port, err)
+						closeConnAndLog(connConfig.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connConfig.port, err)
 						continue
 					}
 				}
 
-				if err := a.addCandidate(ctx, c, connectionConfiguration.conn); err != nil {
+				if err := a.addCandidate(ctx, c, connConfig.conn); err != nil {
 					if closeErr := c.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
@@ -226,7 +226,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	}
 }
 
-func (a *Agent) getTCPMuxConnections(mappedIP net.IP, ip net.IP, network string, conns []connAndPort) []connAndPort {
+func (a *Agent) getTCPMuxConns(mappedIP net.IP, ip net.IP, network string, conns []connConfig) []connConfig {
 	var muxConns []net.PacketConn
 	if multi, ok := a.tcpMux.(AllConnsGetter); ok {
 		a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
@@ -249,7 +249,7 @@ func (a *Agent) getTCPMuxConnections(mappedIP net.IP, ip net.IP, network string,
 	// Extract the port for each PacketConn we got.
 	for _, conn := range muxConns {
 		if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-			conns = append(conns, connAndPort{conn, tcpConn.Port, TCPTypePassive})
+			conns = append(conns, connConfig{conn, tcpConn.Port, TCPTypePassive})
 		} else {
 			a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
 		}

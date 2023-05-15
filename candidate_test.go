@@ -13,6 +13,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCandidateTypePreference(t *testing.T) {
+	r := require.New(t)
+
+	hostDefaultPreference := uint16(126)
+	prflxDefaultPreference := uint16(110)
+	srflxDefaultPreference := uint16(100)
+	relayDefaultPreference := uint16(0)
+
+	tcpOffsets := []uint16{0, 10}
+
+	for _, tcpOffset := range tcpOffsets {
+		agent := &Agent{
+			tcpPriorityOffset: tcpOffset,
+		}
+
+		for _, networkType := range supportedNetworkTypes() {
+			hostCandidate := candidateBase{
+				candidateType: CandidateTypeHost,
+				networkType:   networkType,
+				currAgent:     agent,
+			}
+			prflxCandidate := candidateBase{
+				candidateType: CandidateTypePeerReflexive,
+				networkType:   networkType,
+				currAgent:     agent,
+			}
+			srflxCandidate := candidateBase{
+				candidateType: CandidateTypeServerReflexive,
+				networkType:   networkType,
+				currAgent:     agent,
+			}
+			relayCandidate := candidateBase{
+				candidateType: CandidateTypeRelay,
+				networkType:   networkType,
+				currAgent:     agent,
+			}
+
+			if networkType.IsTCP() {
+				r.Equal(hostDefaultPreference-tcpOffset, hostCandidate.TypePreference())
+				r.Equal(prflxDefaultPreference-tcpOffset, prflxCandidate.TypePreference())
+				r.Equal(srflxDefaultPreference-tcpOffset, srflxCandidate.TypePreference())
+			} else {
+				r.Equal(hostDefaultPreference, hostCandidate.TypePreference())
+				r.Equal(prflxDefaultPreference, prflxCandidate.TypePreference())
+				r.Equal(srflxDefaultPreference, srflxCandidate.TypePreference())
+			}
+
+			r.Equal(relayDefaultPreference, relayCandidate.TypePreference())
+		}
+	}
+}
+
 func TestCandidatePriority(t *testing.T) {
 	for _, test := range []struct {
 		Candidate    Candidate

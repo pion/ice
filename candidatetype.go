@@ -38,24 +38,19 @@ func (c CandidateType) String() string {
 // The RECOMMENDED values are 126 for host candidates, 100
 // for server reflexive candidates, 110 for peer reflexive candidates,
 // and 0 for relayed candidates.
-func (c CandidateType) Preference(networkType NetworkType, tcpOffset uint16) uint16 {
-	var result uint16
+func (c CandidateType) Preference() uint16 {
 	switch c {
 	case CandidateTypeHost:
-		result = 126
+		return 126
 	case CandidateTypePeerReflexive:
-		result = 110
+		return 110
 	case CandidateTypeServerReflexive:
-		result = 100
+		return 100
 	case CandidateTypeRelay, CandidateTypeUnspecified:
 		return 0
 	default:
 		return 0
 	}
-	if networkType.IsTCP() {
-		return result - tcpOffset
-	}
-	return result
 }
 
 func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
