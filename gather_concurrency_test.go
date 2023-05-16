@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/dtls"
+	"github.com/pion/dtls/v2"
 	"github.com/pion/dtls/v2/pkg/crypto/selfsign"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
@@ -26,6 +26,7 @@ import (
 )
 
 func TestGatherConcurrency(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -36,10 +37,10 @@ func TestGatherConcurrency(t *testing.T) {
 		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		IncludeLoopback: true,
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		candidateGatheredFunc()
 	}))
 
@@ -50,10 +51,11 @@ func TestGatherConcurrency(t *testing.T) {
 
 	<-candidateGathered.Done()
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }
 
 func TestLoopbackCandidate(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -65,9 +67,9 @@ func TestLoopbackCandidate(t *testing.T) {
 		loExpected  bool
 	}
 	mux, err := NewMultiUDPMuxFromPort(12500)
-	assert.NoError(t, err)
+	assert.NoError(err)
 	muxWithLo, errlo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
-	assert.NoError(t, errlo)
+	assert.NoError(errlo)
 	testCases := []testCase{
 		{
 			name: "mux should not have loopback candidate",
@@ -107,11 +109,11 @@ func TestLoopbackCandidate(t *testing.T) {
 		tcase := tc
 		t.Run(tcase.name, func(t *testing.T) {
 			a, err := NewAgent(tc.agentConfig)
-			assert.NoError(t, err)
+			assert.NoError(err)
 
 			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 			var loopback int32
-			assert.NoError(t, a.OnCandidate(func(c Candidate) {
+			assert.NoError(a.OnCandidate(func(c Candidate) {
 				if c != nil {
 					if net.ParseIP(c.Address()).IsLoopback() {
 						atomic.StoreInt32(&loopback, 1)
@@ -122,21 +124,24 @@ func TestLoopbackCandidate(t *testing.T) {
 				}
 				t.Log(c.NetworkType(), c.Priority(), c)
 			}))
-			assert.NoError(t, a.GatherCandidates())
+			assert.NoError(a.GatherCandidates())
 
 			<-candidateGathered.Done()
 
-			assert.NoError(t, a.Close())
-			assert.Equal(t, tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
+			assert.NoError(a.Close())
+			assert.Equal(tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
 		})
 	}
 
-	assert.NoError(t, mux.Close())
-	assert.NoError(t, muxWithLo.Close())
+	assert.NoError(mux.Close())
+	assert.NoError(muxWithLo.Close())
 }
 
 // Assert that STUN gathering is done concurrently
 func TestSTUNConcurrency(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -145,7 +150,7 @@ func TestSTUNConcurrency(t *testing.T) {
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -157,7 +162,7 @@ func TestSTUNConcurrency(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
@@ -176,7 +181,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		IP: net.IP{127, 0, 0, 1},
 	})
-	require.NoError(t, err)
+	require.NoError(err)
 	defer func() {
 		_ = listener.Close()
 	}()
@@ -193,22 +198,22 @@ func TestSTUNConcurrency(t *testing.T) {
 			},
 		),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatheredFunc()
 			return
 		}
 		t.Log(c.NetworkType(), c.Priority(), c)
 	}))
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(t, a.Close())
-	assert.NoError(t, server.Close())
+	assert.NoError(a.Close())
+	assert.NoError(server.Close())
 }
 
 // Assert that TURN gathering is done concurrently
@@ -219,7 +224,9 @@ func TestTURNConcurrency(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	runTest := func(protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
+	runTest := func(t *testing.T, protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
+		assert := assert.New(t)
+
 		packetConnConfigs := []turn.PacketConnConfig{}
 		if packetConn != nil {
 			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
@@ -242,7 +249,7 @@ func TestTURNConcurrency(t *testing.T) {
 			PacketConnConfigs: packetConnConfigs,
 			ListenerConfigs:   listenerConfigs,
 		})
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		urls := []*stun.URI{}
 		for i := 0; i <= 10; i++ {
@@ -270,20 +277,20 @@ func TestTURNConcurrency(t *testing.T) {
 			NetworkTypes:       supportedNetworkTypes(),
 			Urls:               urls,
 		})
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		assert.NoError(a.OnCandidate(func(c Candidate) {
 			if c != nil {
 				candidateGatheredFunc()
 			}
 		}))
-		assert.NoError(t, a.GatherCandidates())
+		assert.NoError(a.GatherCandidates())
 
 		<-candidateGathered.Done()
 
-		assert.NoError(t, a.Close())
-		assert.NoError(t, server.Close())
+		assert.NoError(a.Close())
+		assert.NoError(server.Close())
 	}
 
 	t.Run("UDP Relay", func(t *testing.T) {
@@ -291,7 +298,7 @@ func TestTURNConcurrency(t *testing.T) {
 		serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
-		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURN, serverListener, nil, serverPort)
+		runTest(t, stun.ProtoTypeUDP, stun.SchemeTypeTURN, serverListener, nil, serverPort)
 	})
 
 	t.Run("TCP Relay", func(t *testing.T) {
@@ -299,7 +306,7 @@ func TestTURNConcurrency(t *testing.T) {
 		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
-		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURN, nil, serverListener, serverPort)
+		runTest(t, stun.ProtoTypeTCP, stun.SchemeTypeTURN, nil, serverListener, serverPort)
 	})
 
 	t.Run("TLS Relay", func(t *testing.T) {
@@ -312,7 +319,7 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
+		runTest(t, stun.ProtoTypeTCP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 
 	t.Run("DTLS Relay", func(t *testing.T) {
@@ -325,12 +332,13 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
+		runTest(t, stun.ProtoTypeUDP, stun.SchemeTypeTURNS, nil, serverListener, serverPort)
 	})
 }
 
 // Assert that STUN and TURN gathering are done concurrently
 func TestSTUNTURNConcurrency(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -339,7 +347,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -351,7 +359,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
@@ -375,23 +383,23 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	{
 		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		assert.NoError(t, a.OnCandidate(func(c Candidate) {
+		assert.NoError(a.OnCandidate(func(c Candidate) {
 			if c != nil {
 				candidateGatheredFunc()
 			}
 		}))
-		assert.NoError(t, a.GatherCandidates())
+		assert.NoError(a.GatherCandidates())
 
 		<-candidateGathered.Done()
 
 		gatherLim.Stop()
 	}
 
-	assert.NoError(t, a.Close())
-	assert.NoError(t, server.Close())
+	assert.NoError(a.Close())
+	assert.NoError(server.Close())
 }

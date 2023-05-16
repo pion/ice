@@ -22,29 +22,31 @@ import (
 )
 
 func TestListenUDP(t *testing.T) {
+	assert := assert.New(t)
+
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-	assert.NotEqual(t, len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
-	assert.NoError(t, err)
+	assert.NotEqual(len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
+	assert.NoError(err)
 
 	ip := localIPs[0]
 
 	conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.NoError(t, err, "listenUDP error with no port restriction")
-	assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
+	assert.NoError(err, "listenUDP error with no port restriction")
+	assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
 
 	_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.Equal(t, err, ErrPort, "listenUDP with invalid port range did not return ErrPort")
+	assert.Equal(err, ErrPort, "listenUDP with invalid port range did not return ErrPort")
 
 	conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.NoError(t, err, "listenUDP error with no port restriction")
-	assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
+	assert.NoError(err, "listenUDP error with no port restriction")
+	assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
 
 	_, port, err := net.SplitHostPort(conn.LocalAddr().String())
-	assert.NoError(t, err)
-	assert.Equal(t, port, "5000", "listenUDP with port restriction of 5000 listened on incorrect port")
+	assert.NoError(err)
+	assert.Equal(port, "5000", "listenUDP with port restriction of 5000 listened on incorrect port")
 
 	portMin := 5100
 	portMax := 5109
@@ -53,8 +55,8 @@ func TestListenUDP(t *testing.T) {
 	portRange := make([]int, 0, total)
 	for i := 0; i < total; i++ {
 		conn, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
-		assert.NoError(t, err, "listenUDP error with no port restriction")
-		assert.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
+		assert.NoError(err, "listenUDP error with no port restriction")
+		assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
 
 		_, port, err = net.SplitHostPort(conn.LocalAddr().String())
 		if err != nil {
@@ -75,9 +77,9 @@ func TestListenUDP(t *testing.T) {
 		t.Fatalf("listenUDP with port restriction [%d, %d], got:%v, want:%v", portMin, portMax, result, portRange)
 	}
 	_, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
+	assert.Equal(err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }
 
 // Assert that srflx candidates can be gathered from TURN servers
@@ -87,6 +89,7 @@ func TestListenUDP(t *testing.T) {
 //
 // https://tools.ietf.org/html/rfc5245#section-2.1
 func TestTURNSrflx(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -95,7 +98,7 @@ func TestTURNSrflx(t *testing.T) {
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -107,7 +110,7 @@ func TestTURNSrflx(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	urls := []*stun.URI{{
 		Scheme:   stun.SchemeTypeTURN,
@@ -123,31 +126,33 @@ func TestTURNSrflx(t *testing.T) {
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c != nil && c.Type() == CandidateTypeServerReflexive {
 			candidateGatheredFunc()
 		}
 	}))
 
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(t, a.Close())
-	assert.NoError(t, server.Close())
+	assert.NoError(a.Close())
+	assert.NoError(server.Close())
 }
 
 func TestCloseConnLog(t *testing.T) {
+	assert := assert.New(t)
+
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	closeConnAndLog(nil, a.log, "normal nil")
 
 	var nc *net.UDPConn
 	closeConnAndLog(nc, a.log, "nil ptr")
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }

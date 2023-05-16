@@ -17,22 +17,27 @@ import (
 )
 
 func TestNilCandidate(t *testing.T) {
-	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert := assert.New(t)
 
-	assert.NoError(t, a.AddRemoteCandidate(nil))
-	assert.NoError(t, a.Close())
+	a, err := NewAgent(&AgentConfig{})
+	assert.NoError(err)
+
+	assert.NoError(a.AddRemoteCandidate(nil))
+	assert.NoError(a.Close())
 }
 
 func TestNilCandidatePair(t *testing.T) {
+	assert := assert.New(t)
+
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	a.setSelectedPair(nil)
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }
 
 func TestGetSelectedCandidatePair(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -43,15 +48,15 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	net, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net))
+	assert.NoError(err)
+	assert.NoError(wan.AddNet(net))
 
-	assert.NoError(t, wan.Start())
+	assert.NoError(wan.Start())
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
@@ -59,33 +64,33 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	aAgentPair, err := aAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.Nil(t, aAgentPair)
+	assert.NoError(err)
+	assert.Nil(aAgentPair)
 
 	bAgentPair, err := bAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.Nil(t, bAgentPair)
+	assert.NoError(err)
+	assert.Nil(bAgentPair)
 
 	connect(aAgent, bAgent)
 
 	aAgentPair, err = aAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.NotNil(t, aAgentPair)
+	assert.NoError(err)
+	assert.NotNil(aAgentPair)
 
 	bAgentPair, err = bAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.NotNil(t, bAgentPair)
+	assert.NoError(err)
+	assert.NotNil(bAgentPair)
 
-	assert.True(t, bAgentPair.Local.Equal(aAgentPair.Remote))
-	assert.True(t, bAgentPair.Remote.Equal(aAgentPair.Local))
+	assert.True(bAgentPair.Local.Equal(aAgentPair.Remote))
+	assert.True(bAgentPair.Remote.Equal(aAgentPair.Local))
 
-	assert.NoError(t, wan.Stop())
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(wan.Stop())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }

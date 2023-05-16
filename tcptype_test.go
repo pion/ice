@@ -10,17 +10,19 @@ import (
 )
 
 func TestTCPType(t *testing.T) {
+	assert := assert.New(t)
+
 	var tcpType TCPType
 
-	assert.Equal(t, TCPTypeUnspecified, tcpType)
-	assert.Equal(t, TCPTypeActive, NewTCPType("active"))
-	assert.Equal(t, TCPTypePassive, NewTCPType("passive"))
-	assert.Equal(t, TCPTypeSimultaneousOpen, NewTCPType("so"))
-	assert.Equal(t, TCPTypeUnspecified, NewTCPType("something else"))
+	assert.Equal(TCPTypeUnspecified, tcpType)
+	assert.Equal(TCPTypeActive, NewTCPType("active"))
+	assert.Equal(TCPTypePassive, NewTCPType("passive"))
+	assert.Equal(TCPTypeSimultaneousOpen, NewTCPType("so"))
+	assert.Equal(TCPTypeUnspecified, NewTCPType("something else"))
 
-	assert.Equal(t, "", TCPTypeUnspecified.String())
-	assert.Equal(t, "active", TCPTypeActive.String())
-	assert.Equal(t, "passive", TCPTypePassive.String())
-	assert.Equal(t, "so", TCPTypeSimultaneousOpen.String())
-	assert.Equal(t, "Unknown", TCPType(-1).String())
+	assert.Equal("", TCPTypeUnspecified.String())
+	assert.Equal("active", TCPTypeActive.String())
+	assert.Equal("passive", TCPTypePassive.String())
+	assert.Equal("so", TCPTypeSimultaneousOpen.String())
+	assert.Equal("Unknown", TCPType(-1).String())
 }

@@ -14,7 +14,7 @@ import (
 )
 
 func TestCandidateTypePreference(t *testing.T) {
-	r := require.New(t)
+	require := require.New(t)
 
 	hostDefaultPreference := uint16(126)
 	prflxDefaultPreference := uint16(110)
@@ -51,16 +51,16 @@ func TestCandidateTypePreference(t *testing.T) {
 			}
 
 			if networkType.IsTCP() {
-				r.Equal(hostDefaultPreference-tcpOffset, hostCandidate.TypePreference())
-				r.Equal(prflxDefaultPreference-tcpOffset, prflxCandidate.TypePreference())
-				r.Equal(srflxDefaultPreference-tcpOffset, srflxCandidate.TypePreference())
+				require.Equal(hostDefaultPreference-tcpOffset, hostCandidate.TypePreference())
+				require.Equal(prflxDefaultPreference-tcpOffset, prflxCandidate.TypePreference())
+				require.Equal(srflxDefaultPreference-tcpOffset, srflxCandidate.TypePreference())
 			} else {
-				r.Equal(hostDefaultPreference, hostCandidate.TypePreference())
-				r.Equal(prflxDefaultPreference, prflxCandidate.TypePreference())
-				r.Equal(srflxDefaultPreference, srflxCandidate.TypePreference())
+				require.Equal(hostDefaultPreference, hostCandidate.TypePreference())
+				require.Equal(prflxDefaultPreference, prflxCandidate.TypePreference())
+				require.Equal(srflxDefaultPreference, srflxCandidate.TypePreference())
 			}
 
-			r.Equal(relayDefaultPreference, relayCandidate.TypePreference())
+			require.Equal(relayDefaultPreference, relayCandidate.TypePreference())
 		}
 	}
 }
@@ -180,19 +180,23 @@ func TestCandidatePriority(t *testing.T) {
 }
 
 func TestCandidateLastSent(t *testing.T) {
+	assert := assert.New(t)
+
 	candidate := candidateBase{}
-	assert.Equal(t, candidate.LastSent(), time.Time{})
+	assert.Equal(candidate.LastSent(), time.Time{})
 	now := time.Now()
 	candidate.setLastSent(now)
-	assert.Equal(t, candidate.LastSent(), now)
+	assert.Equal(candidate.LastSent(), now)
 }
 
 func TestCandidateLastReceived(t *testing.T) {
+	assert := assert.New(t)
+
 	candidate := candidateBase{}
-	assert.Equal(t, candidate.LastReceived(), time.Time{})
+	assert.Equal(candidate.LastReceived(), time.Time{})
 	now := time.Now()
 	candidate.setLastReceived(now)
-	assert.Equal(t, candidate.LastReceived(), now)
+	assert.Equal(candidate.LastReceived(), now)
 }
 
 func TestCandidateFoundation(t *testing.T) {
@@ -265,6 +269,8 @@ func TestCandidateFoundation(t *testing.T) {
 }
 
 func TestCandidateMarshal(t *testing.T) {
+	assert := assert.New(t)
+
 	for _, test := range []struct {
 		candidate   Candidate
 		marshaled   string
@@ -385,26 +391,29 @@ func TestCandidateMarshal(t *testing.T) {
 	} {
 		actualCandidate, err := UnmarshalCandidate(test.marshaled)
 		if test.expectError {
-			assert.Error(t, err)
+			assert.Error(err)
 			continue
 		}
 
-		assert.NoError(t, err)
+		assert.NoError(err)
 
-		assert.True(t, test.candidate.Equal(actualCandidate))
-		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
+		assert.True(test.candidate.Equal(actualCandidate))
+		assert.Equal(test.marshaled, actualCandidate.Marshal())
 	}
 }
 
 func TestCandidateWriteTo(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
+
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		IP:   net.IP{127, 0, 0, 1},
 		Port: 0,
 	})
-	require.NoError(t, err, "error creating test TCP listener")
+	require.NoError(err, "error creating test TCP listener")
 
 	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
-	require.NoError(t, err, "error dialing test TCP connection")
+	require.NoError(err, "error dialing test TCP connection")
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	packetConn := newTCPPacketConn(tcpPacketParams{
@@ -413,7 +422,7 @@ func TestCandidateWriteTo(t *testing.T) {
 	})
 
 	err = packetConn.AddConn(conn, nil)
-	require.NoError(t, err, "error adding test TCP connection to packet connection")
+	require.NoError(err, "error adding test TCP connection to packet connection")
 
 	c1 := &candidateBase{
 		conn: packetConn,
@@ -427,11 +436,11 @@ func TestCandidateWriteTo(t *testing.T) {
 	}
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.NoError(t, err, "writing to open conn")
+	assert.NoError(err, "writing to open conn")
 
 	err = packetConn.Close()
-	require.NoError(t, err, "error closing test TCP connection")
+	require.NoError(err, "error closing test TCP connection")
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.Error(t, err, "writing to closed conn")
+	assert.Error(err, "writing to closed conn")
 }

@@ -17,6 +17,7 @@ import (
 
 // Assert that candidates are given for each mux in a MultiUDPMux
 func TestMultiUDPMuxUsage(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -28,7 +29,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		port := randomPort(t)
 		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: port})
-		assert.NoError(t, err)
+		assert.NoError(err)
 		defer func() {
 			_ = conn.Close()
 		}()
@@ -47,27 +48,27 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateCh := make(chan Candidate)
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(candidateCh)
 			return
 		}
 		candidateCh <- c
 	}))
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 
 	portFound := make(map[int]bool)
 	for c := range candidateCh {
 		portFound[c.Port()] = true
-		assert.True(t, c.NetworkType().IsUDP(), "All candidates should be UDP")
+		assert.True(c.NetworkType().IsUDP(), "All candidates should be UDP")
 	}
-	assert.Len(t, portFound, len(expectedPorts))
+	assert.Len(portFound, len(expectedPorts))
 	for _, port := range expectedPorts {
-		assert.True(t, portFound[port], "There should be a candidate for each UDP mux port")
+		assert.True(portFound[port], "There should be a candidate for each UDP mux port")
 	}
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }

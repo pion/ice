@@ -19,6 +19,7 @@ import (
 )
 
 func TestConnectivityLite(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -37,7 +38,7 @@ func TestConnectivityLite(t *testing.T) {
 		FilteringBehavior: vnet.EndpointIndependent,
 	}
 	v, err := buildVNet(natType, natType)
-	require.NoError(t, err, "should succeed")
+	require.NoError(err, "should succeed")
 	defer v.close()
 
 	aNotifier, aConnected := onConnected()
@@ -51,8 +52,8 @@ func TestConnectivityLite(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg0)
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
 		Urls:             []*stun.URI{},
@@ -64,8 +65,8 @@ func TestConnectivityLite(t *testing.T) {
 	}
 
 	bAgent, err := NewAgent(cfg1)
-	require.NoError(t, err)
-	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(err)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
 	aConn, bConn := connectWithVNet(aAgent, bAgent)
 
@@ -81,6 +82,8 @@ func TestConnectivityLite(t *testing.T) {
 
 // Assert that a Lite agent goes to disconnected and failed
 func TestLiteLifecycle(t *testing.T) {
+	require := require.New(t)
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -93,8 +96,8 @@ func TestLiteLifecycle(t *testing.T) {
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 	})
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -110,13 +113,13 @@ func TestLiteLifecycle(t *testing.T) {
 		KeepaliveInterval:   &KeepaliveInterval,
 		CheckInterval:       &CheckInterval,
 	})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	bConnected := make(chan interface{})
 	bDisconnected := make(chan interface{})
 	bFailed := make(chan interface{})
 
-	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+	require.NoError(bAgent.OnConnectionStateChange(func(c ConnectionState) {
 		fmt.Println(c)
 		switch c {
 		case ConnectionStateConnected:
@@ -133,9 +136,9 @@ func TestLiteLifecycle(t *testing.T) {
 
 	<-aConnected
 	<-bConnected
-	assert.NoError(t, aAgent.Close())
+	assert.NoError(aAgent.Close())
 
 	<-bDisconnected
 	<-bFailed
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(bAgent.Close())
 }

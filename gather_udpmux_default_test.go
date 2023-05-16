@@ -18,6 +18,7 @@ import (
 // TestUDPMuxDefaultWithNAT1To1IPsUsage asserts that candidates
 // are given and connections are valid when using UDPMuxDefault and NAT1To1IPs.
 func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -25,7 +26,7 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 	defer lim.Stop()
 
 	conn, err := net.ListenPacket("udp4", ":0")
-	assert.NoError(t, err)
+	assert.NoError(err)
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -42,20 +43,20 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		UDPMux:                 mux,
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	gatherCandidateDone := make(chan struct{})
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(gatherCandidateDone)
 		} else {
-			assert.Equal(t, "1.2.3.4", c.Address())
+			assert.Equal("1.2.3.4", c.Address())
 		}
 	}))
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 	<-gatherCandidateDone
 
-	assert.NotEqual(t, 0, len(mux.connsIPv4))
+	assert.NotEqual(0, len(mux.connsIPv4))
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }

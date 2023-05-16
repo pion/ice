@@ -18,6 +18,7 @@ import (
 )
 
 func TestMultiUDPMux(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -25,10 +26,10 @@ func TestMultiUDPMux(t *testing.T) {
 	defer lim.Stop()
 
 	conn1, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	conn2, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	conn3, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6loopback})
 	if err != nil {
@@ -74,26 +75,27 @@ func TestMultiUDPMux(t *testing.T) {
 
 	wg.Wait()
 
-	require.NoError(t, udpMuxMulti.Close())
+	require.NoError(udpMuxMulti.Close())
 
 	// Can't create more connections
 	_, err = udpMuxMulti.GetConn("failufrag", conn1.LocalAddr())
-	require.Error(t, err)
+	require.Error(err)
 }
 
 func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, ufrag string, network string) {
+	require := require.New(t)
 	addrs := udpMuxMulti.GetListenAddresses()
 	pktConns := make([]net.PacketConn, 0, len(addrs))
 	for _, addr := range addrs {
 		udpAddr, ok := addr.(*net.UDPAddr)
-		require.True(t, ok)
+		require.True(ok)
 		if network == udp4 && udpAddr.IP.To4() == nil {
 			continue
 		} else if network == udp6 && udpAddr.IP.To4() != nil {
 			continue
 		}
 		c, err := udpMuxMulti.GetConn(ufrag, addr)
-		require.NoError(t, err, "error retrieving muxed connection for ufrag")
+		require.NoError(err, "error retrieving muxed connection for ufrag")
 		pktConns = append(pktConns, c)
 	}
 	defer func() {
@@ -105,12 +107,13 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 	// Try talking with each PacketConn
 	for _, pktConn := range pktConns {
 		remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr))
-		require.NoError(t, err, "error dialing test UDP connection")
+		require.NoError(err, "error dialing test UDP connection")
 		testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 	}
 }
 
 func TestUnspecifiedUDPMux(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -123,9 +126,9 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 		customDockerBridgeNetwork := strings.Contains(s, "br-")
 		return !defaultDockerBridgeNetwork && !customDockerBridgeNetwork
 	}))
-	require.NoError(t, err)
+	require.NoError(err)
 
-	require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
+	require.GreaterOrEqual(len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
 	defer func() {
 		_ = udpMuxMulti.Close()
 	}()
@@ -151,5 +154,5 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 
 	wg.Wait()
 
-	require.NoError(t, udpMuxMulti.Close())
+	require.NoError(udpMuxMulti.Close())
 }

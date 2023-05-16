@@ -17,6 +17,7 @@ import (
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -54,11 +55,12 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 func TestMulticastDNSMixedConnection(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -98,11 +100,12 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 func TestMulticastDNSStaticHostName(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -115,7 +118,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,
 		MulticastDNSHostName: "invalidHostName",
 	})
-	assert.Equal(t, err, ErrInvalidMulticastDNSHostName)
+	assert.Equal(err, ErrInvalidMulticastDNSHostName)
 
 	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:         []NetworkType{NetworkTypeUDP4},
@@ -123,18 +126,18 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,
 		MulticastDNSHostName: "validName.local",
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	correctHostName, resolveFunc := context.WithCancel(context.Background())
-	assert.NoError(t, agent.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c != nil && c.Address() == "validName.local" {
 			resolveFunc()
 		}
 	}))
 
-	assert.NoError(t, agent.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 	<-correctHostName.Done()
-	assert.NoError(t, agent.Close())
+	assert.NoError(agent.Close())
 }
 
 func TestGenerateMulticastDNSName(t *testing.T) {

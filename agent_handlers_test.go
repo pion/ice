@@ -19,6 +19,7 @@ import (
 
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestOnConnectionStateChangeCallback(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -78,28 +79,30 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 	<-isDisconnected
 	<-isFailed
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 
 	<-isClosed
 }
 
 func TestOnSelectedCandidatePairChange(t *testing.T) {
+	require := require.New(t)
+
 	agent, candidatePair := fixtureTestOnSelectedCandidatePairChange(t)
 
 	callbackCalled := make(chan struct{}, 1)
 	err := agent.OnSelectedCandidatePairChange(func(local, remote Candidate) {
 		close(callbackCalled)
 	})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	err = agent.run(context.Background(), func(ctx context.Context, agent *Agent) {
 		agent.setSelectedPair(candidatePair)
 	})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	<-callbackCalled
-	require.NoError(t, agent.Close())
+	require.NoError(agent.Close())
 }
 
 func fixtureTestOnSelectedCandidatePairChange(t *testing.T) (*Agent, *CandidatePair) {
@@ -119,6 +122,7 @@ func makeCandidatePair(t *testing.T) *CandidatePair {
 }
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -155,7 +159,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		switch c {
 		case ConnectionStateConnected:
 			<-isConnected
-			assert.NoError(t, aAgent.Close())
+			assert.NoError(aAgent.Close())
 		case ConnectionStateClosed:
 			close(isClosed)
 		default:
@@ -169,10 +173,11 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	close(isConnected)
 
 	<-isClosed
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -201,8 +206,8 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
-			assert.NoError(t, errCred)
-			assert.NoError(t, aAgent.Restart("", ""))
+			assert.NoError(errCred)
+			assert.NoError(aAgent.Restart("", ""))
 			close(isComplete)
 		}
 	})
@@ -213,11 +218,12 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	connect(aAgent, bAgent)
 
 	<-isComplete
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -247,7 +253,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	if err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
 		go func() {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
-			assert.NoError(t, errCred)
+			assert.NoError(errCred)
 			close(isTested)
 		}()
 	}); err != nil {
@@ -265,6 +271,6 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 	<-isComplete
 	<-isTested
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }

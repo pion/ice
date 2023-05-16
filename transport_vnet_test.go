@@ -46,17 +46,21 @@ func TestRemoteLocalAddr(t *testing.T) {
 	}
 
 	t.Run("Disconnected Returns nil", func(t *testing.T) {
+		assert := assert.New(t)
+
 		disconnectedAgent, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		disconnectedConn := Conn{agent: disconnectedAgent}
-		assert.Nil(t, disconnectedConn.RemoteAddr())
-		assert.Nil(t, disconnectedConn.LocalAddr())
+		assert.Nil(disconnectedConn.RemoteAddr())
+		assert.Nil(disconnectedConn.LocalAddr())
 
-		assert.NoError(t, disconnectedConn.Close())
+		assert.NoError(disconnectedConn.Close())
 	})
 
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
+		assert := assert.New(t)
+
 		ca, cb := pipeWithVNet(v,
 			&agentTestConfig{
 				urls: []*stun.URI{stunServerURL},
@@ -72,27 +76,27 @@ func TestRemoteLocalAddr(t *testing.T) {
 		bLAddr := cb.LocalAddr()
 
 		// Assert that nothing is nil
-		assert.NotNil(t, aRAddr)
-		assert.NotNil(t, aLAddr)
-		assert.NotNil(t, bRAddr)
-		assert.NotNil(t, bLAddr)
+		assert.NotNil(aRAddr)
+		assert.NotNil(aLAddr)
+		assert.NotNil(bRAddr)
+		assert.NotNil(bLAddr)
 
 		// Assert addresses
-		assert.Equal(t, aLAddr.String(),
+		assert.Equal(aLAddr.String(),
 			fmt.Sprintf("%s:%d", vnetLocalIPA, bRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(t, bLAddr.String(),
+		assert.Equal(bLAddr.String(),
 			fmt.Sprintf("%s:%d", vnetLocalIPB, aRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(t, aRAddr.String(),
+		assert.Equal(aRAddr.String(),
 			fmt.Sprintf("%s:%d", vnetGlobalIPB, bLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(t, bRAddr.String(),
+		assert.Equal(bRAddr.String(),
 			fmt.Sprintf("%s:%d", vnetGlobalIPA, aLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
 
 		// Close
-		assert.NoError(t, ca.Close())
-		assert.NoError(t, cb.Close())
+		assert.NoError(ca.Close())
+		assert.NoError(cb.Close())
 	})
 }

@@ -19,6 +19,9 @@ import (
 )
 
 func TestAcceptAggressiveNomination(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -30,21 +33,21 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net0))
+	assert.NoError(err)
+	assert.NoError(wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2", "192.168.0.3", "192.168.0.4"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net1))
+	assert.NoError(err)
+	assert.NoError(wan.AddNet(net1))
 
-	assert.NoError(t, wan.Start())
+	assert.NoError(wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -62,8 +65,8 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	var aAgent, bAgent *Agent
 	aAgent, err = NewAgent(cfg0)
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
 		NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
@@ -74,8 +77,8 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	}
 
 	bAgent, err = NewAgent(cfg1)
-	require.NoError(t, err)
-	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(err)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
 	aConn, bConn := connect(aAgent, bAgent)
 
@@ -105,10 +108,10 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	err = aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
 		selectedCh <- remote
 	})
-	require.NoError(t, err)
+	require.NoError(err)
 	var bcandidates []Candidate
 	bcandidates, err = bAgent.GetLocalCandidates()
-	require.NoError(t, err)
+	require.NoError(err)
 
 	for _, c := range bcandidates {
 		if c != bAgent.getSelectedPair().Local {
@@ -125,19 +128,19 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 				expectNewSelectedCandidate = c
 			}
 			_, err = c.writeTo(buildMsg(stun.ClassRequest, aAgent.localUfrag+":"+aAgent.remoteUfrag, aAgent.localPwd, c.Priority()).Raw, bAgent.getSelectedPair().Remote)
-			require.NoError(t, err)
+			require.NoError(err)
 		}
 	}
 
 	time.Sleep(1 * time.Second)
 	select {
 	case selected := <-selectedCh:
-		assert.True(t, selected.Equal(expectNewSelectedCandidate))
+		assert.True(selected.Equal(expectNewSelectedCandidate))
 	default:
 		t.Fatal("No selected candidate pair")
 	}
 
-	assert.NoError(t, wan.Stop())
+	assert.NoError(wan.Stop())
 	if !closePipe(t, aConn, bConn) {
 		return
 	}

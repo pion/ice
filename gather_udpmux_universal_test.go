@@ -20,6 +20,7 @@ import (
 
 // Assert that UniversalUDPMux is used while gathering when configured in the Agent
 func TestUniversalUDPMuxUsage(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -27,7 +28,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	defer lim.Stop()
 
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: randomPort(t)})
-	assert.NoError(t, err)
+	assert.NoError(err)
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -52,27 +53,27 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
 		UDPMuxSrflx:    udpMuxSrflx,
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatheredFunc()
 			return
 		}
 		t.Log(c.NetworkType(), c.Priority(), c)
 	}))
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 	// Twice because of 2 STUN servers configured
-	assert.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
+	assert.Equal(numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
 	// One for Restart() when agent has been initialized and one time when Close() the agent
-	assert.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
+	assert.Equal(2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
 	// Twice because of 2 STUN servers configured
-	assert.Equal(t, numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
+	assert.Equal(numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
 }
 
 type universalUDPMuxMock struct {

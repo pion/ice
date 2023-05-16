@@ -19,6 +19,7 @@ import (
 )
 
 func TestServerReflexiveOnlyConnection(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -28,7 +29,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -40,7 +41,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	cfg := &AgentConfig{
 		NetworkTypes: []NetworkType{NetworkTypeUDP4},
@@ -78,7 +79,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
-	assert.NoError(t, server.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
+	assert.NoError(server.Close())
 }

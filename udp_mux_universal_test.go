@@ -17,8 +17,10 @@ import (
 )
 
 func TestUniversalUDPMux(t *testing.T) {
+	require := require.New(t)
+
 	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{
 		Logger:  nil,
@@ -30,7 +32,7 @@ func TestUniversalUDPMux(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	require.NotNil(t, udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+	require.NotNil(udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -43,8 +45,10 @@ func TestUniversalUDPMux(t *testing.T) {
 }
 
 func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag string, network string) {
+	require := require.New(t)
+
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
-	require.NoError(t, err, "error retrieving muxed connection for ufrag")
+	require.NoError(err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
 	}()
@@ -52,7 +56,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
 		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
 	})
-	require.NoError(t, err, "error dialing test UDP connection")
+	require.NoError(err, "error dialing test UDP connection")
 	defer func() {
 		_ = remoteConn.Close()
 	}()
@@ -67,10 +71,10 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	go func() {
 		defer wg.Done()
 		address, e := udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Second)
-		require.NoError(t, e)
-		require.NotNil(t, address)
-		require.True(t, address.IP.Equal(testXORIP))
-		require.Equal(t, address.Port, testXORPort)
+		require.NoError(e)
+		require.NotNil(address)
+		require.True(address.IP.Equal(testXORIP))
+		require.Equal(address.Port, testXORPort)
 	}()
 
 	// Wait until GetXORMappedAddr calls sendSTUN method
@@ -79,16 +83,16 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	// Check that mapped address filled correctly after sent STUN
 	udpMux.mu.Lock()
 	mappedAddr, ok := udpMux.xorMappedMap[remoteConn.LocalAddr().String()]
-	require.True(t, ok)
-	require.NotNil(t, mappedAddr)
-	require.True(t, mappedAddr.pending())
-	require.False(t, mappedAddr.expired())
+	require.True(ok)
+	require.NotNil(mappedAddr)
+	require.True(mappedAddr.pending())
+	require.False(mappedAddr.expired())
 	udpMux.mu.Unlock()
 
 	// Clean receiver read buffer
 	buf := make([]byte, receiveMTU)
 	_, err = remoteConn.Read(buf)
-	require.NoError(t, err)
+	require.NoError(err)
 
 	// Write back to udpMux XOR message with address
 	msg := stun.New()
@@ -99,32 +103,32 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 		Port: testXORPort,
 	}
 	err = addr.AddTo(msg)
-	require.NoError(t, err)
+	require.NoError(err)
 
 	msg.Encode()
 	_, err = remoteConn.Write(msg.Raw)
-	require.NoError(t, err)
+	require.NoError(err)
 
 	// Wait for the packet to be consumed and parsed by udpMux
 	wg.Wait()
 
 	// We should get address immediately from the cached map
 	address, err := udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Second)
-	require.NoError(t, err)
-	require.NotNil(t, address)
+	require.NoError(err)
+	require.NotNil(address)
 
 	udpMux.mu.Lock()
 	// Check mappedAddr is not pending, we didn't send STUN twice
-	require.False(t, mappedAddr.pending())
+	require.False(mappedAddr.pending())
 
 	// Check expiration by TTL
 	time.Sleep(time.Millisecond * 21)
-	require.True(t, mappedAddr.expired())
+	require.True(mappedAddr.expired())
 	udpMux.mu.Unlock()
 
 	// After expire, we send STUN request again
 	// but we not receive response in 5 milliseconds and should get error here
 	address, err = udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Millisecond*5)
-	require.NotNil(t, err)
-	require.Nil(t, address)
+	require.NotNil(err)
+	require.Nil(address)
 }

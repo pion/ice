@@ -18,19 +18,23 @@ import (
 )
 
 func getLocalIPAddress(t *testing.T, networkType NetworkType) net.IP {
+	require := require.New(t)
+
 	net, err := stdnet.NewNet()
-	require.NoError(t, err)
+	require.NoError(err)
 	localIPs, err := localInterfaces(net, nil, nil, []NetworkType{networkType}, false)
-	require.NoError(t, err)
-	require.NotEmpty(t, localIPs)
+	require.NoError(err)
+	require.NotEmpty(localIPs)
 	return localIPs[0]
 }
 
 func ipv6Available(t *testing.T) bool {
+	require := require.New(t)
+
 	net, err := stdnet.NewNet()
-	require.NoError(t, err)
+	require.NoError(err)
 	localIPs, err := localInterfaces(net, nil, nil, []NetworkType{NetworkTypeTCP6}, false)
-	require.NoError(t, err)
+	require.NoError(err)
 	return len(localIPs) > 0
 }
 
@@ -83,13 +87,13 @@ func TestAgentActiveTCP(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			r := require.New(t)
+			require := require.New(t)
 
 			listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 				IP:   testCase.listenIPAddress,
 				Port: listenPort,
 			})
-			r.NoError(err)
+			require.NoError(err)
 			defer func() {
 				_ = listener.Close()
 			}()
@@ -107,7 +111,7 @@ func TestAgentActiveTCP(t *testing.T) {
 				_ = tcpMux.Close()
 			}()
 
-			r.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+			require.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
 			passiveAgent, err := NewAgent(&AgentConfig{
@@ -118,8 +122,8 @@ func TestAgentActiveTCP(t *testing.T) {
 				IncludeLoopback:       true,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
 			})
-			r.NoError(err)
-			r.NotNil(passiveAgent)
+			require.NoError(err)
+			require.NotNil(passiveAgent)
 
 			activeAgent, err := NewAgent(&AgentConfig{
 				CandidateTypes:        []CandidateType{CandidateTypeHost},
@@ -127,36 +131,36 @@ func TestAgentActiveTCP(t *testing.T) {
 				LoggerFactory:         loggerFactory,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
 			})
-			r.NoError(err)
-			r.NotNil(activeAgent)
+			require.NoError(err)
+			require.NotNil(activeAgent)
 
 			passiveAgentConn, activeAgenConn := connect(passiveAgent, activeAgent)
-			r.NotNil(passiveAgentConn)
-			r.NotNil(activeAgenConn)
+			require.NotNil(passiveAgentConn)
+			require.NotNil(activeAgenConn)
 
 			pair := passiveAgent.getSelectedPair()
-			r.NotNil(pair)
-			r.Equal(testCase.selectedPairNetworkType, pair.Local.NetworkType().NetworkShort())
+			require.NotNil(pair)
+			require.Equal(testCase.selectedPairNetworkType, pair.Local.NetworkType().NetworkShort())
 
 			foo := []byte("foo")
 			_, err = passiveAgentConn.Write(foo)
-			r.NoError(err)
+			require.NoError(err)
 
 			buffer := make([]byte, 1024)
 			n, err := activeAgenConn.Read(buffer)
-			r.NoError(err)
-			r.Equal(foo, buffer[:n])
+			require.NoError(err)
+			require.Equal(foo, buffer[:n])
 
 			bar := []byte("bar")
 			_, err = activeAgenConn.Write(bar)
-			r.NoError(err)
+			require.NoError(err)
 
 			n, err = passiveAgentConn.Read(buffer)
-			r.NoError(err)
-			r.Equal(bar, buffer[:n])
+			require.NoError(err)
+			require.Equal(bar, buffer[:n])
 
-			r.NoError(activeAgenConn.Close())
-			r.NoError(passiveAgentConn.Close())
+			require.NoError(activeAgenConn.Close())
+			require.NoError(passiveAgentConn.Close())
 		})
 	}
 }

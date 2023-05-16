@@ -79,15 +79,19 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 }
 
 func TestNetworkTypeIsUDP(t *testing.T) {
-	assert.True(t, NetworkTypeUDP4.IsUDP())
-	assert.True(t, NetworkTypeUDP6.IsUDP())
-	assert.False(t, NetworkTypeUDP4.IsTCP())
-	assert.False(t, NetworkTypeUDP6.IsTCP())
+	assert := assert.New(t)
+
+	assert.True(NetworkTypeUDP4.IsUDP())
+	assert.True(NetworkTypeUDP6.IsUDP())
+	assert.False(NetworkTypeUDP4.IsTCP())
+	assert.False(NetworkTypeUDP6.IsTCP())
 }
 
 func TestNetworkTypeIsTCP(t *testing.T) {
-	assert.True(t, NetworkTypeTCP4.IsTCP())
-	assert.True(t, NetworkTypeTCP6.IsTCP())
-	assert.False(t, NetworkTypeTCP4.IsUDP())
-	assert.False(t, NetworkTypeTCP6.IsUDP())
+	assert := assert.New(t)
+
+	assert.True(NetworkTypeTCP4.IsTCP())
+	assert.True(NetworkTypeTCP6.IsTCP())
+	assert.False(NetworkTypeTCP4.IsUDP())
+	assert.False(NetworkTypeTCP6.IsUDP())
 }

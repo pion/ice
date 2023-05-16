@@ -41,6 +41,7 @@ func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 }
 
 func TestTURNProxyDialer(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -53,10 +54,10 @@ func TestTURNProxyDialer(t *testing.T) {
 	})
 
 	tcpProxyURI, err := url.Parse("tcp://fakeproxy:3128")
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	proxyDialer, err := proxy.FromURL(tcpProxyURI, proxy.Direct)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	a, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeRelay},
@@ -73,24 +74,25 @@ func TestTURNProxyDialer(t *testing.T) {
 		},
 		ProxyDialer: proxyDialer,
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateGatherFinish, candidateGatherFinishFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatherFinishFunc()
 		}
 	}))
 
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 	<-candidateGatherFinish.Done()
 	<-proxyWasDialed.Done()
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }
 
 // Assert that candidates are given for each mux in a MultiTCPMux
 func TestMultiTCPMuxUsage(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -105,7 +107,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 			IP:   net.IP{127, 0, 0, 1},
 			Port: port,
 		})
-		assert.NoError(t, err)
+		assert.NoError(err)
 		defer func() {
 			_ = listener.Close()
 		}()
@@ -122,17 +124,17 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		TCPMux:         NewMultiTCPMuxDefault(tcpMuxInstances...),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	candidateCh := make(chan Candidate)
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(a.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(candidateCh)
 			return
 		}
 		candidateCh <- c
 	}))
-	assert.NoError(t, a.GatherCandidates())
+	assert.NoError(a.GatherCandidates())
 
 	portFound := make(map[int]bool)
 	for c := range candidateCh {
@@ -141,10 +143,10 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 			portFound[c.Port()] = true
 		}
 	}
-	assert.Len(t, portFound, len(expectedPorts))
+	assert.Len(portFound, len(expectedPorts))
 	for _, port := range expectedPorts {
-		assert.True(t, portFound[port], "There should be a candidate for each TCP mux port")
+		assert.True(portFound[port], "There should be a candidate for each TCP mux port")
 	}
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }

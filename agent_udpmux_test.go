@@ -34,8 +34,10 @@ func TestMuxAgent(t *testing.T) {
 	for subTest, addr := range caseAddrs {
 		muxAddr := addr
 		t.Run(subTest, func(t *testing.T) {
+			require := require.New(t)
+
 			c, err := net.ListenUDP("udp", muxAddr)
-			require.NoError(t, err)
+			require.NoError(err)
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 			udpMux := NewUDPMuxDefault(UDPMuxParams{
@@ -50,50 +52,50 @@ func TestMuxAgent(t *testing.T) {
 					NetworkTypeUDP4,
 				},
 			})
-			require.NoError(t, err)
+			require.NoError(err)
 
 			a, err := NewAgent(&AgentConfig{
 				CandidateTypes: []CandidateType{CandidateTypeHost},
 				NetworkTypes:   supportedNetworkTypes(),
 			})
-			require.NoError(t, err)
+			require.NoError(err)
 
 			conn, muxedConn := connect(a, muxedA)
 
 			pair := muxedA.getSelectedPair()
-			require.NotNil(t, pair)
-			require.Equal(t, muxPort, pair.Local.Port())
+			require.NotNil(pair)
+			require.Equal(muxPort, pair.Local.Port())
 
 			// Send a packet to Mux
 			data := []byte("hello world")
 			_, err = conn.Write(data)
-			require.NoError(t, err)
+			require.NoError(err)
 
 			buf := make([]byte, 1024)
 			n, err := muxedConn.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, data, buf[:n])
+			require.NoError(err)
+			require.Equal(data, buf[:n])
 
 			// Send a packet from Mux
 			_, err = muxedConn.Write(data)
-			require.NoError(t, err)
+			require.NoError(err)
 
 			n, err = conn.Read(buf)
-			require.NoError(t, err)
-			require.Equal(t, data, buf[:n])
+			require.NoError(err)
+			require.Equal(data, buf[:n])
 
 			// Close it down
-			require.NoError(t, conn.Close())
-			require.NoError(t, muxedConn.Close())
-			require.NoError(t, udpMux.Close())
+			require.NoError(conn.Close())
+			require.NoError(muxedConn.Close())
+			require.NoError(udpMux.Close())
 
 			// Expect error when reading from closed mux
 			_, err = muxedConn.Read(data)
-			require.Error(t, err)
+			require.Error(err)
 
 			// Expect error when writing to closed mux
 			_, err = muxedConn.Write(data)
-			require.Error(t, err)
+			require.Error(err)
 		})
 	}
 }

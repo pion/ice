@@ -183,6 +183,8 @@ func TestHandlePeerReflexive(t *testing.T) {
 // Assert that Agent on startup sends message, and doesn't wait for connectivityTicker to fire
 // https://github.com/pion/ice/issues/15
 func TestConnectivityOnStartup(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -194,21 +196,21 @@ func TestConnectivityOnStartup(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net0))
+	assert.NoError(err)
+	assert.NoError(wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net1))
+	assert.NoError(err)
+	assert.NoError(wan.AddNet(net1))
 
-	assert.NoError(t, wan.Start())
+	assert.NoError(wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -223,8 +225,8 @@ func TestConnectivityOnStartup(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg0)
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
 		NetworkTypes:      supportedNetworkTypes(),
@@ -235,16 +237,16 @@ func TestConnectivityOnStartup(t *testing.T) {
 	}
 
 	bAgent, err := NewAgent(cfg1)
-	require.NoError(t, err)
-	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(err)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
 	aConn, bConn := func(aAgent, bAgent *Agent) (*Conn, *Conn) {
 		// Manual signaling
 		aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		gatherAndExchangeCandidates(aAgent, bAgent)
 
@@ -287,7 +289,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, wan.Stop())
+	assert.NoError(wan.Stop())
 	if !closePipe(t, aConn, bConn) {
 		return
 	}
@@ -371,6 +373,8 @@ func TestInboundValidity(t *testing.T) {
 	})
 
 	t.Run("Valid bind request", func(t *testing.T) {
+		assert := assert.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
 		if err != nil {
 			t.Fatalf("Error constructing ice.Agent")
@@ -384,8 +388,8 @@ func TestInboundValidity(t *testing.T) {
 			}
 		})
 
-		assert.NoError(t, err)
-		assert.NoError(t, a.Close())
+		assert.NoError(err)
+		assert.NoError(a.Close())
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
@@ -408,6 +412,8 @@ func TestInboundValidity(t *testing.T) {
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {
+		assert := assert.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
 		if err != nil {
 			t.Fatalf("Error constructing ice.Agent")
@@ -432,23 +438,24 @@ func TestInboundValidity(t *testing.T) {
 			stun.NewShortTermIntegrity(a.remotePwd),
 			stun.Fingerprint,
 		)
-		assert.NoError(t, err)
+		assert.NoError(err)
 
 		a.handleInbound(msg, local, remote)
 		if len(a.remoteCandidates) != 0 {
 			t.Fatal("unknown remote was able to create a candidate")
 		}
 
-		assert.NoError(t, a.Close())
+		assert.NoError(a.Close())
 	})
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -470,7 +477,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }
 
 func TestInvalidGather(t *testing.T) {
@@ -489,6 +496,7 @@ func TestInvalidGather(t *testing.T) {
 }
 
 func TestInitExtIPMapping(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -500,7 +508,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	if a.extIPMapper != nil {
 		t.Fatal("a.extIPMapper should be nil by default")
 	}
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 
 	// a.extIPMapper should be nil when NAT1To1IPs is a non-nil empty array
 	a, err = NewAgent(&AgentConfig{
@@ -513,7 +521,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	if a.extIPMapper != nil {
 		t.Fatal("a.extIPMapper should be nil by default")
 	}
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
 	// but the candidate type does not appear in the CandidateTypes.
@@ -559,13 +567,14 @@ func TestInitExtIPMapping(t *testing.T) {
 }
 
 func TestBindingRequestTimeout(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
 	const expectedRemovalCount = 2
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	now := time.Now()
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
@@ -582,13 +591,14 @@ func TestBindingRequestTimeout(t *testing.T) {
 	})
 
 	a.invalidatePendingBindingRequests(now)
-	assert.Equal(t, expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
-	assert.NoError(t, a.Close())
+	assert.Equal(expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
+	assert.NoError(a.Close())
 }
 
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
 // and ensure it's backwards compatible with previous versions of the pion/ice
 func TestAgentCredentials(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -600,10 +610,10 @@ func TestAgentCredentials(t *testing.T) {
 	// If set, they should follow the default 16/128 bits random number generator strategy
 
 	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
-	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
-	assert.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
-	assert.NoError(t, agent.Close())
+	assert.NoError(err)
+	assert.GreaterOrEqual(len([]rune(agent.localUfrag))*8, 24)
+	assert.GreaterOrEqual(len([]rune(agent.localPwd))*8, 128)
+	assert.NoError(agent.Close())
 
 	// Should honor RFC standards
 	// Local values MUST be unguessable, with at least 128 bits of
@@ -611,15 +621,16 @@ func TestAgentCredentials(t *testing.T) {
 	// at least 24 bits of output to generate the username fragment.
 
 	_, err = NewAgent(&AgentConfig{LocalUfrag: "xx", LoggerFactory: log})
-	assert.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
+	assert.EqualError(err, ErrLocalUfragInsufficientBits.Error())
 
 	_, err = NewAgent(&AgentConfig{LocalPwd: "xxxxxx", LoggerFactory: log})
-	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
+	assert.EqualError(err, ErrLocalPwdInsufficientBits.Error())
 }
 
 // Assert that Agent on Failure deletes all existing candidates
 // User can then do an ICE Restart to bring agent back
 func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -637,13 +648,13 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	isFailed := make(chan interface{})
-	assert.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	assert.NoError(aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateFailed {
 			close(isFailed)
 		}
@@ -653,19 +664,20 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	<-isFailed
 
 	done := make(chan struct{})
-	assert.NoError(t, aAgent.run(context.Background(), func(ctx context.Context, agent *Agent) {
-		assert.Equal(t, len(aAgent.remoteCandidates), 0)
-		assert.Equal(t, len(aAgent.localCandidates), 0)
+	assert.NoError(aAgent.run(context.Background(), func(ctx context.Context, agent *Agent) {
+		assert.Equal(len(aAgent.remoteCandidates), 0)
+		assert.Equal(len(aAgent.localCandidates), 0)
 		close(done)
 	}))
 	<-done
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 // Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
 func TestConnectionStateConnectingToFailed(t *testing.T) {
+	assert := assert.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -682,10 +694,10 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	var isFailed sync.WaitGroup
 	var isChecking sync.WaitGroup
@@ -705,24 +717,24 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 		}
 	}
 
-	assert.NoError(t, aAgent.OnConnectionStateChange(connectionStateCheck))
-	assert.NoError(t, bAgent.OnConnectionStateChange(connectionStateCheck))
+	assert.NoError(aAgent.OnConnectionStateChange(connectionStateCheck))
+	assert.NoError(bAgent.OnConnectionStateChange(connectionStateCheck))
 
 	go func() {
 		_, err := aAgent.Accept(context.TODO(), "InvalidFrag", "InvalidPwd")
-		assert.Error(t, err)
+		assert.Error(err)
 	}()
 
 	go func() {
 		_, err := bAgent.Dial(context.TODO(), "InvalidFrag", "InvalidPwd")
-		assert.Error(t, err)
+		assert.Error(err)
 	}()
 
 	isChecking.Wait()
 	isFailed.Wait()
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	assert.NoError(aAgent.Close())
+	assert.NoError(bAgent.Close())
 }
 
 func TestAgentRestart(t *testing.T) {
@@ -735,57 +747,65 @@ func TestAgentRestart(t *testing.T) {
 	oneSecond := time.Second
 
 	t.Run("Restart During Gather", func(t *testing.T) {
+		assert := assert.New(t)
+
 		connA, connB := pipe(&AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+		assert.NoError(connB.agent.OnConnectionStateChange(func(c ConnectionState) {
 			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
 				cancel()
 			}
 		}))
 
 		connA.agent.gatheringState = GatheringStateGathering
-		assert.NoError(t, connA.agent.Restart("", ""))
+		assert.NoError(connA.agent.Restart("", ""))
 
 		<-ctx.Done()
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		assert.NoError(connA.agent.Close())
+		assert.NoError(connB.agent.Close())
 	})
 
 	t.Run("Restart When Closed", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
-		assert.NoError(t, agent.Close())
+		assert := assert.New(t)
 
-		assert.Equal(t, ErrClosed, agent.Restart("", ""))
+		agent, err := NewAgent(&AgentConfig{})
+		assert.NoError(err)
+		assert.NoError(agent.Close())
+
+		assert.Equal(ErrClosed, agent.Restart("", ""))
 	})
 
 	t.Run("Restart One Side", func(t *testing.T) {
+		assert := assert.New(t)
+
 		connA, connB := pipe(&AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+		assert.NoError(connB.agent.OnConnectionStateChange(func(c ConnectionState) {
 			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
 				cancel()
 			}
 		}))
-		assert.NoError(t, connA.agent.Restart("", ""))
+		assert.NoError(connA.agent.Restart("", ""))
 
 		<-ctx.Done()
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		assert.NoError(connA.agent.Close())
+		assert.NoError(connB.agent.Close())
 	})
 
 	t.Run("Restart Both Sides", func(t *testing.T) {
+		assert := assert.New(t)
+
 		// Get all addresses of candidates concatenated
 		generateCandidateAddressStrings := func(candidates []Candidate, err error) (out string) {
-			assert.NoError(t, err)
+			assert.NoError(err)
 
 			for _, c := range candidates {
 				out += c.Address() + ":"
@@ -803,23 +823,23 @@ func TestAgentRestart(t *testing.T) {
 		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
 
 		aNotifier, aConnected := onConnected()
-		assert.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
+		assert.NoError(connA.agent.OnConnectionStateChange(aNotifier))
 
 		bNotifier, bConnected := onConnected()
-		assert.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
+		assert.NoError(connB.agent.OnConnectionStateChange(bNotifier))
 
 		// Restart and Re-Signal
-		assert.NoError(t, connA.agent.Restart("", ""))
-		assert.NoError(t, connB.agent.Restart("", ""))
+		assert.NoError(connA.agent.Restart("", ""))
+		assert.NoError(connB.agent.Restart("", ""))
 
 		// Exchange Candidates and Credentials
 		ufrag, pwd, err := connB.agent.GetLocalUserCredentials()
-		assert.NoError(t, err)
-		assert.NoError(t, connA.agent.SetRemoteCredentials(ufrag, pwd))
+		assert.NoError(err)
+		assert.NoError(connA.agent.SetRemoteCredentials(ufrag, pwd))
 
 		ufrag, pwd, err = connA.agent.GetLocalUserCredentials()
-		assert.NoError(t, err)
-		assert.NoError(t, connB.agent.SetRemoteCredentials(ufrag, pwd))
+		assert.NoError(err)
+		assert.NoError(connB.agent.SetRemoteCredentials(ufrag, pwd))
 
 		gatherAndExchangeCandidates(connA.agent, connB.agent)
 
@@ -828,15 +848,17 @@ func TestAgentRestart(t *testing.T) {
 		<-bConnected
 
 		// Assert that we have new candidates each time
-		assert.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
-		assert.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
+		assert.NotEqual(connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
+		assert.NotEqual(connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
 
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		assert.NoError(connA.agent.Close())
+		assert.NoError(connB.agent.Close())
 	})
 }
 
 func TestGetRemoteCredentials(t *testing.T) {
+	assert := assert.New(t)
+
 	var config AgentConfig
 	a, err := NewAgent(&config)
 	if err != nil {
@@ -847,10 +869,10 @@ func TestGetRemoteCredentials(t *testing.T) {
 	a.remotePwd = "remotePwd"
 
 	actualUfrag, actualPwd, err := a.GetRemoteUserCredentials()
-	assert.NoError(t, err)
+	assert.NoError(err)
 
-	assert.Equal(t, actualUfrag, a.remoteUfrag)
-	assert.Equal(t, actualPwd, a.remotePwd)
+	assert.Equal(actualUfrag, a.remoteUfrag)
+	assert.Equal(actualPwd, a.remotePwd)
 
-	assert.NoError(t, a.Close())
+	assert.NoError(a.Close())
 }

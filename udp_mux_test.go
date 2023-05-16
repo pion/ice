@@ -21,6 +21,8 @@ import (
 )
 
 func TestUDPMux(t *testing.T) {
+	require := require.New(t)
+
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -28,7 +30,7 @@ func TestUDPMux(t *testing.T) {
 	defer lim.Stop()
 
 	conn4, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	conn6, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6loopback})
 	if err != nil {
@@ -36,10 +38,10 @@ func TestUDPMux(t *testing.T) {
 	}
 
 	connUnspecified, err := net.ListenUDP(udp, nil)
-	require.NoError(t, err)
+	require.NoError(err)
 
 	conn4Unspecified, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4zero})
-	require.NoError(t, err)
+	require.NoError(err)
 
 	conn6Unspecified, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6unspecified})
 	if err != nil {
@@ -74,7 +76,7 @@ func TestUDPMux(t *testing.T) {
 				_ = conn.Close()
 			}()
 
-			require.NotNil(t, udpMux.LocalAddr(), "udpMux.LocalAddr() is nil")
+			require.NotNil(udpMux.LocalAddr(), "udpMux.LocalAddr() is nil")
 
 			wg := sync.WaitGroup{}
 
@@ -101,16 +103,18 @@ func TestUDPMux(t *testing.T) {
 
 			wg.Wait()
 
-			require.NoError(t, udpMux.Close())
+			require.NoError(udpMux.Close())
 
 			// Can't create more connections
 			_, err = udpMux.GetConn("failufrag", udpMux.LocalAddr())
-			require.Error(t, err)
+			require.Error(err)
 		})
 	}
 }
 
 func TestAddressEncoding(t *testing.T) {
+	require := require.New(t)
+
 	cases := []struct {
 		name string
 		addr net.UDPAddr
@@ -141,37 +145,41 @@ func TestAddressEncoding(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			buf := make([]byte, maxAddrSize)
 			n, err := encodeUDPAddr(&addr, buf)
-			require.NoError(t, err)
+			require.NoError(err)
 
 			parsedAddr, err := decodeUDPAddr(buf[:n])
-			require.NoError(t, err)
-			require.EqualValues(t, &addr, parsedAddr)
+			require.NoError(err)
+			require.EqualValues(&addr, parsedAddr)
 		})
 	}
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
+	require := require.New(t)
+
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
-	require.NoError(t, err, "error retrieving muxed connection for ufrag")
+	require.NoError(err, "error retrieving muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
 	}()
 
 	addr, ok := pktConn.LocalAddr().(*net.UDPAddr)
-	require.True(t, ok, "pktConn.LocalAddr() is not a net.UDPAddr")
+	require.True(ok, "pktConn.LocalAddr() is not a net.UDPAddr")
 	if addr.IP.IsUnspecified() {
 		addr = &net.UDPAddr{Port: addr.Port}
 	}
 	remoteConn, err := net.DialUDP(network, nil, addr)
-	require.NoError(t, err, "error dialing test UDP connection")
+	require.NoError(err, "error dialing test UDP connection")
 
 	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 }
 
 func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net.UDPConn, ufrag string) {
+	require := require.New(t)
+
 	// Initial messages are dropped
 	_, err := remoteConn.Write([]byte("dropped bytes"))
-	require.NoError(t, err)
+	require.NoError(err)
 	// Wait for packet to be consumed
 	time.Sleep(time.Millisecond)
 
@@ -181,13 +189,13 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 	msg.Add(stun.AttrUsername, []byte(ufrag+":otherufrag"))
 	msg.Encode()
 	_, err = pktConn.WriteTo(msg.Raw, remoteConn.LocalAddr())
-	require.NoError(t, err)
+	require.NoError(err)
 
 	// Ensure received
 	buf := make([]byte, receiveMTU)
 	n, err := remoteConn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, msg.Raw, buf[:n])
+	require.NoError(err)
+	require.Equal(msg.Raw, buf[:n])
 
 	// Start writing packets through mux
 	targetSize := 1 * 1024 * 1024
@@ -204,14 +212,14 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 		nextSeq := uint32(0)
 		for read := 0; read < targetSize; {
 			n, _, err := pktConn.ReadFrom(readBuf)
-			require.NoError(t, err)
-			require.Equal(t, receiveMTU, n)
+			require.NoError(err)
+			require.Equal(receiveMTU, n)
 
 			verifyPacket(t, readBuf[:n], nextSeq)
 
 			// Write it back to sender
 			_, err = pktConn.WriteTo(readBuf[:n], remoteConn.LocalAddr())
-			require.NoError(t, err)
+			require.NoError(err)
 
 			read += n
 			nextSeq++
@@ -226,8 +234,8 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 		nextSeq := uint32(0)
 		for read := 0; read < targetSize; {
 			n, _, err := remoteConn.ReadFrom(readBuf)
-			require.NoError(t, err)
-			require.Equal(t, receiveMTU, n)
+			require.NoError(err)
+			require.Equal(receiveMTU, n)
 
 			verifyPacket(t, readBuf[:n], nextSeq)
 
@@ -243,13 +251,13 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 		// Bytes 4-24: sha1 checksum
 		// Bytes2 4-mtu: random data
 		_, err := rand.Read(buf[24:])
-		require.NoError(t, err)
+		require.NoError(err)
 		h := sha1.Sum(buf[24:]) //nolint:gosec
 		copy(buf[4:24], h[:])
 		binary.LittleEndian.PutUint32(buf[0:4], uint32(sequence))
 
 		_, err = remoteConn.Write(buf)
-		require.NoError(t, err)
+		require.NoError(err)
 
 		written += len(buf)
 		sequence++
@@ -269,6 +277,8 @@ func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
 }
 
 func TestUDPMux_Agent_Restart(t *testing.T) {
+	require := require.New(t)
+
 	oneSecond := time.Second
 	connA, connB := pipe(&AgentConfig{
 		DisconnectedTimeout: &oneSecond,
@@ -276,32 +286,32 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 	})
 
 	aNotifier, aConnected := onConnected()
-	require.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
+	require.NoError(connA.agent.OnConnectionStateChange(aNotifier))
 
 	bNotifier, bConnected := onConnected()
-	require.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
+	require.NoError(connB.agent.OnConnectionStateChange(bNotifier))
 
 	// Maintain Credentials across restarts
 	ufragA, pwdA, err := connA.agent.GetLocalUserCredentials()
-	require.NoError(t, err)
+	require.NoError(err)
 
 	ufragB, pwdB, err := connB.agent.GetLocalUserCredentials()
-	require.NoError(t, err)
+	require.NoError(err)
 
-	require.NoError(t, err)
+	require.NoError(err)
 
 	// Restart and Re-Signal
-	require.NoError(t, connA.agent.Restart(ufragA, pwdA))
-	require.NoError(t, connB.agent.Restart(ufragB, pwdB))
+	require.NoError(connA.agent.Restart(ufragA, pwdA))
+	require.NoError(connB.agent.Restart(ufragB, pwdB))
 
-	require.NoError(t, connA.agent.SetRemoteCredentials(ufragB, pwdB))
-	require.NoError(t, connB.agent.SetRemoteCredentials(ufragA, pwdA))
+	require.NoError(connA.agent.SetRemoteCredentials(ufragB, pwdB))
+	require.NoError(connB.agent.SetRemoteCredentials(ufragA, pwdA))
 	gatherAndExchangeCandidates(connA.agent, connB.agent)
 
 	// Wait until both have gone back to connected
 	<-aConnected
 	<-bConnected
 
-	require.NoError(t, connA.agent.Close())
-	require.NoError(t, connB.agent.Close())
+	require.NoError(connA.agent.Close())
+	require.NoError(connB.agent.Close())
 }
