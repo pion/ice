@@ -14,10 +14,12 @@ import (
 
 	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -32,24 +34,18 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = aAgent.OnConnectionStateChange(aNotifier)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = bAgent.OnConnectionStateChange(bNotifier)
+	require.NoError(err)
 
 	connect(aAgent, bAgent)
 	<-aConnected
@@ -61,6 +57,7 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 
 func TestMulticastDNSMixedConnection(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -73,28 +70,22 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		MulticastDNSMode: MulticastDNSModeQueryAndGather,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = aAgent.OnConnectionStateChange(aNotifier)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		MulticastDNSMode: MulticastDNSModeQueryOnly,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = bAgent.OnConnectionStateChange(bNotifier)
+	require.NoError(err)
 
 	connect(aAgent, bAgent)
 	<-aConnected
@@ -141,15 +132,14 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 }
 
 func TestGenerateMulticastDNSName(t *testing.T) {
+	require := require.New(t)
+
 	name, err := generateMulticastDNSName()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	isMDNSName := regexp.MustCompile(
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`,
 	).MatchString
 
-	if !isMDNSName(name) {
-		t.Fatalf("mDNS name must be UUID v4 + \".local\" suffix, got %s", name)
-	}
+	require.True(isMDNSName(name), "mDNS name must be UUID v4 + \".local\" suffix")
 }

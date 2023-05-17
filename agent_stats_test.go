@@ -12,9 +12,11 @@ import (
 
 	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCandidatePairStats(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -22,9 +24,7 @@ func TestCandidatePairStats(t *testing.T) {
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %s", err)
-	}
+	require.NoError(err, "Failed to create agent")
 
 	hostConfig := &CandidateHostConfig{
 		Network:   "udp",
@@ -33,9 +33,7 @@ func TestCandidatePairStats(t *testing.T) {
 		Component: 1,
 	}
 	hostLocal, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct local host candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct local host candidate")
 
 	relayConfig := &CandidateRelayConfig{
 		Network:   "udp",
@@ -46,9 +44,7 @@ func TestCandidatePairStats(t *testing.T) {
 		RelPort:   43210,
 	}
 	relayRemote, err := NewCandidateRelay(relayConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote relay candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote relay candidate")
 
 	srflxConfig := &CandidateServerReflexiveConfig{
 		Network:   "udp",
@@ -59,9 +55,7 @@ func TestCandidatePairStats(t *testing.T) {
 		RelPort:   43212,
 	}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote srflx candidate")
 
 	prflxConfig := &CandidatePeerReflexiveConfig{
 		Network:   "udp",
@@ -72,9 +66,7 @@ func TestCandidatePairStats(t *testing.T) {
 		RelPort:   43211,
 	}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote prflx candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote prflx candidate")
 
 	hostConfig = &CandidateHostConfig{
 		Network:   "udp",
@@ -83,9 +75,7 @@ func TestCandidatePairStats(t *testing.T) {
 		Component: 1,
 	}
 	hostRemote, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote host candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote host candidate")
 
 	for _, remote := range []Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote} {
 		p := a.findPair(hostLocal, remote)
@@ -99,16 +89,13 @@ func TestCandidatePairStats(t *testing.T) {
 	p.state = CandidatePairStateFailed
 
 	stats := a.GetCandidatePairsStats()
-	if len(stats) != 4 {
-		t.Fatal("expected 4 candidate pairs stats")
-	}
+	require.Len(stats, 4, "Expected 4 candidate pairs stats")
 
 	var relayPairStat, srflxPairStat, prflxPairStat, hostPairStat CandidatePairStats
 
 	for _, cps := range stats {
-		if cps.LocalCandidateID != hostLocal.ID() {
-			t.Fatal("invalid local candidate id")
-		}
+		require.Equal(cps.LocalCandidateID, hostLocal.ID(), "Invalid local candidate id")
+
 		switch cps.RemoteCandidateID {
 		case relayRemote.ID():
 			relayPairStat = cps
@@ -119,35 +106,21 @@ func TestCandidatePairStats(t *testing.T) {
 		case hostRemote.ID():
 			hostPairStat = cps
 		default:
-			t.Fatal("invalid remote candidate ID")
+			require.Fail("Invalid remote candidate ID")
 		}
 	}
 
-	if relayPairStat.RemoteCandidateID != relayRemote.ID() {
-		t.Fatal("missing host-relay pair stat")
-	}
-
-	if srflxPairStat.RemoteCandidateID != srflxRemote.ID() {
-		t.Fatal("missing host-srflx pair stat")
-	}
-
-	if prflxPairStat.RemoteCandidateID != prflxRemote.ID() {
-		t.Fatal("missing host-prflx pair stat")
-	}
-
-	if hostPairStat.RemoteCandidateID != hostRemote.ID() {
-		t.Fatal("missing host-host pair stat")
-	}
-
-	if prflxPairStat.State != CandidatePairStateFailed {
-		t.Fatalf("expected host-prflx pair to have state failed, it has state %s instead",
-			prflxPairStat.State.String())
-	}
+	require.Equal(relayPairStat.RemoteCandidateID, relayRemote.ID(), "Missing host-relay pair stat")
+	require.Equal(srflxPairStat.RemoteCandidateID, srflxRemote.ID(), "Missing host-srflx pair stat")
+	require.Equal(prflxPairStat.RemoteCandidateID, prflxRemote.ID(), "Missing host-prflx pair stat")
+	require.Equal(hostPairStat.RemoteCandidateID, hostRemote.ID(), "Missing host-host pair stat")
+	require.Equalf(prflxPairStat.State, CandidatePairStateFailed, "Expected host-prflx pair to have state failed, it has state %s instead", prflxPairStat.State)
 
 	assert.NoError(t, a.Close())
 }
 
 func TestLocalCandidateStats(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -155,9 +128,7 @@ func TestLocalCandidateStats(t *testing.T) {
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %s", err)
-	}
+	require.NoError(err, "Failed to create agent")
 
 	hostConfig := &CandidateHostConfig{
 		Network:   "udp",
@@ -166,9 +137,7 @@ func TestLocalCandidateStats(t *testing.T) {
 		Component: 1,
 	}
 	hostLocal, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct local host candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct local host candidate")
 
 	srflxConfig := &CandidateServerReflexiveConfig{
 		Network:   "udp",
@@ -179,16 +148,12 @@ func TestLocalCandidateStats(t *testing.T) {
 		RelPort:   43212,
 	}
 	srflxLocal, err := NewCandidateServerReflexive(srflxConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct local srflx candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct local srflx candidate")
 
 	a.localCandidates[NetworkTypeUDP4] = []Candidate{hostLocal, srflxLocal}
 
 	localStats := a.GetLocalCandidatesStats()
-	if len(localStats) != 2 {
-		t.Fatalf("expected 2 local candidates stats, got %d instead", len(localStats))
-	}
+	require.Len(localStats, 2, "Expected 2 local candidates stats")
 
 	var hostLocalStat, srflxLocalStat CandidateStats
 	for _, stats := range localStats {
@@ -201,34 +166,22 @@ func TestLocalCandidateStats(t *testing.T) {
 			srflxLocalStat = stats
 			candidate = srflxLocal
 		default:
-			t.Fatal("invalid local candidate ID")
+			require.Fail("Invalid local candidate ID")
 		}
 
-		if stats.CandidateType != candidate.Type() {
-			t.Fatal("invalid stats CandidateType")
-		}
-
-		if stats.Priority != candidate.Priority() {
-			t.Fatal("invalid stats CandidateType")
-		}
-
-		if stats.IP != candidate.Address() {
-			t.Fatal("invalid stats IP")
-		}
+		require.Equal(stats.CandidateType, candidate.Type(), "Invalid stats CandidateType")
+		require.Equal(stats.Priority, candidate.Priority(), "Invalid stats CandidateType")
+		require.Equal(stats.IP, candidate.Address(), "Invalid stats IP")
 	}
 
-	if hostLocalStat.ID != hostLocal.ID() {
-		t.Fatal("missing host local stat")
-	}
-
-	if srflxLocalStat.ID != srflxLocal.ID() {
-		t.Fatal("missing srflx local stat")
-	}
+	require.Equal(hostLocalStat.ID, hostLocal.ID(), "Missing host local stat")
+	require.Equal(srflxLocalStat.ID, srflxLocal.ID(), "Missing srflx local stat")
 
 	assert.NoError(t, a.Close())
 }
 
 func TestRemoteCandidateStats(t *testing.T) {
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -236,9 +189,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 	defer test.TimeOut(1 * time.Second).Stop()
 
 	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %s", err)
-	}
+	require.NoError(err, "Failed to create agent")
 
 	relayConfig := &CandidateRelayConfig{
 		Network:   "udp",
@@ -249,9 +200,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 		RelPort:   43210,
 	}
 	relayRemote, err := NewCandidateRelay(relayConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote relay candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote relay candidate")
 
 	srflxConfig := &CandidateServerReflexiveConfig{
 		Network:   "udp",
@@ -262,9 +211,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 		RelPort:   43212,
 	}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote srflx candidate")
 
 	prflxConfig := &CandidatePeerReflexiveConfig{
 		Network:   "udp",
@@ -275,9 +222,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 		RelPort:   43211,
 	}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote prflx candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote prflx candidate")
 
 	hostConfig := &CandidateHostConfig{
 		Network:   "udp",
@@ -286,16 +231,13 @@ func TestRemoteCandidateStats(t *testing.T) {
 		Component: 1,
 	}
 	hostRemote, err := NewCandidateHost(hostConfig)
-	if err != nil {
-		t.Fatalf("Failed to construct remote host candidate: %s", err)
-	}
+	require.NoError(err, "Failed to construct remote host candidate")
 
 	a.remoteCandidates[NetworkTypeUDP4] = []Candidate{relayRemote, srflxRemote, prflxRemote, hostRemote}
 
 	remoteStats := a.GetRemoteCandidatesStats()
-	if len(remoteStats) != 4 {
-		t.Fatalf("expected 4 remote candidates stats, got %d instead", len(remoteStats))
-	}
+	require.Len(remoteStats, 4, "Expected 4 remote candidates stats")
+
 	var relayRemoteStat, srflxRemoteStat, prflxRemoteStat, hostRemoteStat CandidateStats
 	for _, stats := range remoteStats {
 		var candidate Candidate
@@ -313,37 +255,18 @@ func TestRemoteCandidateStats(t *testing.T) {
 			hostRemoteStat = stats
 			candidate = hostRemote
 		default:
-			t.Fatal("invalid remote candidate ID")
+			require.Fail("Invalid remote candidate ID")
 		}
 
-		if stats.CandidateType != candidate.Type() {
-			t.Fatal("invalid stats CandidateType")
-		}
-
-		if stats.Priority != candidate.Priority() {
-			t.Fatal("invalid stats CandidateType")
-		}
-
-		if stats.IP != candidate.Address() {
-			t.Fatal("invalid stats IP")
-		}
+		require.Equal(stats.CandidateType, candidate.Type(), "Invalid stats CandidateType")
+		require.Equal(stats.Priority, candidate.Priority(), "Invalid stats CandidateType")
+		require.Equal(stats.IP, candidate.Address(), "Invalid stats IP")
 	}
 
-	if relayRemoteStat.ID != relayRemote.ID() {
-		t.Fatal("missing relay remote stat")
-	}
-
-	if srflxRemoteStat.ID != srflxRemote.ID() {
-		t.Fatal("missing srflx remote stat")
-	}
-
-	if prflxRemoteStat.ID != prflxRemote.ID() {
-		t.Fatal("missing prflx remote stat")
-	}
-
-	if hostRemoteStat.ID != hostRemote.ID() {
-		t.Fatal("missing host remote stat")
-	}
+	require.Equal(relayRemoteStat.ID, relayRemote.ID(), "Missing relay remote stat")
+	require.Equal(srflxRemoteStat.ID, srflxRemote.ID(), "Missing srflx remote stat")
+	require.Equal(prflxRemoteStat.ID, prflxRemote.ID(), "Missing prflx remote stat")
+	require.Equal(hostRemoteStat.ID, hostRemote.ID(), "Missing host remote stat")
 
 	assert.NoError(t, a.Close())
 }

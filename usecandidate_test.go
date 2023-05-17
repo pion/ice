@@ -7,21 +7,22 @@ import (
 	"testing"
 
 	"github.com/pion/stun"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUseCandidateAttr_AddTo(t *testing.T) {
+	assert := assert.New(t)
+
 	m := new(stun.Message)
-	if UseCandidate().IsSet(m) {
-		t.Error("should not be set")
-	}
-	if err := m.Build(stun.BindingRequest, UseCandidate()); err != nil {
-		t.Error(err)
-	}
+	assert.False(UseCandidate().IsSet(m), "UseCandidate attribute should not be set")
+
+	err := m.Build(stun.BindingRequest, UseCandidate())
+	assert.NoError(err)
+
 	m1 := new(stun.Message)
-	if _, err := m1.Write(m.Raw); err != nil {
-		t.Error(err)
-	}
-	if !UseCandidate().IsSet(m1) {
-		t.Error("should be set")
-	}
+
+	_, err = m1.Write(m.Raw)
+	assert.NoError(err)
+
+	assert.True(UseCandidate().IsSet(m1), "UseCandidate attribute should be set")
 }

@@ -6,6 +6,8 @@ package ice
 import (
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRandomGeneratorCollision(t *testing.T) {
@@ -22,18 +24,16 @@ func TestRandomGeneratorCollision(t *testing.T) {
 		"PWD": {
 			gen: func(t *testing.T) string {
 				s, err := generatePwd()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+
 				return s
 			},
 		},
 		"Ufrag": {
 			gen: func(t *testing.T) string {
 				s, err := generateUFrag()
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+
 				return s
 			},
 		},
@@ -45,6 +45,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 	for name, testCase := range testCases {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
 			for iter := 0; iter < iteration; iter++ {
 				var wg sync.WaitGroup
 				var mu sync.Mutex
@@ -63,15 +64,11 @@ func TestRandomGeneratorCollision(t *testing.T) {
 				}
 				wg.Wait()
 
-				if len(rands) != N {
-					t.Fatal("Failed to generate randoms")
-				}
+				require.Len(rands, N, "Failed to generate randoms")
 
 				for i := 0; i < N; i++ {
 					for j := i + 1; j < N; j++ {
-						if rands[i] == rands[j] {
-							t.Fatalf("generateRandString caused collision: %s == %s", rands[i], rands[j])
-						}
+						require.NotEqual(rands[i], rands[j], "Collision in generateRandString")
 					}
 				}
 			}

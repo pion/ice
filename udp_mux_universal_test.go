@@ -32,7 +32,7 @@ func TestUniversalUDPMux(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	require.NotNil(udpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+	require.NotNil(udpMux.LocalAddr())
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -48,7 +48,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	require := require.New(t)
 
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
-	require.NoError(err, "error retrieving muxed connection for ufrag")
+	require.NoError(err, "Failed to retrieve muxed connection for ufrag")
 	defer func() {
 		_ = pktConn.Close()
 	}()
@@ -56,7 +56,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
 		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
 	})
-	require.NoError(err, "error dialing test UDP connection")
+	require.NoError(err, "Failed to dial test UDP connection")
 	defer func() {
 		_ = remoteConn.Close()
 	}()

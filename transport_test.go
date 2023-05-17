@@ -15,10 +15,11 @@ import (
 
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStressDuplex(t *testing.T) {
-	// Check for leaking routines
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -31,15 +32,16 @@ func TestStressDuplex(t *testing.T) {
 }
 
 func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
+	assert := assert.New(t)
+	require := require.New(t)
+
 	const pollRate = 100 * time.Millisecond
 	const margin = 20 * time.Millisecond // Allow 20msec error in time
 	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
 		err := c.Close()
-		if err != nil {
-			t.Error(err)
-		}
+		assert.NoError(err)
 	}()
 
 	startedAt := time.Now()
@@ -59,15 +61,13 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 		if cs != ConnectionStateConnected {
 			elapsed := time.Since(startedAt)
-			if elapsed+margin < timeout {
-				t.Fatalf("Connection timed out %f msec early", elapsed.Seconds()*1000)
-			} else {
+			if assert.False(elapsed+margin < timeout, "Connection timed out %f msec early", elapsed.Seconds()*1000) {
 				t.Logf("Connection timed out in %f msec", elapsed.Seconds()*1000)
 				return
 			}
 		}
 	}
-	t.Fatalf("Connection failed to time out in time. (expected timeout: %v)", timeout)
+	require.Failf("", "Connection failed to time out in time. (expected timeout: %v)", timeout)
 }
 
 func TestTimeout(t *testing.T) {
@@ -75,7 +75,6 @@ func TestTimeout(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	// Check for leaking routines
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -107,7 +106,6 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestReadClosed(t *testing.T) {
-	// Check for leaking routines
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -131,23 +129,17 @@ func TestReadClosed(t *testing.T) {
 
 	empty := make([]byte, 10)
 	_, err = ca.Read(empty)
-	if err == nil {
-		t.Fatalf("Reading from a closed channel should return an error")
-	}
+	require.Error(t, err, "Reading from a closed channel should return an error")
 }
 
 func stressDuplex(t *testing.T) {
+	require := require.New(t)
+
 	ca, cb := pipe(nil)
 
 	defer func() {
-		err := ca.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = cb.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(ca.Close())
+		require.NoError(cb.Close())
 	}()
 
 	opt := test.Options{
@@ -155,10 +147,7 @@ func stressDuplex(t *testing.T) {
 		MsgCount: 1, // Order not reliable due to UDP & potentially multiple candidate pairs.
 	}
 
-	err := test.StressDuplex(ca, cb, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(test.StressDuplex(ca, cb, opt))
 }
 
 func check(err error) {
@@ -302,11 +291,12 @@ func onConnected() (func(ConnectionState), chan struct{}) {
 }
 
 func randomPort(t testing.TB) int {
+	require := require.New(t)
+
 	t.Helper()
 	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to pickPort: %v", err)
-	}
+	require.NoError(err, "Failed to pickPort")
+
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -314,13 +304,13 @@ func randomPort(t testing.TB) int {
 	case *net.UDPAddr:
 		return addr.Port
 	default:
-		t.Fatalf("unknown addr type %T", addr)
+		require.Failf("", "Unknown addr type %T", addr)
 		return 0
 	}
 }
 
 func TestConnStats(t *testing.T) {
-	// Check for leaking routines
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -329,9 +319,8 @@ func TestConnStats(t *testing.T) {
 	defer lim.Stop()
 
 	ca, cb := pipe(nil)
-	if _, err := ca.Write(make([]byte, 10)); err != nil {
-		t.Fatal("unexpected error trying to write")
-	}
+	_, err := ca.Write(make([]byte, 10))
+	require.NoError(err, "Failed to write")
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -345,23 +334,9 @@ func TestConnStats(t *testing.T) {
 
 	wg.Wait()
 
-	if ca.BytesSent() != 10 {
-		t.Fatal("bytes sent don't match")
-	}
+	require.Equal(ca.BytesSent(), uint64(10), "Bytes sent don't match")
+	require.Equal(cb.BytesReceived(), uint64(10), "Bytes received don't match")
 
-	if cb.BytesReceived() != 10 {
-		t.Fatal("bytes received don't match")
-	}
-
-	err := ca.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
-	}
-
-	err = cb.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
-	}
+	require.NoError(ca.Close())
+	require.NoError(cb.Close())
 }

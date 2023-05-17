@@ -95,7 +95,7 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 			continue
 		}
 		c, err := udpMuxMulti.GetConn(ufrag, addr)
-		require.NoError(err, "error retrieving muxed connection for ufrag")
+		require.NoError(err, "Failed to retrieve muxed connection for ufrag")
 		pktConns = append(pktConns, c)
 	}
 	defer func() {
@@ -107,7 +107,7 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 	// Try talking with each PacketConn
 	for _, pktConn := range pktConns {
 		remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr))
-		require.NoError(err, "error dialing test UDP connection")
+		require.NoError(err, "Failed to dial test UDP connection")
 		testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 	}
 }
@@ -128,7 +128,7 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	}))
 	require.NoError(err)
 
-	require.GreaterOrEqual(len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
+	require.GreaterOrEqual(len(udpMuxMulti.muxes), 1, "Should have at least have 1 muxes")
 	defer func() {
 		_ = udpMuxMulti.Close()
 	}()

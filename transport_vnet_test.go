@@ -19,7 +19,6 @@ import (
 )
 
 func TestRemoteLocalAddr(t *testing.T) {
-	// Check for leaking routines
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -33,7 +32,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	natType1 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
 
 	v, errVnet := buildVNet(natType0, natType1)
-	if !assert.NoError(t, errVnet, "should succeed") {
+	if !assert.NoError(t, errVnet) {
 		return
 	}
 	defer v.close()

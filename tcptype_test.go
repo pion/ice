@@ -20,7 +20,7 @@ func TestTCPType(t *testing.T) {
 	assert.Equal(TCPTypeSimultaneousOpen, NewTCPType("so"))
 	assert.Equal(TCPTypeUnspecified, NewTCPType("something else"))
 
-	assert.Equal("", TCPTypeUnspecified.String())
+	assert.Empty(TCPTypeUnspecified.String())
 	assert.Equal("active", TCPTypeActive.String())
 	assert.Equal("passive", TCPTypePassive.String())
 	assert.Equal("so", TCPTypeSimultaneousOpen.String())

@@ -35,14 +35,13 @@ func (ba *BadAddr) String() string {
 }
 
 func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Context, a *Agent)) {
-	a, err := NewAgent(config)
-	if err != nil {
-		t.Fatalf("Error constructing ice.Agent")
-	}
+	require := require.New(t)
 
-	if err := a.run(context.Background(), task); err != nil {
-		t.Fatalf("Agent run failure: %v", err)
-	}
+	a, err := NewAgent(config)
+	require.NoError(err, "Failed to construct ice.Agent")
+
+	err = a.run(context.Background(), task)
+	require.NoError(err, "Failed to run task")
 
 	assert.NoError(t, a.Close())
 }
@@ -56,6 +55,8 @@ func TestHandlePeerReflexive(t *testing.T) {
 	defer lim.Stop()
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
+		require := require.New(t)
+
 		var config AgentConfig
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
@@ -66,11 +67,11 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Port:      777,
 				Component: 1,
 			}
+
 			local, err := NewCandidateHost(&hostConfig)
+			require.NoError(err, "Failed to create a new candidate")
+
 			local.conn = &fakenet.MockPacketConn{}
-			if err != nil {
-				t.Fatalf("failed to create a new candidate: %v", err)
-			}
 
 			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 
@@ -82,40 +83,28 @@ func TestHandlePeerReflexive(t *testing.T) {
 				stun.NewShortTermIntegrity(a.localPwd),
 				stun.Fingerprint,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
 
 			a.handleInbound(msg, local, remote)
 
 			// Length of remote candidate list must be one now
-			if len(a.remoteCandidates) != 1 {
-				t.Fatal("failed to add a network type to the remote candidate list")
-			}
+			require.Len(a.remoteCandidates, 1, "Failed to add a network type to the remote candidate list")
 
 			// Length of remote candidate list for a network type must be 1
 			set := a.remoteCandidates[local.NetworkType()]
-			if len(set) != 1 {
-				t.Fatal("failed to add prflx candidate to remote candidate list")
-			}
+			require.Len(set, 1, "Failed to add prflx candidate to remote candidate list")
 
 			c := set[0]
 
-			if c.Type() != CandidateTypePeerReflexive {
-				t.Fatal("candidate type must be prflx")
-			}
-
-			if c.Address() != "172.17.0.3" {
-				t.Fatal("IP address mismatch")
-			}
-
-			if c.Port() != 999 {
-				t.Fatal("Port number mismatch")
-			}
+			require.Equal(c.Type(), CandidateTypePeerReflexive, "Candidate type must be prflx")
+			require.Equal(c.Address(), "172.17.0.3", "IP address mismatch")
+			require.Equal(c.Port(), 999, "Port number mismatch")
 		})
 	})
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
+		require := require.New(t)
+
 		var config AgentConfig
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
@@ -127,21 +116,19 @@ func TestHandlePeerReflexive(t *testing.T) {
 				Component: 1,
 			}
 			local, err := NewCandidateHost(&hostConfig)
-			if err != nil {
-				t.Fatalf("failed to create a new candidate: %v", err)
-			}
+			require.NoError(err, "Failed to create a new candidate")
 
 			remote := &BadAddr{}
 
 			a.handleInbound(nil, local, remote)
 
-			if len(a.remoteCandidates) != 0 {
-				t.Fatal("bad address should not be added to the remote candidate list")
-			}
+			require.Empty(a.remoteCandidates, "Bad address should not be added to the remote candidate list")
 		})
 	})
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
+		require := require.New(t)
+
 		var config AgentConfig
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
@@ -159,23 +146,18 @@ func TestHandlePeerReflexive(t *testing.T) {
 			}
 			local, err := NewCandidateHost(&hostConfig)
 			local.conn = &fakenet.MockPacketConn{}
-			if err != nil {
-				t.Fatalf("failed to create a new candidate: %v", err)
-			}
+			require.NoError(err, "Failed to create a new candidate")
 
 			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 			msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
 				stun.NewShortTermIntegrity(a.remotePwd),
 				stun.Fingerprint,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
 
 			a.handleInbound(msg, local, remote)
-			if len(a.remoteCandidates) != 0 {
-				t.Fatal("unknown remote was able to create a candidate")
-			}
+
+			require.Empty(a.remoteCandidates, "Unknown remote was able to create a candidate")
 		})
 	})
 }
@@ -305,9 +287,7 @@ func TestInboundValidity(t *testing.T) {
 			stun.NewShortTermIntegrity(key),
 			stun.Fingerprint,
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		return msg
 	}
@@ -320,72 +300,65 @@ func TestInboundValidity(t *testing.T) {
 		Component: 1,
 	}
 	local, err := NewCandidateHost(&hostConfig)
+	require.NoError(t, err, "Failed to create a new candidate")
+
 	local.conn = &fakenet.MockPacketConn{}
-	if err != nil {
-		t.Fatalf("failed to create a new candidate: %v", err)
-	}
 
 	t.Run("Invalid Binding requests should be discarded", func(t *testing.T) {
+		require := require.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Failed to construct ice.Agent")
 
 		a.handleInbound(buildMsg(stun.ClassRequest, "invalid", a.localPwd), local, remote)
-		if len(a.remoteCandidates) == 1 {
-			t.Fatal("Binding with invalid Username was able to create prflx candidate")
-		}
+
+		require.False(len(a.remoteCandidates) == 1, "Binding with invalid Username was able to create prflx candidate")
 
 		a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
-		if len(a.remoteCandidates) == 1 {
-			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
-		}
+
+		require.False(len(a.remoteCandidates) == 1, "Binding with invalid MessageIntegrity was able to create prflx candidate")
 
 		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Invalid Binding success responses should be discarded", func(t *testing.T) {
+		require := require.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Failed to construct ice.Agent")
 
 		a.handleInbound(buildMsg(stun.ClassSuccessResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
-		if len(a.remoteCandidates) == 1 {
-			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
-		}
+
+		require.False(len(a.remoteCandidates) == 1, "Binding with invalid MessageIntegrity was able to create prflx candidate")
 
 		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Discard non-binding messages", func(t *testing.T) {
+		require := require.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Failed to construct ice.Agent")
 
 		a.handleInbound(buildMsg(stun.ClassErrorResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
-		if len(a.remoteCandidates) == 1 {
-			t.Fatal("non-binding message was able to create prflxRemote")
-		}
+
+		require.False(len(a.remoteCandidates) == 1, "Non-binding message was able to create prflxRemote")
 
 		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Valid bind request", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Failed to construct ice.Agent")
 
 		err = a.run(context.Background(), func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
-			if len(a.remoteCandidates) != 1 {
-				t.Fatal("Binding with valid values was unable to create prflx candidate")
-			}
+
+			require.Len(a.remoteCandidates, 1, "Binding with valid values was unable to create prflx candidate")
 		})
 
 		assert.NoError(err)
@@ -393,6 +366,7 @@ func TestInboundValidity(t *testing.T) {
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
+		require := require.New(t)
 		var config AgentConfig
 		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
@@ -400,24 +374,20 @@ func TestInboundValidity(t *testing.T) {
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
 				stun.NewShortTermIntegrity(a.localPwd),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
 
 			a.handleInbound(msg, local, remote)
-			if len(a.remoteCandidates) != 1 {
-				t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
-			}
+
+			require.Len(a.remoteCandidates, 1, "Binding with valid values (but no fingerprint) was unable to create prflx candidate")
 		})
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Failed to construct ice.Agent")
 
 		hostConfig := CandidateHostConfig{
 			Network:   "udp",
@@ -425,11 +395,11 @@ func TestInboundValidity(t *testing.T) {
 			Port:      777,
 			Component: 1,
 		}
+
 		local, err := NewCandidateHost(&hostConfig)
+		require.NoError(err, "Failed to create a new candidate")
+
 		local.conn = &fakenet.MockPacketConn{}
-		if err != nil {
-			t.Fatalf("failed to create a new candidate: %v", err)
-		}
 
 		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
 		tID := [stun.TransactionIDSize]byte{}
@@ -441,9 +411,8 @@ func TestInboundValidity(t *testing.T) {
 		assert.NoError(err)
 
 		a.handleInbound(msg, local, remote)
-		if len(a.remoteCandidates) != 0 {
-			t.Fatal("unknown remote was able to create a candidate")
-		}
+
+		require.Empty(a.remoteCandidates, "Unknown remote was able to create a candidate")
 
 		assert.NoError(a.Close())
 	})
@@ -451,6 +420,7 @@ func TestInboundValidity(t *testing.T) {
 
 func TestInvalidAgentStarts(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -461,53 +431,45 @@ func TestInvalidAgentStarts(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 
-	if _, err = a.Dial(ctx, "", "bar"); err != nil && !errors.Is(err, ErrRemoteUfragEmpty) {
-		t.Fatal(err)
-	}
+	_, err = a.Dial(ctx, "", "bar")
+	require.True(err == nil || errors.Is(err, ErrRemoteUfragEmpty))
 
-	if _, err = a.Dial(ctx, "foo", ""); err != nil && !errors.Is(err, ErrRemotePwdEmpty) {
-		t.Fatal(err)
-	}
+	_, err = a.Dial(ctx, "foo", "")
+	require.True(err == nil || errors.Is(err, ErrRemotePwdEmpty))
 
-	if _, err = a.Dial(ctx, "foo", "bar"); err != nil && !errors.Is(err, ErrCanceledByCaller) {
-		t.Fatal(err)
-	}
+	_, err = a.Dial(ctx, "foo", "bar")
+	require.True(err == nil || errors.Is(err, ErrCanceledByCaller))
 
-	if _, err = a.Dial(context.TODO(), "foo", "bar"); err != nil && !errors.Is(err, ErrMultipleStart) {
-		t.Fatal(err)
-	}
+	_, err = a.Dial(context.TODO(), "foo", "bar")
+	require.True(err == nil || errors.Is(err, ErrMultipleStart))
 
 	assert.NoError(a.Close())
 }
 
 func TestInvalidGather(t *testing.T) {
 	t.Run("Gather with no OnCandidate should error", func(t *testing.T) {
+		require := require.New(t)
+
 		a, err := NewAgent(&AgentConfig{})
-		if err != nil {
-			t.Fatalf("Error constructing ice.Agent")
-		}
+		require.NoError(err, "Error constructing ice.Agent")
 
 		err = a.GatherCandidates()
-		if !errors.Is(err, ErrNoOnCandidateHandler) {
-			t.Fatal("trickle GatherCandidates succeeded without OnCandidate")
-		}
-		assert.NoError(t, a.Close())
+		require.ErrorIs(err, ErrNoOnCandidateHandler, "Trickle GatherCandidates succeeded without OnCandidate")
+
+		require.NoError(a.Close())
 	})
 }
 
 func TestInitExtIPMapping(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
 	// a.extIPMapper should be nil by default
 	a, err := NewAgent(&AgentConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %v", err)
-	}
-	if a.extIPMapper != nil {
-		t.Fatal("a.extIPMapper should be nil by default")
-	}
+	require.NoError(err, "Failed to create agent")
+	require.Nil(a.extIPMapper, "a.extIPMapper should be nil by default")
 	assert.NoError(a.Close())
 
 	// a.extIPMapper should be nil when NAT1To1IPs is a non-nil empty array
@@ -515,12 +477,8 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPs:             []string{},
 		NAT1To1IPCandidateType: CandidateTypeHost,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create agent: %v", err)
-	}
-	if a.extIPMapper != nil {
-		t.Fatal("a.extIPMapper should be nil by default")
-	}
+	require.NoError(err, "Failed to create agent")
+	require.Nil(a.extIPMapper, "a.extIPMapper should be nil by default")
 	assert.NoError(a.Close())
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
@@ -530,9 +488,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
 	})
-	if !errors.Is(err, ErrIneffectiveNAT1To1IPMappingHost) {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.ErrorIs(err, ErrIneffectiveNAT1To1IPMappingHost)
 
 	// NewAgent should return an error when 1:1 NAT for srflx candidate is enabled
 	// but the candidate type does not appear in the CandidateTypes.
@@ -541,9 +497,7 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeServerReflexive,
 		CandidateTypes:         []CandidateType{CandidateTypeRelay},
 	})
-	if !errors.Is(err, ErrIneffectiveNAT1To1IPMappingSrflx) {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.ErrorIs(err, ErrIneffectiveNAT1To1IPMappingSrflx)
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
 	// along with mDNS with MulticastDNSModeQueryAndGather
@@ -552,18 +506,14 @@ func TestInitExtIPMapping(t *testing.T) {
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		MulticastDNSMode:       MulticastDNSModeQueryAndGather,
 	})
-	if !errors.Is(err, ErrMulticastDNSWithNAT1To1IPMapping) {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.ErrorIs(err, ErrMulticastDNSWithNAT1To1IPMapping)
 
 	// NewAgent should return if newExternalIPMapper() returns an error.
 	_, err = NewAgent(&AgentConfig{
 		NAT1To1IPs:             []string{"bad.2.3.4"}, // Bad IP
 		NAT1To1IPCandidateType: CandidateTypeHost,
 	})
-	if !errors.Is(err, ErrInvalidNAT1To1IPMapping) {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.ErrorIs(err, ErrInvalidNAT1To1IPMapping)
 }
 
 func TestBindingRequestTimeout(t *testing.T) {
@@ -712,7 +662,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 		case ConnectionStateChecking:
 			isChecking.Done()
 		case ConnectionStateCompleted:
-			t.Errorf("Unexpected ConnectionState: %v", c)
+			assert.Failf("", "Unexpected ConnectionState %v", c)
 		default:
 		}
 	}
@@ -858,12 +808,11 @@ func TestAgentRestart(t *testing.T) {
 
 func TestGetRemoteCredentials(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	var config AgentConfig
 	a, err := NewAgent(&config)
-	if err != nil {
-		t.Fatalf("Error constructing ice.Agent: %v", err)
-	}
+	require.NoError(err, "Failed to construct ice.Agent")
 
 	a.remoteUfrag = "remoteUfrag"
 	a.remotePwd = "remotePwd"

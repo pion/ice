@@ -96,9 +96,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 			PriorityAttr(priority),
 			stun.Fingerprint,
 		)
-		if err1 != nil {
-			t.Fatal(err1)
-		}
+		require.NoError(err1)
 
 		return msg
 	}
@@ -109,6 +107,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		selectedCh <- remote
 	})
 	require.NoError(err)
+
 	var bcandidates []Candidate
 	bcandidates, err = bAgent.GetLocalCandidates()
 	require.NoError(err)
@@ -137,7 +136,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	case selected := <-selectedCh:
 		assert.True(selected.Equal(expectNewSelectedCandidate))
 	default:
-		t.Fatal("No selected candidate pair")
+		require.Fail("No selected candidate pair")
 	}
 
 	assert.NoError(wan.Stop())

@@ -69,11 +69,13 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 
 	assert.NoError(a.Close())
 	// Twice because of 2 STUN servers configured
-	assert.Equal(numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
+	assert.Equal(numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "Expected times that GetXORMappedAddr should be called")
+
 	// One for Restart() when agent has been initialized and one time when Close() the agent
-	assert.Equal(2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
+	assert.Equal(2, udpMuxSrflx.removeConnByUfragTimes, "Expected times that RemoveConnByUfrag should be called")
+
 	// Twice because of 2 STUN servers configured
-	assert.Equal(numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
+	assert.Equal(numSTUNS, udpMuxSrflx.getConnForURLTimes, "Expected times that GetConnForURL should be called")
 }
 
 type universalUDPMuxMock struct {

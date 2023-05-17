@@ -35,7 +35,7 @@ func TestTCPMux_Recv(t *testing.T) {
 				IP:   net.IP{127, 0, 0, 1},
 				Port: 0,
 			})
-			require.NoError(err, "error starting listener")
+			require.NoError(err, "Failed to start listener")
 			defer func() {
 				_ = listener.Close()
 			}()
@@ -51,10 +51,10 @@ func TestTCPMux_Recv(t *testing.T) {
 				_ = tcpMux.Close()
 			}()
 
-			require.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+			require.NotNil(tcpMux.LocalAddr())
 
 			conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
-			require.NoError(err, "error dialing test TCP connection")
+			require.NoError(err, "Failed to dial test TCP connection")
 
 			msg := stun.New()
 			msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
@@ -62,29 +62,29 @@ func TestTCPMux_Recv(t *testing.T) {
 			msg.Encode()
 
 			n, err := writeStreamingPacket(conn, msg.Raw)
-			require.NoError(err, "error writing TCP STUN packet")
+			require.NoError(err, "Failed to write TCP STUN packet")
 
 			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listener.Addr().(*net.TCPAddr).IP)
-			require.NoError(err, "error retrieving muxed connection for ufrag")
+			require.NoError(err, "Failed to retrieve muxed connection for ufrag")
 			defer func() {
 				_ = pktConn.Close()
 			}()
 
 			recv := make([]byte, n)
 			n2, rAddr, err := pktConn.ReadFrom(recv)
-			require.NoError(err, "error receiving data")
-			assert.Equal(conn.LocalAddr(), rAddr, "remote tcp address mismatch")
-			assert.Equal(n, n2, "received byte size mismatch")
-			assert.Equal(msg.Raw, recv, "received bytes mismatch")
+			require.NoError(err, "Failed to receive data")
+			assert.Equal(conn.LocalAddr(), rAddr, "Remote TCP address mismatch")
+			assert.Equal(n, n2, "Received byte size mismatch")
+			assert.Equal(msg.Raw, recv, "Received bytes mismatch")
 
 			// Check echo response
 			n, err = pktConn.WriteTo(recv, conn.LocalAddr())
-			require.NoError(err, "error writing echo STUN packet")
+			require.NoError(err, "Failed to write echo STUN packet")
 			recvEcho := make([]byte, n)
 			n3, err := readStreamingPacket(conn, recvEcho)
-			require.NoError(err, "error receiving echo data")
-			assert.Equal(n2, n3, "received byte size mismatch")
-			assert.Equal(msg.Raw, recvEcho, "received bytes mismatch")
+			require.NoError(err, "Failed to receive echo data")
+			assert.Equal(n2, n3, "Received byte size mismatch")
+			assert.Equal(msg.Raw, recvEcho, "Received bytes mismatch")
 		})
 	}
 }
@@ -101,7 +101,7 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 		IP:   net.IP{127, 0, 0, 1},
 		Port: 0,
 	})
-	require.NoError(err, "error starting listener")
+	require.NoError(err, "Failed to start listener")
 	defer func() {
 		_ = listener.Close()
 	}()
@@ -113,11 +113,11 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	})
 
 	_, err = tcpMux.GetConnByUfrag("test", false, listener.Addr().(*net.TCPAddr).IP)
-	require.NoError(err, "error getting conn by ufrag")
+	require.NoError(err, "Failed to get connection by ufrag")
 
-	require.NoError(tcpMux.Close(), "error closing tcpMux")
+	require.NoError(tcpMux.Close(), "Failed to close TCP mux")
 
 	conn, err := tcpMux.GetConnByUfrag("test", false, listener.Addr().(*net.TCPAddr).IP)
-	assert.Nil(conn, "should receive nil because mux is closed")
-	assert.Equal(io.ErrClosedPipe, err, "should receive error because mux is closed")
+	assert.Nil(conn, "Should receive nil because mux is closed")
+	assert.Equal(io.ErrClosedPipe, err, "Should receive error because mux is closed")
 }

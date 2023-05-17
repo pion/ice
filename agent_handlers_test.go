@@ -39,14 +39,10 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	isChecking := make(chan interface{})
 	isConnected := make(chan interface{})
@@ -68,9 +64,7 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 		default:
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	connect(aAgent, bAgent)
 
@@ -144,14 +138,10 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	isClosed := make(chan interface{})
 	isConnected := make(chan interface{})
@@ -165,9 +155,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		default:
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	connect(aAgent, bAgent)
 	close(isConnected)
@@ -211,9 +199,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 			close(isComplete)
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(err)
 
 	connect(aAgent, bAgent)
 
@@ -250,22 +236,21 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 	isComplete := make(chan interface{})
 	isTested := make(chan interface{})
-	if err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
+	err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
 		go func() {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
 			assert.NoError(errCred)
 			close(isTested)
 		}()
-	}); err != nil {
-		t.Error(err)
-	}
-	if err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	})
+	assert.NoError(err)
+
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			close(isComplete)
 		}
-	}); err != nil {
-		t.Error(err)
-	}
+	})
+	assert.NoError(err)
 
 	connect(aAgent, bAgent)
 

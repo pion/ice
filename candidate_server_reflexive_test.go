@@ -16,10 +16,12 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServerReflexiveOnlyConnection(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 	report := test.CheckRoutines(t)
 	defer report()
 
@@ -56,24 +58,18 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = aAgent.OnConnectionStateChange(aNotifier)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = bAgent.OnConnectionStateChange(bNotifier)
+	require.NoError(err)
 
 	connect(aAgent, bAgent)
 	<-aConnected

@@ -16,6 +16,7 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func optimisticAuthHandler(string, string, net.Addr) (key []byte, ok bool) {
@@ -24,6 +25,7 @@ func optimisticAuthHandler(string, string, net.Addr) (key []byte, ok bool) {
 
 func TestRelayOnlyConnection(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
@@ -64,24 +66,18 @@ func TestRelayOnlyConnection(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = aAgent.OnConnectionStateChange(aNotifier)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	err = bAgent.OnConnectionStateChange(bNotifier)
+	require.NoError(err)
 
 	connect(aAgent, bAgent)
 	<-aConnected

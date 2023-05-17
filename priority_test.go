@@ -4,38 +4,40 @@
 package ice
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/pion/stun"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPriority_GetFrom(t *testing.T) { //nolint:dupl
+	a := assert.New(t)
+
 	m := new(stun.Message)
 	var p PriorityAttr
-	if err := p.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-		t.Error("unexpected error")
-	}
-	if err := m.Build(stun.BindingRequest, &p); err != nil {
-		t.Error(err)
-	}
+	err := p.GetFrom(m)
+	a.ErrorIs(err, stun.ErrAttributeNotFound)
+
+	err = m.Build(stun.BindingRequest, &p)
+	a.NoError(err)
+
 	m1 := new(stun.Message)
-	if _, err := m1.Write(m.Raw); err != nil {
-		t.Error(err)
-	}
+	_, err = m1.Write(m.Raw)
+	a.NoError(err)
+
 	var p1 PriorityAttr
-	if err := p1.GetFrom(m1); err != nil {
-		t.Error(err)
-	}
-	if p1 != p {
-		t.Error("not equal")
-	}
+	err = p1.GetFrom(m1)
+	a.NoError(err)
+
+	a.Equal(p1, p)
+
 	t.Run("IncorrectSize", func(t *testing.T) {
+		a := assert.New(t)
+
 		m3 := new(stun.Message)
 		m3.Add(stun.AttrPriority, make([]byte, 100))
 		var p2 PriorityAttr
-		if err := p2.GetFrom(m3); !stun.IsAttrSizeInvalid(err) {
-			t.Error("should error")
-		}
+		err := p2.GetFrom(m3)
+		a.True(stun.IsAttrSizeInvalid(err))
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func hostCandidate() *CandidateHost {
@@ -115,9 +116,7 @@ func TestCandidatePairPriority(t *testing.T) {
 			WantPriority: 72057593987596287,
 		},
 	} {
-		if got, want := test.Pair.priority(), test.WantPriority; got != want {
-			t.Fatalf("CandidatePair(%v).Priority() = %d, want %d", test.Pair, got, want)
-		}
+		assert.Equalf(t, test.WantPriority, test.Pair.priority(), "Got invalid priority for pair %v", test.Pair)
 	}
 }
 
@@ -125,12 +124,10 @@ func TestCandidatePairEquality(t *testing.T) {
 	pairA := newCandidatePair(hostCandidate(), srflxCandidate(), true)
 	pairB := newCandidatePair(hostCandidate(), srflxCandidate(), false)
 
-	if !pairA.equal(pairB) {
-		t.Fatalf("Expected %v to equal %v", pairA, pairB)
-	}
+	require.True(t, pairA.equal(pairB), "Expected pairs to be equal")
 }
 
 func TestNilCandidatePairString(t *testing.T) {
 	var nilCandidatePair *CandidatePair
-	assert.Equal(t, nilCandidatePair.String(), "")
+	assert.Empty(t, nilCandidatePair.String())
 }

@@ -173,9 +173,7 @@ func TestCandidatePriority(t *testing.T) {
 			WantPriority: 16777215,
 		},
 	} {
-		if got, want := test.Candidate.Priority(), test.WantPriority; got != want {
-			t.Fatalf("Candidate(%v).Priority() = %d, want %d", test.Candidate, got, want)
-		}
+		assert.Equalf(t, test.WantPriority, test.Candidate.Priority(), "Got invalid priority for pair %v", test.Candidate)
 	}
 }
 
@@ -410,10 +408,10 @@ func TestCandidateWriteTo(t *testing.T) {
 		IP:   net.IP{127, 0, 0, 1},
 		Port: 0,
 	})
-	require.NoError(err, "error creating test TCP listener")
+	require.NoError(err, "Failed to create test TCP listener")
 
 	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
-	require.NoError(err, "error dialing test TCP connection")
+	require.NoError(err, "Failed to dial test TCP connection")
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	packetConn := newTCPPacketConn(tcpPacketParams{
@@ -422,7 +420,7 @@ func TestCandidateWriteTo(t *testing.T) {
 	})
 
 	err = packetConn.AddConn(conn, nil)
-	require.NoError(err, "error adding test TCP connection to packet connection")
+	require.NoError(err, "Failed to add test TCP connection to packet connection")
 
 	c1 := &candidateBase{
 		conn: packetConn,
@@ -436,11 +434,11 @@ func TestCandidateWriteTo(t *testing.T) {
 	}
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.NoError(err, "writing to open conn")
+	assert.NoError(err, "Failed writing to open connection")
 
 	err = packetConn.Close()
-	require.NoError(err, "error closing test TCP connection")
+	require.NoError(err, "Failed to close test TCP connection")
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.Error(err, "writing to closed conn")
+	assert.Error(err, "Failed writing to closed connection")
 }

@@ -8,7 +8,6 @@ package ice
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVNetGather(t *testing.T) {
@@ -28,6 +28,7 @@ func TestVNetGather(t *testing.T) {
 
 	t.Run("No local IP address", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		n, err := vnet.NewNet(&vnet.NetConfig{})
 		assert.NoError(err)
@@ -38,41 +39,31 @@ func TestVNetGather(t *testing.T) {
 		assert.NoError(err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if len(localIPs) > 0 {
-			t.Fatal("should return no local IP")
-		} else if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(err)
+		require.Empty(localIPs, "Should return no local IP")
 
 		assert.NoError(a.Close())
 	})
 
 	t.Run("Gather a dynamic IP address", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		cider := "1.2.3.0/24"
 		_, ipNet, err := net.ParseCIDR(cider)
-		if err != nil {
-			t.Fatalf("Failed to parse CIDR: %s", err)
-		}
+		require.NoError(err, "Failed to parse CIDR")
 
 		r, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:          cider,
 			LoggerFactory: loggerFactory,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create a router: %s", err)
-		}
+		require.NoError(err, "Failed to create a router")
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{})
-		if err != nil {
-			t.Fatalf("Failed to create a Net: %s", err)
-		}
+		require.NoError(err, "Failed to create a Net")
 
 		err = r.AddNet(nw)
-		if err != nil {
-			t.Fatalf("Failed to add a Net to the router: %s", err)
-		}
+		require.NoError(err, "Failed to add a Net to the router")
 
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
@@ -80,88 +71,59 @@ func TestVNetGather(t *testing.T) {
 		assert.NoError(err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if len(localIPs) == 0 {
-			t.Fatal("should have one local IP")
-		} else if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(err)
+		require.Len(localIPs, 1, "Should have one local IP")
 
 		for _, ip := range localIPs {
-			if ip.IsLoopback() {
-				t.Fatal("should not return loopback IP")
-			}
-			if !ipNet.Contains(ip) {
-				t.Fatal("should be contained in the CIDR")
-			}
+			require.False(ip.IsLoopback(), "Should not return loopback IP")
+			require.True(ipNet.Contains(ip), "Should be contained in the CIDR")
 		}
 
 		assert.NoError(a.Close())
 	})
 
 	t.Run("listenUDP", func(t *testing.T) {
+		require := require.New(t)
 		assert := assert.New(t)
 
 		r, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:          "1.2.3.0/24",
 			LoggerFactory: loggerFactory,
 		})
-		if err != nil {
-			t.Fatalf("Failed to create a router: %s", err)
-		}
+		require.NoError(err, "Failed to create a router")
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{})
-		if err != nil {
-			t.Fatalf("Failed to create a Net: %s", err)
-		}
+		require.NoError(err, "Failed to create a Net")
 
 		err = r.AddNet(nw)
-		if err != nil {
-			t.Fatalf("Failed to add a Net to the router: %s", err)
-		}
+		require.NoError(err, "Failed to add a Net to the router")
 
 		a, err := NewAgent(&AgentConfig{Net: nw})
-		if err != nil {
-			t.Fatalf("Failed to create agent: %s", err)
-		}
+		require.NoError(err, "Failed to create agent")
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if len(localIPs) == 0 {
-			t.Fatal("localInterfaces found no interfaces, unable to test")
-		} else if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(err)
+		require.NotEmpty(localIPs, "localInterfaces found no interfaces, unable to test")
 
 		ip := localIPs[0]
 
 		conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
-		if err != nil {
-			t.Fatalf("listenUDP error with no port restriction %v", err)
-		} else if conn == nil {
-			t.Fatalf("listenUDP error with no port restriction return a nil conn")
-		}
+		require.NoError(err, "listenUDPInPortRange error with no port restriction")
+		require.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
+
 		err = conn.Close()
-		if err != nil {
-			t.Fatalf("failed to close conn")
-		}
+		require.NoError(err, "Failed to close connection")
 
 		_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-		if !errors.Is(err, ErrPort) {
-			t.Fatal("listenUDP with invalid port range did not return ErrPort")
-		}
+		require.ErrorIs(err, ErrPort, "listenUDPInPortRange with invalid port range did not return ErrPort")
 
 		conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-		if err != nil {
-			t.Fatalf("listenUDP error with no port restriction %v", err)
-		} else if conn == nil {
-			t.Fatalf("listenUDP error with no port restriction return a nil conn")
-		}
+		require.NoError(err, "listenUDPInPortRange error with no port restriction")
+		require.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
 		_, port, err := net.SplitHostPort(conn.LocalAddr().String())
-		if err != nil {
-			t.Fatal(err)
-		} else if port != "5000" {
-			t.Fatalf("listenUDP with port restriction of 5000 listened on incorrect port (%s)", port)
-		}
+		require.NoError(err)
+		require.Equal("5000", port, "listenUDPInPortRange with port restriction of 5000 listened on incorrect port")
 
 		assert.NoError(conn.Close())
 		assert.NoError(a.Close())
@@ -177,6 +139,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 
 	t.Run("gather 1:1 NAT external IPs as host candidates", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		externalIP0 := "1.2.3.4"
 		externalIP1 := "1.2.3.5"
@@ -189,7 +152,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			CIDR:          "1.2.3.0/24",
 			LoggerFactory: loggerFactory,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		lan, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:      "10.0.0.0/24",
@@ -199,20 +162,18 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			},
 			LoggerFactory: loggerFactory,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		err = wan.AddRouter(lan)
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{
 			StaticIPs: []string{localIP0, localIP1},
 		})
-		if err != nil {
-			t.Fatalf("Failed to create a Net: %s", err)
-		}
+		require.NoError(err, "Failed to create a Net")
 
 		err = lan.AddNet(nw)
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		a, err := NewAgent(&AgentConfig{
 			NetworkTypes: []NetworkType{
@@ -221,7 +182,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			NAT1To1IPs: []string{map0, map1},
 			Net:        nw,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 		defer a.Close() //nolint:errcheck
 
 		done := make(chan struct{})
@@ -230,61 +191,45 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 				close(done)
 			}
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		err = a.GatherCandidates()
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		log.Debug("Wait until gathering is complete...")
 		<-done
 		log.Debug("Gathering is done")
 
 		candidates, err := a.GetLocalCandidates()
-		assert.NoError(err, "should succeed")
-
-		if len(candidates) != 2 {
-			t.Fatal("There must be two candidates")
-		}
+		assert.NoError(err)
+		require.Len(candidates, 2, "There must be two candidates")
 
 		lAddr := [2]*net.UDPAddr{nil, nil}
 		for i, candi := range candidates {
 			lAddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-			if candi.Port() != lAddr[i].Port {
-				t.Fatalf("Unexpected candidate port: %d", candi.Port())
-			}
+			require.Equal(candi.Port(), lAddr[i].Port, "Unexpected candidate port")
 		}
 
 		if candidates[0].Address() == externalIP0 {
-			if candidates[1].Address() != externalIP1 {
-				t.Fatalf("Unexpected candidate IP: %s", candidates[1].Address())
-			}
-			if lAddr[0].IP.String() != localIP0 {
-				t.Fatalf("Unexpected listen IP: %s", lAddr[0].IP.String())
-			}
-			if lAddr[1].IP.String() != localIP1 {
-				t.Fatalf("Unexpected listen IP: %s", lAddr[1].IP.String())
-			}
+			require.Equal(candidates[1].Address(), externalIP1, "Unexpected candidate IP")
+			require.Equal(lAddr[0].IP.String(), localIP0, "Unexpected listen IP")
+			require.Equal(lAddr[1].IP.String(), localIP1, "Unexpected listen IP")
 		} else if candidates[0].Address() == externalIP1 {
-			if candidates[1].Address() != externalIP0 {
-				t.Fatalf("Unexpected candidate IP: %s", candidates[1].Address())
-			}
-			if lAddr[0].IP.String() != localIP1 {
-				t.Fatalf("Unexpected listen IP: %s", lAddr[0].IP.String())
-			}
-			if lAddr[1].IP.String() != localIP0 {
-				t.Fatalf("Unexpected listen IP: %s", lAddr[1].IP.String())
-			}
+			require.Equal(candidates[1].Address(), externalIP0, "Unexpected candidate IP")
+			require.Equal(lAddr[0].IP.String(), localIP1, "Unexpected listen IP")
+			require.Equal(lAddr[1].IP.String(), localIP0, "Unexpected listen IP")
 		}
 	})
 
 	t.Run("gather 1:1 NAT external IPs as srflx candidates", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		wan, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:          "1.2.3.0/24",
 			LoggerFactory: loggerFactory,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		lan, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR: "10.0.0.0/24",
@@ -296,22 +241,20 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			},
 			LoggerFactory: loggerFactory,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		err = wan.AddRouter(lan)
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{
 			StaticIPs: []string{
 				"10.0.0.1",
 			},
 		})
-		if err != nil {
-			t.Fatalf("Failed to create a Net: %s", err)
-		}
+		require.NoError(err, "Failed to create a Net")
 
 		err = lan.AddNet(nw)
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		a, err := NewAgent(&AgentConfig{
 			NetworkTypes: []NetworkType{
@@ -323,7 +266,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
 			Net:                    nw,
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 		defer a.Close() //nolint:errcheck
 
 		done := make(chan struct{})
@@ -332,21 +275,18 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 				close(done)
 			}
 		})
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		err = a.GatherCandidates()
-		assert.NoError(err, "should succeed")
+		assert.NoError(err)
 
 		log.Debug("Wait until gathering is complete...")
 		<-done
 		log.Debug("Gathering is done")
 
 		candidates, err := a.GetLocalCandidates()
-		assert.NoError(err, "should succeed")
-
-		if len(candidates) != 2 {
-			t.Fatalf("Expected two candidates. actually %d", len(candidates))
-		}
+		assert.NoError(err)
+		require.Len(candidates, 2, "Expected two candidates")
 
 		var candiHost *CandidateHost
 		var candiSrflx *CandidateServerReflexive
@@ -358,14 +298,14 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			case *CandidateServerReflexive:
 				candiSrflx = candi
 			default:
-				t.Fatal("Unexpected candidate type")
+				require.Fail("Unexpected candidate type")
 			}
 		}
 
-		assert.NotNil(candiHost, "should not be nil")
-		assert.Equal("10.0.0.1", candiHost.Address(), "should match")
-		assert.NotNil(candiSrflx, "should not be nil")
-		assert.Equal("1.2.3.4", candiSrflx.Address(), "should match")
+		assert.NotNil(candiHost)
+		assert.Equal("10.0.0.1", candiHost.Address())
+		assert.NotNil(candiSrflx)
+		assert.Equal("1.2.3.4", candiSrflx.Address())
 	})
 }
 
@@ -378,21 +318,17 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		CIDR:          "1.2.3.0/24",
 		LoggerFactory: loggerFactory,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create a router: %s", err)
-	}
+	require.NoError(t, err, "Failed to create a router")
 
 	nw, err := vnet.NewNet(&vnet.NetConfig{})
-	if err != nil {
-		t.Fatalf("Failed to create a Net: %s", err)
-	}
+	require.NoError(t, err, "Failed to create a Net")
 
-	if err = r.AddNet(nw); err != nil {
-		t.Fatalf("Failed to add a Net to the router: %s", err)
-	}
+	err = r.AddNet(nw)
+	require.NoError(t, err, "Failed to add a Net to the router")
 
 	t.Run("InterfaceFilter should exclude the interface", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
@@ -404,17 +340,15 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		assert.NoError(err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) != 0 {
-			t.Fatal("InterfaceFilter should have excluded everything")
-		}
+		require.NoError(err)
+		require.Empty(localIPs, "InterfaceFilter should have excluded everything")
 
 		assert.NoError(a.Close())
 	})
 
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
@@ -426,17 +360,15 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		assert.NoError(err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) != 0 {
-			t.Fatal("IPFilter should have excluded everything")
-		}
+		require.NoError(err)
+		require.Empty(localIPs, "IPFilter should have excluded everything")
 
 		assert.NoError(a.Close())
 	})
 
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
@@ -448,11 +380,8 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		assert.NoError(err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) == 0 {
-			t.Fatal("InterfaceFilter should not have excluded anything")
-		}
+		require.NoError(err)
+		require.NotEmpty(localIPs, "InterfaceFilter should not have excluded anything")
 
 		assert.NoError(a.Close())
 	})
@@ -479,7 +408,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	}
 	v, err := buildVNet(natType, natType)
 
-	if !assert.NoError(err, "should succeed") {
+	if !assert.NoError(err) {
 		return
 	}
 	defer v.close()
@@ -494,7 +423,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 		Net:              v.net0,
 	}
 	aAgent, err := NewAgent(cfg0)
-	if !assert.NoError(err, "should succeed") {
+	if !assert.NoError(err) {
 		return
 	}
 

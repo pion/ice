@@ -111,7 +111,7 @@ func TestAgentActiveTCP(t *testing.T) {
 				_ = tcpMux.Close()
 			}()
 
-			require.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
+			require.NotNil(tcpMux.LocalAddr())
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
 			passiveAgent, err := NewAgent(&AgentConfig{
@@ -134,9 +134,9 @@ func TestAgentActiveTCP(t *testing.T) {
 			require.NoError(err)
 			require.NotNil(activeAgent)
 
-			passiveAgentConn, activeAgenConn := connect(passiveAgent, activeAgent)
+			passiveAgentConn, activeAgentConn := connect(passiveAgent, activeAgent)
 			require.NotNil(passiveAgentConn)
-			require.NotNil(activeAgenConn)
+			require.NotNil(activeAgentConn)
 
 			pair := passiveAgent.getSelectedPair()
 			require.NotNil(pair)
@@ -147,19 +147,19 @@ func TestAgentActiveTCP(t *testing.T) {
 			require.NoError(err)
 
 			buffer := make([]byte, 1024)
-			n, err := activeAgenConn.Read(buffer)
+			n, err := activeAgentConn.Read(buffer)
 			require.NoError(err)
 			require.Equal(foo, buffer[:n])
 
 			bar := []byte("bar")
-			_, err = activeAgenConn.Write(bar)
+			_, err = activeAgentConn.Write(bar)
 			require.NoError(err)
 
 			n, err = passiveAgentConn.Read(buffer)
 			require.NoError(err)
 			require.Equal(bar, buffer[:n])
 
-			require.NoError(activeAgenConn.Close())
+			require.NoError(activeAgentConn.Close())
 			require.NoError(passiveAgentConn.Close())
 		})
 	}

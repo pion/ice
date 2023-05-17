@@ -38,7 +38,7 @@ func TestConnectivityLite(t *testing.T) {
 		FilteringBehavior: vnet.EndpointIndependent,
 	}
 	v, err := buildVNet(natType, natType)
-	require.NoError(err, "should succeed")
+	require.NoError(err)
 	defer v.close()
 
 	aNotifier, aConnected := onConnected()

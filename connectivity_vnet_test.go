@@ -296,11 +296,11 @@ func closePipe(t *testing.T, ca *Conn, cb *Conn) bool {
 	assert := assert.New(t)
 
 	err := ca.Close()
-	if !assert.NoError(err, "should succeed") {
+	if !assert.NoError(err) {
 		return false
 	}
 	err = cb.Close()
-	return assert.NoError(err, "should succeed")
+	return assert.NoError(err)
 }
 
 func TestConnectivityVNet(t *testing.T) {
@@ -334,7 +334,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		v, err := buildVNet(natType, natType)
 
-		if !assert.NoError(t, err, "should succeed") {
+		if !assert.NoError(t, err) {
 			return
 		}
 		defer v.close()
@@ -371,7 +371,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		v, err := buildVNet(natType, natType)
 
-		if !assert.NoError(t, err, "should succeed") {
+		if !assert.NoError(t, err) {
 			return
 		}
 		defer v.close()
@@ -411,7 +411,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		v, err := buildVNet(natType0, natType1)
 
-		if !assert.NoError(t, err, "should succeed") {
+		if !assert.NoError(t, err) {
 			return
 		}
 		defer v.close()
@@ -447,7 +447,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		v, err := buildVNet(natType0, natType1)
 
-		if !assert.NoError(t, err, "should succeed") {
+		if !assert.NoError(t, err) {
 			return
 		}
 		defer v.close()

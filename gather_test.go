@@ -9,7 +9,6 @@ package ice
 import (
 	"context"
 	"net"
-	"reflect"
 	"sort"
 	"strconv"
 	"testing"
@@ -19,10 +18,12 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/turn/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListenUDP(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(err)
@@ -34,19 +35,19 @@ func TestListenUDP(t *testing.T) {
 	ip := localIPs[0]
 
 	conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.NoError(err, "listenUDP error with no port restriction")
-	assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
+	assert.NoError(err, "listenUDPInPortRange error with no port restriction")
+	assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
 	_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.Equal(err, ErrPort, "listenUDP with invalid port range did not return ErrPort")
+	assert.ErrorIs(err, ErrPort, "listenUDPInPortRange with invalid port range did not return ErrPort")
 
 	conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.NoError(err, "listenUDP error with no port restriction")
-	assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
+	assert.NoError(err, "listenUDPInPortRange error with no port restriction")
+	assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
 	_, port, err := net.SplitHostPort(conn.LocalAddr().String())
 	assert.NoError(err)
-	assert.Equal(port, "5000", "listenUDP with port restriction of 5000 listened on incorrect port")
+	assert.Equal(port, "5000", "listenUDPInPortRange with port restriction of 5000 listened on incorrect port")
 
 	portMin := 5100
 	portMax := 5109
@@ -55,29 +56,24 @@ func TestListenUDP(t *testing.T) {
 	portRange := make([]int, 0, total)
 	for i := 0; i < total; i++ {
 		conn, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
-		assert.NoError(err, "listenUDP error with no port restriction")
-		assert.NotNil(conn, "listenUDP error with no port restriction return a nil conn")
+		assert.NoError(err, "listenUDPInPortRange error with no port restriction")
+		assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
 		_, port, err = net.SplitHostPort(conn.LocalAddr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(err)
+
 		p, _ := strconv.Atoi(port)
-		if p < portMin || p > portMax {
-			t.Fatalf("listenUDP with port restriction [%d, %d] listened on incorrect port (%s)", portMin, portMax, port)
-		}
+		require.Truef(p >= portMin && p <= portMax, "listenUDPInPortRange with port restriction [%d, %d] listened on incorrect port (%s)", portMin, portMax, port)
+
 		result = append(result, p)
 		portRange = append(portRange, portMin+i)
 	}
-	if sort.IntsAreSorted(result) {
-		t.Fatalf("listenUDP with port restriction [%d, %d], ports result should be random", portMin, portMax)
-	}
-	sort.Ints(result)
-	if !reflect.DeepEqual(result, portRange) {
-		t.Fatalf("listenUDP with port restriction [%d, %d], got:%v, want:%v", portMin, portMax, result, portRange)
-	}
+
+	require.Falsef(sort.IntsAreSorted(result), "listenUDPInPortRange with port restriction [%d, %d], ports result should be random", portMin, portMax)
+	assert.ElementsMatch(portRange, result)
+
 	_, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
-	assert.Equal(err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
+	assert.Equalf(err, ErrPort, "listenUDPInPortRange with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
 	assert.NoError(a.Close())
 }

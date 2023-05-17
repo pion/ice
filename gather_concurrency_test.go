@@ -68,8 +68,8 @@ func TestLoopbackCandidate(t *testing.T) {
 	}
 	mux, err := NewMultiUDPMuxFromPort(12500)
 	assert.NoError(err)
-	muxWithLo, errlo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
-	assert.NoError(errlo)
+	muxWithLo, errLo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
+	assert.NoError(errLo)
 	testCases := []testCase{
 		{
 			name: "mux should not have loopback candidate",
@@ -88,7 +88,7 @@ func TestLoopbackCandidate(t *testing.T) {
 			loExpected: true,
 		},
 		{
-			name: "includeloopback enabled",
+			name: "include loopback enabled",
 			agentConfig: &AgentConfig{
 				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 				IncludeLoopback: true,
@@ -96,7 +96,7 @@ func TestLoopbackCandidate(t *testing.T) {
 			loExpected: true,
 		},
 		{
-			name: "includeloopback disabled",
+			name: "include loopback disabled",
 			agentConfig: &AgentConfig{
 				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 				IncludeLoopback: false,
@@ -106,8 +106,8 @@ func TestLoopbackCandidate(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tcase := tc
-		t.Run(tcase.name, func(t *testing.T) {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
 			a, err := NewAgent(tc.agentConfig)
 			assert.NoError(err)
 
@@ -129,7 +129,7 @@ func TestLoopbackCandidate(t *testing.T) {
 			<-candidateGathered.Done()
 
 			assert.NoError(a.Close())
-			assert.Equal(tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
+			assert.Equal(tc.loExpected, atomic.LoadInt32(&loopback) == 1)
 		})
 	}
 
