@@ -9,7 +9,7 @@ type CandidatePairState int
 const (
 	// CandidatePairStateWaiting means a check has not been performed for
 	// this pair
-	CandidatePairStateWaiting = iota + 1
+	CandidatePairStateWaiting CandidatePairState = iota + 1
 
 	// CandidatePairStateInProgress means a check has been sent for this pair,
 	// but the transaction is in progress.
