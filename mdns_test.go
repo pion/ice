@@ -91,6 +91,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 func TestMulticastDNSStaticHostName(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -109,14 +110,15 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,
 		MulticastDNSHostName: "validName.local",
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	correctHostName, resolveFunc := context.WithCancel(context.Background())
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
+	err = agent.OnCandidate(func(c Candidate) {
 		if c != nil && c.Address() == "validName.local" {
 			resolveFunc()
 		}
-	}))
+	})
+	assert.NoError(err)
 
 	assert.NoError(agent.GatherCandidates())
 	<-correctHostName.Done()

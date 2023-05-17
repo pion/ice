@@ -172,20 +172,21 @@ func TestConnectivityOnStartup(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(err)
-	assert.NoError(wan.AddNet(net0))
+	require.NoError(err)
+
+	require.NoError(wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
-	assert.NoError(err)
-	assert.NoError(wan.AddNet(net1))
+	require.NoError(err)
 
+	require.NoError(wan.AddNet(net1))
 	assert.NoError(wan.Start())
 
 	aNotifier, aConnected := onConnected()
@@ -266,9 +267,8 @@ func TestConnectivityOnStartup(t *testing.T) {
 	<-bConnected
 
 	assert.NoError(wan.Stop())
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	assert.NoError(aConn.Close())
+	assert.NoError(bConn.Close())
 }
 
 func TestInboundValidity(t *testing.T) {
@@ -418,7 +418,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	require.NoError(err)
 
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -463,6 +463,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(err, "Failed to create agent")
 	require.Nil(a.extIPMapper, "a.extIPMapper should be nil by default")
+
 	assert.NoError(a.Close())
 
 	// a.extIPMapper should be nil when NAT1To1IPs is a non-nil empty array
@@ -472,6 +473,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	})
 	require.NoError(err, "Failed to create agent")
 	require.Nil(a.extIPMapper, "a.extIPMapper should be nil by default")
+
 	assert.NoError(a.Close())
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
@@ -511,31 +513,32 @@ func TestInitExtIPMapping(t *testing.T) {
 
 func TestBindingRequestTimeout(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 
 	const expectedRemovalCount = 2
 
-	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(err)
 
 	now := time.Now()
-	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+	agent.pendingBindingRequests = append(agent.pendingBindingRequests, bindingRequest{
 		timestamp: now, // Valid
 	})
-	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+	agent.pendingBindingRequests = append(agent.pendingBindingRequests, bindingRequest{
 		timestamp: now.Add(-3900 * time.Millisecond), // Valid
 	})
-	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+	agent.pendingBindingRequests = append(agent.pendingBindingRequests, bindingRequest{
 		timestamp: now.Add(-4100 * time.Millisecond), // Invalid
 	})
-	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
+	agent.pendingBindingRequests = append(agent.pendingBindingRequests, bindingRequest{
 		timestamp: now.Add(-75 * time.Hour), // Invalid
 	})
 
-	a.invalidatePendingBindingRequests(now)
-	assert.Equal(expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
-	assert.NoError(a.Close())
+	agent.invalidatePendingBindingRequests(now)
+	assert.Equal(expectedRemovalCount, len(agent.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
+	assert.NoError(agent.Close())
 }
 
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
@@ -797,17 +800,17 @@ func TestGetRemoteCredentials(t *testing.T) {
 	require := require.New(t)
 
 	var config AgentConfig
-	a, err := NewAgent(&config)
+	agent, err := NewAgent(&config)
 	require.NoError(err, "Failed to construct ice.Agent")
 
-	a.remoteUfrag = "remoteUfrag"
-	a.remotePwd = "remotePwd"
+	agent.remoteUfrag = "remoteUfrag"
+	agent.remotePwd = "remotePwd"
 
-	actualUfrag, actualPwd, err := a.GetRemoteUserCredentials()
+	actualUfrag, actualPwd, err := agent.GetRemoteUserCredentials()
 	assert.NoError(err)
 
-	assert.Equal(actualUfrag, a.remoteUfrag)
-	assert.Equal(actualPwd, a.remotePwd)
+	assert.Equal(actualUfrag, agent.remoteUfrag)
+	assert.Equal(actualPwd, agent.remotePwd)
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }

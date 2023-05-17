@@ -20,6 +20,7 @@ import (
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestOnConnectionStateChangeCallback(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
@@ -37,17 +38,18 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	isChecking := make(chan interface{})
 	isConnected := make(chan interface{})
 	isDisconnected := make(chan interface{})
 	isFailed := make(chan interface{})
 	isClosed := make(chan interface{})
-	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+
+	require.NoError(aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
 		case ConnectionStateChecking:
 			close(isChecking)
@@ -61,8 +63,7 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 			close(isClosed)
 		default:
 		}
-	})
-	assert.NoError(err)
+	}))
 
 	connect(aAgent, bAgent)
 
@@ -115,6 +116,7 @@ func makeCandidatePair(t *testing.T) *CandidatePair {
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
@@ -134,14 +136,15 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	isClosed := make(chan interface{})
 	isConnected := make(chan interface{})
-	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+
+	require.NoError(aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
 		case ConnectionStateConnected:
 			<-isConnected
@@ -150,13 +153,13 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 			close(isClosed)
 		default:
 		}
-	})
-	assert.NoError(err)
+	}))
 
 	connect(aAgent, bAgent)
 	close(isConnected)
 
 	<-isClosed
+
 	assert.NoError(bAgent.Close())
 }
 

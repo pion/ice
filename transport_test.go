@@ -36,8 +36,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
-		err := c.Close()
-		assert.NoError(err)
+		assert.NoError(c.Close())
 	}()
 
 	startedAt := time.Now()

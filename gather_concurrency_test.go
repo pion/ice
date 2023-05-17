@@ -27,29 +27,30 @@ import (
 
 func TestGatherConcurrency(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		IncludeLoopback: true,
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		candidateGatheredFunc()
 	}))
 
 	// Testing for panic
 	for i := 0; i < 10; i++ {
-		_ = a.GatherCandidates()
+		_ = agent.GatherCandidates()
 	}
 
 	<-candidateGathered.Done()
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }
 
 func TestLoopbackCandidate(t *testing.T) {
@@ -63,10 +64,13 @@ func TestLoopbackCandidate(t *testing.T) {
 		agentConfig *AgentConfig
 		loExpected  bool
 	}
+
 	mux, err := NewMultiUDPMuxFromPort(12500)
 	assert.NoError(err)
+
 	muxWithLo, errLo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
 	assert.NoError(errLo)
+
 	testCases := []testCase{
 		{
 			name: "mux should not have loopback candidate",
@@ -105,12 +109,14 @@ func TestLoopbackCandidate(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			a, err := NewAgent(tc.agentConfig)
-			assert.NoError(err)
+			require := require.New(t)
+
+			agent, err := NewAgent(tc.agentConfig)
+			require.NoError(err)
 
 			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 			var loopback int32
-			assert.NoError(a.OnCandidate(func(c Candidate) {
+			assert.NoError(agent.OnCandidate(func(c Candidate) {
 				if c != nil {
 					if net.ParseIP(c.Address()).IsLoopback() {
 						atomic.StoreInt32(&loopback, 1)
@@ -121,11 +127,11 @@ func TestLoopbackCandidate(t *testing.T) {
 				}
 				t.Log(c.NetworkType(), c.Priority(), c)
 			}))
-			assert.NoError(a.GatherCandidates())
+			assert.NoError(agent.GatherCandidates())
 
 			<-candidateGathered.Done()
 
-			assert.NoError(a.Close())
+			assert.NoError(agent.Close())
 			assert.Equal(tc.loExpected, atomic.LoadInt32(&loopback) == 1)
 		})
 	}
@@ -180,7 +186,7 @@ func TestSTUNConcurrency(t *testing.T) {
 		_ = listener.Close()
 	}()
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
@@ -192,21 +198,21 @@ func TestSTUNConcurrency(t *testing.T) {
 			},
 		),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatheredFunc()
 			return
 		}
 		t.Log(c.NetworkType(), c.Priority(), c)
 	}))
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 	assert.NoError(server.Close())
 }
 
@@ -217,6 +223,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 	runTest := func(t *testing.T, protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
 		assert := assert.New(t)
+		require := require.New(t)
 
 		packetConnConfigs := []turn.PacketConnConfig{}
 		if packetConn != nil {
@@ -262,25 +269,25 @@ func TestTURNConcurrency(t *testing.T) {
 			Port:     serverPort,
 		})
 
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			CandidateTypes:     []CandidateType{CandidateTypeRelay},
 			InsecureSkipVerify: true,
 			NetworkTypes:       supportedNetworkTypes(),
 			Urls:               urls,
 		})
-		assert.NoError(err)
+		require.NoError(err)
 
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		assert.NoError(a.OnCandidate(func(c Candidate) {
+		assert.NoError(agent.OnCandidate(func(c Candidate) {
 			if c != nil {
 				candidateGatheredFunc()
 			}
 		}))
-		assert.NoError(a.GatherCandidates())
+		assert.NoError(agent.GatherCandidates())
 
 		<-candidateGathered.Done()
 
-		assert.NoError(a.Close())
+		assert.NoError(agent.Close())
 		assert.NoError(server.Close())
 	}
 
@@ -330,13 +337,14 @@ func TestTURNConcurrency(t *testing.T) {
 // Assert that STUN and TURN gathering are done concurrently
 func TestSTUNTURNConcurrency(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 8).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
-	assert.NoError(err)
+	require.NoError(err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -348,7 +356,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
@@ -367,28 +375,28 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		Password: "password",
 	})
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	{
 		gatherTimeOut := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		assert.NoError(a.OnCandidate(func(c Candidate) {
+		require.NoError(agent.OnCandidate(func(c Candidate) {
 			if c != nil {
 				candidateGatheredFunc()
 			}
 		}))
-		assert.NoError(a.GatherCandidates())
+		require.NoError(agent.GatherCandidates())
 
 		<-candidateGathered.Done()
 
 		gatherTimeOut.Stop()
 	}
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 	assert.NoError(server.Close())
 }

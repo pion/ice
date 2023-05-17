@@ -16,11 +16,13 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Assert that UniversalUDPMux is used while gathering when configured in the Agent
 func TestUniversalUDPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -45,27 +47,27 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		})
 	}
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
 		UDPMuxSrflx:    udpMuxSrflx,
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatheredFunc()
 			return
 		}
 		t.Log(c.NetworkType(), c.Priority(), c)
 	}))
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 	// Twice because of 2 STUN servers configured
 	assert.Equal(numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "Expected times that GetXORMappedAddr should be called")
 

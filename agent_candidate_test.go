@@ -14,23 +14,27 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNilCandidate(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	require.NoError(err)
 
 	assert.NoError(a.AddRemoteCandidate(nil))
+
 	assert.NoError(a.Close())
 }
 
 func TestNilCandidatePair(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	require.NoError(err)
 
 	a.setSelectedPair(nil)
 	assert.NoError(a.Close())
@@ -38,6 +42,7 @@ func TestNilCandidatePair(t *testing.T) {
 
 func TestGetSelectedCandidatePair(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -46,15 +51,15 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	net, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(err)
-	assert.NoError(wan.AddNet(net))
+	require.NoError(err)
 
-	assert.NoError(wan.Start())
+	require.NoError(wan.AddNet(net))
+	require.NoError(wan.Start())
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
@@ -62,10 +67,10 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(err)
+	require.NoError(err)
 
 	aAgentPair, err := aAgent.GetSelectedCandidatePair()
 	assert.NoError(err)

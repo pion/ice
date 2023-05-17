@@ -22,9 +22,11 @@ func getLocalIPAddress(t *testing.T, networkType NetworkType) net.IP {
 
 	net, err := stdnet.NewNet()
 	require.NoError(err)
+
 	localIPs, err := localInterfaces(net, nil, nil, []NetworkType{networkType}, false)
 	require.NoError(err)
 	require.NotEmpty(localIPs)
+
 	return localIPs[0]
 }
 
@@ -33,8 +35,10 @@ func ipv6Available(t *testing.T) bool {
 
 	net, err := stdnet.NewNet()
 	require.NoError(err)
+
 	localIPs, err := localInterfaces(net, nil, nil, []NetworkType{NetworkTypeTCP6}, false)
 	require.NoError(err)
+
 	return len(localIPs) > 0
 }
 
@@ -111,6 +115,7 @@ func TestAgentActiveTCP(t *testing.T) {
 			require.NotNil(tcpMux.LocalAddr())
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
+
 			passiveAgent, err := NewAgent(&AgentConfig{
 				TCPMux:                tcpMux,
 				CandidateTypes:        []CandidateType{CandidateTypeHost},

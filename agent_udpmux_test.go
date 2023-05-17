@@ -51,13 +51,13 @@ func TestMuxAgent(t *testing.T) {
 			})
 			require.NoError(err)
 
-			a, err := NewAgent(&AgentConfig{
+			agent, err := NewAgent(&AgentConfig{
 				CandidateTypes: []CandidateType{CandidateTypeHost},
 				NetworkTypes:   supportedNetworkTypes(),
 			})
 			require.NoError(err)
 
-			conn, muxedConn := connect(a, muxedA)
+			conn, muxedConn := connect(agent, muxedA)
 
 			pair := muxedA.getSelectedPair()
 			require.NotNil(pair)

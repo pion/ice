@@ -13,11 +13,13 @@ import (
 
 	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Assert that candidates are given for each mux in a MultiUDPMux
 func TestMultiUDPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -41,22 +43,22 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		}()
 	}
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateCh := make(chan Candidate)
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(candidateCh)
 			return
 		}
 		candidateCh <- c
 	}))
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 
 	portFound := make(map[int]bool)
 	for c := range candidateCh {
@@ -68,5 +70,5 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		assert.True(portFound[port], "There should be a candidate for each UDP mux port")
 	}
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }

@@ -16,9 +16,12 @@ import (
 	"github.com/pion/transport/v2/test"
 	"github.com/pion/transport/v2/vnet"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRemoteLocalAddr(t *testing.T) {
+	require := require.New(t)
+
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 20).Stop()
 
@@ -27,11 +30,14 @@ func TestRemoteLocalAddr(t *testing.T) {
 	// Agent1 is behind 1:1 NAT
 	natType1 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
 
-	v, errVnet := buildVNet(natType0, natType1)
+	v, errVnet := newVirtualNet(natType0, natType1)
 	if !assert.NoError(t, errVnet) {
 		return
 	}
-	defer v.close()
+
+	defer func() {
+		require.NoError(v.Close())
+	}()
 
 	stunServerURL := &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
@@ -44,7 +50,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 		assert := assert.New(t)
 
 		disconnectedAgent, err := NewAgent(&AgentConfig{})
-		assert.NoError(err)
+		require.NoError(err)
 
 		disconnectedConn := Conn{agent: disconnectedAgent}
 		assert.Nil(disconnectedConn.RemoteAddr())
@@ -56,7 +62,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
 		assert := assert.New(t)
 
-		ca, cb := pipeWithVNet(v,
+		aConn, bConn := pipeWithVirtualNet(v,
 			&agentTestConfig{
 				urls: []*stun.URI{stunServerURL},
 			},
@@ -65,33 +71,33 @@ func TestRemoteLocalAddr(t *testing.T) {
 			},
 		)
 
-		aRAddr := ca.RemoteAddr()
-		aLAddr := ca.LocalAddr()
-		bRAddr := cb.RemoteAddr()
-		bLAddr := cb.LocalAddr()
+		aRemoteAddr := aConn.RemoteAddr()
+		aLocalAddr := aConn.LocalAddr()
+		bRemoteAddr := bConn.RemoteAddr()
+		bLocalAddr := bConn.LocalAddr()
 
 		// Assert that nothing is nil
-		assert.NotNil(aRAddr)
-		assert.NotNil(aLAddr)
-		assert.NotNil(bRAddr)
-		assert.NotNil(bLAddr)
+		assert.NotNil(aRemoteAddr)
+		assert.NotNil(aLocalAddr)
+		assert.NotNil(bRemoteAddr)
+		assert.NotNil(bLocalAddr)
 
 		// Assert addresses
-		assert.Equal(aLAddr.String(),
-			fmt.Sprintf("%s:%d", vnetLocalIPA, bRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		assert.Equal(aLocalAddr.String(),
+			fmt.Sprintf("%s:%d", vnetLocalIPA, bRemoteAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(bLAddr.String(),
-			fmt.Sprintf("%s:%d", vnetLocalIPB, aRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		assert.Equal(bLocalAddr.String(),
+			fmt.Sprintf("%s:%d", vnetLocalIPB, aRemoteAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(aRAddr.String(),
-			fmt.Sprintf("%s:%d", vnetGlobalIPB, bLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		assert.Equal(aRemoteAddr.String(),
+			fmt.Sprintf("%s:%d", vnetGlobalIPB, bLocalAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-		assert.Equal(bRAddr.String(),
-			fmt.Sprintf("%s:%d", vnetGlobalIPA, aLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		assert.Equal(bRemoteAddr.String(),
+			fmt.Sprintf("%s:%d", vnetGlobalIPA, aLocalAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
 
 		// Close
-		assert.NoError(ca.Close())
-		assert.NoError(cb.Close())
+		assert.NoError(aConn.Close())
+		assert.NoError(bConn.Close())
 	})
 }

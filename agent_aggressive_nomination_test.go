@@ -30,21 +30,22 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(err)
-	assert.NoError(wan.AddNet(net0))
+	require.NoError(err)
+
+	require.NoError(wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2", "192.168.0.3", "192.168.0.4"},
 	})
-	assert.NoError(err)
-	assert.NoError(wan.AddNet(net1))
+	require.NoError(err)
 
-	assert.NoError(wan.Start())
+	require.NoError(wan.AddNet(net1))
+	require.NoError(wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -60,8 +61,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		AcceptAggressiveNomination: true,
 	}
 
-	var aAgent, bAgent *Agent
-	aAgent, err = NewAgent(cfg0)
+	aAgent, err := NewAgent(cfg0)
 	require.NoError(err)
 	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
@@ -73,7 +73,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		CheckInterval:     &KeepaliveInterval,
 	}
 
-	bAgent, err = NewAgent(cfg1)
+	bAgent, err := NewAgent(cfg1)
 	require.NoError(err)
 	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
@@ -133,11 +133,10 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	case selected := <-selectedCh:
 		assert.True(selected.Equal(expectNewSelectedCandidate))
 	default:
-		require.Fail("No selected candidate pair")
+		assert.Fail("No selected candidate pair")
 	}
 
 	assert.NoError(wan.Stop())
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	assert.NoError(aConn.Close())
+	assert.NoError(bConn.Close())
 }

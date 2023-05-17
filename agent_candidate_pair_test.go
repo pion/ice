@@ -14,17 +14,12 @@ import (
 )
 
 func TestNoBestAvailableCandidatePairAfterAgentConstruction(t *testing.T) {
-	agent := setupTest(t)
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
 
 	require.Nil(t, agent.getBestAvailableCandidatePair())
 
 	tearDownTest(t, agent)
-}
-
-func setupTest(t *testing.T) *Agent {
-	agent, err := NewAgent(&AgentConfig{})
-	require.NoError(t, err)
-	return agent
 }
 
 func tearDownTest(t *testing.T, agent *Agent) {
@@ -50,16 +45,18 @@ func TestAgentGetBestValidCandidatePair(t *testing.T) {
 }
 
 func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {
-	fixture := new(TestAgentGetBestValidCandidatePairFixture)
-	fixture.hostLocal = newHostLocal(t)
-	fixture.relayRemote = newRelayRemote(t)
-	fixture.srflxRemote = newSrflxRemote(t)
-	fixture.prflxRemote = newPrflxRemote(t)
-	fixture.hostRemote = newHostRemote(t)
+	var err error
 
-	agent, err := NewAgent(&AgentConfig{})
+	fixture := &TestAgentGetBestValidCandidatePairFixture{
+		hostLocal:   newHostLocal(t),
+		relayRemote: newRelayRemote(t),
+		srflxRemote: newSrflxRemote(t),
+		prflxRemote: newPrflxRemote(t),
+		hostRemote:  newHostRemote(t),
+	}
+
+	fixture.sut, err = NewAgent(&AgentConfig{})
 	require.NoError(t, err)
-	fixture.sut = agent
 
 	return fixture
 }

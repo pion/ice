@@ -25,23 +25,23 @@ func TestListenUDP(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(err)
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+	localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 	assert.NotEqual(len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
 	assert.NoError(err)
 
 	ip := localIPs[0]
 
-	conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err := listenUDPInPortRange(agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.NoError(err, "listenUDPInPortRange error with no port restriction")
 	assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
-	_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.ErrorIs(err, ErrPort, "listenUDPInPortRange with invalid port range did not return ErrPort")
 
-	conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err = listenUDPInPortRange(agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.NoError(err, "listenUDPInPortRange error with no port restriction")
 	assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
@@ -55,7 +55,7 @@ func TestListenUDP(t *testing.T) {
 	result := make([]int, 0, total)
 	portRange := make([]int, 0, total)
 	for i := 0; i < total; i++ {
-		conn, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 		assert.NoError(err, "listenUDPInPortRange error with no port restriction")
 		assert.NotNil(conn, "listenUDPInPortRange error with no port restriction return a nil conn")
 
@@ -72,10 +72,10 @@ func TestListenUDP(t *testing.T) {
 	require.Falsef(sort.IntsAreSorted(result), "listenUDPInPortRange with port restriction [%d, %d], ports result should be random", portMin, portMax)
 	assert.ElementsMatch(portRange, result)
 
-	_, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 	assert.Equalf(err, ErrPort, "listenUDPInPortRange with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }
 
 // Assert that srflx candidates can be gathered from TURN servers
@@ -86,6 +86,7 @@ func TestListenUDP(t *testing.T) {
 // https://tools.ietf.org/html/rfc5245#section-2.1
 func TestTURNSrflx(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -115,38 +116,39 @@ func TestTURNSrflx(t *testing.T) {
 		Password: "password",
 	}}
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c != nil && c.Type() == CandidateTypeServerReflexive {
 			candidateGatheredFunc()
 		}
 	}))
 
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 
 	<-candidateGathered.Done()
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 	assert.NoError(server.Close())
 }
 
 func TestCloseConnLog(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
-	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(err)
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(err)
 
-	closeConnAndLog(nil, a.log, "normal nil")
+	closeConnAndLog(nil, agent.log, "normal nil")
 
 	var nc *net.UDPConn
-	closeConnAndLog(nc, a.log, "nil ptr")
+	closeConnAndLog(nc, agent.log, "nil ptr")
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }

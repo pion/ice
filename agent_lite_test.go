@@ -19,6 +19,7 @@ import (
 )
 
 func TestConnectivityLite(t *testing.T) {
+	assert := assert.New(t)
 	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
@@ -35,9 +36,12 @@ func TestConnectivityLite(t *testing.T) {
 		MappingBehavior:   vnet.EndpointIndependent,
 		FilteringBehavior: vnet.EndpointIndependent,
 	}
-	v, err := buildVNet(natType, natType)
+	v, err := newVirtualNet(natType, natType)
 	require.NoError(err)
-	defer v.close()
+
+	defer func() {
+		require.NoError(v.Close())
+	}()
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -66,16 +70,15 @@ func TestConnectivityLite(t *testing.T) {
 	require.NoError(err)
 	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connectWithVNet(aAgent, bAgent)
+	aConn, bConn := connectWithVirtualNet(aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
 	<-aConnected
 	<-bConnected
 
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	assert.NoError(aConn.Close())
+	assert.NoError(bConn.Close())
 }
 
 // Assert that a Lite agent goes to disconnected and failed
@@ -128,7 +131,7 @@ func TestLiteLifecycle(t *testing.T) {
 		}
 	}))
 
-	connectWithVNet(bAgent, aAgent)
+	connectWithVirtualNet(bAgent, aAgent)
 
 	<-aConnected
 	<-bConnected

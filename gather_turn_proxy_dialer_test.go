@@ -17,6 +17,7 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
 )
 
@@ -42,6 +43,7 @@ func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 
 func TestTURNProxyDialer(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -52,12 +54,12 @@ func TestTURNProxyDialer(t *testing.T) {
 	})
 
 	tcpProxyURI, err := url.Parse("tcp://fakeproxy:3128")
-	assert.NoError(err)
+	require.NoError(err)
 
 	proxyDialer, err := proxy.FromURL(tcpProxyURI, proxy.Direct)
-	assert.NoError(err)
+	require.NoError(err)
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeRelay},
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls: []*stun.URI{
@@ -72,25 +74,26 @@ func TestTURNProxyDialer(t *testing.T) {
 		},
 		ProxyDialer: proxyDialer,
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateGatherFinish, candidateGatherFinishFunc := context.WithCancel(context.Background())
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			candidateGatherFinishFunc()
 		}
 	}))
 
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 	<-candidateGatherFinish.Done()
 	<-proxyWasDialed.Done()
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }
 
 // Assert that candidates are given for each mux in a MultiTCPMux
 func TestMultiTCPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -115,22 +118,22 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		}))
 	}
 
-	a, err := NewAgent(&AgentConfig{
+	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		TCPMux:         NewMultiTCPMuxDefault(tcpMuxInstances...),
 	})
-	assert.NoError(err)
+	require.NoError(err)
 
 	candidateCh := make(chan Candidate)
-	assert.NoError(a.OnCandidate(func(c Candidate) {
+	assert.NoError(agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(candidateCh)
 			return
 		}
 		candidateCh <- c
 	}))
-	assert.NoError(a.GatherCandidates())
+	assert.NoError(agent.GatherCandidates())
 
 	portFound := make(map[int]bool)
 	for c := range candidateCh {
@@ -144,5 +147,5 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		assert.True(portFound[port], "There should be a candidate for each TCP mux port")
 	}
 
-	assert.NoError(a.Close())
+	assert.NoError(agent.Close())
 }
