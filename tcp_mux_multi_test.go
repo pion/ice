@@ -27,6 +27,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			assert := assert.New(t)
+
 			report := test.CheckRoutines(t)
 			defer report()
 
@@ -99,8 +100,8 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	require := require.New(t)
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 

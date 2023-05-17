@@ -27,8 +27,8 @@ import (
 
 func TestGatherConcurrency(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -56,8 +56,8 @@ func TestGatherConcurrency(t *testing.T) {
 
 func TestLoopbackCandidate(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -142,8 +142,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -218,8 +217,7 @@ func TestSTUNConcurrency(t *testing.T) {
 
 // Assert that TURN gathering is done concurrently
 func TestTURNConcurrency(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -339,8 +337,8 @@ func TestTURNConcurrency(t *testing.T) {
 // Assert that STUN and TURN gathering are done concurrently
 func TestSTUNTURNConcurrency(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 8)
 	defer lim.Stop()

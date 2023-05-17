@@ -20,8 +20,8 @@ import (
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestOnConnectionStateChangeCallback(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -117,8 +117,8 @@ func makeCandidatePair(t *testing.T) *CandidatePair {
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -166,8 +166,8 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -210,8 +210,8 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()

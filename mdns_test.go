@@ -20,8 +20,8 @@ import (
 func TestMulticastDNSOnlyConnection(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
@@ -58,8 +58,8 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 func TestMulticastDNSMixedConnection(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
@@ -97,8 +97,8 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 func TestMulticastDNSStaticHostName(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

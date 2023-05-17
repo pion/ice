@@ -18,8 +18,7 @@ import (
 
 // TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux
 func TestMuxAgent(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

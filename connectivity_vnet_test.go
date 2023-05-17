@@ -304,8 +304,7 @@ func closePipe(t *testing.T, ca *Conn, cb *Conn) bool {
 }
 
 func TestConnectivityVNet(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	stunServerURL := &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
@@ -472,8 +471,8 @@ func TestConnectivityVNet(t *testing.T) {
 // TestDisconnectedToConnected asserts that an agent can go to disconnected, and then return to connected successfully
 func TestDisconnectedToConnected(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 10)
 	defer lim.Stop()
@@ -571,8 +570,8 @@ func TestDisconnectedToConnected(t *testing.T) {
 // Agent.Write should use the best valid pair if a selected pair is not yet available
 func TestWriteUseValidPair(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 10)
 	defer lim.Stop()

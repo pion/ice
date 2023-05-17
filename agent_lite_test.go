@@ -20,8 +20,8 @@ import (
 
 func TestConnectivityLite(t *testing.T) {
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -84,8 +84,8 @@ func TestConnectivityLite(t *testing.T) {
 func TestLiteLifecycle(t *testing.T) {
 	require := require.New(t)
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

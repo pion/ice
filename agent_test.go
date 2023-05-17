@@ -47,8 +47,7 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Conte
 }
 
 func TestHandlePeerReflexive(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 2)
@@ -167,8 +166,8 @@ func TestHandlePeerReflexive(t *testing.T) {
 func TestConnectivityOnStartup(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -278,8 +277,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 }
 
 func TestInboundValidity(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	buildMsg := func(class stun.MessageClass, username, key string) *stun.Message {
 		msg, err := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
@@ -421,8 +419,8 @@ func TestInboundValidity(t *testing.T) {
 func TestInvalidAgentStarts(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	a, err := NewAgent(&AgentConfig{})
 	assert.NoError(err)
@@ -463,8 +461,8 @@ func TestInvalidGather(t *testing.T) {
 func TestInitExtIPMapping(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// a.extIPMapper should be nil by default
 	a, err := NewAgent(&AgentConfig{})
@@ -518,8 +516,8 @@ func TestInitExtIPMapping(t *testing.T) {
 
 func TestBindingRequestTimeout(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	const expectedRemovalCount = 2
 
@@ -549,8 +547,8 @@ func TestBindingRequestTimeout(t *testing.T) {
 // and ensure it's backwards compatible with previous versions of the pion/ice
 func TestAgentCredentials(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Make sure to pass Travis check by disabling the logs
 	log := logging.NewDefaultLoggerFactory()
@@ -581,8 +579,8 @@ func TestAgentCredentials(t *testing.T) {
 // User can then do an ICE Restart to bring agent back
 func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -628,8 +626,8 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 // Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
 func TestConnectionStateConnectingToFailed(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -688,8 +686,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 }
 
 func TestAgentRestart(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

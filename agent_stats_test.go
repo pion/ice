@@ -17,8 +17,8 @@ import (
 
 func TestCandidatePairStats(t *testing.T) {
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -121,8 +121,8 @@ func TestCandidatePairStats(t *testing.T) {
 
 func TestLocalCandidateStats(t *testing.T) {
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -182,8 +182,8 @@ func TestLocalCandidateStats(t *testing.T) {
 
 func TestRemoteCandidateStats(t *testing.T) {
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()

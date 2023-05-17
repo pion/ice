@@ -19,8 +19,8 @@ import (
 // are given and connections are valid when using UDPMuxDefault and NAT1To1IPs.
 func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

@@ -86,8 +86,8 @@ func TestListenUDP(t *testing.T) {
 // https://tools.ietf.org/html/rfc5245#section-2.1
 func TestTURNSrflx(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

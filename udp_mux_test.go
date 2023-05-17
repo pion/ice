@@ -23,8 +23,7 @@ import (
 func TestUDPMux(t *testing.T) {
 	require := require.New(t)
 
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

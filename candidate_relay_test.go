@@ -27,12 +27,11 @@ func TestRelayOnlyConnection(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
+	defer test.CheckRoutines(t)()
+
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))

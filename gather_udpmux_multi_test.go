@@ -18,8 +18,8 @@ import (
 // Assert that candidates are given for each mux in a MultiUDPMux
 func TestMultiUDPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

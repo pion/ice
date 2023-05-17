@@ -42,8 +42,8 @@ func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 
 func TestTURNProxyDialer(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -93,8 +93,8 @@ func TestTURNProxyDialer(t *testing.T) {
 // Assert that candidates are given for each mux in a MultiTCPMux
 func TestMultiTCPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

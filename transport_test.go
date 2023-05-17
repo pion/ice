@@ -20,8 +20,7 @@ import (
 )
 
 func TestStressDuplex(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -71,12 +70,11 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 }
 
 func TestTimeout(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-
-	report := test.CheckRoutines(t)
-	defer report()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -106,8 +104,7 @@ func TestTimeout(t *testing.T) {
 }
 
 func TestReadClosed(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -311,8 +308,8 @@ func randomPort(t testing.TB) int {
 
 func TestConnStats(t *testing.T) {
 	require := require.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)

@@ -21,8 +21,7 @@ import (
 )
 
 func TestVNetGather(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -131,8 +130,7 @@ func TestVNetGather(t *testing.T) {
 }
 
 func TestVNetGatherWithNAT1To1(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	log := loggerFactory.NewLogger("test")
@@ -310,8 +308,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 }
 
 func TestVNetGatherWithInterfaceFilter(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 	r, err := vnet.NewRouter(&vnet.RouterConfig{
@@ -389,8 +386,8 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 
 func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	assert := assert.New(t)
-	report := test.CheckRoutines(t)
-	defer report()
+
+	defer test.CheckRoutines(t)()
 
 	turnServerURL := &stun.URI{
 		Scheme:   stun.SchemeTypeTURN,

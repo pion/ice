@@ -39,8 +39,7 @@ func ipv6Available(t *testing.T) bool {
 }
 
 func TestAgentActiveTCP(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
