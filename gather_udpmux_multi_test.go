@@ -20,9 +20,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	var expectedPorts []int
 	var udpMuxInstances []UDPMux

@@ -23,9 +23,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: randomPort(t)})
 	assert.NoError(err)

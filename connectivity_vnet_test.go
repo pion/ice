@@ -473,9 +473,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 10)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 10).Stop()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -572,9 +570,7 @@ func TestWriteUseValidPair(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 10)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 10).Stop()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 

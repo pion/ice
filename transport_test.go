@@ -21,10 +21,7 @@ import (
 
 func TestStressDuplex(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	// Run the test
 	stressDuplex(t)
@@ -71,14 +68,11 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 func TestTimeout(t *testing.T) {
 	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
 
 	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
 		ca, cb := pipe(nil)
@@ -105,10 +99,7 @@ func TestTimeout(t *testing.T) {
 
 func TestReadClosed(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	ca, cb := pipe(nil)
 
@@ -310,10 +301,7 @@ func TestConnStats(t *testing.T) {
 	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	ca, cb := pipe(nil)
 	_, err := ca.Write(make([]byte, 10))

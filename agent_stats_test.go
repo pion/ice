@@ -114,7 +114,7 @@ func TestCandidatePairStats(t *testing.T) {
 	require.Equal(srflxPairStat.RemoteCandidateID, srflxRemote.ID(), "Missing host-srflx pair stat")
 	require.Equal(prflxPairStat.RemoteCandidateID, prflxRemote.ID(), "Missing host-prflx pair stat")
 	require.Equal(hostPairStat.RemoteCandidateID, hostRemote.ID(), "Missing host-host pair stat")
-	require.Equalf(prflxPairStat.State, CandidatePairStateFailed, "Expected host-prflx pair to have state failed, it has state %s instead", prflxPairStat.State)
+	require.Equalf(prflxPairStat.State, CandidatePairState(CandidatePairStateFailed), "Expected host-prflx pair to have state failed, it has state %s instead", prflxPairStat.State)
 
 	assert.NoError(t, a.Close())
 }

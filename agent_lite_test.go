@@ -22,9 +22,7 @@ func TestConnectivityLite(t *testing.T) {
 	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	stunServerURL := &stun.URI{
 		Scheme: SchemeTypeSTUN,
@@ -86,9 +84,7 @@ func TestLiteLifecycle(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	aNotifier, aConnected := onConnected()
 

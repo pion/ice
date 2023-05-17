@@ -29,9 +29,7 @@ func TestGatherConcurrency(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
@@ -58,9 +56,8 @@ func TestLoopbackCandidate(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
 	type testCase struct {
 		name        string
 		agentConfig *AgentConfig
@@ -143,9 +140,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
@@ -218,9 +213,7 @@ func TestSTUNConcurrency(t *testing.T) {
 // Assert that TURN gathering is done concurrently
 func TestTURNConcurrency(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	runTest := func(t *testing.T, protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
 		assert := assert.New(t)
@@ -339,9 +332,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 8)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 8).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
@@ -384,7 +375,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	assert.NoError(err)
 
 	{
-		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
+		gatherTimeOut := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 		assert.NoError(a.OnCandidate(func(c Candidate) {
 			if c != nil {
@@ -395,7 +386,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 
 		<-candidateGathered.Done()
 
-		gatherLim.Stop()
+		gatherTimeOut.Stop()
 	}
 
 	assert.NoError(a.Close())

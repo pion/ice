@@ -20,10 +20,7 @@ import (
 
 func TestRemoteLocalAddr(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	// Agent0 is behind 1:1 NAT
 	natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}

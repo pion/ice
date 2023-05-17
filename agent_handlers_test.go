@@ -22,9 +22,7 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -119,9 +117,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -168,9 +164,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -212,9 +206,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)

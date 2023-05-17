@@ -48,10 +48,7 @@ func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Conte
 
 func TestHandlePeerReflexive(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 2)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 2).Stop()
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
 		require := require.New(t)
@@ -168,9 +165,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	// Create a network with two interfaces
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{
@@ -581,9 +576,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -628,9 +621,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 	assert := assert.New(t)
 
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -687,9 +678,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 
 func TestAgentRestart(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	oneSecond := time.Second
 
