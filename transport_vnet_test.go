@@ -62,7 +62,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
 		assert := assert.New(t)
 
-		aConn, bConn := pipeWithVirtualNet(v,
+		aConn, bConn := pipeWithVirtualNet(t, v,
 			&agentTestConfig{
 				urls: []*stun.URI{stunServerURL},
 			},

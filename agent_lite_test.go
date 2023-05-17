@@ -43,8 +43,8 @@ func TestConnectivityLite(t *testing.T) {
 		require.NoError(v.Close())
 	}()
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 
 	cfg0 := &AgentConfig{
 		Urls:             []*stun.URI{stunServerURL},
@@ -70,7 +70,7 @@ func TestConnectivityLite(t *testing.T) {
 	require.NoError(err)
 	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connectWithVirtualNet(aAgent, bAgent)
+	aConn, bConn := connectWithVirtualNet(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -89,13 +89,13 @@ func TestLiteLifecycle(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	aNotifier, aConnected := onConnected()
-
 	aAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 	})
 	require.NoError(err)
+
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	disconnectedDuration := time.Second
@@ -131,7 +131,7 @@ func TestLiteLifecycle(t *testing.T) {
 		}
 	}))
 
-	connectWithVirtualNet(bAgent, aAgent)
+	connectWithVirtualNet(t, bAgent, aAgent)
 
 	<-aConnected
 	<-bConnected

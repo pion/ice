@@ -74,7 +74,7 @@ func TestTimeout(t *testing.T) {
 	}
 
 	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
-		ca, cb := pipe(nil)
+		ca, cb := pipe(t, nil)
 		err := cb.Close()
 		if err != nil {
 			// We should never get here.
@@ -85,7 +85,7 @@ func TestTimeout(t *testing.T) {
 	})
 
 	t.Run("WithDisconnectTimeout", func(t *testing.T) {
-		ca, cb := pipeWithTimeout(5*time.Second, 3*time.Second)
+		ca, cb := pipeWithTimeout(t, 5*time.Second, 3*time.Second)
 		err := cb.Close()
 		if err != nil {
 			// We should never get here.
@@ -100,7 +100,7 @@ func TestReadClosed(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 20).Stop()
 
-	ca, cb := pipe(nil)
+	ca, cb := pipe(t, nil)
 
 	err := ca.Close()
 	if err != nil {
@@ -122,7 +122,7 @@ func TestReadClosed(t *testing.T) {
 func stressDuplex(t *testing.T) {
 	require := require.New(t)
 
-	ca, cb := pipe(nil)
+	ca, cb := pipe(t, nil)
 
 	defer func() {
 		require.NoError(ca.Close())
@@ -137,51 +137,51 @@ func stressDuplex(t *testing.T) {
 	require.NoError(test.StressDuplex(ca, cb, opt))
 }
 
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func gatherAndExchangeCandidates(aAgent, bAgent *Agent) {
+func gatherAndExchangeCandidates(t *testing.T, aAgent, bAgent *Agent) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	check(aAgent.OnCandidate(func(candidate Candidate) {
-		if candidate == nil {
-			wg.Done()
-		}
-	}))
-	check(aAgent.GatherCandidates())
+	require := require.New(t)
 
-	check(bAgent.OnCandidate(func(candidate Candidate) {
+	require.NoError(aAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	check(bAgent.GatherCandidates())
+	require.NoError(aAgent.GatherCandidates())
+
+	require.NoError(bAgent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			wg.Done()
+		}
+	}))
+	require.NoError(bAgent.GatherCandidates())
 
 	wg.Wait()
 
 	candidates, err := aAgent.GetLocalCandidates()
-	check(err)
+	require.NoError(err)
+
 	for _, c := range candidates {
 		candidateCopy, copyErr := c.copy()
-		check(copyErr)
-		check(bAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(copyErr)
+		require.NoError(bAgent.AddRemoteCandidate(candidateCopy))
 	}
 
 	candidates, err = bAgent.GetLocalCandidates()
-	check(err)
+	require.NoError(err)
+
 	for _, c := range candidates {
 		candidateCopy, copyErr := c.copy()
-		check(copyErr)
-		check(aAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(copyErr)
+		require.NoError(aAgent.AddRemoteCandidate(candidateCopy))
 	}
 }
 
-func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
-	gatherAndExchangeCandidates(aAgent, bAgent)
+func connect(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	require := require.New(t)
+
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -189,26 +189,29 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	go func() {
 		var acceptErr error
 		bUfrag, bPwd, acceptErr := bAgent.GetLocalUserCredentials()
-		check(acceptErr)
+		require.NoError(acceptErr)
+
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-		check(acceptErr)
+		require.NoError(acceptErr)
+
 		close(accepted)
 	}()
+
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(err)
+
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-	check(err)
+	require.NoError(err)
 
 	// Ensure accepted
 	<-accepted
 	return aConn, bConn
 }
 
-func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
+func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
 	var urls []*stun.URI
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
+	require := require.New(t)
 
 	cfg := &AgentConfig{}
 	if defaultConfig != nil {
@@ -219,15 +222,18 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	cfg.NetworkTypes = supportedNetworkTypes()
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
-	check(aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(err)
 
-	check(bAgent.OnConnectionStateChange(bNotifier))
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connect(aAgent, bAgent)
+	aConn, bConn := connect(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -237,11 +243,10 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
+func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
 	var urls []*stun.URI
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
+	require := require.New(t)
 
 	cfg := &AgentConfig{
 		Urls:                urls,
@@ -251,14 +256,18 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	}
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
-	check(aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(err)
+
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	check(err)
-	check(bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(err)
 
-	aConn, bConn := connect(aAgent, bAgent)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
+
+	aConn, bConn := connect(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -268,13 +277,37 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	return aConn, bConn
 }
 
-func onConnected() (func(ConnectionState), chan struct{}) {
+func onConnectionStateChangedNotifier(desiredState ConnectionState) (func(ConnectionState), chan struct{}) { //nolint:unparam
 	done := make(chan struct{})
 	return func(state ConnectionState) {
-		if state == ConnectionStateConnected {
+		if state == desiredState {
 			close(done)
 		}
 	}, done
+}
+
+func onCandidateNotifier() (func(Candidate), chan Candidate) {
+	ch := make(chan Candidate, 1)
+
+	return func(c Candidate) {
+		if c != nil {
+			ch <- c
+		} else {
+			close(ch)
+		}
+	}, ch
+}
+
+func onCandidatePairSelectedNotifier(remote bool) (func(Candidate, Candidate), chan Candidate) {
+	ch := make(chan Candidate, 1)
+
+	return func(localCandidate, remoteCandidate Candidate) {
+		if remote {
+			ch <- remoteCandidate
+		} else {
+			ch <- localCandidate
+		}
+	}, ch
 }
 
 func randomPort(t testing.TB) int {
@@ -302,7 +335,7 @@ func TestConnStats(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 20).Stop()
 
-	ca, cb := pipe(nil)
+	ca, cb := pipe(t, nil)
 	_, err := ca.Write(make([]byte, 10))
 	require.NoError(err, "Failed to write")
 

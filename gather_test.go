@@ -7,7 +7,6 @@
 package ice
 
 import (
-	"context"
 	"net"
 	"sort"
 	"strconv"
@@ -123,16 +122,22 @@ func TestTURNSrflx(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c != nil && c.Type() == CandidateTypeServerReflexive {
-			candidateGatheredFunc()
-		}
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
 
 	assert.NoError(agent.GatherCandidates())
 
-	<-candidateGathered.Done()
+	var foundSrflxCandidates int
+
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		if c.Type() == CandidateTypeServerReflexive {
+			foundSrflxCandidates++
+		}
+	}
+	t.Log("Gathering is done")
+
+	assert.True(foundSrflxCandidates > 0)
 
 	assert.NoError(agent.Close())
 	assert.NoError(server.Close())

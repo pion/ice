@@ -7,7 +7,6 @@
 package ice
 
 import (
-	"context"
 	"regexp"
 	"testing"
 	"time"
@@ -33,18 +32,16 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	aAgent, err := NewAgent(cfg)
 	require.NoError(err)
 
-	aNotifier, aConnected := onConnected()
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	require.NoError(err)
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(err)
 
-	bNotifier, bConnected := onConnected()
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	require.NoError(err)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	<-aConnected
 	<-bConnected
 
@@ -66,9 +63,8 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 	})
 	require.NoError(err)
 
-	aNotifier, aConnected := onConnected()
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	require.NoError(err)
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
@@ -77,11 +73,10 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 	})
 	require.NoError(err)
 
-	bNotifier, bConnected := onConnected()
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	require.NoError(err)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	<-aConnected
 	<-bConnected
 
@@ -112,16 +107,20 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 	})
 	require.NoError(err)
 
-	correctHostName, resolveFunc := context.WithCancel(context.Background())
-	err = agent.OnCandidate(func(c Candidate) {
-		if c != nil && c.Address() == "validName.local" {
-			resolveFunc()
-		}
-	})
-	assert.NoError(err)
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
 
 	assert.NoError(agent.GatherCandidates())
-	<-correctHostName.Done()
+
+	var foundMDNSCandidates int
+	for c := range candidates {
+		if c.Address() == "validName.local" {
+			foundMDNSCandidates++
+		}
+	}
+
+	assert.True(foundMDNSCandidates > 0)
+
 	assert.NoError(agent.Close())
 }
 

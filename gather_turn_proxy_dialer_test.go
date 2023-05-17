@@ -76,15 +76,17 @@ func TestTURNProxyDialer(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateGatherFinish, candidateGatherFinishFunc := context.WithCancel(context.Background())
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			candidateGatherFinishFunc()
-		}
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
 
 	assert.NoError(agent.GatherCandidates())
-	<-candidateGatherFinish.Done()
+
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		t.Logf("Found candidate: %s", c)
+	}
+	t.Log("Gathering is done")
+
 	<-proxyWasDialed.Done()
 
 	assert.NoError(agent.Close())
@@ -125,24 +127,24 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateCh := make(chan Candidate)
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			close(candidateCh)
-			return
-		}
-		candidateCh <- c
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
+
 	assert.NoError(agent.GatherCandidates())
 
 	portFound := make(map[int]bool)
-	for c := range candidateCh {
+
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
 		activeCandidate := c.Port() == 0
 		if c.NetworkType().IsTCP() && !activeCandidate {
 			portFound[c.Port()] = true
 		}
 	}
+	t.Log("Gathering is done")
+
 	assert.Len(portFound, len(expectedPorts))
+
 	for _, port := range expectedPorts {
 		assert.True(portFound[port], "There should be a candidate for each TCP mux port")
 	}

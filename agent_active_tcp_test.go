@@ -136,7 +136,7 @@ func TestAgentActiveTCP(t *testing.T) {
 			require.NoError(err)
 			require.NotNil(activeAgent)
 
-			passiveAgentConn, activeAgentConn := connect(passiveAgent, activeAgent)
+			passiveAgentConn, activeAgentConn := connect(t, passiveAgent, activeAgent)
 			require.NotNil(passiveAgentConn)
 			require.NotNil(activeAgentConn)
 

@@ -133,7 +133,6 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	log := loggerFactory.NewLogger("test")
 
 	t.Run("gather 1:1 NAT external IPs as host candidates", func(t *testing.T) {
 		require := require.New(t)
@@ -180,27 +179,25 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		require.NoError(err)
 		defer agent.Close() //nolint:errcheck
 
-		done := make(chan struct{})
-		require.NoError(agent.OnCandidate(func(c Candidate) {
-			if c == nil {
-				close(done)
-			}
-		}))
+		candidateNotifier, candidatesCh := onCandidateNotifier()
+		require.NoError(agent.OnCandidate(candidateNotifier))
 
 		require.NoError(agent.GatherCandidates())
 
-		log.Debug("Wait until gathering is complete...")
-		<-done
-		log.Debug("Gathering is done")
+		t.Log("Wait until gathering is complete...")
+		for c := range candidatesCh {
+			t.Logf("Found candidate: %s", c)
+		}
+		t.Log("Gathering is done")
 
 		candidates, err := agent.GetLocalCandidates()
 		require.NoError(err)
 		require.Len(candidates, 2, "There must be two candidates")
 
 		lAddr := [2]*net.UDPAddr{nil, nil}
-		for i, candi := range candidates {
-			lAddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-			require.Equal(candi.Port(), lAddr[i].Port, "Unexpected candidate port")
+		for i, cand := range candidates {
+			lAddr[i] = cand.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+			require.Equal(cand.Port(), lAddr[i].Port, "Unexpected candidate port")
 		}
 
 		if candidates[0].Address() == externalIP0 {
@@ -260,18 +257,16 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		require.NoError(err)
 		defer agent.Close() //nolint:errcheck
 
-		done := make(chan struct{})
-		require.NoError(agent.OnCandidate(func(c Candidate) {
-			if c == nil {
-				close(done)
-			}
-		}))
+		candidateNotifier, candidatesCh := onCandidateNotifier()
+		require.NoError(agent.OnCandidate(candidateNotifier))
 
 		require.NoError(agent.GatherCandidates())
 
-		log.Debug("Wait until gathering is complete...")
-		<-done
-		log.Debug("Gathering is done")
+		t.Log("Wait until gathering is complete...")
+		for c := range candidatesCh {
+			t.Logf("Found candidate: %s", c)
+		}
+		t.Log("Gathering is done")
 
 		candidates, err := agent.GetLocalCandidates()
 		require.NoError(err)

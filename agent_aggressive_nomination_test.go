@@ -18,6 +18,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Send new USE-CANDIDATE message with higher priority to update the selected pair
+func buildUseCandidateMsg(class stun.MessageClass, username, key string, priority uint32) (*stun.Message, error) {
+	return stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
+		stun.NewUsername(username),
+		stun.NewShortTermIntegrity(key),
+		UseCandidate(),
+		PriorityAttr(priority),
+		stun.Fingerprint,
+	)
+}
+
 func TestAcceptAggressiveNomination(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
@@ -47,9 +58,6 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	require.NoError(wan.AddNet(net1))
 	require.NoError(wan.Start())
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
-
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
@@ -63,6 +71,8 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(err)
+
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
@@ -75,66 +85,67 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	bAgent, err := NewAgent(cfg1)
 	require.NoError(err)
+
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connect(aAgent, bAgent)
+	aConn, bConn := connect(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
 	<-aConnected
 	<-bConnected
 
-	// Send new USE-CANDIDATE message with higher priority to update the selected pair
-	buildMsg := func(class stun.MessageClass, username, key string, priority uint32) *stun.Message {
-		msg, err1 := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
-			stun.NewUsername(username),
-			stun.NewShortTermIntegrity(key),
-			UseCandidate(),
-			PriorityAttr(priority),
-			stun.Fingerprint,
-		)
-		require.NoError(err1)
+	selectedNotifier, selectedCh := onCandidatePairSelectedNotifier(true)
+	require.NoError(aAgent.OnSelectedCandidatePairChange(selectedNotifier))
 
-		return msg
-	}
-
-	selectedCh := make(chan Candidate, 1)
-	var expectNewSelectedCandidate Candidate
-	err = aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
-		selectedCh <- remote
-	})
+	localCandidates, err := bAgent.GetLocalCandidates()
 	require.NoError(err)
 
-	var bcandidates []Candidate
-	bcandidates, err = bAgent.GetLocalCandidates()
-	require.NoError(err)
+	cp := bAgent.getSelectedPair()
 
-	for _, c := range bcandidates {
-		if c != bAgent.getSelectedPair().Local {
-			if expectNewSelectedCandidate == nil {
-			incr_priority:
-				for _, candidates := range aAgent.remoteCandidates {
-					for _, candidate := range candidates {
-						if candidate.Equal(c) {
-							candidate.(*CandidateHost).priorityOverride += 1000 //nolint:forcetypeassert
-							break incr_priority
-						}
+	var expectNewSelectedCandidate, newSelectedCandidate Candidate
+	for _, localCandidate := range localCandidates {
+		if localCandidate == cp.Local {
+			continue
+		}
+
+		if expectNewSelectedCandidate == nil {
+		incr_priority:
+			for _, remoteCandidates := range aAgent.remoteCandidates {
+				for _, remoteCandidate := range remoteCandidates {
+					if remoteHostCandidate, ok := remoteCandidate.(*CandidateHost); ok && remoteCandidate.Equal(localCandidate) {
+						remoteHostCandidate.priorityOverride += 1000
+						break incr_priority
 					}
 				}
-				expectNewSelectedCandidate = c
 			}
-			_, err = c.writeTo(buildMsg(stun.ClassRequest, aAgent.localUfrag+":"+aAgent.remoteUfrag, aAgent.localPwd, c.Priority()).Raw, bAgent.getSelectedPair().Remote)
-			require.NoError(err)
+
+			expectNewSelectedCandidate = localCandidate
 		}
+
+		msg, err := buildUseCandidateMsg(stun.ClassRequest, aAgent.localUfrag+":"+aAgent.remoteUfrag, aAgent.localPwd, localCandidate.Priority())
+		require.NoError(err)
+
+		_, err = localCandidate.writeTo(msg.Raw, cp.Remote)
+		require.NoError(err)
 	}
 
-	time.Sleep(1 * time.Second)
+	t.Log("Wait for new selected candidate")
+
+	timeout := time.NewTimer(2 * time.Second)
 	select {
-	case selected := <-selectedCh:
-		assert.True(selected.Equal(expectNewSelectedCandidate))
-	default:
-		assert.Fail("No selected candidate pair")
+	case newSelectedCandidate = <-selectedCh:
+	case <-timeout.C:
+		assert.Fail("Timeout")
 	}
+
+	assert.NotNil(expectNewSelectedCandidate)
+	assert.NotNil(newSelectedCandidate)
+
+	assert.Truef(newSelectedCandidate.Equal(expectNewSelectedCandidate),
+		"Candidate mismatch: %s != %s",
+		expectNewSelectedCandidate, newSelectedCandidate)
 
 	assert.NoError(wan.Stop())
 	assert.NoError(aConn.Close())

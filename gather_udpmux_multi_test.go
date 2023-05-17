@@ -50,21 +50,21 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateCh := make(chan Candidate)
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			close(candidateCh)
-			return
-		}
-		candidateCh <- c
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
 	assert.NoError(agent.GatherCandidates())
 
 	portFound := make(map[int]bool)
-	for c := range candidateCh {
+
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		t.Logf("Found candidate: %s", c)
+
 		portFound[c.Port()] = true
 		assert.True(c.NetworkType().IsUDP(), "All candidates should be UDP")
 	}
+	t.Log("Gathering is done")
+
 	assert.Len(portFound, len(expectedPorts))
 	for _, port := range expectedPorts {
 		assert.True(portFound[port], "There should be a candidate for each UDP mux port")

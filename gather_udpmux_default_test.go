@@ -45,16 +45,17 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 	})
 	require.NoError(err)
 
-	gatherCandidateDone := make(chan struct{})
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			close(gatherCandidateDone)
-		} else {
-			assert.Equal("1.2.3.4", c.Address())
-		}
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
+
 	assert.NoError(agent.GatherCandidates())
-	<-gatherCandidateDone
+
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		t.Logf("Found candidate: %s", c)
+		assert.Equal("1.2.3.4", c.Address())
+	}
+	t.Log("Gathering is done")
 
 	assert.NotEqual(0, len(mux.connsIPv4))
 

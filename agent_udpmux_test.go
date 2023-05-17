@@ -57,7 +57,7 @@ func TestMuxAgent(t *testing.T) {
 			})
 			require.NoError(err)
 
-			conn, muxedConn := connect(agent, muxedA)
+			conn, muxedConn := connect(t, agent, muxedA)
 
 			pair := muxedA.getSelectedPair()
 			require.NotNil(pair)

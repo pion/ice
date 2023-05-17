@@ -189,8 +189,8 @@ func TestConnectivityOnStartup(t *testing.T) {
 	require.NoError(wan.AddNet(net1))
 	assert.NoError(wan.Start())
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
@@ -225,7 +225,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 		bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
 		assert.NoError(err)
 
-		gatherAndExchangeCandidates(aAgent, bAgent)
+		gatherAndExchangeCandidates(t, aAgent, bAgent)
 
 		accepted := make(chan struct{})
 		accepting := make(chan struct{})
@@ -233,9 +233,10 @@ func TestConnectivityOnStartup(t *testing.T) {
 
 		origHdlr := aAgent.onConnectionStateChangeHdlr.Load()
 		if origHdlr != nil {
-			defer check(aAgent.OnConnectionStateChange(origHdlr.(func(ConnectionState)))) //nolint:forcetypeassert
+			defer require.NoError(aAgent.OnConnectionStateChange(origHdlr.(func(ConnectionState)))) //nolint:forcetypeassert
 		}
-		check(aAgent.OnConnectionStateChange(func(s ConnectionState) {
+
+		require.NoError(aAgent.OnConnectionStateChange(func(s ConnectionState) {
 			if s == ConnectionStateChecking {
 				close(accepting)
 			}
@@ -247,14 +248,15 @@ func TestConnectivityOnStartup(t *testing.T) {
 		go func() {
 			var acceptErr error
 			aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-			check(acceptErr)
+			require.NoError(acceptErr)
+
 			close(accepted)
 		}()
 
 		<-accepting
 
 		bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-		check(err)
+		require.NoError(err)
 
 		// Ensure accepted
 		<-accepted
@@ -446,8 +448,7 @@ func TestInvalidGather(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
 		require.NoError(err, "Error constructing ice.Agent")
 
-		err = a.GatherCandidates()
-		require.ErrorIs(err, ErrNoOnCandidateHandler, "Trickle GatherCandidates succeeded without OnCandidate")
+		require.ErrorIs(a.GatherCandidates(), ErrNoOnCandidateHandler, "Trickle GatherCandidates succeeded without OnCandidate")
 
 		require.NoError(a.Close())
 	})
@@ -604,7 +605,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 		}
 	}))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	<-isFailed
 
 	done := make(chan struct{})
@@ -688,7 +689,7 @@ func TestAgentRestart(t *testing.T) {
 	t.Run("Restart During Gather", func(t *testing.T) {
 		assert := assert.New(t)
 
-		connA, connB := pipe(&AgentConfig{
+		connA, connB := pipe(t, &AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
@@ -721,7 +722,7 @@ func TestAgentRestart(t *testing.T) {
 	t.Run("Restart One Side", func(t *testing.T) {
 		assert := assert.New(t)
 
-		connA, connB := pipe(&AgentConfig{
+		connA, connB := pipe(t, &AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
@@ -754,17 +755,17 @@ func TestAgentRestart(t *testing.T) {
 		}
 
 		// Store the original candidates, confirm that after we reconnect we have new pairs
-		connA, connB := pipe(&AgentConfig{
+		connA, connB := pipe(t, &AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
 		connAFirstCandidates := generateCandidateAddressStrings(connA.agent.GetLocalCandidates())
 		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
 
-		aNotifier, aConnected := onConnected()
+		aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 		assert.NoError(connA.agent.OnConnectionStateChange(aNotifier))
 
-		bNotifier, bConnected := onConnected()
+		bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 		assert.NoError(connB.agent.OnConnectionStateChange(bNotifier))
 
 		// Restart and Re-Signal
@@ -780,7 +781,7 @@ func TestAgentRestart(t *testing.T) {
 		assert.NoError(err)
 		assert.NoError(connB.agent.SetRemoteCredentials(ufrag, pwd))
 
-		gatherAndExchangeCandidates(connA.agent, connB.agent)
+		gatherAndExchangeCandidates(t, connA.agent, connB.agent)
 
 		// Wait until both have gone back to connected
 		<-aConnected

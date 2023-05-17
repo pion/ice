@@ -203,15 +203,17 @@ func addVirtualNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*
 	return server, err
 }
 
-func connectWithVirtualNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
+func connectWithVirtualNet(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	require := require.New(t)
+
 	// Manual signaling
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(err)
 
 	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(err)
 
-	gatherAndExchangeCandidates(aAgent, bAgent)
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -219,12 +221,13 @@ func connectWithVirtualNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	go func() {
 		var acceptErr error
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-		check(acceptErr)
+		require.NoError(acceptErr)
+
 		close(accepted)
 	}()
 
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-	check(err)
+	require.NoError(err)
 
 	// Ensure accepted
 	<-accepted
@@ -236,10 +239,7 @@ type agentTestConfig struct {
 	nat1To1IPCandidateType CandidateType
 }
 
-func pipeWithVirtualNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
-
+func pipeWithVirtualNet(t *testing.T, v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
 	var nat1To1IPs []string
 	if a0TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
@@ -260,8 +260,9 @@ func pipeWithVirtualNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConf
 	if err != nil {
 		panic(err)
 	}
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	if err != nil {
+
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
 		panic(err)
 	}
 
@@ -283,12 +284,13 @@ func pipeWithVirtualNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConf
 	if err != nil {
 		panic(err)
 	}
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	if err != nil {
+
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
 		panic(err)
 	}
 
-	aConn, bConn := connectWithVirtualNet(aAgent, bAgent)
+	aConn, bConn := connectWithVirtualNet(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -347,7 +349,7 @@ func TestConnectivityVirtualNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		aConn, bConn := pipeWithVirtualNet(v, a0TestConfig, a1TestConfig)
+		aConn, bConn := pipeWithVirtualNet(t, v, a0TestConfig, a1TestConfig)
 
 		time.Sleep(1 * time.Second)
 
@@ -384,7 +386,7 @@ func TestConnectivityVirtualNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		aConn, bConn := pipeWithVirtualNet(v, a0TestConfig, a1TestConfig)
+		aConn, bConn := pipeWithVirtualNet(t, v, a0TestConfig, a1TestConfig)
 
 		t.Log("Closing...")
 		assert.NoError(aConn.Close())
@@ -419,7 +421,7 @@ func TestConnectivityVirtualNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		aConn, bConn := pipeWithVirtualNet(v, a0TestConfig, a1TestConfig)
+		aConn, bConn := pipeWithVirtualNet(t, v, a0TestConfig, a1TestConfig)
 
 		t.Log("Closing...")
 		assert.NoError(aConn.Close())
@@ -454,7 +456,7 @@ func TestConnectivityVirtualNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		aConn, bConn := pipeWithVirtualNet(v, a0TestConfig, a1TestConfig)
+		aConn, bConn := pipeWithVirtualNet(t, v, a0TestConfig, a1TestConfig)
 
 		t.Log("Closing...")
 		assert.NoError(aConn.Close())
@@ -531,7 +533,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		controlledStateChanges <- c
 	}))
 
-	connectWithVirtualNet(controllingAgent, controlledAgent)
+	connectWithVirtualNet(t, controllingAgent, controlledAgent)
 	blockUntilStateSeen := func(expectedState ConnectionState, stateQueue chan ConnectionState) {
 		for s := range stateQueue {
 			if s == expectedState {
@@ -621,7 +623,7 @@ func TestWriteUseValidPair(t *testing.T) {
 	})
 	require.NoError(err)
 
-	gatherAndExchangeCandidates(controllingAgent, controlledAgent)
+	gatherAndExchangeCandidates(t, controllingAgent, controlledAgent)
 
 	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
 	require.NoError(err)

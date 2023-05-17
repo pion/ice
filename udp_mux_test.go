@@ -277,15 +277,15 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 	require := require.New(t)
 
 	oneSecond := time.Second
-	connA, connB := pipe(&AgentConfig{
+	connA, connB := pipe(t, &AgentConfig{
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 	})
 
-	aNotifier, aConnected := onConnected()
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 	require.NoError(connA.agent.OnConnectionStateChange(aNotifier))
 
-	bNotifier, bConnected := onConnected()
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
 	require.NoError(connB.agent.OnConnectionStateChange(bNotifier))
 
 	// Maintain Credentials across restarts
@@ -303,7 +303,7 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 
 	require.NoError(connA.agent.SetRemoteCredentials(ufragB, pwdB))
 	require.NoError(connB.agent.SetRemoteCredentials(ufragA, pwdA))
-	gatherAndExchangeCandidates(connA.agent, connB.agent)
+	gatherAndExchangeCandidates(t, connA.agent, connB.agent)
 
 	// Wait until both have gone back to connected
 	<-aConnected

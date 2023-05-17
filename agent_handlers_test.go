@@ -65,7 +65,7 @@ func TestOnConnectionStateChangeCallback(t *testing.T) {
 		}
 	}))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	<-isChecking
 	<-isConnected
@@ -155,7 +155,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		}
 	}))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	close(isConnected)
 
 	<-isClosed
@@ -165,6 +165,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
@@ -183,51 +184,54 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(err)
+
 	bAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(err)
 
 	isComplete := make(chan interface{})
-	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	assert.NoError(aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
 			assert.NoError(errCred)
 			assert.NoError(aAgent.Restart("", ""))
 			close(isComplete)
 		}
-	})
-	assert.NoError(err)
+	}))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	<-isComplete
+
 	assert.NoError(aAgent.Close())
 	assert.NoError(bAgent.Close())
 }
 
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	assert := assert.New(t)
+	require := require.New(t)
 
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
-	KeepaliveInterval := time.Duration(0)
-	CheckInterval := 50 * time.Millisecond
+	keepaliveInterval := time.Duration(0)
+	checkInterval := 50 * time.Millisecond
 
 	cfg := &AgentConfig{
 		Urls:                []*stun.URI{},
 		NetworkTypes:        supportedNetworkTypes(),
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
-		KeepaliveInterval:   &KeepaliveInterval,
-		CheckInterval:       &CheckInterval,
+		KeepaliveInterval:   &keepaliveInterval,
+		CheckInterval:       &checkInterval,
 	}
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(err)
+
 	bAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(err)
 
 	isComplete := make(chan interface{})
 	isTested := make(chan interface{})
@@ -240,14 +244,13 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	})
 	assert.NoError(err)
 
-	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	assert.NoError(aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			close(isComplete)
 		}
-	})
-	assert.NoError(err)
+	}))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	<-isComplete
 	<-isTested

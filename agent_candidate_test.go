@@ -80,7 +80,7 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	assert.NoError(err)
 	assert.Nil(bAgentPair)
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	aAgentPair, err = aAgent.GetSelectedCandidatePair()
 	assert.NoError(err)

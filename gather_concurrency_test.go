@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"net"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,6 +47,7 @@ func TestGatherConcurrency(t *testing.T) {
 		_ = agent.GatherCandidates()
 	}
 
+	t.Log("Wait until first candidate has been gathered...")
 	<-candidateGathered.Done()
 
 	assert.NoError(agent.Close())
@@ -114,25 +114,23 @@ func TestLoopbackCandidate(t *testing.T) {
 			agent, err := NewAgent(tc.agentConfig)
 			require.NoError(err)
 
-			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-			var loopback int32
-			assert.NoError(agent.OnCandidate(func(c Candidate) {
-				if c != nil {
-					if net.ParseIP(c.Address()).IsLoopback() {
-						atomic.StoreInt32(&loopback, 1)
-					}
-				} else {
-					candidateGatheredFunc()
-					return
-				}
-				t.Log(c.NetworkType(), c.Priority(), c)
-			}))
+			candidateNotifier, candidates := onCandidateNotifier()
+			require.NoError(agent.OnCandidate(candidateNotifier))
+
 			assert.NoError(agent.GatherCandidates())
 
-			<-candidateGathered.Done()
+			var loopback bool
+
+			t.Log("Wait until gathering is complete...")
+			for c := range candidates {
+				if net.ParseIP(c.Address()).IsLoopback() {
+					loopback = true
+				}
+			}
+			t.Log("Gathering is done")
 
 			assert.NoError(agent.Close())
-			assert.Equal(tc.loExpected, atomic.LoadInt32(&loopback) == 1)
+			assert.Equal(tc.loExpected, loopback)
 		})
 	}
 
@@ -200,17 +198,15 @@ func TestSTUNConcurrency(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			candidateGatheredFunc()
-			return
-		}
-		t.Log(c.NetworkType(), c.Priority(), c)
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
 	assert.NoError(agent.GatherCandidates())
 
-	<-candidateGathered.Done()
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		t.Logf("Found candidate: %s", c)
+	}
+	t.Log("Gathering is done")
 
 	assert.NoError(agent.Close())
 	assert.NoError(server.Close())
@@ -277,15 +273,15 @@ func TestTURNConcurrency(t *testing.T) {
 		})
 		require.NoError(err)
 
-		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		assert.NoError(agent.OnCandidate(func(c Candidate) {
-			if c != nil {
-				candidateGatheredFunc()
-			}
-		}))
+		candidateNotifier, candidates := onCandidateNotifier()
+		require.NoError(agent.OnCandidate(candidateNotifier))
 		assert.NoError(agent.GatherCandidates())
 
-		<-candidateGathered.Done()
+		t.Log("Wait until gathering is complete...")
+		for c := range candidates {
+			t.Logf("Found candidate: %s", c)
+		}
+		t.Log("Gathering is done")
 
 		assert.NoError(agent.Close())
 		assert.NoError(server.Close())
@@ -384,15 +380,13 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 
 	{
 		gatherTimeOut := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
-		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-		require.NoError(agent.OnCandidate(func(c Candidate) {
-			if c != nil {
-				candidateGatheredFunc()
-			}
-		}))
+
+		candidateNotifier, candidates := onCandidateNotifier()
+		require.NoError(agent.OnCandidate(candidateNotifier))
 		require.NoError(agent.GatherCandidates())
 
-		<-candidateGathered.Done()
+		_, ok := <-candidates
+		assert.True(ok)
 
 		gatherTimeOut.Stop()
 	}

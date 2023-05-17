@@ -7,7 +7,6 @@
 package ice
 
 import (
-	"context"
 	"net"
 	"sync"
 	"testing"
@@ -55,17 +54,16 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	})
 	require.NoError(err)
 
-	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(agent.OnCandidate(func(c Candidate) {
-		if c == nil {
-			candidateGatheredFunc()
-			return
-		}
-		t.Log(c.NetworkType(), c.Priority(), c)
-	}))
+	candidateNotifier, candidates := onCandidateNotifier()
+	require.NoError(agent.OnCandidate(candidateNotifier))
+
 	assert.NoError(agent.GatherCandidates())
 
-	<-candidateGathered.Done()
+	t.Log("Wait until gathering is complete...")
+	for c := range candidates {
+		t.Logf("Found candidate: %s", c)
+	}
+	t.Log("Gathering is done")
 
 	assert.NoError(agent.Close())
 	// Twice because of 2 STUN servers configured

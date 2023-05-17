@@ -64,18 +64,16 @@ func TestRelayOnlyConnection(t *testing.T) {
 	aAgent, err := NewAgent(cfg)
 	require.NoError(err)
 
-	aNotifier, aConnected := onConnected()
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	require.NoError(err)
+	aNotifier, aConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(err)
 
-	bNotifier, bConnected := onConnected()
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	require.NoError(err)
+	bNotifier, bConnected := onConnectionStateChangedNotifier(ConnectionStateConnected)
+	require.NoError(bAgent.OnConnectionStateChange(bNotifier))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	<-aConnected
 	<-bConnected
 
