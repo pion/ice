@@ -126,6 +126,7 @@ func TestAgentActiveTCP(t *testing.T) {
 				NetworkTypes:          testCase.networkTypes,
 				LoggerFactory:         loggerFactory,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
+				EnableActiveTCP:       true,
 			})
 			r.NoError(err)
 			r.NotNil(activeAgent)

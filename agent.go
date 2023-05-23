@@ -134,10 +134,11 @@ type Agent struct {
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
 
-	net         transport.Net
-	tcpMux      TCPMux
-	udpMux      UDPMux
-	udpMuxSrflx UniversalUDPMux
+	net             transport.Net
+	tcpMux          TCPMux
+	udpMux          UDPMux
+	udpMuxSrflx     UniversalUDPMux
+	enableActiveTCP bool
 
 	interfaceFilter func(string) bool
 	ipFilter        func(net.IP) bool
@@ -303,6 +304,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		tcpMux:            config.TCPMux,
 		udpMux:            config.UDPMux,
 		udpMuxSrflx:       config.UDPMuxSrflx,
+		enableActiveTCP:   config.EnableActiveTCP,
 
 		mDNSMode: mDNSMode,
 		mDNSName: mDNSName,
