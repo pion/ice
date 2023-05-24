@@ -48,9 +48,8 @@ func (c CandidateType) Preference() uint16 {
 		return 100
 	case CandidateTypeRelay, CandidateTypeUnspecified:
 		return 0
-	default:
-		return 0
 	}
+	return 0
 }
 
 func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {

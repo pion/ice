@@ -41,18 +41,11 @@ const (
 	// defaultMaxBindingRequests is the maximum number of binding requests before considering a pair failed
 	defaultMaxBindingRequests = 7
 
-	// TCPPriorityOffset is a number which is subtracted from the default (UDP) candidate type preference
-	// for host, srflx and prfx candidate types.
-	defaultTCPPriorityOffset = 27
-
 	// maxBufferSize is the number of bytes that can be buffered before we start to error
 	maxBufferSize = 1000 * 1000 // 1MB
 
 	// maxBindingRequestTimeout is the wait time before binding requests can be deleted
 	maxBindingRequestTimeout = 4000 * time.Millisecond
-
-	// tcpReadBufferSize is the size of the read buffer of tcpPacketConn used by active tcp candidate
-	tcpReadBufferSize = 8
 )
 
 func defaultCandidateTypes() []CandidateType {
@@ -181,12 +174,6 @@ type AgentConfig struct {
 
 	// Include loopback addresses in the candidate list.
 	IncludeLoopback bool
-
-	// TCPPriorityOffset is a number which is subtracted from the default (UDP) candidate type preference
-	// for host, srflx and prfx candidate types. It helps to configure relative preference of UDP candidates
-	// against TCP ones. Relay candidates for TCP and UDP are always 0 and not affected by this setting.
-	// When this is nil, defaultTCPPriorityOffset is used.
-	TCPPriorityOffset *uint16
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset
@@ -219,12 +206,6 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
 	} else {
 		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
-	}
-
-	if config.TCPPriorityOffset == nil {
-		a.tcpPriorityOffset = defaultTCPPriorityOffset
-	} else {
-		a.tcpPriorityOffset = *config.TCPPriorityOffset
 	}
 
 	if config.DisconnectedTimeout == nil {

@@ -675,7 +675,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 	}
 
 	a, err := NewAgent(&AgentConfig{
-		NetworkTypes:   []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+		NetworkTypes:   supportedNetworkTypes(),
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
 	})
@@ -751,8 +751,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 
 	portFound := make(map[int]bool)
 	for c := range candidateCh {
-		activeCandidate := c.Port() == 0
-		if c.NetworkType().IsTCP() && !activeCandidate {
+		if c.NetworkType().IsTCP() {
 			portFound[c.Port()] = true
 		}
 	}
