@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,6 +72,8 @@ type Agent struct {
 	srflxAcceptanceMinWait time.Duration
 	prflxAcceptanceMinWait time.Duration
 	relayAcceptanceMinWait time.Duration
+
+	tcpPriorityOffset uint16
 
 	portMin uint16
 	portMax uint16
@@ -585,6 +588,44 @@ func (a *Agent) getBestValidCandidatePair() *CandidatePair {
 }
 
 func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
+	if local.TCPType() == TCPTypeActive && remote.TCPType() == TCPTypeActive {
+		return nil
+	}
+
+	if local.TCPType() == TCPTypeActive && remote.TCPType() == TCPTypePassive {
+		addressToConnect := net.JoinHostPort(remote.Address(), strconv.Itoa(remote.Port()))
+
+		conn, err := a.net.Dial("tcp", addressToConnect)
+		if err != nil {
+			a.log.Errorf("Failed to dial TCP address %s: %v", addressToConnect, err)
+			return nil
+		}
+
+		packetConn := newTCPPacketConn(tcpPacketParams{
+			ReadBuffer: tcpReadBufferSize,
+			LocalAddr:  conn.LocalAddr(),
+			Logger:     a.log,
+		})
+
+		if err = packetConn.AddConn(conn, nil); err != nil {
+			a.log.Errorf("Failed to add TCP connection: %v", err)
+			return nil
+		}
+
+		localAddress, ok := conn.LocalAddr().(*net.TCPAddr)
+		if !ok {
+			a.log.Errorf("Failed to cast local address to TCP address")
+			return nil
+		}
+
+		localCandidateHost, ok := local.(*CandidateHost)
+		if !ok {
+			a.log.Errorf("Failed to cast local candidate to CandidateHost")
+			return nil
+		}
+		localCandidateHost.port = localAddress.Port // This causes a data race with candidateBase.Port()
+		local.start(a, packetConn, a.startedCh)
+	}
 	p := newCandidatePair(local, remote, a.isControlling)
 	a.checklist = append(a.checklist, p)
 	return p
@@ -761,7 +802,9 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 			}
 		}
 
-		c.start(a, candidateConn, a.startedCh)
+		if c.TCPType() != TCPTypeActive {
+			c.start(a, candidateConn, a.startedCh)
+		}
 
 		set = append(set, c)
 		a.localCandidates[c.NetworkType()] = set
@@ -1029,6 +1072,11 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				return
 			}
 
+			remoteTCPType := TCPTypeUnspecified
+			if local.TCPType() == TCPTypePassive {
+				remoteTCPType = TCPTypeActive
+			}
+
 			prflxCandidateConfig := CandidatePeerReflexiveConfig{
 				Network:   networkType.String(),
 				Address:   ip.String(),
@@ -1036,6 +1084,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 				Component: local.Component(),
 				RelAddr:   "",
 				RelPort:   0,
+				TCPType:   remoteTCPType,
 			}
 
 			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
