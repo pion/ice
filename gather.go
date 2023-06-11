@@ -165,8 +165,15 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 			switch network {
 			case tcp:
-				// Handle ICE TCP active mode
-				connConfigs = append(connConfigs, connConfig{nil, 0, TCPTypeActive})
+				if a.enableActiveTCP {
+					// Handle ICE TCP active mode
+					packetConn := newTCPPacketConn(tcpPacketParams{
+						ReadBuffer:  tcpReadBufferSize,
+						WriteBuffer: 4000000,
+						Logger:      a.log,
+					})
+					connConfigs = append(connConfigs, connConfig{packetConn, 0, TCPTypeActive})
+				}
 
 				// Handle ICE TCP passive mode
 				if a.tcpMux != nil {

@@ -263,6 +263,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	buf := make([]byte, receiveMTU)
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buf)
+		a.log.Tracef("Received %d bytes from %s", n, srcAddr)
 		if err != nil {
 			if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
 				a.log.Warnf("Failed to read from candidate %s: %v", c, err)

@@ -187,6 +187,8 @@ type AgentConfig struct {
 	// against TCP ones. Relay candidates for TCP and UDP are always 0 and not affected by this setting.
 	// When this is nil, defaultTCPPriorityOffset is used.
 	TCPPriorityOffset *uint16
+
+	EnableActiveTCP bool
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset

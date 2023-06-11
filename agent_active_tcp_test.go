@@ -109,6 +109,10 @@ func TestAgentActiveTCP(t *testing.T) {
 
 			r.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
+			xx := func(ip net.IP) bool {
+				return ip.Equal(testCase.listenIPAddress)
+			}
+
 			hostAcceptanceMinWait := 100 * time.Millisecond
 			passiveAgent, err := NewAgent(&AgentConfig{
 				TCPMux:                tcpMux,
@@ -117,6 +121,8 @@ func TestAgentActiveTCP(t *testing.T) {
 				LoggerFactory:         loggerFactory,
 				IncludeLoopback:       true,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
+				IPFilter:              xx,
+				EnableActiveTCP:       false,
 			})
 			r.NoError(err)
 			r.NotNil(passiveAgent)
@@ -126,6 +132,8 @@ func TestAgentActiveTCP(t *testing.T) {
 				NetworkTypes:          testCase.networkTypes,
 				LoggerFactory:         loggerFactory,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
+				IPFilter:              xx,
+				EnableActiveTCP:       true,
 			})
 			r.NoError(err)
 			r.NotNil(activeAgent)

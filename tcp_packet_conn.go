@@ -18,9 +18,11 @@ import (
 
 type bufferedConn struct {
 	net.Conn
-	buf    *packetio.Buffer
-	logger logging.LeveledLogger
-	closed int32
+	buf           *packetio.Buffer
+	logger        logging.LeveledLogger
+	closed        int32
+	raddr         string
+	tcpPacketConn *tcpPacketConn
 }
 
 func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) net.Conn {
@@ -36,6 +38,24 @@ func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) n
 	}
 
 	go bc.writeProcess()
+	return bc
+}
+
+func newBufferedConn2(raddr string, bufSize int, logger logging.LeveledLogger, tcpPacketConn *tcpPacketConn) net.Conn {
+	buf := packetio.NewBuffer()
+	if bufSize > 0 {
+		buf.SetLimitSize(bufSize)
+	}
+
+	bc := &bufferedConn{
+		Conn:          nil,
+		buf:           buf,
+		logger:        logger,
+		raddr:         raddr,
+		tcpPacketConn: tcpPacketConn,
+	}
+
+	go bc.writeProcess2()
 	return bc
 }
 
@@ -67,10 +87,37 @@ func (bc *bufferedConn) writeProcess() {
 	}
 }
 
+func (bc *bufferedConn) writeProcess2() {
+	if atomic.LoadInt32(&bc.closed) == 1 {
+		return
+	}
+
+	if bc.Conn == nil {
+		bc.logger.Tracef("dialing TCP address... %s", bc.raddr)
+		conn, err := net.Dial("tcp", bc.raddr)
+		if err != nil {
+			bc.logger.Errorf("Failed to dial TCP address %s: %v", bc.raddr, err)
+			atomic.StoreInt32(&bc.closed, 1)
+		}
+		bc.logger.Infof("Connected to TCP address %s", bc.raddr)
+		bc.Conn = conn
+
+		//t.wg.Add(1)
+		go func() {
+			//defer t.wg.Done()
+			bc.tcpPacketConn.startReading(conn)
+		}()
+	}
+	bc.writeProcess()
+}
+
 func (bc *bufferedConn) Close() error {
 	atomic.StoreInt32(&bc.closed, 1)
 	_ = bc.buf.Close()
-	return bc.Conn.Close()
+	if bc.Conn != nil {
+		return bc.Conn.Close()
+	}
+	return nil
 }
 
 type tcpPacketConn struct {
@@ -111,6 +158,22 @@ func newTCPPacketConn(params tcpPacketParams) *tcpPacketConn {
 	}
 
 	return p
+}
+
+func (t *tcpPacketConn) AddConnActiveTCPCase(radrr string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	select {
+	case <-t.closedChan:
+		return io.ErrClosedPipe
+	default:
+	}
+
+	conn := newBufferedConn2(radrr, 4000000, t.params.Logger, t)
+	t.conns[radrr] = conn
+
+	return nil
 }
 
 func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
@@ -226,7 +289,8 @@ func (t *tcpPacketConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	t.mu.Unlock()
 
 	if !ok {
-		return 0, io.ErrClosedPipe
+		t.AddConnActiveTCPCase(rAddr.String())
+		conn = t.conns[rAddr.String()]
 	}
 
 	n, err = writeStreamingPacket(conn, buf)
