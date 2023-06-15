@@ -9,7 +9,6 @@ package ice
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -87,6 +86,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
 
 			// Length of remote candidate list must be one now
@@ -134,6 +134,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 			remote := &BadAddr{}
 
+			// nolint: contextcheck
 			a.handleInbound(nil, local, remote)
 
 			if len(a.remoteCandidates) != 0 {
@@ -173,6 +174,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
 			if len(a.remoteCandidates) != 0 {
 				t.Fatal("unknown remote was able to create a candidate")
@@ -440,6 +442,7 @@ func TestInboundValidity(t *testing.T) {
 
 		err = a.run(context.Background(), func(ctx context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			// nolint: contextcheck
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values was unable to create prflx candidate")
@@ -462,6 +465,7 @@ func TestInboundValidity(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
@@ -1507,7 +1511,6 @@ func TestLiteLifecycle(t *testing.T) {
 	bFailed := make(chan interface{})
 
 	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
-		fmt.Println(c)
 		switch c {
 		case ConnectionStateConnected:
 			close(bConnected)
@@ -1637,7 +1640,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	KeepaliveInterval := time.Hour
 	cfg0 := &AgentConfig{
-		NetworkTypes:     supportedNetworkTypes(),
+		NetworkTypes:     []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              net0,
 
@@ -1652,7 +1655,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := &AgentConfig{
-		NetworkTypes:      supportedNetworkTypes(),
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net1,
 		KeepaliveInterval: &KeepaliveInterval,

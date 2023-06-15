@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,6 +72,9 @@ type Agent struct {
 	srflxAcceptanceMinWait time.Duration
 	prflxAcceptanceMinWait time.Duration
 	relayAcceptanceMinWait time.Duration
+
+	tcpPriorityOffset uint16
+	disableActiveTCP  bool
 
 	portMin uint16
 	portMax uint16
@@ -315,6 +319,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		insecureSkipVerify: config.InsecureSkipVerify,
 
 		includeLoopback: config.IncludeLoopback,
+
+		disableActiveTCP: config.DisableActiveTCP,
 	}
 
 	if a.net == nil {
@@ -651,11 +657,9 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 		return nil
 	}
 
-	// Cannot check for network yet because it might not be applied
-	// when mDNS hostname is used.
+	// TCP Candidates with TCP type active will probe server passive ones, so
+	// no need to do anything with them.
 	if c.TCPType() == TCPTypeActive {
-		// TCP Candidates with TCP type active will probe server passive ones, so
-		// no need to do anything with them.
 		a.log.Infof("Ignoring remote candidate with tcpType active: %s", c)
 		return nil
 	}
@@ -678,6 +682,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 
 	go func() {
 		if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+			// nolint: contextcheck
 			agent.addRemoteCandidate(c)
 		}); err != nil {
 			a.log.Warnf("Failed to add remote candidate %s: %v", c.Address(), err)
@@ -709,6 +714,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	}
 
 	if err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
+		// nolint: contextcheck
 		agent.addRemoteCandidate(c)
 	}); err != nil {
 		a.log.Warnf("Failed to add mDNS candidate %s: %v", c.Address(), err)
@@ -723,6 +729,47 @@ func (a *Agent) requestConnectivityCheck() {
 	}
 }
 
+func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
+	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{remoteCandidate.NetworkType()}, a.includeLoopback)
+	if err != nil {
+		a.log.Warnf("Failed to iterate local interfaces, host candidates will not be gathered %s", err)
+		return
+	}
+
+	for i := range localIPs {
+		conn := newActiveTCPConn(
+			a.context(),
+			net.JoinHostPort(localIPs[i].String(), "0"),
+			net.JoinHostPort(remoteCandidate.Address(), strconv.Itoa(remoteCandidate.Port())),
+			a.log,
+		)
+
+		tcpAddr, ok := conn.LocalAddr().(*net.TCPAddr)
+		if !ok {
+			closeConnAndLog(conn, a.log, "Failed to create Active ICE-TCP Candidate: %v", errInvalidAddress)
+			continue
+		}
+
+		localCandidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:   remoteCandidate.NetworkType().String(),
+			Address:   localIPs[i].String(),
+			Port:      tcpAddr.Port,
+			Component: ComponentRTP,
+			TCPType:   TCPTypeActive,
+		})
+		if err != nil {
+			closeConnAndLog(conn, a.log, "Failed to create Active ICE-TCP Candidate: %v", err)
+			continue
+		}
+
+		localCandidate.start(a, conn, a.startedCh)
+		a.localCandidates[localCandidate.NetworkType()] = append(a.localCandidates[localCandidate.NetworkType()], localCandidate)
+		a.chanCandidate <- localCandidate
+
+		a.addPair(localCandidate, remoteCandidate)
+	}
+}
+
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run)
 func (a *Agent) addRemoteCandidate(c Candidate) {
 	set := a.remoteCandidates[c.NetworkType()]
@@ -733,12 +780,25 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 		}
 	}
 
+	tcpNetworkTypeFound := false
+	for _, networkType := range a.networkTypes {
+		if networkType.IsTCP() {
+			tcpNetworkTypeFound = true
+		}
+	}
+
+	if !a.disableActiveTCP && tcpNetworkTypeFound && c.TCPType() == TCPTypePassive {
+		a.addRemotePassiveTCPCandidate(c)
+	}
+
 	set = append(set, c)
 	a.remoteCandidates[c.NetworkType()] = set
 
-	if localCandidates, ok := a.localCandidates[c.NetworkType()]; ok {
-		for _, localCandidate := range localCandidates {
-			a.addPair(localCandidate, c)
+	if c.TCPType() != TCPTypePassive {
+		if localCandidates, ok := a.localCandidates[c.NetworkType()]; ok {
+			for _, localCandidate := range localCandidates {
+				a.addPair(localCandidate, c)
+			}
 		}
 	}
 
