@@ -535,7 +535,7 @@ func (a *Agent) setSelectedPair(p *CandidatePair) {
 }
 
 func (a *Agent) pingAllCandidates() {
-	a.log.Trace("pinging all candidates")
+	a.log.Trace("Pinging all candidates")
 
 	if len(a.checklist) == 0 {
 		a.log.Warn("Failed to ping without candidate pairs. Connection is not possible yet.")
@@ -549,7 +549,7 @@ func (a *Agent) pingAllCandidates() {
 		}
 
 		if p.bindingRequestCount > a.maxBindingRequests {
-			a.log.Tracef("max requests reached for pair %s, marking it as failed", p)
+			a.log.Tracef("Maximum requests reached for pair %s, marking it as failed", p)
 			p.state = CandidatePairStateFailed
 		} else {
 			a.selector.PingCandidate(p.Local, p.Remote)
@@ -959,7 +959,7 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 }
 
 func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
-	a.log.Tracef("ping STUN from %s to %s", local.String(), remote.String())
+	a.log.Tracef("Ping STUN from %s to %s", local.String(), remote.String())
 
 	a.invalidatePendingBindingRequests(time.Now())
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
@@ -1041,7 +1041,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 		!(m.Type.Class == stun.ClassSuccessResponse ||
 			m.Type.Class == stun.ClassRequest ||
 			m.Type.Class == stun.ClassIndication) {
-		a.log.Tracef("unhandled STUN from %s to %s class(%s) method(%s)", remote, local, m.Type.Class, m.Type.Method)
+		a.log.Tracef("Unhandled STUN from %s to %s class(%s) method(%s)", remote, local, m.Type.Class, m.Type.Method)
 		return
 	}
 
@@ -1109,7 +1109,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			a.addRemoteCandidate(remoteCandidate)
 		}
 
-		a.log.Tracef("inbound STUN (Request) from %s to %s", remote.String(), local.String())
+		a.log.Tracef("Inbound STUN (Request) from %s to %s", remote.String(), local.String())
 
 		a.selector.HandleBindingRequest(m, local, remoteCandidate)
 	}
