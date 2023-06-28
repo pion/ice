@@ -400,7 +400,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 					hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 					if err != nil {
-						a.log.Warnf("Failed to resolve STUN host: %s: %v", hostPort, err)
+						a.log.Debugf("Failed to resolve STUN host: %s: %v", hostPort, err)
 						return
 					}
 
@@ -462,7 +462,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 				hostPort := fmt.Sprintf("%s:%d", url.Host, url.Port)
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
-					a.log.Warnf("Failed to resolve STUN host: %s: %v", hostPort, err)
+					a.log.Debugf("Failed to resolve STUN host: %s: %v", hostPort, err)
 					return
 				}
 
