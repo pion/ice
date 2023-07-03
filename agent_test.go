@@ -1322,6 +1322,74 @@ func TestGetRemoteCredentials(t *testing.T) {
 	assert.NoError(t, a.Close())
 }
 
+func TestGetRemoteCandidates(t *testing.T) {
+	var config AgentConfig
+
+	a, err := NewAgent(&config)
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent: %v", err)
+	}
+
+	expectedCandidates := []Candidate{}
+
+	for i := 0; i < 5; i++ {
+		cfg := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      1000 + i,
+			Component: 1,
+		}
+
+		cand, errCand := NewCandidateHost(&cfg)
+		assert.NoError(t, errCand)
+
+		expectedCandidates = append(expectedCandidates, cand)
+
+		a.addRemoteCandidate(cand)
+	}
+
+	actualCandidates, err := a.GetRemoteCandidates()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, expectedCandidates, actualCandidates)
+
+	assert.NoError(t, a.Close())
+}
+
+func TestGetLocalCandidates(t *testing.T) {
+	var config AgentConfig
+
+	a, err := NewAgent(&config)
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent: %v", err)
+	}
+
+	dummyConn := &net.UDPConn{}
+	expectedCandidates := []Candidate{}
+
+	for i := 0; i < 5; i++ {
+		cfg := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      1000 + i,
+			Component: 1,
+		}
+
+		cand, errCand := NewCandidateHost(&cfg)
+		assert.NoError(t, errCand)
+
+		expectedCandidates = append(expectedCandidates, cand)
+
+		err = a.addCandidate(context.Background(), cand, dummyConn)
+		assert.NoError(t, err)
+	}
+
+	actualCandidates, err := a.GetLocalCandidates()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, expectedCandidates, actualCandidates)
+
+	assert.NoError(t, a.Close())
+}
+
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
