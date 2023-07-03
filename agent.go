@@ -838,6 +838,24 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 	})
 }
 
+// GetRemoteCandidates returns the remote candidates
+func (a *Agent) GetRemoteCandidates() ([]Candidate, error) {
+	var res []Candidate
+
+	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+		var candidates []Candidate
+		for _, set := range agent.remoteCandidates {
+			candidates = append(candidates, set...)
+		}
+		res = candidates
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // GetLocalCandidates returns the local candidates
 func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 	var res []Candidate
