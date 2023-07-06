@@ -56,12 +56,12 @@ func (bc *bufferedConn) writeProcess() {
 		}
 
 		if err != nil {
-			bc.logger.Warnf("read buffer error: %s", err)
+			bc.logger.Warnf("Failed to read from buffer: %s", err)
 			continue
 		}
 
 		if _, err := bc.Conn.Write(pktBuf[:n]); err != nil {
-			bc.logger.Warnf("write error: %s", err)
+			bc.logger.Warnf("Failed to write: %s", err)
 			continue
 		}
 	}
