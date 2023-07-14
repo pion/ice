@@ -56,12 +56,12 @@ func newActiveTCPConn(ctx context.Context, localAddress, remoteAddress string, l
 			for atomic.LoadInt32(&a.closed) == 0 {
 				n, err := readStreamingPacket(conn, buff)
 				if err != nil {
-					log.Infof("%v: %s", errReadingStreamingPacket, err)
+					log.Infof("Failed to read streaming packet: %s", err)
 					break
 				}
 
 				if _, err := a.readBuffer.Write(buff[:n]); err != nil {
-					log.Infof("%v: %s", errReadingStreamingPacket, err)
+					log.Infof("Failed to write to buffer: %s", err)
 					break
 				}
 			}
@@ -72,18 +72,18 @@ func newActiveTCPConn(ctx context.Context, localAddress, remoteAddress string, l
 		for atomic.LoadInt32(&a.closed) == 0 {
 			n, err := a.writeBuffer.Read(buff)
 			if err != nil {
-				log.Infof("%v: %s", errReadingStreamingPacket, err)
+				log.Infof("Failed to read from buffer: %s", err)
 				break
 			}
 
 			if _, err = writeStreamingPacket(conn, buff[:n]); err != nil {
-				log.Infof("%v: %s", errReadingStreamingPacket, err)
+				log.Infof("Failed to write streaming packet: %s", err)
 				break
 			}
 		}
 
 		if err := conn.Close(); err != nil {
-			log.Infof("%v: %s", errReadingStreamingPacket, err)
+			log.Infof("Failed to close connection: %s", err)
 		}
 	}()
 
