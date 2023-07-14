@@ -337,7 +337,7 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 		if errors.Is(err, io.ErrClosedPipe) {
 			return n, err
 		}
-		c.agent().log.Infof("%s: %v", errSendPacket, err)
+		c.agent().log.Infof("Failed to send packet: %v", err)
 		return n, nil
 	}
 	c.seen(true)
