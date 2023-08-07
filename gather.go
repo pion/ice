@@ -32,7 +32,7 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 		return
 	}
 
-	log.Warnf(msg)
+	log.Warnf(msg, args...)
 	if err := c.Close(); err != nil {
 		log.Warnf("Failed to close connection: %v", err)
 	}
