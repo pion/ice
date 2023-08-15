@@ -6,6 +6,7 @@ package ice
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v2"
@@ -108,7 +109,11 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		if params.writeBufferSize > 0 {
 			_ = conn.SetWriteBuffer(params.writeBufferSize)
 		}
-		conns = append(conns, conn)
+		if params.batchWriteSize > 0 {
+			conns = append(conns, NewBatchConn(conn, params.batchWriteSize, params.batchWriteInterval, params.logger))
+		} else {
+			conns = append(conns, conn)
+		}
 	}
 
 	if err != nil {
@@ -137,14 +142,16 @@ type UDPMuxFromPortOption interface {
 }
 
 type multiUDPMuxFromPortParam struct {
-	ifFilter        func(string) bool
-	ipFilter        func(ip net.IP) bool
-	networks        []NetworkType
-	readBufferSize  int
-	writeBufferSize int
-	logger          logging.LeveledLogger
-	includeLoopback bool
-	net             transport.Net
+	ifFilter           func(string) bool
+	ipFilter           func(ip net.IP) bool
+	networks           []NetworkType
+	readBufferSize     int
+	writeBufferSize    int
+	logger             logging.LeveledLogger
+	includeLoopback    bool
+	net                transport.Net
+	batchWriteSize     int
+	batchWriteInterval time.Duration
 }
 
 type udpMuxFromPortOption struct {
@@ -223,6 +230,15 @@ func UDPMuxFromPortWithNet(n transport.Net) UDPMuxFromPortOption {
 	return &udpMuxFromPortOption{
 		f: func(p *multiUDPMuxFromPortParam) {
 			p.net = n
+		},
+	}
+}
+
+func UDPMuxFromPortWithBatchWrite(batchWriteSize int, batchWriteInterval time.Duration) UDPMuxFromPortOption {
+	return &udpMuxFromPortOption{
+		f: func(p *multiUDPMuxFromPortParam) {
+			p.batchWriteSize = batchWriteSize
+			p.batchWriteInterval = batchWriteInterval
 		},
 	}
 }
