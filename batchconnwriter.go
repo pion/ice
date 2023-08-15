@@ -135,4 +135,5 @@ func (c *BatchConnWriter) flush() {
 		}
 	}
 	c.batchWritePos = 0
+	c.batchWriteLast = time.Now()
 }
