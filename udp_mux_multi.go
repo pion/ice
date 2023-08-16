@@ -6,6 +6,7 @@ package ice
 import (
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
@@ -19,20 +20,50 @@ import (
 type MultiUDPMuxDefault struct {
 	muxes          []UDPMux
 	localAddrToMux map[string]UDPMux
+
+	// Manage port balance for mux that listen on multiple ports for same IP,
+	// for each IP, only return one addr (one port) for each GetListenAddresses call to
+	// avoid duplicate ip candidates be gathered for a single ice agent.
+	multiPortsAddresses []*multiPortsAddress
+}
+
+type multiPortsAddress struct {
+	addresses []net.Addr
+	nextPos   atomic.Int32
+}
+
+func (addr *multiPortsAddress) next() net.Addr {
+	return addr.addresses[addr.nextPos.Add(1)%int32(len(addr.addresses))]
 }
 
 // NewMultiUDPMuxDefault creates an instance of MultiUDPMuxDefault that
 // uses the provided UDPMux instances.
 func NewMultiUDPMuxDefault(muxes ...UDPMux) *MultiUDPMuxDefault {
 	addrToMux := make(map[string]UDPMux)
+	ipToAddrs := make(map[string]*multiPortsAddress)
 	for _, mux := range muxes {
 		for _, addr := range mux.GetListenAddresses() {
 			addrToMux[addr.String()] = mux
+
+			ip := addr.(*net.UDPAddr).IP.String()
+			if mpa, ok := ipToAddrs[ip]; ok {
+				mpa.addresses = append(mpa.addresses, addr)
+			} else {
+				ipToAddrs[ip] = &multiPortsAddress{
+					addresses: []net.Addr{addr},
+				}
+			}
 		}
 	}
+
+	multiPortsAddresses := make([]*multiPortsAddress, 0, len(ipToAddrs))
+	for _, mpa := range ipToAddrs {
+		multiPortsAddresses = append(multiPortsAddresses, mpa)
+	}
 	return &MultiUDPMuxDefault{
-		muxes:          muxes,
-		localAddrToMux: addrToMux,
+		muxes:               muxes,
+		localAddrToMux:      addrToMux,
+		multiPortsAddresses: multiPortsAddresses,
 	}
 }
 
@@ -67,9 +98,9 @@ func (m *MultiUDPMuxDefault) Close() error {
 
 // GetListenAddresses returns the list of addresses that this mux is listening on
 func (m *MultiUDPMuxDefault) GetListenAddresses() []net.Addr {
-	addrs := make([]net.Addr, 0, len(m.localAddrToMux))
-	for _, mux := range m.muxes {
-		addrs = append(addrs, mux.GetListenAddresses()...)
+	addrs := make([]net.Addr, 0, len(m.multiPortsAddresses))
+	for _, mpa := range m.multiPortsAddresses {
+		addrs = append(addrs, mpa.next())
 	}
 	return addrs
 }
@@ -77,6 +108,10 @@ func (m *MultiUDPMuxDefault) GetListenAddresses() []net.Addr {
 // NewMultiUDPMuxFromPort creates an instance of MultiUDPMuxDefault that
 // listen all interfaces on the provided port.
 func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMuxDefault, error) {
+	return NewMultiUDPMuxFromPorts([]int{port}, opts...)
+}
+
+func NewMultiUDPMuxFromPorts(ports []int, opts ...UDPMuxFromPortOption) (*MultiUDPMuxDefault, error) {
 	params := multiUDPMuxFromPortParam{
 		networks: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 	}
@@ -96,23 +131,28 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		return nil, err
 	}
 
-	conns := make([]net.PacketConn, 0, len(ips))
+	conns := make([]net.PacketConn, 0, len(ports)*len(ips))
 	for _, ip := range ips {
-		conn, listenErr := params.net.ListenUDP("udp", &net.UDPAddr{IP: ip, Port: port})
-		if listenErr != nil {
-			err = listenErr
+		for _, port := range ports {
+			conn, listenErr := params.net.ListenUDP("udp", &net.UDPAddr{IP: ip, Port: port})
+			if listenErr != nil {
+				err = listenErr
+				break
+			}
+			if params.readBufferSize > 0 {
+				_ = conn.SetReadBuffer(params.readBufferSize)
+			}
+			if params.writeBufferSize > 0 {
+				_ = conn.SetWriteBuffer(params.writeBufferSize)
+			}
+			if params.batchWriteSize > 0 {
+				conns = append(conns, NewBatchConn(conn, params.batchWriteSize, params.batchWriteInterval, params.logger))
+			} else {
+				conns = append(conns, conn)
+			}
+		}
+		if err != nil {
 			break
-		}
-		if params.readBufferSize > 0 {
-			_ = conn.SetReadBuffer(params.readBufferSize)
-		}
-		if params.writeBufferSize > 0 {
-			_ = conn.SetWriteBuffer(params.writeBufferSize)
-		}
-		if params.batchWriteSize > 0 {
-			conns = append(conns, NewBatchConn(conn, params.batchWriteSize, params.batchWriteInterval, params.logger))
-		} else {
-			conns = append(conns, conn)
 		}
 	}
 
