@@ -12,6 +12,7 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/transport/v2"
 	"github.com/pion/transport/v2/stdnet"
+	tudp "github.com/pion/transport/v2/udp"
 )
 
 // MultiUDPMuxDefault implements both UDPMux and AllConnsGetter,
@@ -146,7 +147,7 @@ func NewMultiUDPMuxFromPorts(ports []int, opts ...UDPMuxFromPortOption) (*MultiU
 				_ = conn.SetWriteBuffer(params.writeBufferSize)
 			}
 			if params.batchWriteSize > 0 {
-				conns = append(conns, NewBatchConn(conn, params.batchWriteSize, params.batchWriteInterval, params.logger))
+				conns = append(conns, tudp.NewBatchConn(conn, params.batchWriteSize, params.batchWriteInterval))
 			} else {
 				conns = append(conns, conn)
 			}

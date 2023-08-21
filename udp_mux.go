@@ -15,6 +15,8 @@ import (
 	"github.com/pion/stun"
 	"github.com/pion/transport/v2"
 	"github.com/pion/transport/v2/stdnet"
+	tudp "github.com/pion/transport/v2/udp"
+	"golang.org/x/net/ipv4"
 )
 
 // UDPMux allows multiple connections to go over a single UDP port
@@ -275,12 +277,52 @@ func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
 }
 
 func (m *UDPMuxDefault) connWorker() {
-	logger := m.params.Logger
-
 	defer func() {
 		_ = m.Close()
 	}()
 
+	if br, ok := m.params.UDPConn.(tudp.BatchReader); ok {
+		m.readBatch(br)
+	} else {
+		m.read()
+	}
+}
+
+func (m *UDPMuxDefault) readBatch(br tudp.BatchReader) {
+	logger := m.params.Logger
+	msgs := make([]ipv4.Message, 256)
+	for i := range msgs {
+		msg := &msgs[i]
+		msg.Buffers = [][]byte{make([]byte, receiveMTU)}
+		msg.OOB = make([]byte, 40)
+	}
+	for {
+		n, err := br.ReadBatch(msgs, 0)
+		if m.IsClosed() {
+			return
+		} else if err != nil {
+			if os.IsTimeout(err) {
+				continue
+			} else if !errors.Is(err, io.EOF) {
+				logger.Errorf("Failed to read UDP packet: %v", err)
+			}
+
+			return
+		}
+		for i := 0; i < n; i++ {
+			msg := &msgs[i]
+			udpAddr, ok := msg.Addr.(*net.UDPAddr)
+			if !ok {
+				logger.Errorf("Underlying PacketConn did not return a UDPAddr")
+				continue
+			}
+			m.dispatchPacket(msg.Buffers[0][:msg.N], udpAddr)
+		}
+	}
+}
+
+func (m *UDPMuxDefault) read() {
+	logger := m.params.Logger
 	buf := make([]byte, receiveMTU)
 	for {
 		n, addr, err := m.params.UDPConn.ReadFrom(buf)
@@ -302,44 +344,48 @@ func (m *UDPMuxDefault) connWorker() {
 			return
 		}
 
-		// If we have already seen this address dispatch to the appropriate destination
-		m.addressMapMu.Lock()
-		destinationConn := m.addressMap[addr.String()]
-		m.addressMapMu.Unlock()
+		m.dispatchPacket(buf[:n], udpAddr)
+	}
+}
 
-		// If we haven't seen this address before but is a STUN packet lookup by ufrag
-		if destinationConn == nil && stun.IsMessage(buf[:n]) {
-			msg := &stun.Message{
-				Raw: append([]byte{}, buf[:n]...),
-			}
+func (m *UDPMuxDefault) dispatchPacket(buf []byte, udpAddr *net.UDPAddr) {
+	// If we have already seen this address dispatch to the appropriate destination
+	m.addressMapMu.Lock()
+	destinationConn := m.addressMap[udpAddr.String()]
+	m.addressMapMu.Unlock()
 
-			if err = msg.Decode(); err != nil {
-				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
-				continue
-			}
-
-			attr, stunAttrErr := msg.Get(stun.AttrUsername)
-			if stunAttrErr != nil {
-				m.params.Logger.Warnf("No Username attribute in STUN message from %s", addr.String())
-				continue
-			}
-
-			ufrag := strings.Split(string(attr), ":")[0]
-			isIPv6 := udpAddr.IP.To4() == nil
-
-			m.mu.Lock()
-			destinationConn, _ = m.getConn(ufrag, isIPv6)
-			m.mu.Unlock()
+	// If we haven't seen this address before but is a STUN packet lookup by ufrag
+	if destinationConn == nil && stun.IsMessage(buf) {
+		msg := &stun.Message{
+			Raw: append([]byte{}, buf...),
 		}
 
-		if destinationConn == nil {
-			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.String(), addr.String())
-			continue
+		if err := msg.Decode(); err != nil {
+			m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", udpAddr.String(), err)
+			return
 		}
 
-		if err = destinationConn.writePacket(buf[:n], udpAddr); err != nil {
-			m.params.Logger.Errorf("Failed to write packet: %v", err)
+		attr, stunAttrErr := msg.Get(stun.AttrUsername)
+		if stunAttrErr != nil {
+			m.params.Logger.Warnf("No Username attribute in STUN message from %s", udpAddr.String())
+			return
 		}
+
+		ufrag := strings.Split(string(attr), ":")[0]
+		isIPv6 := udpAddr.IP.To4() == nil
+
+		m.mu.Lock()
+		destinationConn, _ = m.getConn(ufrag, isIPv6)
+		m.mu.Unlock()
+	}
+
+	if destinationConn == nil {
+		m.params.Logger.Tracef("Dropping packet from %s", udpAddr.String())
+		return
+	}
+
+	if err := destinationConn.writePacket(buf, udpAddr); err != nil {
+		m.params.Logger.Errorf("Failed to write packet: %v", err)
 	}
 }
 
