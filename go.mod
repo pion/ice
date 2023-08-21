@@ -17,4 +17,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )
 
-replace github.com/pion/transport/v2 => github.com/cnderrauber/transport/v2 v2.0.0-20230821032630-5fcd66b75cf9
+replace github.com/pion/transport/v2 => github.com/cnderrauber/transport/v2 v2.0.0-20230821040120-99864414a8c1
