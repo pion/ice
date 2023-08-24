@@ -53,6 +53,7 @@ type Agent struct {
 
 	tieBreaker uint64
 	lite       bool
+	iceNone    bool
 
 	connectionState ConnectionState
 	gatheringState  GatheringState
@@ -283,6 +284,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		chanCandidatePair: make(chan *CandidatePair),
 		tieBreaker:        globalMathRandomGenerator.Uint64(),
 		lite:              config.Lite,
+		iceNone:           config.ICENone,
 		gatheringState:    GatheringStateNew,
 		connectionState:   ConnectionStateNew,
 		localCandidates:   make(map[NetworkType][]Candidate),
@@ -401,14 +403,18 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
 
-		if isControlling {
-			a.selector = &controllingSelector{agent: a, log: a.log}
+		if a.iceNone {
+			a.selector = &iceNoneSelector{agent: a, log: a.log}
 		} else {
-			a.selector = &controlledSelector{agent: a, log: a.log}
-		}
+			if isControlling {
+				a.selector = &controllingSelector{agent: a, log: a.log}
+			} else {
+				a.selector = &controlledSelector{agent: a, log: a.log}
+			}
 
-		if a.lite {
-			a.selector = &liteSelector{pairCandidateSelector: a.selector}
+			if a.lite {
+				a.selector = &liteSelector{pairCandidateSelector: a.selector}
+			}
 		}
 
 		a.selector.Start()

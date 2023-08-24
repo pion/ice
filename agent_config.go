@@ -113,6 +113,7 @@ type AgentConfig struct {
 
 	// Lite agents do not perform connectivity check and only provide host candidates.
 	Lite bool
+	ICENone bool
 
 	// NAT1To1IPCandidateType is used along with NAT1To1IPs to specify which candidate type
 	// the 1:1 NAT IP addresses should be mapped to.

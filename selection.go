@@ -297,3 +297,37 @@ func (s *liteSelector) ContactCandidates() {
 		v.agent.validateSelectedPair()
 	}
 }
+
+
+type iceNoneSelector struct {
+	agent *Agent
+	log   logging.LeveledLogger
+}
+
+func (s *iceNoneSelector) Start() {
+}
+
+func (s *iceNoneSelector) ContactCandidates() {
+	if s.agent.getSelectedPair() == nil {
+		p := s.agent.getBestAvailableCandidatePair()
+		if p != nil {
+			p.state = CandidatePairStateSucceeded
+			s.agent.setSelectedPair(p)
+		} else {
+			s.log.Debug("Not found best available candidate pair")
+		}
+	}
+}
+
+func (s *iceNoneSelector) PingCandidate(local, remote Candidate) {
+	s.log.Info("ICENone selector does not support ice stun")
+}
+
+func (s *iceNoneSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+	s.log.Info("ICENone selector does not support ice stun")
+}
+
+func (s *iceNoneSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
+	s.log.Info("ICENone selector does not support ice stun")
+}
+
