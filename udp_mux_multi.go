@@ -15,7 +15,7 @@ import (
 	tudp "github.com/pion/transport/v2/udp"
 )
 
-var errPortBalanceRequireConnCount = errors.New("Port balance requires UDPMux implements MuxConnCount interface")
+var errPortBalanceRequireConnCount = errors.New("port balancing requires a UDPMux which implements MuxConnCount interface")
 
 // MultiUDPMuxDefault implements both UDPMux and AllConnsGetter,
 // allowing users to pass multiple UDPMux instances to the ICE agent
