@@ -90,7 +90,7 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	// Only checking the address at the ice connecting stage to reduce the check cost
+	// Only check the address at the ICE connecting stage to reduce the check cost
 	if !c.iceConnected.Load() {
 		if time.Since(c.startAt) > iceConnectedTimeout {
 			c.iceConnected.Store(true)
