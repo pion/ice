@@ -181,7 +181,7 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 	return c, nil
 }
 
-// ConnCount return count of working connections created by UDPMuxDefault
+// ConnCount returns count of working connections created by UDPMuxDefault
 func (m *UDPMuxDefault) ConnCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
