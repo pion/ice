@@ -36,7 +36,7 @@ type addrMux struct {
 	mux  MuxConnCount
 }
 
-// each multiPortsAddress represents muxes listen on different ports of a same IP
+// Each multiPortsAddress represents muxes listen on different ports of a same IP
 type multiPortsAddress struct {
 	addresseMuxes []*addrMux
 }
