@@ -15,9 +15,7 @@ import (
 	tudp "github.com/pion/transport/v2/udp"
 )
 
-var (
-	errPortBalanceRequireConnCount = errors.New("Port balance requires UDPMux implements MuxConnCount interface")
-)
+var errPortBalanceRequireConnCount = errors.New("Port balance requires UDPMux implements MuxConnCount interface")
 
 // MultiUDPMuxDefault implements both UDPMux and AllConnsGetter,
 // allowing users to pass multiple UDPMux instances to the ICE agent
@@ -74,7 +72,10 @@ type multipleUDPMuxDefaultParams struct {
 // uses the provided UDPMux instances.
 func NewMultiUDPMuxDefault(muxes ...UDPMux) *MultiUDPMuxDefault {
 	mux, err := NewMultiUDPMuxDefaultWithOptions(muxes)
+	// The error should always be nil as no options given to NewMultiUDPMuxDefaultWithOptions that it
+	// only return error when port balance enabled but mux don't support MuxConnCount.
 	if err != nil {
+		//nolint:forbidigo
 		panic(err)
 	}
 	return mux
