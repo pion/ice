@@ -7,7 +7,7 @@ import (
 	"net"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v2"
+	"github.com/pion/transport/v3"
 )
 
 // The conditions of invalidation written below are defined in

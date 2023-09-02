@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/pion/dtls/v2"
-	"github.com/pion/ice/v2/internal/fakenet"
-	stunx "github.com/pion/ice/v2/internal/stun"
+	"github.com/pion/ice/v3/internal/fakenet"
+	stunx "github.com/pion/ice/v3/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/turn/v2"
+	"github.com/pion/turn/v3"
 )
 
 const (
