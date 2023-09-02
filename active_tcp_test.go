@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v2/stdnet"
-	"github.com/pion/transport/v2/test"
+	"github.com/pion/transport/v3/stdnet"
+	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

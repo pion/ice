@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/ice/v2/internal/fakenet"
+	"github.com/pion/ice/v3/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/v2/test"
-	"github.com/pion/transport/v2/vnet"
+	"github.com/pion/transport/v3/test"
+	"github.com/pion/transport/v3/vnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
