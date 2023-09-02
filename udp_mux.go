@@ -25,6 +25,11 @@ type UDPMux interface {
 	GetListenAddresses() []net.Addr
 }
 
+// MuxConnCount return count of working connections created by the mux.
+type MuxConnCount interface {
+	ConnCount() int
+}
+
 // UDPMuxDefault is an implementation of the interface
 type UDPMuxDefault struct {
 	params UDPMuxParams
@@ -174,6 +179,13 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 	}
 
 	return c, nil
+}
+
+// ConnCount returns count of working connections created by UDPMuxDefault
+func (m *UDPMuxDefault) ConnCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.connsIPv4) + len(m.connsIPv6)
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection

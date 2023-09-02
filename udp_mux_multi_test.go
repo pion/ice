@@ -7,6 +7,7 @@
 package ice
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -110,6 +111,11 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 	}
 }
 
+type muxCase struct {
+	ports []int
+	opts  []UDPMuxFromPortOption
+}
+
 func TestUnspecifiedUDPMux(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
@@ -117,39 +123,95 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	muxPort := 7778
-	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
+	cases := map[string]muxCase{
+		"single port": {ports: []int{7778}},
+		"multi ports": {ports: []int{7779, 7780, 7781}},
+		"batch write": {ports: []int{7782}, opts: []UDPMuxFromPortOption{UDPMuxFromPortWithBatchWrite(10, 2*time.Millisecond)}},
+	}
+
+	for name, val := range cases {
+		cname, muxCase := name, val
+		t.Run(cname, func(t *testing.T) {
+			opts := []UDPMuxFromPortOption{
+				UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
+					defaultDockerBridgeNetwork := strings.Contains(s, "docker")
+					customDockerBridgeNetwork := strings.Contains(s, "br-")
+					return !defaultDockerBridgeNetwork && !customDockerBridgeNetwork
+				}),
+				UDPMuxFromPortWithReadBufferSize(1024 * 1024),
+				UDPMuxFromPortWithWriteBufferSize(1024 * 1024),
+			}
+			opts = append(opts, muxCase.opts...)
+			udpMuxMulti, err := NewMultiUDPMuxFromPorts(muxCase.ports, opts...)
+			require.NoError(t, err)
+
+			require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
+			defer func() {
+				_ = udpMuxMulti.Close()
+			}()
+
+			wg := sync.WaitGroup{}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag1", udp)
+			}()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
+			}()
+
+			// Skip IPv6 test on i386
+			const ptrSize = 32 << (^uintptr(0) >> 63)
+			if ptrSize != 32 {
+				testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
+			}
+
+			wg.Wait()
+
+			require.NoError(t, udpMuxMulti.Close())
+		})
+	}
+}
+
+func TestMultiUDPMuxPortBalance(t *testing.T) {
+	ports := []int{8779, 8780, 8781}
+	udpMuxMulti, err := NewMultiUDPMuxFromPorts(ports, UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
 		defaultDockerBridgeNetwork := strings.Contains(s, "docker")
 		customDockerBridgeNetwork := strings.Contains(s, "br-")
 		return !defaultDockerBridgeNetwork && !customDockerBridgeNetwork
 	}))
 	require.NoError(t, err)
-
-	require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
 	defer func() {
-		_ = udpMuxMulti.Close()
+		require.NoError(t, udpMuxMulti.Close())
 	}()
 
-	wg := sync.WaitGroup{}
+	// check port allocation is balanced
+	expectPorts := make(map[int]bool)
+	for i := range ports {
+		addr := udpMuxMulti.GetListenAddresses()[0]
+		ufrag := fmt.Sprintf("ufragetest%d", i)
+		conn, err := udpMuxMulti.GetConn(ufrag, addr)
+		require.NoError(t, err)
+		require.NotNil(t, conn)
+		udpLocalAddr, _ := conn.LocalAddr().(*net.UDPAddr)
+		require.False(t, expectPorts[udpLocalAddr.Port], fmt.Sprint("port ", udpLocalAddr.Port, " is already used", expectPorts))
+		expectPorts[udpLocalAddr.Port] = true
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag1", udp)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
-	}()
-
-	// Skip IPv6 test on i386
-	const ptrSize = 32 << (^uintptr(0) >> 63)
-	if ptrSize != 32 {
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
+		conn2, err := udpMuxMulti.GetConn(ufrag, addr)
+		require.NoError(t, err)
+		require.Equal(t, conn, conn2)
 	}
+	require.Equal(t, len(ports), len(expectPorts))
+}
 
-	wg.Wait()
+type udpMuxWithoutConnCount struct {
+	UDPMux
+}
 
-	require.NoError(t, udpMuxMulti.Close())
+func TestMultiUDPMuxPortBalanceWithoutConnCount(t *testing.T) {
+	_, err := NewMultiUDPMuxDefaultWithOptions([]UDPMux{&udpMuxWithoutConnCount{}, &udpMuxWithoutConnCount{}}, MultiUDPMuxOptionWithPortBalance())
+	require.ErrorIs(t, err, errPortBalanceRequireConnCount)
 }

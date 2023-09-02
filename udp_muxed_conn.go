@@ -8,10 +8,15 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v2/packetio"
+)
+
+const (
+	iceConnectedTimeout = 25 * time.Second
 )
 
 type udpMuxedConnParams struct {
@@ -33,6 +38,9 @@ type udpMuxedConn struct {
 	closedChan chan struct{}
 	closeOnce  sync.Once
 	mu         sync.Mutex
+
+	startAt      time.Time
+	iceConnected atomic.Bool
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
@@ -40,6 +48,7 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 		params:     params,
 		buf:        packetio.NewBuffer(),
 		closedChan: make(chan struct{}),
+		startAt:    time.Now(),
 	}
 
 	return p
@@ -80,10 +89,18 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	if c.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
-	// Each time we write to a new address, we'll register it with the mux
-	addr := rAddr.String()
-	if !c.containsAddress(addr) {
-		c.addAddress(addr)
+
+	// Only check the address at the ICE connecting stage to reduce the check cost
+	if !c.iceConnected.Load() {
+		if time.Since(c.startAt) > iceConnectedTimeout {
+			c.iceConnected.Store(true)
+		} else {
+			// Each time we write to a new address, we'll register it with the mux
+			addr := rAddr.String()
+			if !c.containsAddress(addr) {
+				c.addAddress(addr)
+			}
+		}
 	}
 
 	return c.params.Mux.writeTo(buf, rAddr)
