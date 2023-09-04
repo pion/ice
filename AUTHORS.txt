@@ -15,7 +15,6 @@ Artur Shellunts <shellunts.artur@gmail.com>
 Assad Obaid <assad@lap5cg901003r.se.axis.com>
 Atsushi Watanabe <atsushi.w@ieee.org>
 backkem <mail@backkem.me>
-boks1971 <raja.gobi@tutanota.com>
 buptczq <czq@qq.com>
 cgojin <gongjin21@hotmail.com>
 Chao Yuan <yuanchao0310@163.com>
@@ -48,6 +47,7 @@ Mikhail Bragin <misha@wiretrustee.com>
 Miroslav Šedivý <sedivy.miro@gmail.com>
 Nevio Vesic <nevio@subspace.com>
 Ori Bernstein <ori@eigenstate.org>
+Raja Subramanian <raja.gobi@tutanota.com>
 Rasmus Hanning <rasmus@hanning.se>
 Robert Eperjesi <eperjesi@uber.com>
 Sam Lancia <sam@gpsm.co.uk>
