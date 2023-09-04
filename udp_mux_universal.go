@@ -10,7 +10,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun"
-	"github.com/pion/transport/v2"
+	"github.com/pion/transport/v3"
 )
 
 // UniversalUDPMux allows multiple connections to go over a single UDP port for

@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
-	"github.com/pion/transport/v2"
+	"github.com/pion/transport/v3"
 	"golang.org/x/net/ipv4"
 )
 

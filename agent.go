@@ -20,10 +20,10 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
 	"github.com/pion/stun"
-	"github.com/pion/transport/v2"
-	"github.com/pion/transport/v2/packetio"
-	"github.com/pion/transport/v2/stdnet"
-	"github.com/pion/transport/v2/vnet"
+	"github.com/pion/transport/v3"
+	"github.com/pion/transport/v3/packetio"
+	"github.com/pion/transport/v3/stdnet"
+	"github.com/pion/transport/v3/vnet"
 	"golang.org/x/net/proxy"
 )
 
