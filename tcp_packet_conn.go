@@ -161,8 +161,11 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 		n, err := readStreamingPacket(conn, buf)
 		if err != nil {
 			t.params.Logger.Warnf("Failed to read streaming packet: %s", err)
-			t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
-			t.removeConn(conn)
+			last := t.removeConn(conn)
+			// Only propagate connection closure errors if no other open connection exists.
+			if last || !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
+				t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
+			}
 			return
 		}
 
@@ -245,13 +248,14 @@ func (t *tcpPacketConn) closeAndLogError(closer io.Closer) {
 	}
 }
 
-func (t *tcpPacketConn) removeConn(conn net.Conn) {
+func (t *tcpPacketConn) removeConn(conn net.Conn) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.closeAndLogError(conn)
 
 	delete(t.conns, conn.RemoteAddr().String())
+	return len(t.conns) == 0
 }
 
 func (t *tcpPacketConn) Close() error {
