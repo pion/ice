@@ -46,6 +46,7 @@ Michael MacDonald <mike.macdonald@savantsystems.com>
 Mikhail Bragin <misha@wiretrustee.com>
 Miroslav Šedivý <sedivy.miro@gmail.com>
 Nevio Vesic <nevio@subspace.com>
+Ondrej Sery <sery.ondra@gmail.com>
 Ori Bernstein <ori@eigenstate.org>
 Raja Subramanian <raja.gobi@tutanota.com>
 Rasmus Hanning <rasmus@hanning.se>
