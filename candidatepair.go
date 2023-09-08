@@ -6,7 +6,7 @@ package ice
 import (
 	"fmt"
 
-	"github.com/pion/stun"
+	"github.com/pion/stun/v2"
 )
 
 func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair {

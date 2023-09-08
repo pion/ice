@@ -3,7 +3,7 @@
 
 package ice
 
-import "github.com/pion/stun"
+import "github.com/pion/stun/v2"
 
 type (
 	// URL represents a STUN (rfc7064) or TURN (rfc7065) URI
