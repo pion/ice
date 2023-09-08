@@ -3,7 +3,7 @@
 
 package ice
 
-import "github.com/pion/stun"
+import "github.com/pion/stun/v2"
 
 // UseCandidateAttr represents USE-CANDIDATE attribute.
 type UseCandidateAttr struct{}

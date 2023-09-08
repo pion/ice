@@ -6,7 +6,7 @@ package ice
 import (
 	"encoding/binary"
 
-	"github.com/pion/stun"
+	"github.com/pion/stun/v2"
 )
 
 // tiebreaker is common helper for ICE-{CONTROLLED,CONTROLLING}

@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/pion/logging"
-	"github.com/pion/stun"
+	"github.com/pion/stun/v2"
 )
 
 // ErrGetTransportAddress can't convert net.Addr to underlying type (UDPAddr or TCPAddr).
