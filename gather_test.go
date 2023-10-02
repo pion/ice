@@ -133,6 +133,16 @@ func TestLoopbackCandidate(t *testing.T) {
 	assert.NoError(t, err)
 	muxWithLo, errlo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
 	assert.NoError(t, errlo)
+
+	unspecConn, errconn := net.ListenPacket("udp", ":0")
+	assert.NoError(t, errconn)
+	defer func() {
+		_ = unspecConn.Close()
+	}()
+	muxUnspecDefault := NewUDPMuxDefault(UDPMuxParams{
+		UDPConn: unspecConn,
+	})
+
 	testCases := []testCase{
 		{
 			name: "mux should not have loopback candidate",
@@ -147,6 +157,23 @@ func TestLoopbackCandidate(t *testing.T) {
 			agentConfig: &AgentConfig{
 				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
 				UDPMux:       muxWithLo,
+			},
+			loExpected: true,
+		},
+		{
+			name: "UDPMuxDefault with unspecified IP should not have loopback candidate",
+			agentConfig: &AgentConfig{
+				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				UDPMux:       muxUnspecDefault,
+			},
+			loExpected: false,
+		},
+		{
+			name: "UDPMuxDefault with unspecified IP should respect agent includeloopback",
+			agentConfig: &AgentConfig{
+				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				UDPMux:          muxUnspecDefault,
+				IncludeLoopback: true,
 			},
 			loExpected: true,
 		},
@@ -198,6 +225,7 @@ func TestLoopbackCandidate(t *testing.T) {
 
 	assert.NoError(t, mux.Close())
 	assert.NoError(t, muxWithLo.Close())
+	assert.NoError(t, muxUnspecDefault.Close())
 }
 
 // Assert that STUN gathering is done concurrently

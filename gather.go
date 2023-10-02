@@ -266,6 +266,13 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			return errInvalidAddress
 		}
 		candidateIP := udpAddr.IP
+
+		if _, ok := a.udpMux.(*UDPMuxDefault); ok && !a.includeLoopback && candidateIP.IsLoopback() {
+			// Unlike MultiUDPMux Default, UDPMuxDefault doesn't have
+			// a separate param to include loopback, so we respect agent config
+			continue
+		}
+
 		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
 			a.extIPMapper != nil &&
 			a.extIPMapper.candidateType == CandidateTypeHost {
