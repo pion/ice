@@ -93,7 +93,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 				}
 			}
 
-			ips, err := localInterfaces(params.Net, nil, nil, networks, false)
+			ips, err := localInterfaces(params.Net, nil, nil, networks, true)
 			if err == nil {
 				for _, ip := range ips {
 					localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{IP: ip, Port: addr.Port})
