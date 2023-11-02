@@ -49,6 +49,7 @@ func TestMuxAgent(t *testing.T) {
 				NetworkTypes: []NetworkType{
 					NetworkTypeUDP4,
 				},
+				IncludeLoopback: addr.IP.IsLoopback(),
 			})
 			require.NoError(t, err)
 
