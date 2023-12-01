@@ -18,9 +18,13 @@ func validateIPString(ipStr string) (net.IP, bool, error) {
 
 // ipMapping holds the mapping of local and external IP address for a particular IP family
 type ipMapping struct {
-	ipSole net.IP            // When non-nil, this is the sole external IP for one local IP assumed
-	ipMap  map[string]net.IP // Local-to-external IP mapping (k: local, v: external)
-	valid  bool              // If not set any external IP, valid is false
+	// When non-nil, this is the sole external IP for one local IP assumed
+	ipSole net.IP
+	// Local-to-external IP mapping (k: local, v: []external). We allow an
+	// additional external IP if it matches the local IP.
+	ipMap map[string][]net.IP
+	// If not set any external IP, valid is false
+	valid bool
 }
 
 func (m *ipMapping) setSoleIP(ip net.IP) error {
@@ -41,32 +45,47 @@ func (m *ipMapping) addIPMapping(locIP, extIP net.IP) error {
 
 	locIPStr := locIP.String()
 
-	// Check if dup of local IP
-	if _, ok := m.ipMap[locIPStr]; ok {
+	extIPs, ok := m.ipMap[locIPStr]
+	// We only allow mapping a local address to either a single external address,
+	// itself or both.
+	if ok && len(extIPs) > 1 {
 		return ErrInvalidNAT1To1IPMapping
 	}
 
-	m.ipMap[locIPStr] = extIP
+	// De-duplication check.
+	for _, ip := range extIPs {
+		// If the address is external we only allow one.
+		if locIPStr != extIP.String() && ip.String() != locIPStr {
+			return ErrInvalidNAT1To1IPMapping
+		}
+
+		// Otherwise the local IP can only map to itself once.
+		if ip.String() == extIP.String() {
+			return ErrInvalidNAT1To1IPMapping
+		}
+	}
+
+	m.ipMap[locIPStr] = append(m.ipMap[locIPStr], extIP)
 	m.valid = true
 
 	return nil
 }
 
-func (m *ipMapping) findExternalIP(locIP net.IP) (net.IP, error) {
+func (m *ipMapping) findExternalIPs(locIP net.IP) ([]net.IP, error) {
 	if !m.valid {
-		return locIP, nil
+		return []net.IP{locIP}, nil
 	}
 
 	if m.ipSole != nil {
-		return m.ipSole, nil
+		return []net.IP{m.ipSole}, nil
 	}
 
-	extIP, ok := m.ipMap[locIP.String()]
-	if !ok {
+	extIPs, ok := m.ipMap[locIP.String()]
+	if !ok || len(extIPs) == 0 {
 		return nil, ErrExternalMappedIPNotFound
 	}
 
-	return extIP, nil
+	return extIPs, nil
 }
 
 type externalIPMapper struct {
@@ -86,8 +105,8 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 	}
 
 	m := &externalIPMapper{
-		ipv4Mapping:   ipMapping{ipMap: map[string]net.IP{}},
-		ipv6Mapping:   ipMapping{ipMap: map[string]net.IP{}},
+		ipv4Mapping:   ipMapping{ipMap: map[string][]net.IP{}},
+		ipv6Mapping:   ipMapping{ipMap: map[string][]net.IP{}},
 		candidateType: candidateType,
 	}
 
@@ -139,15 +158,15 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 	return m, nil
 }
 
-func (m *externalIPMapper) findExternalIP(localIPStr string) (net.IP, error) {
+func (m *externalIPMapper) findExternalIPs(localIPStr string) ([]net.IP, error) {
 	locIP, isLocIPv4, err := validateIPString(localIPStr)
 	if err != nil {
 		return nil, err
 	}
 
 	if isLocIPv4 {
-		return m.ipv4Mapping.findExternalIP(locIP)
+		return m.ipv4Mapping.findExternalIPs(locIP)
 	}
 
-	return m.ipv6Mapping.findExternalIP(locIP)
+	return m.ipv6Mapping.findExternalIPs(locIP)
 }

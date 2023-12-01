@@ -140,112 +140,114 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	}
 
 	for _, ip := range localIPs {
-		mappedIP := ip
+		mappedIPs := []net.IP{ip}
 		if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-			if _mappedIP, innerErr := a.extIPMapper.findExternalIP(ip.String()); innerErr == nil {
-				mappedIP = _mappedIP
+			if _mappedIPs, innerErr := a.extIPMapper.findExternalIPs(ip.String()); innerErr == nil {
+				mappedIPs = _mappedIPs
 			} else {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", ip.String())
 			}
 		}
 
-		address := mappedIP.String()
-		if a.mDNSMode == MulticastDNSModeQueryAndGather {
-			address = a.mDNSName
-		}
-
-		for network := range networks {
-			type connAndPort struct {
-				conn net.PacketConn
-				port int
+		for _, mappedIP := range mappedIPs {
+			address := mappedIP.String()
+			if a.mDNSMode == MulticastDNSModeQueryAndGather {
+				address = a.mDNSName
 			}
-			var (
-				conns   []connAndPort
-				tcpType TCPType
-			)
 
-			switch network {
-			case tcp:
-				if a.tcpMux == nil {
-					continue
+			for network := range networks {
+				type connAndPort struct {
+					conn net.PacketConn
+					port int
 				}
+				var (
+					conns   []connAndPort
+					tcpType TCPType
+				)
 
-				// Handle ICE TCP passive mode
-				var muxConns []net.PacketConn
-				if multi, ok := a.tcpMux.(AllConnsGetter); ok {
-					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
-					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
-					if err != nil {
-						a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+				switch network {
+				case tcp:
+					if a.tcpMux == nil {
 						continue
 					}
-				} else {
-					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
-					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
-					if err != nil {
-						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
-						continue
-					}
-					muxConns = []net.PacketConn{conn}
-				}
 
-				// Extract the port for each PacketConn we got.
-				for _, conn := range muxConns {
-					if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-						conns = append(conns, connAndPort{conn, tcpConn.Port})
+					// Handle ICE TCP passive mode
+					var muxConns []net.PacketConn
+					if multi, ok := a.tcpMux.(AllConnsGetter); ok {
+						a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
+						muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.To4() == nil, ip)
+						if err != nil {
+							a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+							continue
+						}
 					} else {
-						a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
+						a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
+						conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.To4() == nil, ip)
+						if err != nil {
+							a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, ip, a.localUfrag)
+							continue
+						}
+						muxConns = []net.PacketConn{conn}
+					}
+
+					// Extract the port for each PacketConn we got.
+					for _, conn := range muxConns {
+						if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+							conns = append(conns, connAndPort{conn, tcpConn.Port})
+						} else {
+							a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, ip, a.localUfrag)
+						}
+					}
+					if len(conns) == 0 {
+						// Didn't succeed with any, try the next network.
+						continue
+					}
+					tcpType = TCPTypePassive
+					// Is there a way to verify that the listen address is even
+					// accessible from the current interface.
+				case udp:
+					conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: ip, Port: 0})
+					if err != nil {
+						a.log.Warnf("Failed to listen %s %s", network, ip)
+						continue
+					}
+
+					if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+						conns = append(conns, connAndPort{conn, udpConn.Port})
+					} else {
+						a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
+						continue
 					}
 				}
-				if len(conns) == 0 {
-					// Didn't succeed with any, try the next network.
-					continue
-				}
-				tcpType = TCPTypePassive
-				// Is there a way to verify that the listen address is even
-				// accessible from the current interface.
-			case udp:
-				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: ip, Port: 0})
-				if err != nil {
-					a.log.Warnf("Failed to listen %s %s", network, ip)
-					continue
-				}
 
-				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-					conns = append(conns, connAndPort{conn, udpConn.Port})
-				} else {
-					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, ip, a.localUfrag)
-					continue
-				}
-			}
+				for _, connAndPort := range conns {
+					hostConfig := CandidateHostConfig{
+						Network:   network,
+						Address:   address,
+						Port:      connAndPort.port,
+						Component: ComponentRTP,
+						TCPType:   tcpType,
+					}
 
-			for _, connAndPort := range conns {
-				hostConfig := CandidateHostConfig{
-					Network:   network,
-					Address:   address,
-					Port:      connAndPort.port,
-					Component: ComponentRTP,
-					TCPType:   tcpType,
-				}
-
-				c, err := NewCandidateHost(&hostConfig)
-				if err != nil {
-					closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
-					continue
-				}
-
-				if a.mDNSMode == MulticastDNSModeQueryAndGather {
-					if err = c.setIP(ip); err != nil {
+					c, err := NewCandidateHost(&hostConfig)
+					if err != nil {
 						closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
 						continue
 					}
-				}
 
-				if err := a.addCandidate(ctx, c, connAndPort.conn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					if a.mDNSMode == MulticastDNSModeQueryAndGather {
+						if err = c.setIP(ip); err != nil {
+							closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
+							continue
+						}
 					}
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+
+					if err := a.addCandidate(ctx, c, connAndPort.conn); err != nil {
+						if closeErr := c.close(); closeErr != nil {
+							a.log.Warnf("Failed to close candidate: %v", closeErr)
+						}
+						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+					}
 				}
 			}
 		}
@@ -265,53 +267,55 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		if !ok {
 			return errInvalidAddress
 		}
-		candidateIP := udpAddr.IP
+		candidateIPs := []net.IP{udpAddr.IP}
 		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
+			mappedIPs, err := a.extIPMapper.findExternalIPs(candidateIPs[0].String())
 			if err != nil {
-				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
+				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIPs[0].String())
 				continue
 			}
 
-			candidateIP = mappedIP
+			candidateIPs = mappedIPs
 		}
 
-		hostConfig := CandidateHostConfig{
-			Network:   udp,
-			Address:   candidateIP.String(),
-			Port:      udpAddr.Port,
-			Component: ComponentRTP,
-		}
-
-		// Detect a duplicate candidate before calling addCandidate().
-		// otherwise, addCandidate() detects the duplicate candidate
-		// and close its connection, invalidating all candidates
-		// that share the same connection.
-		if _, ok := existingConfigs[hostConfig]; ok {
-			continue
-		}
-
-		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
-		if err != nil {
-			return err
-		}
-
-		c, err := NewCandidateHost(&hostConfig)
-		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
-			continue
-		}
-
-		if err := a.addCandidate(ctx, c, conn); err != nil {
-			if closeErr := c.close(); closeErr != nil {
-				a.log.Warnf("Failed to close candidate: %v", closeErr)
+		for _, candidateIP := range candidateIPs {
+			hostConfig := CandidateHostConfig{
+				Network:   udp,
+				Address:   candidateIP.String(),
+				Port:      udpAddr.Port,
+				Component: ComponentRTP,
 			}
 
-			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
-			continue
-		}
+			// Detect a duplicate candidate before calling addCandidate().
+			// otherwise, addCandidate() detects the duplicate candidate
+			// and close its connection, invalidating all candidates
+			// that share the same connection.
+			if _, ok := existingConfigs[hostConfig]; ok {
+				continue
+			}
 
-		existingConfigs[hostConfig] = struct{}{}
+			conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
+			if err != nil {
+				return err
+			}
+
+			c, err := NewCandidateHost(&hostConfig)
+			if err != nil {
+				closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+				continue
+			}
+
+			if err := a.addCandidate(ctx, c, conn); err != nil {
+				if closeErr := c.close(); closeErr != nil {
+					a.log.Warnf("Failed to close candidate: %v", closeErr)
+				}
+
+				closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+				continue
+			}
+
+			existingConfigs[hostConfig] = struct{}{}
+		}
 	}
 
 	return nil
@@ -343,35 +347,37 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			mappedIP, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
+			mappedIPs, err := a.extIPMapper.findExternalIPs(lAddr.IP.String())
 			if err != nil {
 				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
 				return
 			}
 
-			srflxConfig := CandidateServerReflexiveConfig{
-				Network:   network,
-				Address:   mappedIP.String(),
-				Port:      lAddr.Port,
-				Component: ComponentRTP,
-				RelAddr:   lAddr.IP.String(),
-				RelPort:   lAddr.Port,
-			}
-			c, err := NewCandidateServerReflexive(&srflxConfig)
-			if err != nil {
-				closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
-					network,
-					mappedIP.String(),
-					lAddr.Port,
-					err)
-				return
-			}
-
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
-					a.log.Warnf("Failed to close candidate: %v", closeErr)
+			for _, mappedIP := range mappedIPs {
+				srflxConfig := CandidateServerReflexiveConfig{
+					Network:   network,
+					Address:   mappedIP.String(),
+					Port:      lAddr.Port,
+					Component: ComponentRTP,
+					RelAddr:   lAddr.IP.String(),
+					RelPort:   lAddr.Port,
 				}
-				a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+				c, err := NewCandidateServerReflexive(&srflxConfig)
+				if err != nil {
+					closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
+						network,
+						mappedIP.String(),
+						lAddr.Port,
+						err)
+					return
+				}
+
+				if err := a.addCandidate(ctx, c, conn); err != nil {
+					if closeErr := c.close(); closeErr != nil {
+						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					}
+					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+				}
 			}
 		}()
 	}
