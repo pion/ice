@@ -266,7 +266,9 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			return errInvalidAddress
 		}
 		candidateIP := udpAddr.IP
-		if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
+			a.extIPMapper != nil &&
+			a.extIPMapper.candidateType == CandidateTypeHost {
 			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
 			if err != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
@@ -276,9 +278,16 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			candidateIP = mappedIP
 		}
 
+		var address string
+		if a.mDNSMode == MulticastDNSModeQueryAndGather {
+			address = a.mDNSName
+		} else {
+			address = candidateIP.String()
+		}
+
 		hostConfig := CandidateHostConfig{
 			Network:   udp,
-			Address:   candidateIP.String(),
+			Address:   address,
 			Port:      udpAddr.Port,
 			Component: ComponentRTP,
 		}
