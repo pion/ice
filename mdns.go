@@ -4,6 +4,9 @@
 package ice
 
 import (
+	"net"
+	"runtime"
+
 	"github.com/google/uuid"
 	"github.com/pion/logging"
 	"github.com/pion/mdns"
@@ -38,24 +41,45 @@ func createMulticastDNS(n transport.Net, mDNSMode MulticastDNSMode, mDNSName str
 		return nil, mDNSMode, nil
 	}
 
-	addr, mdnsErr := n.ResolveUDPAddr("udp4", mdns.DefaultAddress)
-	if mdnsErr != nil {
-		return nil, mDNSMode, mdnsErr
-	}
+	var pkgConn net.PacketConn
+	var ok bool
 
-	l, mdnsErr := n.ListenUDP("udp4", addr)
-	if mdnsErr != nil {
-		// If ICE fails to start MulticastDNS server just warn the user and continue
-		log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
-		return nil, MulticastDNSModeDisabled, nil
+	if runtime.GOOS == "android" {
+		l, mdnsErr := net.Listen("unixgram", mdns.DefaultAddress)
+		if mdnsErr != nil {
+			// If ICE fails to start MulticastDNS server just warn the user and continue
+			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+			return nil, MulticastDNSModeDisabled, nil
+		}
+		pkgConn, ok = l.(net.PacketConn)
+		if !ok {
+			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+			return nil, MulticastDNSModeDisabled, nil
+		}
+	} else {
+		addr, mdnsErr := n.ResolveUDPAddr("udp4", mdns.DefaultAddress)
+		if mdnsErr != nil {
+			return nil, mDNSMode, mdnsErr
+		}
+		l, mdnsErr := n.ListenUDP("udp4", addr)
+		if mdnsErr != nil {
+			// If ICE fails to start MulticastDNS server just warn the user and continue
+			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+			return nil, MulticastDNSModeDisabled, nil
+		}
+		pkgConn, ok = l.(net.PacketConn)
+		if !ok {
+			log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+			return nil, MulticastDNSModeDisabled, nil
+		}
 	}
 
 	switch mDNSMode {
 	case MulticastDNSModeQueryOnly:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
+		conn, err := mdns.Server(ipv4.NewPacketConn(pkgConn), &mdns.Config{})
 		return conn, mDNSMode, err
 	case MulticastDNSModeQueryAndGather:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
+		conn, err := mdns.Server(ipv4.NewPacketConn(pkgConn), &mdns.Config{
 			LocalNames: []string{mDNSName},
 		})
 		return conn, mDNSMode, err
