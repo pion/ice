@@ -1096,6 +1096,8 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 
 		a.selector.HandleSuccessResponse(m, local, remoteCandidate, remote)
 	} else if m.Type.Class == stun.ClassRequest {
+		a.log.Tracef("Inbound STUN (Request) from %s to %s, useCandidate: %v", remote.String(), local.String(), m.Contains(stun.AttrUseCandidate))
+
 		if err = stunx.AssertUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
@@ -1130,8 +1132,6 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			a.log.Debugf("Adding a new peer-reflexive candidate: %s ", remote)
 			a.addRemoteCandidate(remoteCandidate)
 		}
-
-		a.log.Tracef("Inbound STUN (Request) from %s to %s", remote.String(), local.String())
 
 		a.selector.HandleBindingRequest(m, local, remoteCandidate)
 	}

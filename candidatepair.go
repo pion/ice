@@ -35,8 +35,8 @@ func (p *CandidatePair) String() string {
 		return ""
 	}
 
-	return fmt.Sprintf("prio %d (local, prio %d) %s <-> %s (remote, prio %d)",
-		p.priority(), p.Local.Priority(), p.Local, p.Remote, p.Remote.Priority())
+	return fmt.Sprintf("prio %d (local, prio %d) %s <-> %s (remote, prio %d), state: %s, nominated: %v, nominateOnBindingSuccess: %v",
+		p.priority(), p.Local.Priority(), p.Local, p.Remote, p.Remote.Priority(), p.state, p.nominated, p.nominateOnBindingSuccess)
 }
 
 func (p *CandidatePair) equal(other *CandidatePair) bool {
