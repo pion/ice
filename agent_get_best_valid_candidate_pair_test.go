@@ -23,7 +23,7 @@ func TestAgentGetBestValidCandidatePair(t *testing.T) {
 		candidatePair.state = CandidatePairStateSucceeded
 
 		actualBestPair := f.sut.getBestValidCandidatePair()
-		expectedBestPair := &CandidatePair{Remote: remoteCandidate, Local: f.hostLocal}
+		expectedBestPair := &CandidatePair{Remote: remoteCandidate, Local: f.hostLocal, state: CandidatePairStateSucceeded}
 
 		require.Equal(t, actualBestPair.String(), expectedBestPair.String())
 	}
