@@ -3,7 +3,7 @@ module github.com/pion/ice/v3
 go 1.13
 
 require (
-	github.com/google/uuid v1.5.0
+	github.com/google/uuid v1.6.0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/pion/dtls/v2 v2.2.9
 	github.com/pion/logging v0.2.2
