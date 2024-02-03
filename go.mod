@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/google/uuid v1.6.0
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/pion/dtls/v2 v2.2.9
+	github.com/pion/dtls/v2 v2.2.10
 	github.com/pion/logging v0.2.2
 	github.com/pion/mdns v0.0.10
 	github.com/pion/randutil v0.1.0
