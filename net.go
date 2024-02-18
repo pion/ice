@@ -106,7 +106,7 @@ func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, p
 	var i, j int
 	i = portMin
 	if i == 0 {
-		i = 1
+		i = 1024 // avoid priveleged ports in the 1-1023 range.
 	}
 	j = portMax
 	if j == 0 {
