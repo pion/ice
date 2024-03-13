@@ -130,7 +130,7 @@ type Agent struct {
 
 	chanCandidate     chan Candidate
 	chanCandidatePair chan *CandidatePair
-	chanState         chan ConnectionState
+	stateNotifier     *connectionStateNotifier
 
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
@@ -227,7 +227,6 @@ func (a *Agent) taskLoop() {
 
 		after()
 
-		close(a.chanState)
 		close(a.chanCandidate)
 		close(a.chanCandidatePair)
 		close(a.taskLoopDone)
@@ -278,7 +277,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 	a := &Agent{
 		chanTask:          make(chan task),
-		chanState:         make(chan ConnectionState),
 		chanCandidate:     make(chan Candidate),
 		chanCandidatePair: make(chan *CandidatePair),
 		tieBreaker:        globalMathRandomGenerator.Uint64(),
@@ -322,6 +320,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		disableActiveTCP: config.DisableActiveTCP,
 	}
+	a.stateNotifier = &connectionStateNotifier{NotificationFunc: a.onConnectionStateChange}
 
 	if a.net == nil {
 		a.net, err = stdnet.NewNet()
@@ -369,7 +368,6 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 	// Blocking one by the other one causes deadlock.
 	// Hence, we call handlers from independent Goroutines.
 	go a.candidatePairRoutine()
-	go a.connectionStateRoutine()
 	go a.candidateRoutine()
 
 	// Restart is also used to initialize the agent for the first time
@@ -503,12 +501,7 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 
 		a.log.Infof("Setting new connection state: %s", newState)
 		a.connectionState = newState
-
-		// Call handler after finishing current task since we may be holding the agent lock
-		// and the handler may also require it
-		a.afterRun(func(_ context.Context) {
-			a.chanState <- newState
-		})
+		a.stateNotifier.Enqueue(newState)
 	}
 }
 

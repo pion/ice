@@ -3,6 +3,8 @@
 
 package ice
 
+import "sync"
+
 // OnConnectionStateChange sets a handler that is fired when the connection state changes
 func (a *Agent) OnConnectionStateChange(f func(ConnectionState)) error {
 	a.onConnectionStateChangeHdlr.Store(f)
@@ -47,9 +49,35 @@ func (a *Agent) candidatePairRoutine() {
 	}
 }
 
-func (a *Agent) connectionStateRoutine() {
-	for s := range a.chanState {
-		go a.onConnectionStateChange(s)
+type connectionStateNotifier struct {
+	sync.Mutex
+	states           []ConnectionState
+	running          bool
+	NotificationFunc func(ConnectionState)
+}
+
+func (c *connectionStateNotifier) Enqueue(s ConnectionState) {
+	c.Lock()
+	defer c.Unlock()
+	c.states = append(c.states, s)
+	if !c.running {
+		c.running = true
+		go c.notify()
+	}
+}
+
+func (c *connectionStateNotifier) notify() {
+	for {
+		c.Lock()
+		if len(c.states) == 0 {
+			c.running = false
+			c.Unlock()
+			return
+		}
+		s := c.states[0]
+		c.states = c.states[1:]
+		c.Unlock()
+		c.NotificationFunc(s)
 	}
 }
 
