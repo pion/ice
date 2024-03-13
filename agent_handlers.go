@@ -49,7 +49,12 @@ func (a *Agent) candidatePairRoutine() {
 
 func (a *Agent) connectionStateRoutine() {
 	for s := range a.chanState {
-		go a.onConnectionStateChange(s)
+		ch := make(chan struct{})
+		go func() {
+			a.onConnectionStateChange(s)
+			close(ch)
+		}()
+		<-ch
 	}
 }
 
