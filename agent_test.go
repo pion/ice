@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const localhostIPStr = "127.0.0.1"
+
 type BadAddr struct{}
 
 func (ba *BadAddr) Network() string {
@@ -57,7 +59,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
+		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -118,7 +120,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
+		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -145,7 +147,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
+		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], "ABC")
@@ -440,7 +442,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		err = a.run(context.Background(), func(ctx context.Context, a *Agent) {
+		err = a.run(context.Background(), func(_ context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			// nolint: contextcheck
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
@@ -455,7 +457,7 @@ func TestInboundValidity(t *testing.T) {
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
 		var config AgentConfig
-		runAgentTest(t, &config, func(ctx context.Context, a *Agent) {
+		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
@@ -1120,7 +1122,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	<-isFailed
 
 	done := make(chan struct{})
-	assert.NoError(t, aAgent.run(context.Background(), func(ctx context.Context, agent *Agent) {
+	assert.NoError(t, aAgent.run(context.Background(), func(context.Context, *Agent) {
 		assert.Equal(t, len(aAgent.remoteCandidates), 0)
 		assert.Equal(t, len(aAgent.localCandidates), 0)
 		close(done)

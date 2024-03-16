@@ -11,7 +11,7 @@ import (
 // GetCandidatePairsStats returns a list of candidate pair stats
 func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 	var res []CandidatePairStats
-	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		result := make([]CandidatePairStats, 0, len(agent.checklist))
 		for _, cp := range agent.checklist {
 			stat := CandidatePairStats{
@@ -57,7 +57,7 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 // GetLocalCandidatesStats returns a list of local candidates stats
 func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 	var res []CandidateStats
-	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		result := make([]CandidateStats, 0, len(agent.localCandidates))
 		for networkType, localCandidates := range agent.localCandidates {
 			for _, c := range localCandidates {
@@ -94,7 +94,7 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 // GetRemoteCandidatesStats returns a list of remote candidates stats
 func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	var res []CandidateStats
-	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		result := make([]CandidateStats, 0, len(agent.remoteCandidates))
 		for networkType, remoteCandidates := range agent.remoteCandidates {
 			for _, c := range remoteCandidates {

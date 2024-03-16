@@ -15,7 +15,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 		gen func(t *testing.T) string
 	}{
 		"CandidateID": {
-			gen: func(t *testing.T) string {
+			gen: func(*testing.T) string {
 				return candidateIDGen.Generate()
 			},
 		},

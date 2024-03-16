@@ -396,7 +396,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
-	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	return a.run(a.context(), func(_ context.Context, agent *Agent) {
 		agent.isControlling = isControlling
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
@@ -426,7 +426,7 @@ func (a *Agent) connectivityChecks() {
 	checkingDuration := time.Time{}
 
 	contact := func() {
-		if err := a.run(a.context(), func(ctx context.Context, a *Agent) {
+		if err := a.run(a.context(), func(_ context.Context, a *Agent) {
 			defer func() {
 				lastConnectionState = a.connectionState
 			}()
@@ -506,7 +506,7 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 
 		// Call handler after finishing current task since we may be holding the agent lock
 		// and the handler may also require it
-		a.afterRun(func(ctx context.Context) {
+		a.afterRun(func(_ context.Context) {
 			a.chanState <- newState
 		})
 	}
@@ -685,7 +685,7 @@ func (a *Agent) AddRemoteCandidate(c Candidate) error {
 	}
 
 	go func() {
-		if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+		if err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 			// nolint: contextcheck
 			agent.addRemoteCandidate(c)
 		}); err != nil {
@@ -717,7 +717,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 		return
 	}
 
-	if err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if err = a.run(a.context(), func(_ context.Context, agent *Agent) {
 		// nolint: contextcheck
 		agent.addRemoteCandidate(c)
 	}); err != nil {
@@ -810,7 +810,7 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 }
 
 func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net.PacketConn) error {
-	return a.run(ctx, func(ctx context.Context, agent *Agent) {
+	return a.run(ctx, func(context.Context, *Agent) {
 		set := a.localCandidates[c.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(c) {
@@ -846,7 +846,7 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 func (a *Agent) GetRemoteCandidates() ([]Candidate, error) {
 	var res []Candidate
 
-	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		var candidates []Candidate
 		for _, set := range agent.remoteCandidates {
 			candidates = append(candidates, set...)
@@ -864,7 +864,7 @@ func (a *Agent) GetRemoteCandidates() ([]Candidate, error) {
 func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 	var res []Candidate
 
-	err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		var candidates []Candidate
 		for _, set := range agent.localCandidates {
 			candidates = append(candidates, set...)
@@ -881,7 +881,7 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 // GetLocalUserCredentials returns the local user credentials
 func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
 	valSet := make(chan struct{})
-	err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err = a.run(a.context(), func(_ context.Context, agent *Agent) {
 		frag = agent.localUfrag
 		pwd = agent.localPwd
 		close(valSet)
@@ -896,7 +896,7 @@ func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
 // GetRemoteUserCredentials returns the remote user credentials
 func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) {
 	valSet := make(chan struct{})
-	err = a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	err = a.run(a.context(), func(_ context.Context, agent *Agent) {
 		frag = agent.remoteUfrag
 		pwd = agent.remotePwd
 		close(valSet)
@@ -1145,7 +1145,7 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 // and returns true if it is an actual remote candidate
 func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) (Candidate, bool) {
 	var remoteCandidate Candidate
-	if err := a.run(local.context(), func(ctx context.Context, agent *Agent) {
+	if err := a.run(local.context(), func(context.Context, *Agent) {
 		remoteCandidate = a.findRemoteCandidate(local.NetworkType(), remote)
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
@@ -1202,7 +1202,7 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 		return ErrRemotePwdEmpty
 	}
 
-	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	return a.run(a.context(), func(_ context.Context, agent *Agent) {
 		agent.remoteUfrag = remoteUfrag
 		agent.remotePwd = remotePwd
 	})
@@ -1239,7 +1239,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 	}
 
 	var err error
-	if runErr := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if runErr := a.run(a.context(), func(_ context.Context, agent *Agent) {
 		if agent.gatheringState == GatheringStateGathering {
 			agent.gatherCandidateCancel()
 		}
@@ -1272,7 +1272,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 
 func (a *Agent) setGatheringState(newState GatheringState) error {
 	done := make(chan struct{})
-	if err := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if err := a.run(a.context(), func(context.Context, *Agent) {
 		if a.gatheringState != newState && newState == GatheringStateComplete {
 			a.chanCandidate <- nil
 		}

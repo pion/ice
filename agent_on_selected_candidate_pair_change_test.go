@@ -17,12 +17,12 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	agent, candidatePair := fixtureTestOnSelectedCandidatePairChange(t)
 
 	callbackCalled := make(chan struct{}, 1)
-	err := agent.OnSelectedCandidatePairChange(func(local, remote Candidate) {
+	err := agent.OnSelectedCandidatePairChange(func(_, _ Candidate) {
 		close(callbackCalled)
 	})
 	require.NoError(t, err)
 
-	err = agent.run(context.Background(), func(ctx context.Context, agent *Agent) {
+	err = agent.run(context.Background(), func(_ context.Context, agent *Agent) {
 		agent.setSelectedPair(candidatePair)
 	})
 	require.NoError(t, err)

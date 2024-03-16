@@ -91,7 +91,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 
 	pair := c.agent.getSelectedPair()
 	if pair == nil {
-		if err = c.agent.run(c.agent.context(), func(ctx context.Context, a *Agent) {
+		if err = c.agent.run(c.agent.context(), func(_ context.Context, a *Agent) {
 			pair = a.getBestValidCandidatePair()
 		}); err != nil {
 			return 0, err

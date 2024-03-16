@@ -31,7 +31,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	defer report()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort))
 	assert.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -40,7 +40,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
 				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr + ""},
 			},
 		},
 	})
@@ -51,7 +51,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 		Urls: []*stun.URI{
 			{
 				Scheme:   stun.SchemeTypeTURN,
-				Host:     "127.0.0.1",
+				Host:     localhostIPStr + "",
 				Username: "username",
 				Password: "password",
 				Port:     serverPort,

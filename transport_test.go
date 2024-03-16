@@ -49,7 +49,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 		var cs ConnectionState
 
-		err := c.agent.run(context.Background(), func(ctx context.Context, agent *Agent) {
+		err := c.agent.run(context.Background(), func(_ context.Context, agent *Agent) {
 			cs = agent.connectionState
 		})
 		if err != nil {

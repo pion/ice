@@ -171,7 +171,7 @@ func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.S
 		return nil, err
 	}
 	server, err := turn.NewServer(turn.ServerConfig{
-		AuthHandler: func(username, realm string, srcAddr net.Addr) (key []byte, ok bool) {
+		AuthHandler: func(username, realm string, _ net.Addr) (key []byte, ok bool) {
 			if pw, ok := credMap[username]; ok {
 				return turn.GenerateAuthKey(username, realm, pw), true
 			}

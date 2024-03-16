@@ -358,14 +358,14 @@ func TestCandidateMarshal(t *testing.T) {
 				candidateBase{
 					networkType:        NetworkTypeUDP4,
 					candidateType:      CandidateTypeHost,
-					address:            "127.0.0.1",
+					address:            localhostIPStr,
 					port:               80,
 					priorityOverride:   500,
 					foundationOverride: " ",
 				},
 				"",
 			},
-			" 1 udp 500 127.0.0.1 80 typ host",
+			" 1 udp 500 " + localhostIPStr + " 80 typ host",
 			false,
 		},
 

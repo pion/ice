@@ -104,7 +104,7 @@ func TestGatherConcurrency(t *testing.T) {
 	assert.NoError(t, err)
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-	assert.NoError(t, a.OnCandidate(func(c Candidate) {
+	assert.NoError(t, a.OnCandidate(func(Candidate) {
 		candidateGatheredFunc()
 	}))
 
@@ -209,7 +209,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	defer lim.Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
 	assert.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -218,7 +218,7 @@ func TestSTUNConcurrency(t *testing.T) {
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
 				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
 			},
 		},
 	})
@@ -228,13 +228,13 @@ func TestSTUNConcurrency(t *testing.T) {
 	for i := 0; i <= 10; i++ {
 		urls = append(urls, &stun.URI{
 			Scheme: stun.SchemeTypeSTUN,
-			Host:   "127.0.0.1",
+			Host:   localhostIPStr,
 			Port:   serverPort + 1,
 		})
 	}
 	urls = append(urls, &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
-		Host:   "127.0.0.1",
+		Host:   localhostIPStr,
 		Port:   serverPort,
 	})
 
@@ -289,7 +289,7 @@ func TestTURNConcurrency(t *testing.T) {
 		if packetConn != nil {
 			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
 				PacketConn:            packetConn,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
 			})
 		}
 
@@ -297,7 +297,7 @@ func TestTURNConcurrency(t *testing.T) {
 		if listener != nil {
 			listenerConfigs = append(listenerConfigs, turn.ListenerConfig{
 				Listener:              listener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
 			})
 		}
 
@@ -313,7 +313,7 @@ func TestTURNConcurrency(t *testing.T) {
 		for i := 0; i <= 10; i++ {
 			urls = append(urls, &stun.URI{
 				Scheme:   scheme,
-				Host:     "127.0.0.1",
+				Host:     localhostIPStr,
 				Username: "username",
 				Password: "password",
 				Proto:    protocol,
@@ -322,7 +322,7 @@ func TestTURNConcurrency(t *testing.T) {
 		}
 		urls = append(urls, &stun.URI{
 			Scheme:   scheme,
-			Host:     "127.0.0.1",
+			Host:     localhostIPStr,
 			Username: "username",
 			Password: "password",
 			Proto:    protocol,
@@ -353,7 +353,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 	t.Run("UDP Relay", func(t *testing.T) {
 		serverPort := randomPort(t)
-		serverListener, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(serverPort))
+		serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
 		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURN, serverListener, nil, serverPort)
@@ -361,7 +361,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 	t.Run("TCP Relay", func(t *testing.T) {
 		serverPort := randomPort(t)
-		serverListener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort))
+		serverListener, err := net.Listen("tcp", localhostIPStr+":"+strconv.Itoa(serverPort))
 		assert.NoError(t, err)
 
 		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURN, nil, serverListener, serverPort)
@@ -372,7 +372,7 @@ func TestTURNConcurrency(t *testing.T) {
 		assert.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := tls.Listen("tcp", "127.0.0.1:"+strconv.Itoa(serverPort), &tls.Config{ //nolint:gosec
+		serverListener, err := tls.Listen("tcp", localhostIPStr+":"+strconv.Itoa(serverPort), &tls.Config{ //nolint:gosec
 			Certificates: []tls.Certificate{certificate},
 		})
 		assert.NoError(t, err)
@@ -385,7 +385,7 @@ func TestTURNConcurrency(t *testing.T) {
 		assert.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := dtls.Listen("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: serverPort}, &dtls.Config{
+		serverListener, err := dtls.Listen("udp", &net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: serverPort}, &dtls.Config{
 			Certificates: []tls.Certificate{certificate},
 		})
 		assert.NoError(t, err)
@@ -403,7 +403,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	defer lim.Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
 	assert.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -412,7 +412,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
 				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
 			},
 		},
 	})
@@ -422,14 +422,14 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	for i := 0; i <= 10; i++ {
 		urls = append(urls, &stun.URI{
 			Scheme: stun.SchemeTypeSTUN,
-			Host:   "127.0.0.1",
+			Host:   localhostIPStr,
 			Port:   serverPort + 1,
 		})
 	}
 	urls = append(urls, &stun.URI{
 		Scheme:   stun.SchemeTypeTURN,
 		Proto:    stun.ProtoTypeUDP,
-		Host:     "127.0.0.1",
+		Host:     localhostIPStr,
 		Port:     serverPort,
 		Username: "username",
 		Password: "password",
@@ -475,7 +475,7 @@ func TestTURNSrflx(t *testing.T) {
 	defer lim.Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
 	assert.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -484,7 +484,7 @@ func TestTURNSrflx(t *testing.T) {
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
 				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
+				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
 			},
 		},
 	})
@@ -493,7 +493,7 @@ func TestTURNSrflx(t *testing.T) {
 	urls := []*stun.URI{{
 		Scheme:   stun.SchemeTypeTURN,
 		Proto:    stun.ProtoTypeUDP,
-		Host:     "127.0.0.1",
+		Host:     localhostIPStr,
 		Port:     serverPort,
 		Username: "username",
 		Password: "password",
@@ -577,7 +577,7 @@ func TestTURNProxyDialer(t *testing.T) {
 		Urls: []*stun.URI{
 			{
 				Scheme:   stun.SchemeTypeTURN,
-				Host:     "127.0.0.1",
+				Host:     localhostIPStr,
 				Username: "username",
 				Password: "password",
 				Proto:    stun.ProtoTypeTCP,
@@ -787,7 +787,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	for i := 0; i < numSTUNS; i++ {
 		urls = append(urls, &stun.URI{
 			Scheme: SchemeTypeSTUN,
-			Host:   "127.0.0.1",
+			Host:   localhostIPStr,
 			Port:   3478 + i,
 		})
 	}

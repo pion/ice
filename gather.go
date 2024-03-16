@@ -42,7 +42,7 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 func (a *Agent) GatherCandidates() error {
 	var gatherErr error
 
-	if runErr := a.run(a.context(), func(ctx context.Context, agent *Agent) {
+	if runErr := a.run(a.context(), func(ctx context.Context, _ *Agent) {
 		if a.gatheringState != GatheringStateNew {
 			gatherErr = ErrMultipleGatherAttempted
 			return
