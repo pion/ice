@@ -18,6 +18,7 @@ import (
 	"github.com/pion/transport/v3/test"
 	"github.com/pion/transport/v3/vnet"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVNetGather(t *testing.T) {
@@ -356,6 +357,83 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		assert.Equal(t, "10.0.0.1", candiHost.Address(), "should match")
 		assert.NotNil(t, candiSrflx, "should not be nil")
 		assert.Equal(t, "1.2.3.4", candiSrflx.Address(), "should match")
+	})
+
+	t.Run("gather both local and overridden candidates", func(t *testing.T) {
+		localIP := "10.0.0.1"
+		externalIP := "1.1.1.1"
+
+		// Local network setup
+		lan, err := vnet.NewRouter(&vnet.RouterConfig{
+			CIDR:      "10.0.0.0/24",
+			StaticIPs: []string{localIP},
+			NATType: &vnet.NATType{
+				Mode: vnet.NATModeNAT1To1,
+			},
+			LoggerFactory: loggerFactory,
+		})
+		assert.NoError(t, err, "should succeed")
+
+		localNet, err := vnet.NewNet(&vnet.NetConfig{
+			StaticIPs: []string{localIP},
+		})
+		assert.NoError(t, err)
+
+		err = lan.AddNet(localNet)
+		assert.NoError(t, err, "should succeed")
+
+		natMap := []string{
+			fmt.Sprintf("%s/%s", externalIP, localIP),
+			fmt.Sprintf("%s/%s", localIP, localIP),
+		}
+
+		// ICE gathering
+		a, err := NewAgent(&AgentConfig{
+			NetworkTypes: []NetworkType{
+				NetworkTypeUDP4,
+			},
+			NAT1To1IPs:             natMap,
+			NAT1To1IPCandidateType: CandidateTypeHost,
+			Net:                    localNet,
+		})
+		assert.NoError(t, err, "should succeed")
+		defer a.Close() //nolint:errcheck
+
+		done := make(chan struct{})
+		err = a.OnCandidate(func(c Candidate) {
+			if c == nil {
+				close(done)
+			}
+		})
+		assert.NoError(t, err, "should succeed")
+
+		err = a.GatherCandidates()
+		assert.NoError(t, err, "should succeed")
+
+		log.Debug("Wait until gathering is complete...")
+		<-done
+		log.Debug("Gathering is done")
+
+		candidates, err := a.GetLocalCandidates()
+		assert.NoError(t, err, "should succeed")
+
+		require.Len(t, candidates, 2)
+
+		if candidates[0].Address() == externalIP {
+			require.Equal(t, localIP, candidates[1].Address())
+		} else {
+			require.Equal(t, localIP, candidates[0].Address())
+			require.Equal(t, externalIP, candidates[1].Address())
+		}
+
+		lAddr := [2]*net.UDPAddr{nil, nil}
+		for i, candi := range candidates {
+			lAddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+			require.Equal(t, lAddr[i].Port, candi.Port())
+		}
+
+		require.Equal(t, lAddr[0].IP.String(), lAddr[1].IP.String())
+		require.NotEqual(t, lAddr[0].Port, lAddr[1].Port)
 	})
 }
 
