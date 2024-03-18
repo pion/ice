@@ -24,8 +24,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const localhostIPStr = "127.0.0.1"
-
 type BadAddr struct{}
 
 func (ba *BadAddr) Network() string {

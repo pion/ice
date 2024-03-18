@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const localhostIPStr = "127.0.0.1"
+
 func TestCandidateTypePreference(t *testing.T) {
 	r := require.New(t)
 
