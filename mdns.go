@@ -6,7 +6,7 @@ package ice
 import (
 	"github.com/google/uuid"
 	"github.com/pion/logging"
-	"github.com/pion/mdns"
+	"github.com/pion/mdns/v2"
 	"github.com/pion/transport/v3"
 	"golang.org/x/net/ipv4"
 )
@@ -38,7 +38,7 @@ func createMulticastDNS(n transport.Net, mDNSMode MulticastDNSMode, mDNSName str
 		return nil, mDNSMode, nil
 	}
 
-	addr, mdnsErr := n.ResolveUDPAddr("udp4", mdns.DefaultAddress)
+	addr, mdnsErr := n.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if mdnsErr != nil {
 		return nil, mDNSMode, mdnsErr
 	}
@@ -52,10 +52,10 @@ func createMulticastDNS(n transport.Net, mDNSMode MulticastDNSMode, mDNSName str
 
 	switch mDNSMode {
 	case MulticastDNSModeQueryOnly:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{})
+		conn, err := mdns.Server(ipv4.NewPacketConn(l), nil, &mdns.Config{})
 		return conn, mDNSMode, err
 	case MulticastDNSModeQueryAndGather:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), &mdns.Config{
+		conn, err := mdns.Server(ipv4.NewPacketConn(l), nil, &mdns.Config{
 			LocalNames: []string{mDNSName},
 		})
 		return conn, mDNSMode, err

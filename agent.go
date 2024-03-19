@@ -18,7 +18,7 @@ import (
 	atomicx "github.com/pion/ice/v3/internal/atomic"
 	stunx "github.com/pion/ice/v3/internal/stun"
 	"github.com/pion/logging"
-	"github.com/pion/mdns"
+	"github.com/pion/mdns/v2"
 	"github.com/pion/stun/v2"
 	"github.com/pion/transport/v3"
 	"github.com/pion/transport/v3/packetio"
