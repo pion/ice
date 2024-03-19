@@ -24,38 +24,48 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
 
-	cfg := &AgentConfig{
-		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
-		CandidateTypes:   []CandidateType{CandidateTypeHost},
-		MulticastDNSMode: MulticastDNSModeQueryAndGather,
+	for _, test := range []struct{ networkType NetworkType }{
+		{networkType: NetworkTypeUDP4},
+		{networkType: NetworkTypeUDP6},
+	} {
+		cfg := &AgentConfig{
+			NetworkTypes:     []NetworkType{test.networkType},
+			CandidateTypes:   []CandidateType{CandidateTypeHost},
+			MulticastDNSMode: MulticastDNSModeQueryAndGather,
+		}
+
+		aAgent, err := NewAgent(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		aNotifier, aConnected := onConnected()
+		if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
+			t.Fatal(err)
+		}
+
+		bAgent, err := NewAgent(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bNotifier, bConnected := onConnected()
+		if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
+			t.Fatal(err)
+		}
+
+		connect(aAgent, bAgent)
+		<-aConnected
+		<-bConnected
+
+		aAgentPair, err := aAgent.GetSelectedCandidatePair()
+		assert.NoError(t, err)
+		assert.Equal(t, aAgentPair.Local.NetworkType(), test.networkType)
+		assert.Equal(t, aAgentPair.Remote.NetworkType(), test.networkType)
+
+		assert.NoError(t, aAgent.Close())
+		assert.NoError(t, bAgent.Close())
 	}
-
-	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
-
-	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
-
-	connect(aAgent, bAgent)
-	<-aConnected
-	<-bConnected
-
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
 }
 
 func TestMulticastDNSMixedConnection(t *testing.T) {

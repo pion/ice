@@ -4,11 +4,14 @@
 package ice
 
 import (
+	"net"
+
 	"github.com/google/uuid"
 	"github.com/pion/logging"
 	"github.com/pion/mdns/v2"
 	"github.com/pion/transport/v3"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // MulticastDNSMode represents the different Multicast modes ICE can run in
@@ -33,29 +36,63 @@ func generateMulticastDNSName() (string, error) {
 	return u.String() + ".local", err
 }
 
-func createMulticastDNS(n transport.Net, mDNSMode MulticastDNSMode, mDNSName string, log logging.LeveledLogger) (*mdns.Conn, MulticastDNSMode, error) {
+func createMulticastListener(n transport.Net, network, address string) (net.PacketConn, error) {
+	addr, err := n.ResolveUDPAddr(network, address)
+	if err != nil {
+		return nil, err
+	}
+
+	return n.ListenUDP(network, addr)
+}
+
+func createMulticastDNS(n transport.Net, mDNSMode MulticastDNSMode, mDNSName string, networkTypes []NetworkType, log logging.LeveledLogger) (*mdns.Conn, MulticastDNSMode, error) {
 	if mDNSMode == MulticastDNSModeDisabled {
 		return nil, mDNSMode, nil
 	}
 
-	addr, mdnsErr := n.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
-	if mdnsErr != nil {
-		return nil, mDNSMode, mdnsErr
+	var (
+		pktConnIPV4              *ipv4.PacketConn
+		pktConnIPV6              *ipv6.PacketConn
+		ipV4Enabled, ipV6Enabled bool
+	)
+
+	for _, n := range networkTypes {
+		if n == NetworkTypeUDP4 {
+			ipV4Enabled = true
+		} else if n == NetworkTypeUDP6 {
+			ipV6Enabled = true
+		}
 	}
 
-	l, mdnsErr := n.ListenUDP("udp4", addr)
-	if mdnsErr != nil {
-		// If ICE fails to start MulticastDNS server just warn the user and continue
-		log.Errorf("Failed to enable mDNS, continuing in mDNS disabled mode: (%s)", mdnsErr)
+	if ipV4Enabled {
+		l, err := createMulticastListener(n, "udp4", mdns.DefaultAddressIPv4)
+		if err != nil {
+			log.Errorf("Failed to enable IPv4 mDNS (%s)", err)
+		} else {
+			pktConnIPV4 = ipv4.NewPacketConn(l)
+		}
+	}
+
+	if ipV6Enabled {
+		l, err := createMulticastListener(n, "udp6", mdns.DefaultAddressIPv6)
+		if err != nil {
+			log.Errorf("Failed to enable IPv6 mDNS (%s)", err)
+		} else {
+			pktConnIPV6 = ipv6.NewPacketConn(l)
+		}
+	}
+
+	if pktConnIPV4 == nil && pktConnIPV6 == nil {
+		log.Errorf("Failed to enable IPv4 or IPv6 mDNS, continuing in mDNS disabled mode")
 		return nil, MulticastDNSModeDisabled, nil
 	}
 
 	switch mDNSMode {
 	case MulticastDNSModeQueryOnly:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), nil, &mdns.Config{})
+		conn, err := mdns.Server(pktConnIPV4, pktConnIPV6, &mdns.Config{})
 		return conn, mDNSMode, err
 	case MulticastDNSModeQueryAndGather:
-		conn, err := mdns.Server(ipv4.NewPacketConn(l), nil, &mdns.Config{
+		conn, err := mdns.Server(pktConnIPV4, pktConnIPV6, &mdns.Config{
 			LocalNames: []string{mDNSName},
 		})
 		return conn, mDNSMode, err
