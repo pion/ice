@@ -11,9 +11,9 @@ import (
 // GetCandidatePairsStats returns a list of candidate pair stats
 func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 	var res []CandidatePairStats
-	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
-		result := make([]CandidatePairStats, 0, len(agent.checklist))
-		for _, cp := range agent.checklist {
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		result := make([]CandidatePairStats, 0, len(a.checklist))
+		for _, cp := range a.checklist {
 			stat := CandidatePairStats{
 				Timestamp:         time.Now(),
 				LocalCandidateID:  cp.Local.ID(),
@@ -57,9 +57,9 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 // GetLocalCandidatesStats returns a list of local candidates stats
 func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 	var res []CandidateStats
-	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
-		result := make([]CandidateStats, 0, len(agent.localCandidates))
-		for networkType, localCandidates := range agent.localCandidates {
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		result := make([]CandidateStats, 0, len(a.localCandidates))
+		for networkType, localCandidates := range a.localCandidates {
 			for _, c := range localCandidates {
 				relayProtocol := ""
 				if c.Type() == CandidateTypeRelay {
@@ -94,9 +94,9 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 // GetRemoteCandidatesStats returns a list of remote candidates stats
 func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	var res []CandidateStats
-	err := a.run(a.context(), func(_ context.Context, agent *Agent) {
-		result := make([]CandidateStats, 0, len(agent.remoteCandidates))
-		for networkType, remoteCandidates := range agent.remoteCandidates {
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		result := make([]CandidateStats, 0, len(a.remoteCandidates))
+		for networkType, remoteCandidates := range a.remoteCandidates {
 			for _, c := range remoteCandidates {
 				stat := CandidateStats{
 					Timestamp:     time.Now(),
