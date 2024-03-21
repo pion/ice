@@ -34,19 +34,6 @@ func (ba *BadAddr) String() string {
 	return "yyy"
 }
 
-func runAgentTest(t *testing.T, config *AgentConfig, task func(ctx context.Context, a *Agent)) {
-	a, err := NewAgent(config)
-	if err != nil {
-		t.Fatalf("Error constructing ice.Agent")
-	}
-
-	if err := a.run(context.Background(), task); err != nil {
-		t.Fatalf("Agent run failure: %v", err)
-	}
-
-	assert.NoError(t, a.Close())
-}
-
 func TestHandlePeerReflexive(t *testing.T) {
 	report := test.CheckRoutines(t)
 	defer report()
@@ -56,8 +43,10 @@ func TestHandlePeerReflexive(t *testing.T) {
 	defer lim.Stop()
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
-		var config AgentConfig
-		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
+		a, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+
+		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -113,12 +102,15 @@ func TestHandlePeerReflexive(t *testing.T) {
 			if c.Port() != 999 {
 				t.Fatal("Port number mismatch")
 			}
-		})
+		}))
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
-		var config AgentConfig
-		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
+		a, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+
+		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -140,12 +132,16 @@ func TestHandlePeerReflexive(t *testing.T) {
 			if len(a.remoteCandidates) != 0 {
 				t.Fatal("bad address should not be added to the remote candidate list")
 			}
-		})
+		}))
+
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
-		var config AgentConfig
-		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
+		a, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+
+		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], "ABC")
@@ -179,7 +175,9 @@ func TestHandlePeerReflexive(t *testing.T) {
 			if len(a.remoteCandidates) != 0 {
 				t.Fatal("unknown remote was able to create a candidate")
 			}
-		})
+		}))
+
+		assert.NoError(t, a.Close())
 	})
 }
 
@@ -440,7 +438,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatalf("Error constructing ice.Agent")
 		}
 
-		err = a.run(context.Background(), func(_ context.Context, a *Agent) {
+		err = a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			// nolint: contextcheck
 			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
@@ -454,8 +452,10 @@ func TestInboundValidity(t *testing.T) {
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
-		var config AgentConfig
-		runAgentTest(t, &config, func(_ context.Context, a *Agent) {
+		a, err := NewAgent(&AgentConfig{})
+		assert.NoError(t, err)
+
+		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
@@ -470,7 +470,9 @@ func TestInboundValidity(t *testing.T) {
 			if len(a.remoteCandidates) != 1 {
 				t.Fatal("Binding with valid values (but no fingerprint) was unable to create prflx candidate")
 			}
-		})
+		}))
+
+		assert.NoError(t, a.Close())
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {
@@ -1120,7 +1122,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	<-isFailed
 
 	done := make(chan struct{})
-	assert.NoError(t, aAgent.run(context.Background(), func(context.Context, *Agent) {
+	assert.NoError(t, aAgent.loop.Run(aAgent.loop, func(context.Context) {
 		assert.Equal(t, len(aAgent.remoteCandidates), 0)
 		assert.Equal(t, len(aAgent.localCandidates), 0)
 		close(done)

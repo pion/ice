@@ -22,7 +22,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = agent.run(context.Background(), func(_ context.Context, agent *Agent) {
+	err = agent.loop.Run(context.Background(), func(_ context.Context) {
 		agent.setSelectedPair(candidatePair)
 	})
 	require.NoError(t, err)
