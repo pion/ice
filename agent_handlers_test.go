@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/transport/v3/test"
+	"github.com/pion/transport/v2/test"
 )
 
 func TestConnectionStateNotifier(t *testing.T) {
@@ -15,15 +15,15 @@ func TestConnectionStateNotifier(t *testing.T) {
 		report := test.CheckRoutines(t)
 		defer report()
 		updates := make(chan struct{}, 1)
-		c := &connectionStateNotifier{
-			NotificationFunc: func(_ ConnectionState) {
+		c := &handlerNotifier{
+			connectionStateFunc: func(_ ConnectionState) {
 				updates <- struct{}{}
 			},
 		}
 		// Enqueue all updates upfront to ensure that it
 		// doesn't block
 		for i := 0; i < 10000; i++ {
-			c.Enqueue(ConnectionStateNew)
+			c.EnqueueConnectionState(ConnectionStateNew)
 		}
 		done := make(chan struct{})
 		go func() {
@@ -43,8 +43,8 @@ func TestConnectionStateNotifier(t *testing.T) {
 		report := test.CheckRoutines(t)
 		defer report()
 		updates := make(chan ConnectionState)
-		c := &connectionStateNotifier{
-			NotificationFunc: func(cs ConnectionState) {
+		c := &handlerNotifier{
+			connectionStateFunc: func(cs ConnectionState) {
 				updates <- cs
 			},
 		}
@@ -64,7 +64,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 			close(done)
 		}()
 		for i := 0; i < 10000; i++ {
-			c.Enqueue(ConnectionState(i))
+			c.EnqueueConnectionState(ConnectionState(i))
 		}
 		<-done
 	})
