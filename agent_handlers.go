@@ -43,46 +43,94 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 	}
 }
 
-func (a *Agent) candidatePairRoutine() {
-	for p := range a.chanCandidatePair {
-		a.onSelectedCandidatePairChange(p)
-	}
-}
-
-type connectionStateNotifier struct {
+type handlerNotifier struct {
 	sync.Mutex
-	states           []ConnectionState
-	running          bool
-	NotificationFunc func(ConnectionState)
+	running bool
+
+	connectionStates    []ConnectionState
+	connectionStateFunc func(ConnectionState)
+
+	candidates    []Candidate
+	candidateFunc func(Candidate)
+
+	selectedCandidatePairs []*CandidatePair
+	candidatePairFunc      func(*CandidatePair)
 }
 
-func (c *connectionStateNotifier) Enqueue(s ConnectionState) {
-	c.Lock()
-	defer c.Unlock()
-	c.states = append(c.states, s)
-	if !c.running {
-		c.running = true
-		go c.notify()
-	}
-}
+func (h *handlerNotifier) EnqueueConnectionState(s ConnectionState) {
+	h.Lock()
+	defer h.Unlock()
 
-func (c *connectionStateNotifier) notify() {
-	for {
-		c.Lock()
-		if len(c.states) == 0 {
-			c.running = false
-			c.Unlock()
-			return
+	notify := func() {
+		for {
+			h.Lock()
+			if len(h.connectionStates) == 0 {
+				h.running = false
+				h.Unlock()
+				return
+			}
+			notification := h.connectionStates[0]
+			h.connectionStates = h.connectionStates[1:]
+			h.Unlock()
+			h.connectionStateFunc(notification)
 		}
-		s := c.states[0]
-		c.states = c.states[1:]
-		c.Unlock()
-		c.NotificationFunc(s)
+	}
+
+	h.connectionStates = append(h.connectionStates, s)
+	if !h.running {
+		h.running = true
+		go notify()
 	}
 }
 
-func (a *Agent) candidateRoutine() {
-	for c := range a.chanCandidate {
-		a.onCandidate(c)
+func (h *handlerNotifier) EnqueueCandidate(c Candidate) {
+	h.Lock()
+	defer h.Unlock()
+
+	notify := func() {
+		for {
+			h.Lock()
+			if len(h.candidates) == 0 {
+				h.running = false
+				h.Unlock()
+				return
+			}
+			notification := h.candidates[0]
+			h.candidates = h.candidates[1:]
+			h.Unlock()
+			h.candidateFunc(notification)
+		}
+	}
+
+	h.candidates = append(h.candidates, c)
+	if !h.running {
+		h.running = true
+		go notify()
+	}
+}
+
+func (h *handlerNotifier) EnqueueSelectedCandidatePair(p *CandidatePair) {
+	h.Lock()
+	defer h.Unlock()
+
+	notify := func() {
+		for {
+			h.Lock()
+			if len(h.selectedCandidatePairs) == 0 {
+				h.running = false
+				h.Unlock()
+				return
+			}
+			notification := h.selectedCandidatePairs[0]
+			h.selectedCandidatePairs = h.selectedCandidatePairs[1:]
+			h.Unlock()
+			h.candidatePairFunc(notification)
+		}
+	}
+
+	h.selectedCandidatePairs = append(h.selectedCandidatePairs, p)
+	if !h.running {
+		h.running = true
+		go notify()
 	}
 }
