@@ -36,9 +36,7 @@ type bindingRequest struct {
 
 // Agent represents the ICE agent
 type Agent struct {
-	chanTask   chan task
-	afterRunFn []func(ctx context.Context)
-	muAfterRun sync.Mutex
+	chanTask chan task
 
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
@@ -154,21 +152,6 @@ type task struct {
 	done chan struct{}
 }
 
-// afterRun registers function to be run after the task.
-func (a *Agent) afterRun(f func(context.Context)) {
-	a.muAfterRun.Lock()
-	a.afterRunFn = append(a.afterRunFn, f)
-	a.muAfterRun.Unlock()
-}
-
-func (a *Agent) getAfterRunFn() []func(context.Context) {
-	a.muAfterRun.Lock()
-	defer a.muAfterRun.Unlock()
-	fns := a.afterRunFn
-	a.afterRunFn = nil
-	return fns
-}
-
 func (a *Agent) ok() error {
 	select {
 	case <-a.done:
@@ -202,18 +185,6 @@ func (a *Agent) run(ctx context.Context, t func(context.Context, *Agent)) error 
 
 // taskLoop handles registered tasks and agent close.
 func (a *Agent) taskLoop() {
-	after := func() {
-		for {
-			// Get and run func registered by afterRun().
-			fns := a.getAfterRunFn()
-			if len(fns) == 0 {
-				break
-			}
-			for _, fn := range fns {
-				fn(a.context())
-			}
-		}
-	}
 	defer func() {
 		a.deleteAllCandidates()
 		a.startedFn()
@@ -225,7 +196,10 @@ func (a *Agent) taskLoop() {
 		a.closeMulticastConn()
 		a.updateConnectionState(ConnectionStateClosed)
 
-		after()
+		a.gatherCandidateCancel()
+		if a.gatherCandidateDone != nil {
+			<-a.gatherCandidateDone
+		}
 
 		close(a.taskLoopDone)
 	}()
@@ -237,7 +211,6 @@ func (a *Agent) taskLoop() {
 		case t := <-a.chanTask:
 			t.fn(a.context(), a)
 			close(t.done)
-			after()
 		}
 	}
 }
@@ -906,12 +879,6 @@ func (a *Agent) Close() error {
 		return err
 	}
 
-	a.afterRun(func(context.Context) {
-		a.gatherCandidateCancel()
-		if a.gatherCandidateDone != nil {
-			<-a.gatherCandidateDone
-		}
-	})
 	a.err.Store(ErrClosed)
 
 	a.removeUfragFromMux()
