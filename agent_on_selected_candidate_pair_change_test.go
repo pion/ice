@@ -22,8 +22,8 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = agent.run(context.Background(), func(_ context.Context, agent *Agent) {
-		agent.setSelectedPair(candidatePair)
+	err = agent.loop.Run(func(_ context.Context) {
+		agent.setSelectedPair(candidatePair) // nolint: contextcheck
 	})
 	require.NoError(t, err)
 

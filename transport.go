@@ -43,7 +43,7 @@ func (c *Conn) BytesReceived() uint64 {
 }
 
 func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, remotePwd string) (*Conn, error) {
-	err := a.ok()
+	err := a.loop.Ok()
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +54,8 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 
 	// Block until pair selected
 	select {
-	case <-a.done:
-		return nil, a.getErr()
+	case <-a.loop.Done():
+		return nil, a.loop.Err()
 	case <-ctx.Done():
 		return nil, ErrCanceledByCaller
 	case <-a.onConnected:
@@ -68,7 +68,7 @@ func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, re
 
 // Read implements the Conn Read method.
 func (c *Conn) Read(p []byte) (int, error) {
-	err := c.agent.ok()
+	err := c.agent.loop.Ok()
 	if err != nil {
 		return 0, err
 	}
@@ -80,7 +80,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 
 // Write implements the Conn Write method.
 func (c *Conn) Write(p []byte) (int, error) {
-	err := c.agent.ok()
+	err := c.agent.loop.Ok()
 	if err != nil {
 		return 0, err
 	}
@@ -91,8 +91,8 @@ func (c *Conn) Write(p []byte) (int, error) {
 
 	pair := c.agent.getSelectedPair()
 	if pair == nil {
-		if err = c.agent.run(c.agent.context(), func(_ context.Context, a *Agent) {
-			pair = a.getBestValidCandidatePair()
+		if err = c.agent.loop.Run(func(_ context.Context) {
+			pair = c.agent.getBestValidCandidatePair()
 		}); err != nil {
 			return 0, err
 		}

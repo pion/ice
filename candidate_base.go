@@ -267,7 +267,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 			return
 		}
 
-		if err := a.run(c, func(_ context.Context, a *Agent) {
+		if err := a.loop.Run(func(_ context.Context) {
 			// nolint: contextcheck
 			a.handleInbound(m, c, srcAddr)
 		}); err != nil {

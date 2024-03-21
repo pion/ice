@@ -42,7 +42,7 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 func (a *Agent) GatherCandidates() error {
 	var gatherErr error
 
-	if runErr := a.run(a.context(), func(ctx context.Context, _ *Agent) {
+	if runErr := a.loop.Run(func(ctx context.Context) {
 		if a.gatheringState != GatheringStateNew {
 			gatherErr = ErrMultipleGatherAttempted
 			return
@@ -495,7 +495,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 					select {
 					case <-cancelCtx.Done():
 						return
-					case <-a.done:
+					case <-a.loop.Done():
 						_ = conn.Close()
 					}
 				}()
