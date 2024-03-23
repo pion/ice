@@ -15,7 +15,7 @@ import (
 	"github.com/pion/stun/v2"
 	"github.com/pion/transport/v3/test"
 	"github.com/pion/turn/v3"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func optimisticAuthHandler(string, string, net.Addr) (key []byte, ok bool) {
@@ -32,7 +32,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
@@ -44,7 +44,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 			},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
@@ -85,7 +85,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
-	assert.NoError(t, server.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
+	require.NoError(t, server.Close())
 }

@@ -9,7 +9,6 @@ package ice
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +27,7 @@ func TestAgentGetBestValidCandidatePair(t *testing.T) {
 		require.Equal(t, actualBestPair.String(), expectedBestPair.String())
 	}
 
-	assert.NoError(t, f.sut.Close())
+	require.NoError(t, f.sut.Close())
 }
 
 func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {

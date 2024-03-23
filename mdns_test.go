@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/pion/transport/v3/test"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
@@ -54,8 +54,8 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestMulticastDNSMixedConnection(t *testing.T) {
@@ -98,8 +98,8 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestMulticastDNSStaticHostName(t *testing.T) {
@@ -115,7 +115,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,
 		MulticastDNSHostName: "invalidHostName",
 	})
-	assert.Equal(t, err, ErrInvalidMulticastDNSHostName)
+	require.Equal(t, err, ErrInvalidMulticastDNSHostName)
 
 	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:         []NetworkType{NetworkTypeUDP4},
@@ -123,18 +123,18 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		MulticastDNSMode:     MulticastDNSModeQueryAndGather,
 		MulticastDNSHostName: "validName.local",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	correctHostName, resolveFunc := context.WithCancel(context.Background())
-	assert.NoError(t, agent.OnCandidate(func(c Candidate) {
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c != nil && c.Address() == "validName.local" {
 			resolveFunc()
 		}
 	}))
 
-	assert.NoError(t, agent.GatherCandidates())
+	require.NoError(t, agent.GatherCandidates())
 	<-correctHostName.Done()
-	assert.NoError(t, agent.Close())
+	require.NoError(t, agent.Close())
 }
 
 func TestGenerateMulticastDNSName(t *testing.T) {

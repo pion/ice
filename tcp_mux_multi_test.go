@@ -14,7 +14,6 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/stun/v2"
 	"github.com/pion/transport/v3/test"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,9 +76,9 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				recv := make([]byte, n)
 				n2, rAddr, err := pktConn.ReadFrom(recv)
 				require.NoError(t, err, "error receiving data")
-				assert.Equal(t, conn.LocalAddr(), rAddr, "remote TCP address mismatch")
-				assert.Equal(t, n, n2, "received byte size mismatch")
-				assert.Equal(t, msg.Raw, recv, "received bytes mismatch")
+				require.Equal(t, conn.LocalAddr(), rAddr, "remote TCP address mismatch")
+				require.Equal(t, n, n2, "received byte size mismatch")
+				require.Equal(t, msg.Raw, recv, "received bytes mismatch")
 
 				// Check echo response
 				n, err = pktConn.WriteTo(recv, conn.LocalAddr())
@@ -87,8 +86,8 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				recvEcho := make([]byte, n)
 				n3, err := readStreamingPacket(conn, recvEcho)
 				require.NoError(t, err, "error receiving echo data")
-				assert.Equal(t, n2, n3, "received byte size mismatch")
-				assert.Equal(t, msg.Raw, recvEcho, "received bytes mismatch")
+				require.Equal(t, n2, n3, "received byte size mismatch")
+				require.Equal(t, msg.Raw, recvEcho, "received bytes mismatch")
 			}
 		})
 	}
@@ -126,6 +125,6 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	require.NoError(t, muxMulti.Close(), "error closing tcpMux")
 
 	conn, err := muxMulti.GetAllConns("test", false, net.IP{127, 0, 0, 1})
-	assert.Nil(t, conn, "should receive nil because mux is closed")
-	assert.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
+	require.Nil(t, conn, "should receive nil because mux is closed")
+	require.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }

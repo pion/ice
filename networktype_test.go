@@ -7,7 +7,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNetworkTypeParsing_Success(t *testing.T) {
@@ -79,15 +79,15 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 }
 
 func TestNetworkTypeIsUDP(t *testing.T) {
-	assert.True(t, NetworkTypeUDP4.IsUDP())
-	assert.True(t, NetworkTypeUDP6.IsUDP())
-	assert.False(t, NetworkTypeUDP4.IsTCP())
-	assert.False(t, NetworkTypeUDP6.IsTCP())
+	require.True(t, NetworkTypeUDP4.IsUDP())
+	require.True(t, NetworkTypeUDP6.IsUDP())
+	require.False(t, NetworkTypeUDP4.IsTCP())
+	require.False(t, NetworkTypeUDP6.IsTCP())
 }
 
 func TestNetworkTypeIsTCP(t *testing.T) {
-	assert.True(t, NetworkTypeTCP4.IsTCP())
-	assert.True(t, NetworkTypeTCP6.IsTCP())
-	assert.False(t, NetworkTypeTCP4.IsUDP())
-	assert.False(t, NetworkTypeTCP6.IsUDP())
+	require.True(t, NetworkTypeTCP4.IsTCP())
+	require.True(t, NetworkTypeTCP6.IsTCP())
+	require.False(t, NetworkTypeTCP4.IsUDP())
+	require.False(t, NetworkTypeTCP6.IsUDP())
 }

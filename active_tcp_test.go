@@ -14,7 +14,6 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/transport/v3/stdnet"
 	"github.com/pion/transport/v3/test"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -199,12 +198,12 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
-	assert.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
+	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
+	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 
 	connect(aAgent, bAgent)
 
 	<-isConnected
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }

@@ -6,7 +6,7 @@ package ice
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func hostCandidate() *CandidateHost {
@@ -132,5 +132,5 @@ func TestCandidatePairEquality(t *testing.T) {
 
 func TestNilCandidatePairString(t *testing.T) {
 	var nilCandidatePair *CandidatePair
-	assert.Equal(t, nilCandidatePair.String(), "")
+	require.Equal(t, nilCandidatePair.String(), "")
 }

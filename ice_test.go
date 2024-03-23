@@ -6,7 +6,7 @@ package ice
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConnectedState_String(t *testing.T) {
@@ -25,7 +25,7 @@ func TestConnectedState_String(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		assert.Equal(t,
+		require.Equal(t,
 			testCase.expectedString,
 			testCase.connectionState.String(),
 			"testCase: %d %v", i, testCase,
@@ -45,7 +45,7 @@ func TestGatheringState_String(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		assert.Equal(t,
+		require.Equal(t,
 			testCase.expectedString,
 			testCase.gatheringState.String(),
 			"testCase: %d %v", i, testCase,

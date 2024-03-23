@@ -20,7 +20,6 @@ import (
 	"github.com/pion/stun/v2"
 	"github.com/pion/transport/v3/test"
 	"github.com/pion/transport/v3/vnet"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,9 +43,9 @@ func TestHandlePeerReflexive(t *testing.T) {
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
+		require.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -103,14 +102,14 @@ func TestHandlePeerReflexive(t *testing.T) {
 				t.Fatal("Port number mismatch")
 			}
 		}))
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
+		require.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 
 			hostConfig := CandidateHostConfig{
@@ -134,14 +133,14 @@ func TestHandlePeerReflexive(t *testing.T) {
 			}
 		}))
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
+		require.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], "ABC")
@@ -177,7 +176,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 			}
 		}))
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 }
 
@@ -195,21 +194,21 @@ func TestConnectivityOnStartup(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net0))
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net1))
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net1))
 
-	assert.NoError(t, wan.Start())
+	require.NoError(t, wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -242,10 +241,10 @@ func TestConnectivityOnStartup(t *testing.T) {
 	aConn, bConn := func(aAgent, bAgent *Agent) (*Conn, *Conn) {
 		// Manual signaling
 		aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		gatherAndExchangeCandidates(aAgent, bAgent)
 
@@ -288,10 +287,8 @@ func TestConnectivityOnStartup(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	assert.NoError(t, wan.Stop())
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	require.NoError(t, wan.Stop())
+	closePipe(t, aConn, bConn)
 }
 
 func TestConnectivityLite(t *testing.T) {
@@ -350,9 +347,7 @@ func TestConnectivityLite(t *testing.T) {
 	<-aConnected
 	<-bConnected
 
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	closePipe(t, aConn, bConn)
 }
 
 func TestInboundValidity(t *testing.T) {
@@ -401,7 +396,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
 		}
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Invalid Binding success responses should be discarded", func(t *testing.T) {
@@ -415,7 +410,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatal("Binding with invalid MessageIntegrity was able to create prflx candidate")
 		}
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Discard non-binding messages", func(t *testing.T) {
@@ -429,7 +424,7 @@ func TestInboundValidity(t *testing.T) {
 			t.Fatal("non-binding message was able to create prflxRemote")
 		}
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Valid bind request", func(t *testing.T) {
@@ -447,15 +442,15 @@ func TestInboundValidity(t *testing.T) {
 			}
 		})
 
-		assert.NoError(t, err)
-		assert.NoError(t, a.Close())
+		require.NoError(t, err)
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
+		require.NoError(t, a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
@@ -472,7 +467,7 @@ func TestInboundValidity(t *testing.T) {
 			}
 		}))
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {
@@ -500,14 +495,14 @@ func TestInboundValidity(t *testing.T) {
 			stun.NewShortTermIntegrity(a.remotePwd),
 			stun.Fingerprint,
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		a.handleInbound(msg, local, remote)
 		if len(a.remoteCandidates) != 0 {
 			t.Fatal("unknown remote was able to create a candidate")
 		}
 
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 }
 
@@ -516,7 +511,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 	defer report()
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -538,7 +533,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
@@ -602,8 +597,8 @@ func TestConnectionStateCallback(t *testing.T) {
 	<-isDisconnected
 	<-isFailed
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 
 	<-isClosed
 }
@@ -619,7 +614,7 @@ func TestInvalidGather(t *testing.T) {
 		if !errors.Is(err, ErrNoOnCandidateHandler) {
 			t.Fatal("trickle GatherCandidates succeeded without OnCandidate")
 		}
-		assert.NoError(t, a.Close())
+		require.NoError(t, a.Close())
 	})
 }
 
@@ -753,7 +748,7 @@ func TestCandidatePairStats(t *testing.T) {
 			prflxPairStat.State.String())
 	}
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestLocalCandidateStats(t *testing.T) {
@@ -834,7 +829,7 @@ func TestLocalCandidateStats(t *testing.T) {
 		t.Fatal("missing srflx local stat")
 	}
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestRemoteCandidateStats(t *testing.T) {
@@ -954,7 +949,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 		t.Fatal("missing host remote stat")
 	}
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestInitExtIPMapping(t *testing.T) {
@@ -969,7 +964,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	if a.extIPMapper != nil {
 		t.Fatal("a.extIPMapper should be nil by default")
 	}
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 
 	// a.extIPMapper should be nil when NAT1To1IPs is a non-nil empty array
 	a, err = NewAgent(&AgentConfig{
@@ -982,7 +977,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	if a.extIPMapper != nil {
 		t.Fatal("a.extIPMapper should be nil by default")
 	}
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
 	// but the candidate type does not appear in the CandidateTypes.
@@ -1034,7 +1029,7 @@ func TestBindingRequestTimeout(t *testing.T) {
 	const expectedRemovalCount = 2
 
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	now := time.Now()
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
@@ -1051,8 +1046,8 @@ func TestBindingRequestTimeout(t *testing.T) {
 	})
 
 	a.invalidatePendingBindingRequests(now)
-	assert.Equal(t, expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
-	assert.NoError(t, a.Close())
+	require.Equal(t, expectedRemovalCount, len(a.pendingBindingRequests), "Binding invalidation due to timeout did not remove the correct number of binding requests")
+	require.NoError(t, a.Close())
 }
 
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
@@ -1069,10 +1064,10 @@ func TestAgentCredentials(t *testing.T) {
 	// If set, they should follow the default 16/128 bits random number generator strategy
 
 	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
-	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
-	assert.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
-	assert.NoError(t, agent.Close())
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
+	require.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
+	require.NoError(t, agent.Close())
 
 	// Should honor RFC standards
 	// Local values MUST be unguessable, with at least 128 bits of
@@ -1080,10 +1075,10 @@ func TestAgentCredentials(t *testing.T) {
 	// at least 24 bits of output to generate the username fragment.
 
 	_, err = NewAgent(&AgentConfig{LocalUfrag: "xx", LoggerFactory: log})
-	assert.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
+	require.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
 
 	_, err = NewAgent(&AgentConfig{LocalPwd: "xxxxxx", LoggerFactory: log})
-	assert.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
+	require.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
 }
 
 // Assert that Agent on Failure deletes all existing candidates
@@ -1106,13 +1101,13 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	isFailed := make(chan interface{})
-	assert.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateFailed {
 			close(isFailed)
 		}
@@ -1122,15 +1117,15 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	<-isFailed
 
 	done := make(chan struct{})
-	assert.NoError(t, aAgent.loop.Run(aAgent.loop, func(context.Context) {
-		assert.Equal(t, len(aAgent.remoteCandidates), 0)
-		assert.Equal(t, len(aAgent.localCandidates), 0)
+	require.NoError(t, aAgent.loop.Run(context.Background(), func(context.Context) {
+		require.Equal(t, len(aAgent.remoteCandidates), 0)
+		require.Equal(t, len(aAgent.localCandidates), 0)
 		close(done)
 	}))
 	<-done
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 // Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
@@ -1151,10 +1146,10 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var isFailed sync.WaitGroup
 	var isChecking sync.WaitGroup
@@ -1174,24 +1169,24 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 		}
 	}
 
-	assert.NoError(t, aAgent.OnConnectionStateChange(connectionStateCheck))
-	assert.NoError(t, bAgent.OnConnectionStateChange(connectionStateCheck))
+	require.NoError(t, aAgent.OnConnectionStateChange(connectionStateCheck))
+	require.NoError(t, bAgent.OnConnectionStateChange(connectionStateCheck))
 
 	go func() {
 		_, err := aAgent.Accept(context.TODO(), "InvalidFrag", "InvalidPwd")
-		assert.Error(t, err)
+		require.Error(t, err)
 	}()
 
 	go func() {
 		_, err := bAgent.Dial(context.TODO(), "InvalidFrag", "InvalidPwd")
-		assert.Error(t, err)
+		require.Error(t, err)
 	}()
 
 	isChecking.Wait()
 	isFailed.Wait()
 
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestAgentRestart(t *testing.T) {
@@ -1210,26 +1205,26 @@ func TestAgentRestart(t *testing.T) {
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+		require.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
 			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
 				cancel()
 			}
 		}))
 
 		connA.agent.gatheringState = GatheringStateGathering
-		assert.NoError(t, connA.agent.Restart("", ""))
+		require.NoError(t, connA.agent.Restart("", ""))
 
 		<-ctx.Done()
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		require.NoError(t, connA.agent.Close())
+		require.NoError(t, connB.agent.Close())
 	})
 
 	t.Run("Restart When Closed", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
-		assert.NoError(t, err)
-		assert.NoError(t, agent.Close())
+		require.NoError(t, err)
+		require.NoError(t, agent.Close())
 
-		assert.Equal(t, ErrClosed, agent.Restart("", ""))
+		require.Equal(t, ErrClosed, agent.Restart("", ""))
 	})
 
 	t.Run("Restart One Side", func(t *testing.T) {
@@ -1239,22 +1234,22 @@ func TestAgentRestart(t *testing.T) {
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		assert.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
+		require.NoError(t, connB.agent.OnConnectionStateChange(func(c ConnectionState) {
 			if c == ConnectionStateFailed || c == ConnectionStateDisconnected {
 				cancel()
 			}
 		}))
-		assert.NoError(t, connA.agent.Restart("", ""))
+		require.NoError(t, connA.agent.Restart("", ""))
 
 		<-ctx.Done()
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		require.NoError(t, connA.agent.Close())
+		require.NoError(t, connB.agent.Close())
 	})
 
 	t.Run("Restart Both Sides", func(t *testing.T) {
 		// Get all addresses of candidates concatenated
 		generateCandidateAddressStrings := func(candidates []Candidate, err error) (out string) {
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			for _, c := range candidates {
 				out += c.Address() + ":"
@@ -1272,23 +1267,23 @@ func TestAgentRestart(t *testing.T) {
 		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
 
 		aNotifier, aConnected := onConnected()
-		assert.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
+		require.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
 
 		bNotifier, bConnected := onConnected()
-		assert.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
+		require.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
 
 		// Restart and Re-Signal
-		assert.NoError(t, connA.agent.Restart("", ""))
-		assert.NoError(t, connB.agent.Restart("", ""))
+		require.NoError(t, connA.agent.Restart("", ""))
+		require.NoError(t, connB.agent.Restart("", ""))
 
 		// Exchange Candidates and Credentials
 		ufrag, pwd, err := connB.agent.GetLocalUserCredentials()
-		assert.NoError(t, err)
-		assert.NoError(t, connA.agent.SetRemoteCredentials(ufrag, pwd))
+		require.NoError(t, err)
+		require.NoError(t, connA.agent.SetRemoteCredentials(ufrag, pwd))
 
 		ufrag, pwd, err = connA.agent.GetLocalUserCredentials()
-		assert.NoError(t, err)
-		assert.NoError(t, connB.agent.SetRemoteCredentials(ufrag, pwd))
+		require.NoError(t, err)
+		require.NoError(t, connB.agent.SetRemoteCredentials(ufrag, pwd))
 
 		gatherAndExchangeCandidates(connA.agent, connB.agent)
 
@@ -1297,11 +1292,11 @@ func TestAgentRestart(t *testing.T) {
 		<-bConnected
 
 		// Assert that we have new candidates each time
-		assert.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
-		assert.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
+		require.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
+		require.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
 
-		assert.NoError(t, connA.agent.Close())
-		assert.NoError(t, connB.agent.Close())
+		require.NoError(t, connA.agent.Close())
+		require.NoError(t, connB.agent.Close())
 	})
 }
 
@@ -1316,12 +1311,12 @@ func TestGetRemoteCredentials(t *testing.T) {
 	a.remotePwd = "remotePwd"
 
 	actualUfrag, actualPwd, err := a.GetRemoteUserCredentials()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.Equal(t, actualUfrag, a.remoteUfrag)
-	assert.Equal(t, actualPwd, a.remotePwd)
+	require.Equal(t, actualUfrag, a.remoteUfrag)
+	require.Equal(t, actualPwd, a.remotePwd)
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestGetRemoteCandidates(t *testing.T) {
@@ -1343,7 +1338,7 @@ func TestGetRemoteCandidates(t *testing.T) {
 		}
 
 		cand, errCand := NewCandidateHost(&cfg)
-		assert.NoError(t, errCand)
+		require.NoError(t, errCand)
 
 		expectedCandidates = append(expectedCandidates, cand)
 
@@ -1351,10 +1346,10 @@ func TestGetRemoteCandidates(t *testing.T) {
 	}
 
 	actualCandidates, err := a.GetRemoteCandidates()
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, expectedCandidates, actualCandidates)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestGetLocalCandidates(t *testing.T) {
@@ -1377,19 +1372,19 @@ func TestGetLocalCandidates(t *testing.T) {
 		}
 
 		cand, errCand := NewCandidateHost(&cfg)
-		assert.NoError(t, errCand)
+		require.NoError(t, errCand)
 
 		expectedCandidates = append(expectedCandidates, cand)
 
 		err = a.addCandidate(context.Background(), cand, dummyConn)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	actualCandidates, err := a.GetLocalCandidates()
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, expectedCandidates, actualCandidates)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
@@ -1429,7 +1424,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		switch c {
 		case ConnectionStateConnected:
 			<-isConnected
-			assert.NoError(t, aAgent.Close())
+			require.NoError(t, aAgent.Close())
 		case ConnectionStateClosed:
 			close(isClosed)
 		default:
@@ -1443,7 +1438,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	close(isConnected)
 
 	<-isClosed
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
@@ -1475,8 +1470,8 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
-			assert.NoError(t, errCred)
-			assert.NoError(t, aAgent.Restart("", ""))
+			require.NoError(t, errCred)
+			require.NoError(t, aAgent.Restart("", ""))
 			close(isComplete)
 		}
 	})
@@ -1487,8 +1482,8 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	connect(aAgent, bAgent)
 
 	<-isComplete
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
@@ -1521,7 +1516,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	if err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
 		go func() {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
-			assert.NoError(t, errCred)
+			require.NoError(t, errCred)
 			close(isTested)
 		}()
 	}); err != nil {
@@ -1539,8 +1534,8 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 	<-isComplete
 	<-isTested
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 // Assert that a Lite agent goes to disconnected and failed
@@ -1596,27 +1591,27 @@ func TestLiteLifecycle(t *testing.T) {
 
 	<-aConnected
 	<-bConnected
-	assert.NoError(t, aAgent.Close())
+	require.NoError(t, aAgent.Close())
 
 	<-bDisconnected
 	<-bFailed
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestNilCandidate(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.NoError(t, a.AddRemoteCandidate(nil))
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.AddRemoteCandidate(nil))
+	require.NoError(t, a.Close())
 }
 
 func TestNilCandidatePair(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	a.setSelectedPair(nil)
-	assert.NoError(t, a.Close())
+	require.NoError(t, a.Close())
 }
 
 func TestGetSelectedCandidatePair(t *testing.T) {
@@ -1630,15 +1625,15 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	net, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net))
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net))
 
-	assert.NoError(t, wan.Start())
+	require.NoError(t, wan.Start())
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
@@ -1646,35 +1641,35 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	aAgentPair, err := aAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.Nil(t, aAgentPair)
+	require.NoError(t, err)
+	require.Nil(t, aAgentPair)
 
 	bAgentPair, err := bAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.Nil(t, bAgentPair)
+	require.NoError(t, err)
+	require.Nil(t, bAgentPair)
 
 	connect(aAgent, bAgent)
 
 	aAgentPair, err = aAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.NotNil(t, aAgentPair)
+	require.NoError(t, err)
+	require.NotNil(t, aAgentPair)
 
 	bAgentPair, err = bAgent.GetSelectedCandidatePair()
-	assert.NoError(t, err)
-	assert.NotNil(t, bAgentPair)
+	require.NoError(t, err)
+	require.NotNil(t, bAgentPair)
 
-	assert.True(t, bAgentPair.Local.Equal(aAgentPair.Remote))
-	assert.True(t, bAgentPair.Remote.Equal(aAgentPair.Local))
+	require.True(t, bAgentPair.Local.Equal(aAgentPair.Remote))
+	require.True(t, bAgentPair.Remote.Equal(aAgentPair.Local))
 
-	assert.NoError(t, wan.Stop())
-	assert.NoError(t, aAgent.Close())
-	assert.NoError(t, bAgent.Close())
+	require.NoError(t, wan.Stop())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }
 
 func TestAcceptAggressiveNomination(t *testing.T) {
@@ -1689,21 +1684,21 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		CIDR:          "0.0.0.0/0",
 		LoggerFactory: logging.NewDefaultLoggerFactory(),
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.1"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net0))
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net0))
 
 	net1, err := vnet.NewNet(&vnet.NetConfig{
 		StaticIPs: []string{"192.168.0.2", "192.168.0.3", "192.168.0.4"},
 	})
-	assert.NoError(t, err)
-	assert.NoError(t, wan.AddNet(net1))
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net1))
 
-	assert.NoError(t, wan.Start())
+	require.NoError(t, wan.Start())
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -1791,13 +1786,11 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	select {
 	case selected := <-selectedCh:
-		assert.True(t, selected.Equal(expectNewSelectedCandidate))
+		require.True(t, selected.Equal(expectNewSelectedCandidate))
 	default:
 		t.Fatal("No selected candidate pair")
 	}
 
-	assert.NoError(t, wan.Stop())
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
+	require.NoError(t, wan.Stop())
+	closePipe(t, aConn, bConn)
 }

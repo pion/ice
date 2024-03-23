@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -183,23 +182,23 @@ func TestCandidatePriority(t *testing.T) {
 
 func TestCandidateLastSent(t *testing.T) {
 	candidate := candidateBase{}
-	assert.Equal(t, candidate.LastSent(), time.Time{})
+	require.Equal(t, candidate.LastSent(), time.Time{})
 	now := time.Now()
 	candidate.setLastSent(now)
-	assert.Equal(t, candidate.LastSent(), now)
+	require.Equal(t, candidate.LastSent(), now)
 }
 
 func TestCandidateLastReceived(t *testing.T) {
 	candidate := candidateBase{}
-	assert.Equal(t, candidate.LastReceived(), time.Time{})
+	require.Equal(t, candidate.LastReceived(), time.Time{})
 	now := time.Now()
 	candidate.setLastReceived(now)
-	assert.Equal(t, candidate.LastReceived(), now)
+	require.Equal(t, candidate.LastReceived(), now)
 }
 
 func TestCandidateFoundation(t *testing.T) {
 	// All fields are the same
-	assert.Equal(t,
+	require.Equal(t,
 		(&candidateBase{
 			candidateType: CandidateTypeHost,
 			networkType:   NetworkTypeUDP4,
@@ -212,7 +211,7 @@ func TestCandidateFoundation(t *testing.T) {
 		}).Foundation())
 
 	// Different Address
-	assert.NotEqual(t,
+	require.NotEqual(t,
 		(&candidateBase{
 			candidateType: CandidateTypeHost,
 			networkType:   NetworkTypeUDP4,
@@ -225,7 +224,7 @@ func TestCandidateFoundation(t *testing.T) {
 		}).Foundation())
 
 	// Different networkType
-	assert.NotEqual(t,
+	require.NotEqual(t,
 		(&candidateBase{
 			candidateType: CandidateTypeHost,
 			networkType:   NetworkTypeUDP4,
@@ -238,7 +237,7 @@ func TestCandidateFoundation(t *testing.T) {
 		}).Foundation())
 
 	// Different candidateType
-	assert.NotEqual(t,
+	require.NotEqual(t,
 		(&candidateBase{
 			candidateType: CandidateTypeHost,
 			networkType:   NetworkTypeUDP4,
@@ -251,7 +250,7 @@ func TestCandidateFoundation(t *testing.T) {
 		}).Foundation())
 
 	// Port has no effect
-	assert.Equal(t,
+	require.Equal(t,
 		(&candidateBase{
 			candidateType: CandidateTypeHost,
 			networkType:   NetworkTypeUDP4,
@@ -387,14 +386,14 @@ func TestCandidateMarshal(t *testing.T) {
 	} {
 		actualCandidate, err := UnmarshalCandidate(test.marshaled)
 		if test.expectError {
-			assert.Error(t, err)
+			require.Error(t, err)
 			continue
 		}
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		assert.True(t, test.candidate.Equal(actualCandidate))
-		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
+		require.True(t, test.candidate.Equal(actualCandidate))
+		require.Equal(t, test.marshaled, actualCandidate.Marshal())
 	}
 }
 
@@ -429,11 +428,11 @@ func TestCandidateWriteTo(t *testing.T) {
 	}
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.NoError(t, err, "writing to open conn")
+	require.NoError(t, err, "writing to open conn")
 
 	err = packetConn.Close()
 	require.NoError(t, err, "error closing test TCP connection")
 
 	_, err = c1.writeTo([]byte("test"), c2)
-	assert.Error(t, err, "writing to closed conn")
+	require.Error(t, err, "writing to closed conn")
 }

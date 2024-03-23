@@ -6,21 +6,21 @@ package ice
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTCPType(t *testing.T) {
 	var tcpType TCPType
 
-	assert.Equal(t, TCPTypeUnspecified, tcpType)
-	assert.Equal(t, TCPTypeActive, NewTCPType("active"))
-	assert.Equal(t, TCPTypePassive, NewTCPType("passive"))
-	assert.Equal(t, TCPTypeSimultaneousOpen, NewTCPType("so"))
-	assert.Equal(t, TCPTypeUnspecified, NewTCPType("something else"))
+	require.Equal(t, TCPTypeUnspecified, tcpType)
+	require.Equal(t, TCPTypeActive, NewTCPType("active"))
+	require.Equal(t, TCPTypePassive, NewTCPType("passive"))
+	require.Equal(t, TCPTypeSimultaneousOpen, NewTCPType("so"))
+	require.Equal(t, TCPTypeUnspecified, NewTCPType("something else"))
 
-	assert.Equal(t, "", TCPTypeUnspecified.String())
-	assert.Equal(t, "active", TCPTypeActive.String())
-	assert.Equal(t, "passive", TCPTypePassive.String())
-	assert.Equal(t, "so", TCPTypeSimultaneousOpen.String())
-	assert.Equal(t, "Unknown", TCPType(-1).String())
+	require.Equal(t, "", TCPTypeUnspecified.String())
+	require.Equal(t, "active", TCPTypeActive.String())
+	require.Equal(t, "passive", TCPTypePassive.String())
+	require.Equal(t, "so", TCPTypeSimultaneousOpen.String())
+	require.Equal(t, "Unknown", TCPType(-1).String())
 }
