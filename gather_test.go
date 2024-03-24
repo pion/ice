@@ -66,9 +66,8 @@ func TestListenUDP(t *testing.T) {
 		require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
 		_, port, err = net.SplitHostPort(conn.LocalAddr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		p, _ := strconv.Atoi(port)
 		if p < portMin || p > portMax {
 			t.Fatalf("listenUDP with port restriction [%d, %d] listened on incorrect port (%s)", portMin, portMax, port)

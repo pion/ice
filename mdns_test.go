@@ -29,24 +29,16 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
 	connect(aAgent, bAgent)
 	<-aConnected
@@ -67,28 +59,20 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		MulticastDNSMode: MulticastDNSModeQueryAndGather,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	aNotifier, aConnected := onConnected()
-	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
 		CandidateTypes:   []CandidateType{CandidateTypeHost},
 		MulticastDNSMode: MulticastDNSModeQueryOnly,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	bNotifier, bConnected := onConnected()
-	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
 	connect(aAgent, bAgent)
 	<-aConnected
@@ -133,9 +117,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 
 func TestGenerateMulticastDNSName(t *testing.T) {
 	name, err := generateMulticastDNSName()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	isMDNSName := regexp.MustCompile(
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`,
 	).MatchString

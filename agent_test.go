@@ -68,9 +68,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				stun.NewShortTermIntegrity(a.localPwd),
 				stun.Fingerprint,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
@@ -163,9 +161,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 				stun.NewShortTermIntegrity(a.remotePwd),
 				stun.Fingerprint,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
@@ -353,9 +349,7 @@ func TestInboundValidity(t *testing.T) {
 			stun.NewShortTermIntegrity(key),
 			stun.Fingerprint,
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		return msg
 	}
@@ -449,9 +443,7 @@ func TestInboundValidity(t *testing.T) {
 				stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
 				stun.NewShortTermIntegrity(a.localPwd),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			// nolint: contextcheck
 			a.handleInbound(msg, local, remote)
@@ -547,14 +539,10 @@ func TestConnectionStateCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	isChecking := make(chan interface{})
 	isConnected := make(chan interface{})
@@ -576,9 +564,7 @@ func TestConnectionStateCallback(t *testing.T) {
 		default:
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	connect(aAgent, bAgent)
 
@@ -1385,14 +1371,10 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	isClosed := make(chan interface{})
 	isConnected := make(chan interface{})
@@ -1406,9 +1388,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		default:
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	connect(aAgent, bAgent)
 	close(isConnected)
@@ -1449,9 +1429,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 			close(isComplete)
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	connect(aAgent, bAgent)
 
@@ -1713,9 +1691,7 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 			PriorityAttr(priority),
 			stun.Fingerprint,
 		)
-		if err1 != nil {
-			t.Fatal(err1)
-		}
+		require.NoError(t, err1)
 
 		return msg
 	}

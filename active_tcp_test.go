@@ -170,14 +170,10 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	}
 
 	aAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	bAgent, err := NewAgent(cfg)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	isConnected := make(chan interface{})
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
@@ -185,15 +181,11 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 			close(isConnected)
 		}
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	// Add a invalid ice-tcp candidate to each
 	invalidCandidate, err := UnmarshalCandidate("1052353102 1 tcp 1675624447 192.0.2.1 8080 typ host tcptype passive")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/pion/stun/v2"
 	"github.com/pion/transport/v3/test"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStressDuplex(t *testing.T) {
@@ -134,14 +135,8 @@ func stressDuplex(t *testing.T) {
 	ca, cb := pipe(nil)
 
 	defer func() {
-		err := ca.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = cb.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, ca.Close())
+		require.NoError(t, cb.Close())
 	}()
 
 	opt := test.Options{
@@ -149,10 +144,7 @@ func stressDuplex(t *testing.T) {
 		MsgCount: 1, // Order not reliable due to UDP & potentially multiple candidate pairs.
 	}
 
-	err := test.StressDuplex(ca, cb, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, test.StressDuplex(ca, cb, opt))
 }
 
 func check(err error) {

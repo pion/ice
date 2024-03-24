@@ -37,9 +37,8 @@ func TestVNetGather(t *testing.T) {
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) > 0 {
 			t.Fatal("should return no local IP")
-		} else if err != nil {
-			t.Fatal(err)
 		}
+		require.NoError(t, err)
 
 		require.NoError(t, a.Close())
 	})
@@ -77,9 +76,8 @@ func TestVNetGather(t *testing.T) {
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) == 0 {
 			t.Fatal("should have one local IP")
-		} else if err != nil {
-			t.Fatal(err)
 		}
+		require.NoError(t, err)
 
 		for _, ip := range localIPs {
 			if ip.IsLoopback() {
@@ -120,9 +118,8 @@ func TestVNetGather(t *testing.T) {
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) == 0 {
 			t.Fatal("localInterfaces found no interfaces, unable to test")
-		} else if err != nil {
-			t.Fatal(err)
 		}
+		require.NoError(t, err)
 
 		ip := localIPs[0]
 
@@ -150,9 +147,9 @@ func TestVNetGather(t *testing.T) {
 		}
 
 		_, port, err := net.SplitHostPort(conn.LocalAddr().String())
-		if err != nil {
-			t.Fatal(err)
-		} else if port != "5000" {
+
+		require.NoError(t, err)
+		if port != "5000" {
 			t.Fatalf("listenUDP with port restriction of 5000 listened on incorrect port (%s)", port)
 		}
 
@@ -389,9 +386,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) != 0 {
+		require.NoError(t, err)
+
+		if len(localIPs) != 0 {
 			t.Fatal("InterfaceFilter should have excluded everything")
 		}
 
@@ -409,9 +406,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) != 0 {
+		require.NoError(t, err)
+
+		if len(localIPs) != 0 {
 			t.Fatal("IPFilter should have excluded everything")
 		}
 
@@ -429,9 +426,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if err != nil {
-			t.Fatal(err)
-		} else if len(localIPs) == 0 {
+		require.NoError(t, err)
+
+		if len(localIPs) == 0 {
 			t.Fatal("InterfaceFilter should not have excluded anything")
 		}
 
