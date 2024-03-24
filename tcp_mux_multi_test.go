@@ -24,8 +24,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 	} {
 		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
-			report := test.CheckRoutines(t)
-			defer report()
+			defer test.CheckRoutines(t)()
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -94,8 +93,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 }
 
 func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 

@@ -20,8 +20,7 @@ import (
 
 func TestRemoteLocalAddr(t *testing.T) {
 	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)

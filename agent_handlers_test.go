@@ -12,8 +12,9 @@ import (
 
 func TestConnectionStateNotifier(t *testing.T) {
 	t.Run("TestManyUpdates", func(t *testing.T) {
-		report := test.CheckRoutines(t)
-		defer report()
+
+		defer test.CheckRoutines(t)()
+
 		updates := make(chan struct{}, 1)
 		c := &handlerNotifier{
 			connectionStateFunc: func(_ ConnectionState) {
@@ -40,8 +41,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 		<-done
 	})
 	t.Run("TestUpdateOrdering", func(t *testing.T) {
-		report := test.CheckRoutines(t)
-		defer report()
+		defer test.CheckRoutines(t)()
 		updates := make(chan ConnectionState)
 		c := &handlerNotifier{
 			connectionStateFunc: func(cs ConnectionState) {

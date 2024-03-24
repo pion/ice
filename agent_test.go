@@ -34,8 +34,7 @@ func (ba *BadAddr) String() string {
 }
 
 func TestHandlePeerReflexive(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 2)
@@ -183,8 +182,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 // Assert that Agent on startup sends message, and doesn't wait for connectivityTicker to fire
 // https://github.com/pion/ice/issues/15
 func TestConnectivityOnStartup(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -292,8 +290,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 }
 
 func TestConnectivityLite(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -351,8 +348,7 @@ func TestConnectivityLite(t *testing.T) {
 }
 
 func TestInboundValidity(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	buildMsg := func(class stun.MessageClass, username, key string) *stun.Message {
 		msg, err := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
@@ -507,8 +503,7 @@ func TestInboundValidity(t *testing.T) {
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
@@ -538,8 +533,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 
 // Assert that Agent emits Connecting/Connected/Disconnected/Failed/Closed messages
 func TestConnectionStateCallback(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -619,8 +613,7 @@ func TestInvalidGather(t *testing.T) {
 }
 
 func TestCandidatePairStats(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -752,8 +745,7 @@ func TestCandidatePairStats(t *testing.T) {
 }
 
 func TestLocalCandidateStats(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -833,8 +825,7 @@ func TestLocalCandidateStats(t *testing.T) {
 }
 
 func TestRemoteCandidateStats(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -953,8 +944,7 @@ func TestRemoteCandidateStats(t *testing.T) {
 }
 
 func TestInitExtIPMapping(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// a.extIPMapper should be nil by default
 	a, err := NewAgent(&AgentConfig{})
@@ -1023,8 +1013,7 @@ func TestInitExtIPMapping(t *testing.T) {
 }
 
 func TestBindingRequestTimeout(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	const expectedRemovalCount = 2
 
@@ -1053,8 +1042,7 @@ func TestBindingRequestTimeout(t *testing.T) {
 // TestAgentCredentials checks if local username fragments and passwords (if set) meet RFC standard
 // and ensure it's backwards compatible with previous versions of the pion/ice
 func TestAgentCredentials(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Make sure to pass Travis check by disabling the logs
 	log := logging.NewDefaultLoggerFactory()
@@ -1084,8 +1072,7 @@ func TestAgentCredentials(t *testing.T) {
 // Assert that Agent on Failure deletes all existing candidates
 // User can then do an ICE Restart to bring agent back
 func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -1130,8 +1117,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 
 // Assert that the ICE Agent can go directly from Connecting -> Failed on both sides
 func TestConnectionStateConnectingToFailed(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -1190,8 +1176,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 }
 
 func TestAgentRestart(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -1388,8 +1373,7 @@ func TestGetLocalCandidates(t *testing.T) {
 }
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -1442,8 +1426,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 }
 
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -1487,8 +1470,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 }
 
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -1540,8 +1522,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 
 // Assert that a Lite agent goes to disconnected and failed
 func TestLiteLifecycle(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -1615,8 +1596,7 @@ func TestNilCandidatePair(t *testing.T) {
 }
 
 func TestGetSelectedCandidatePair(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -1673,8 +1653,7 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 }
 
 func TestAcceptAggressiveNomination(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

@@ -35,8 +35,7 @@ func ipv6Available(t *testing.T) bool {
 }
 
 func TestActiveTCP(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()
@@ -163,8 +162,7 @@ func TestActiveTCP(t *testing.T) {
 // Assert that Active TCP connectivity isn't established inside
 // the main thread of the Agent
 func TestActiveTCP_NonBlocking(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 5)
 	defer lim.Stop()

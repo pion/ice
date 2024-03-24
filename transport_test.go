@@ -19,8 +19,7 @@ import (
 
 func TestStressDuplex(t *testing.T) {
 	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -76,8 +75,7 @@ func TestTimeout(t *testing.T) {
 	}
 
 	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -108,8 +106,7 @@ func TestTimeout(t *testing.T) {
 
 func TestReadClosed(t *testing.T) {
 	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)
@@ -321,8 +318,7 @@ func randomPort(t testing.TB) int {
 
 func TestConnStats(t *testing.T) {
 	// Check for leaking routines
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 20)

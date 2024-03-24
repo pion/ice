@@ -25,8 +25,7 @@ func TestTCPMux_Recv(t *testing.T) {
 	} {
 		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
-			report := test.CheckRoutines(t)
-			defer report()
+			defer test.CheckRoutines(t)()
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -89,8 +88,7 @@ func TestTCPMux_Recv(t *testing.T) {
 }
 
 func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -124,8 +122,7 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 }
 
 func TestTCPMux_FirstPacketTimeout(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
@@ -162,8 +159,7 @@ func TestTCPMux_FirstPacketTimeout(t *testing.T) {
 }
 
 func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 

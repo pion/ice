@@ -90,8 +90,7 @@ func TestListenUDP(t *testing.T) {
 }
 
 func TestGatherConcurrency(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -118,8 +117,7 @@ func TestGatherConcurrency(t *testing.T) {
 }
 
 func TestLoopbackCandidate(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -229,8 +227,7 @@ func TestLoopbackCandidate(t *testing.T) {
 
 // Assert that STUN gathering is done concurrently
 func TestSTUNConcurrency(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -305,8 +302,7 @@ func TestSTUNConcurrency(t *testing.T) {
 
 // Assert that TURN gathering is done concurrently
 func TestTURNConcurrency(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -423,8 +419,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 // Assert that STUN and TURN gathering are done concurrently
 func TestSTUNTURNConcurrency(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 8)
 	defer lim.Stop()
@@ -495,8 +490,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 //
 // https://tools.ietf.org/html/rfc5245#section-2.1
 func TestTURNSrflx(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -581,8 +575,7 @@ func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 }
 
 func TestTURNProxyDialer(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -632,8 +625,7 @@ func TestTURNProxyDialer(t *testing.T) {
 // TestUDPMuxDefaultWithNAT1To1IPsUsage requires that candidates
 // are given and connections are valid when using UDPMuxDefault and NAT1To1IPs.
 func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -676,8 +668,7 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 
 // Assert that candidates are given for each mux in a MultiUDPMux
 func TestMultiUDPMuxUsage(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -733,8 +724,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 
 // Assert that candidates are given for each mux in a MultiTCPMux
 func TestMultiTCPMuxUsage(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()
@@ -793,8 +783,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 
 // Assert that UniversalUDPMux is used while gathering when configured in the Agent
 func TestUniversalUDPMuxUsage(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	lim := test.TimeOut(time.Second * 30)
 	defer lim.Stop()

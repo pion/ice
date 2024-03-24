@@ -19,8 +19,7 @@ import (
 )
 
 func TestServerReflexiveOnlyConnection(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
 	lim := test.TimeOut(time.Second * 30)
