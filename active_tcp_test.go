@@ -37,8 +37,7 @@ func ipv6Available(t *testing.T) bool {
 func TestActiveTCP(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	const listenPort = 7686
 	type testCase struct {
@@ -164,8 +163,7 @@ func TestActiveTCP(t *testing.T) {
 func TestActiveTCP_NonBlocking(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),

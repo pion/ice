@@ -22,8 +22,7 @@ func TestStressDuplex(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	// Run the test
 	stressDuplex(t)
@@ -78,8 +77,7 @@ func TestTimeout(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
 		ca, cb := pipe(nil)
@@ -109,8 +107,7 @@ func TestReadClosed(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	ca, cb := pipe(nil)
 
@@ -321,8 +318,7 @@ func TestConnStats(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 20)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 20).Stop()
 
 	ca, cb := pipe(nil)
 	if _, err := ca.Write(make([]byte, 10)); err != nil {

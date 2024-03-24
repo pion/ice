@@ -20,8 +20,7 @@ import (
 func TestMuxAgent(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	const muxPort = 7686
 

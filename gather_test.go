@@ -92,8 +92,7 @@ func TestListenUDP(t *testing.T) {
 func TestGatherConcurrency(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	a, err := NewAgent(&AgentConfig{
 		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
@@ -119,8 +118,7 @@ func TestGatherConcurrency(t *testing.T) {
 func TestLoopbackCandidate(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 	type testCase struct {
 		name        string
 		agentConfig *AgentConfig
@@ -229,8 +227,7 @@ func TestLoopbackCandidate(t *testing.T) {
 func TestSTUNConcurrency(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
@@ -304,8 +301,7 @@ func TestSTUNConcurrency(t *testing.T) {
 func TestTURNConcurrency(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	runTest := func(protocol stun.ProtoType, scheme stun.SchemeType, packetConn net.PacketConn, listener net.Listener, serverPort int) {
 		packetConnConfigs := []turn.PacketConnConfig{}
@@ -421,8 +417,7 @@ func TestTURNConcurrency(t *testing.T) {
 func TestSTUNTURNConcurrency(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 8)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 8).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
@@ -465,7 +460,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	require.NoError(t, err)
 
 	{
-		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
+		defer test.TimeOut(time.Second * 3).Stop() // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 		require.NoError(t, a.OnCandidate(func(c Candidate) {
 			if c != nil {
@@ -475,8 +470,6 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		require.NoError(t, a.GatherCandidates())
 
 		<-candidateGathered.Done()
-
-		gatherLim.Stop()
 	}
 
 	require.NoError(t, a.Close())
@@ -492,8 +485,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 func TestTURNSrflx(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	serverPort := randomPort(t)
 	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
@@ -577,8 +569,7 @@ func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 func TestTURNProxyDialer(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	proxyWasDialed, proxyWasDialedFunc := context.WithCancel(context.Background())
 	proxy.RegisterDialerType("tcp", func(*url.URL, proxy.Dialer) (proxy.Dialer, error) {
@@ -627,8 +618,7 @@ func TestTURNProxyDialer(t *testing.T) {
 func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	conn, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
@@ -670,8 +660,7 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 func TestMultiUDPMuxUsage(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	var expectedPorts []int
 	var udpMuxInstances []UDPMux
@@ -726,8 +715,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 func TestMultiTCPMuxUsage(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	var expectedPorts []int
 	var tcpMuxInstances []TCPMux
@@ -785,8 +773,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 func TestUniversalUDPMuxUsage(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: randomPort(t)})
 	require.NoError(t, err)

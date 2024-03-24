@@ -37,8 +37,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 2)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 2).Stop()
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{})
@@ -184,8 +183,7 @@ func TestHandlePeerReflexive(t *testing.T) {
 func TestConnectivityOnStartup(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	// Create a network with two interfaces
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{
@@ -292,8 +290,7 @@ func TestConnectivityOnStartup(t *testing.T) {
 func TestConnectivityLite(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	stunServerURL := &stun.URI{
 		Scheme: SchemeTypeSTUN,
@@ -535,8 +532,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 func TestConnectionStateCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -1074,8 +1070,7 @@ func TestAgentCredentials(t *testing.T) {
 func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1119,8 +1114,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 func TestConnectionStateConnectingToFailed(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1178,8 +1172,7 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 func TestAgentRestart(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	oneSecond := time.Second
 
@@ -1375,8 +1368,7 @@ func TestGetLocalCandidates(t *testing.T) {
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	disconnectedDuration := time.Second
 	failedDuration := time.Second
@@ -1428,8 +1420,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1472,8 +1463,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 5)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 5).Stop()
 
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
@@ -1524,8 +1514,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 func TestLiteLifecycle(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	aNotifier, aConnected := onConnected()
 
@@ -1598,8 +1587,7 @@ func TestNilCandidatePair(t *testing.T) {
 func TestGetSelectedCandidatePair(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{
 		CIDR:          "0.0.0.0/0",
@@ -1655,8 +1643,7 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 func TestAcceptAggressiveNomination(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	// Create a network with two interfaces
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{

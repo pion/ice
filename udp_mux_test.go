@@ -23,8 +23,7 @@ import (
 func TestUDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	conn4, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)

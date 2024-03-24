@@ -24,8 +24,7 @@ func optimisticAuthHandler(string, string, net.Addr) (key []byte, ok bool) {
 
 func TestRelayOnlyConnection(t *testing.T) {
 	// Limit runtime in case of deadlocks
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
+	defer test.TimeOut(time.Second * 30).Stop()
 
 	defer test.CheckRoutines(t)()
 

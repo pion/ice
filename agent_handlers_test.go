@@ -12,7 +12,6 @@ import (
 
 func TestConnectionStateNotifier(t *testing.T) {
 	t.Run("TestManyUpdates", func(t *testing.T) {
-
 		defer test.CheckRoutines(t)()
 
 		updates := make(chan struct{}, 1)
