@@ -460,7 +460,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	require.NoError(t, err)
 
 	{
-		defer test.TimeOut(time.Second * 3).Stop() // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
+		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 		require.NoError(t, a.OnCandidate(func(c Candidate) {
 			if c != nil {
@@ -470,6 +470,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		require.NoError(t, a.GatherCandidates())
 
 		<-candidateGathered.Done()
+		gatherLim.Stop()
 	}
 
 	require.NoError(t, a.Close())
