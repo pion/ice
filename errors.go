@@ -133,6 +133,8 @@ var (
 	errWriteSTUNMessage              = errors.New("failed to send STUN message")
 	errWriteSTUNMessageToIceConn     = errors.New("failed to write STUN message to ICE connection")
 	errXORMappedAddrTimeout          = errors.New("timeout while waiting for XORMappedAddr")
+	errFailedToCastUDPAddr           = errors.New("failed to cast net.Addr to net.UDPAddr")
+	errInvalidIPAddress              = errors.New("invalid ip address")
 
 	// UDPMuxDefault should not listen on unspecified address, but to keep backward compatibility, don't return error now.
 	// will be used in the future.
