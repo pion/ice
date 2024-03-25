@@ -26,7 +26,7 @@ type udpMuxedConnParams struct {
 type udpMuxedConn struct {
 	params *udpMuxedConnParams
 	// Remote addresses that we have sent to on this conn
-	addresses []string
+	addresses []ipPort
 
 	// Channel holding incoming packets
 	buf        *packetio.Buffer
@@ -81,9 +81,17 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 	// Each time we write to a new address, we'll register it with the mux
-	addr := rAddr.String()
-	if !c.containsAddress(addr) {
-		c.addAddress(addr)
+	netUDPAddr, ok := rAddr.(*net.UDPAddr)
+	if !ok {
+		return 0, errFailedToCastUDPAddr
+	}
+
+	ipAndPort, err := newIPPort(netUDPAddr.IP, uint16(netUDPAddr.Port))
+	if err != nil {
+		return 0, err
+	}
+	if !c.containsAddress(ipAndPort) {
+		c.addAddress(ipAndPort)
 	}
 
 	return c.params.Mux.writeTo(buf, rAddr)
@@ -127,15 +135,15 @@ func (c *udpMuxedConn) isClosed() bool {
 	}
 }
 
-func (c *udpMuxedConn) getAddresses() []string {
+func (c *udpMuxedConn) getAddresses() []ipPort {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	addresses := make([]string, len(c.addresses))
+	addresses := make([]ipPort, len(c.addresses))
 	copy(addresses, c.addresses)
 	return addresses
 }
 
-func (c *udpMuxedConn) addAddress(addr string) {
+func (c *udpMuxedConn) addAddress(addr ipPort) {
 	c.mu.Lock()
 	c.addresses = append(c.addresses, addr)
 	c.mu.Unlock()
@@ -144,11 +152,11 @@ func (c *udpMuxedConn) addAddress(addr string) {
 	c.params.Mux.registerConnForAddress(c, addr)
 }
 
-func (c *udpMuxedConn) removeAddress(addr string) {
+func (c *udpMuxedConn) removeAddress(addr ipPort) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	newAddresses := make([]string, 0, len(c.addresses))
+	newAddresses := make([]ipPort, 0, len(c.addresses))
 	for _, a := range c.addresses {
 		if a != addr {
 			newAddresses = append(newAddresses, a)
@@ -158,7 +166,7 @@ func (c *udpMuxedConn) removeAddress(addr string) {
 	c.addresses = newAddresses
 }
 
-func (c *udpMuxedConn) containsAddress(addr string) bool {
+func (c *udpMuxedConn) containsAddress(addr ipPort) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, a := range c.addresses {
