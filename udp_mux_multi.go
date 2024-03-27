@@ -90,14 +90,18 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		}
 	}
 
-	ips, err := localInterfaces(params.net, params.ifFilter, params.ipFilter, params.networks, params.includeLoopback)
+	_, addrs, err := localInterfaces(params.net, params.ifFilter, params.ipFilter, params.networks, params.includeLoopback)
 	if err != nil {
 		return nil, err
 	}
 
-	conns := make([]net.PacketConn, 0, len(ips))
-	for _, ip := range ips {
-		conn, listenErr := params.net.ListenUDP("udp", &net.UDPAddr{IP: ip, Port: port})
+	conns := make([]net.PacketConn, 0, len(addrs))
+	for _, addr := range addrs {
+		conn, listenErr := params.net.ListenUDP("udp", &net.UDPAddr{
+			IP:   addr.AsSlice(),
+			Port: port,
+			Zone: addr.Zone(),
+		})
 		if listenErr != nil {
 			err = listenErr
 			break

@@ -45,7 +45,7 @@ func TestNetworkTypeParsing_Success(t *testing.T) {
 			NetworkTypeUDP6,
 		},
 	} {
-		actual, err := determineNetworkType(test.inNetwork, test.inIP)
+		actual, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
 		if err != nil {
 			t.Errorf("NetworkTypeParsing failed: %v", err)
 		}
@@ -70,7 +70,7 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 			ipv6,
 		},
 	} {
-		actual, err := determineNetworkType(test.inNetwork, test.inIP)
+		actual, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
 		if err == nil {
 			t.Errorf("NetworkTypeParsing should fail: '%s' -- input:%s actual:%s",
 				test.name, test.inNetwork, actual)

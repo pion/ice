@@ -536,6 +536,7 @@ func TestConnectionStateCallback(t *testing.T) {
 		DisconnectedTimeout: &disconnectedDuration,
 		FailedTimeout:       &failedDuration,
 		KeepaliveInterval:   &KeepaliveInterval,
+		InterfaceFilter:     problematicNetworkInterfaces,
 	}
 
 	aAgent, err := NewAgent(cfg)

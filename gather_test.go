@@ -34,11 +34,11 @@ func TestListenUDP(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
 
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-	require.NotEqual(t, len(localIPs), 0, "localInterfaces found no interfaces, unable to test")
+	_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+	require.NotEqual(t, len(localAddrs), 0, "localInterfaces found no interfaces, unable to test")
 	require.NoError(t, err)
 
-	ip := localIPs[0]
+	ip := localAddrs[0].AsSlice()
 
 	conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.NoError(t, err, "listenUDP error with no port restriction")

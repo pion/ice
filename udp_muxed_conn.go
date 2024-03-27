@@ -86,7 +86,7 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, errFailedToCastUDPAddr
 	}
 
-	ipAndPort, err := newIPPort(netUDPAddr.IP, uint16(netUDPAddr.Port))
+	ipAndPort, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port))
 	if err != nil {
 		return 0, err
 	}

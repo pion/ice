@@ -62,7 +62,10 @@ func TestTCPMux_Recv(t *testing.T) {
 			n, err := writeStreamingPacket(conn, msg.Raw)
 			require.NoError(t, err, "error writing TCP STUN packet")
 
-			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listener.Addr().(*net.TCPAddr).IP)
+			listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+			require.True(t, ok)
+
+			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listenerAddr.IP)
 			require.NoError(t, err, "error retrieving muxed connection for ufrag")
 			defer func() {
 				_ = pktConn.Close()
@@ -111,12 +114,15 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 		_ = tcpMux.Close()
 	}()
 
-	_, err = tcpMux.GetConnByUfrag("test", false, listener.Addr().(*net.TCPAddr).IP)
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	_, err = tcpMux.GetConnByUfrag("test", false, listenerAddr.IP)
 	require.NoError(t, err, "error getting conn by ufrag")
 
 	require.NoError(t, tcpMux.Close(), "error closing tcpMux")
 
-	conn, err := tcpMux.GetConnByUfrag("test", false, listener.Addr().(*net.TCPAddr).IP)
+	conn, err := tcpMux.GetConnByUfrag("test", false, listenerAddr.IP)
 	require.Nil(t, conn, "should receive nil because mux is closed")
 	require.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }
@@ -231,7 +237,10 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 		// wait for the connection to be created
 		time.Sleep(100 * time.Millisecond)
 
-		pktConn, err := tcpMux.GetConnByUfrag("myufrag2", false, listener.Addr().(*net.TCPAddr).IP)
+		listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+		require.True(t, ok)
+
+		pktConn, err := tcpMux.GetConnByUfrag("myufrag2", false, listenerAddr.IP)
 		require.NoError(t, err, "error retrieving muxed connection for ufrag")
 		defer func() {
 			_ = pktConn.Close()

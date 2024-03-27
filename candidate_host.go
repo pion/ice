@@ -4,7 +4,7 @@
 package ice
 
 import (
-	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -17,14 +17,15 @@ type CandidateHost struct {
 
 // CandidateHostConfig is the config required to create a new CandidateHost
 type CandidateHostConfig struct {
-	CandidateID string
-	Network     string
-	Address     string
-	Port        int
-	Component   uint16
-	Priority    uint32
-	Foundation  string
-	TCPType     TCPType
+	CandidateID       string
+	Network           string
+	Address           string
+	Port              int
+	Component         uint16
+	Priority          uint32
+	Foundation        string
+	TCPType           TCPType
+	IsLocationTracked bool
 }
 
 // NewCandidateHost creates a new host candidate
@@ -46,17 +47,18 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			foundationOverride:    config.Foundation,
 			priorityOverride:      config.Priority,
 			remoteCandidateCaches: map[AddrPort]Candidate{},
+			isLocationTracked:     config.IsLocationTracked,
 		},
 		network: config.Network,
 	}
 
 	if !strings.HasSuffix(config.Address, ".local") {
-		ip := net.ParseIP(config.Address)
-		if ip == nil {
-			return nil, ErrAddressParseFailed
+		ipAddr, err := netip.ParseAddr(config.Address)
+		if err != nil {
+			return nil, err
 		}
 
-		if err := c.setIP(ip); err != nil {
+		if err := c.setIPAddr(ipAddr); err != nil {
 			return nil, err
 		}
 	} else {
@@ -67,14 +69,14 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	return c, nil
 }
 
-func (c *CandidateHost) setIP(ip net.IP) error {
-	networkType, err := determineNetworkType(c.network, ip)
+func (c *CandidateHost) setIPAddr(addr netip.Addr) error {
+	networkType, err := determineNetworkType(c.network, addr)
 	if err != nil {
 		return err
 	}
 
 	c.candidateBase.networkType = networkType
-	c.candidateBase.resolvedAddr = createAddr(networkType, ip, c.port)
+	c.candidateBase.resolvedAddr = createAddr(networkType, addr, c.port)
 
 	return nil
 }

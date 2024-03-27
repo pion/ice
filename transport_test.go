@@ -9,6 +9,7 @@ package ice
 import (
 	"context"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -175,13 +176,20 @@ func gatherAndExchangeCandidates(aAgent, bAgent *Agent) {
 
 	candidates, err := aAgent.GetLocalCandidates()
 	check(err)
+
 	for _, c := range candidates {
+		if addr, parseErr := netip.ParseAddr(c.Address()); parseErr == nil {
+			if shouldFilterLocationTrackedIP(addr) {
+				panic(addr)
+			}
+		}
 		candidateCopy, copyErr := c.copy()
 		check(copyErr)
 		check(bAgent.AddRemoteCandidate(candidateCopy))
 	}
 
 	candidates, err = bAgent.GetLocalCandidates()
+
 	check(err)
 	for _, c := range candidates {
 		candidateCopy, copyErr := c.copy()
