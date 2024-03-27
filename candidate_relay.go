@@ -5,6 +5,7 @@ package ice
 
 import (
 	"net"
+	"net/netip"
 )
 
 // CandidateRelay ...
@@ -38,24 +39,28 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
-	ip := net.ParseIP(config.Address)
-	if ip == nil {
-		return nil, ErrAddressParseFailed
+	ipAddr, err := netip.ParseAddr(config.Address)
+	if err != nil {
+		return nil, err
 	}
 
-	networkType, err := determineNetworkType(config.Network, ip)
+	networkType, err := determineNetworkType(config.Network, ipAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CandidateRelay{
 		candidateBase: candidateBase{
-			id:                 candidateID,
-			networkType:        networkType,
-			candidateType:      CandidateTypeRelay,
-			address:            config.Address,
-			port:               config.Port,
-			resolvedAddr:       &net.UDPAddr{IP: ip, Port: config.Port},
+			id:            candidateID,
+			networkType:   networkType,
+			candidateType: CandidateTypeRelay,
+			address:       config.Address,
+			port:          config.Port,
+			resolvedAddr: &net.UDPAddr{
+				IP:   ipAddr.AsSlice(),
+				Port: config.Port,
+				Zone: ipAddr.Zone(),
+			},
 			component:          config.Component,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,

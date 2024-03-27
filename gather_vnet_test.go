@@ -34,7 +34,7 @@ func TestVNetGather(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) > 0 {
 			t.Fatal("should return no local IP")
 		}
@@ -73,17 +73,17 @@ func TestVNetGather(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if len(localIPs) == 0 {
+		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		if len(localAddrs) == 0 {
 			t.Fatal("should have one local IP")
 		}
 		require.NoError(t, err)
 
-		for _, ip := range localIPs {
-			if ip.IsLoopback() {
+		for _, addr := range localAddrs {
+			if addr.IsLoopback() {
 				t.Fatal("should not return loopback IP")
 			}
-			if !ipNet.Contains(ip) {
+			if !ipNet.Contains(addr.AsSlice()) {
 				t.Fatal("should be contained in the CIDR")
 			}
 		}
@@ -115,13 +115,13 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create agent: %s", err)
 		}
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
-		if len(localIPs) == 0 {
+		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		if len(localAddrs) == 0 {
 			t.Fatal("localInterfaces found no interfaces, unable to test")
 		}
 		require.NoError(t, err)
 
-		ip := localIPs[0]
+		ip := localAddrs[0].AsSlice()
 
 		conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != nil {
@@ -385,7 +385,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 
 		if len(localIPs) != 0 {
@@ -405,7 +405,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 
 		if len(localIPs) != 0 {
@@ -425,7 +425,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 
 		if len(localIPs) == 0 {

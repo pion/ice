@@ -43,6 +43,7 @@ type candidateBase struct {
 	priorityOverride   uint32
 
 	remoteCandidateCaches map[AddrPort]Candidate
+	isLocationTracked     bool
 }
 
 // Done implements context.Context
@@ -384,6 +385,14 @@ func (c *candidateBase) Priority() uint32 {
 
 // Equal is used to compare two candidateBases
 func (c *candidateBase) Equal(other Candidate) bool {
+	if c.addr() != other.addr() {
+		if c.addr() == nil || other.addr() == nil {
+			return false
+		}
+		if c.addr().String() != other.addr().String() {
+			return false
+		}
+	}
 	return c.NetworkType() == other.NetworkType() &&
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
@@ -394,7 +403,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 
 // String makes the candidateBase printable
 func (c *candidateBase) String() string {
-	return fmt.Sprintf("%s %s %s%s", c.NetworkType(), c.Type(), net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())), c.relatedAddress)
+	return fmt.Sprintf("%s %s %s%s (resolved: %v)", c.NetworkType(), c.Type(), net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())), c.relatedAddress, c.resolvedAddr)
 }
 
 // LastReceived returns a time.Time indicating the last time
@@ -433,6 +442,10 @@ func (c *candidateBase) seen(outbound bool) {
 
 func (c *candidateBase) addr() net.Addr {
 	return c.resolvedAddr
+}
+
+func (c *candidateBase) filterForLocationTracking() bool {
+	return c.isLocationTracked
 }
 
 func (c *candidateBase) agent() *Agent {
@@ -551,7 +564,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 
 	switch typ {
 	case "host":
-		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, component, priority, foundation, tcpType})
+		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, component, priority, foundation, tcpType, false})
 	case "srflx":
 		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
 	case "prflx":

@@ -3,7 +3,9 @@
 
 package ice
 
-import "net"
+import (
+	"net"
+)
 
 // AllConnsGetter allows multiple fixed TCP ports to be used,
 // each of which is multiplexed like TCPMux. AllConnsGetter also acts as

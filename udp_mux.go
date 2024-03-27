@@ -69,19 +69,19 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	}
 
 	var localAddrsForUnspecified []net.Addr
-	if addr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok {
+	if udpAddr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok {
 		params.Logger.Errorf("LocalAddr is not a net.UDPAddr, got %T", params.UDPConn.LocalAddr())
-	} else if ok && addr.IP.IsUnspecified() {
+	} else if ok && udpAddr.IP.IsUnspecified() {
 		// For unspecified addresses, the correct behavior is to return errListenUnspecified, but
 		// it will break the applications that are already using unspecified UDP connection
 		// with UDPMuxDefault, so print a warn log and create a local address list for mux.
 		params.Logger.Warn("UDPMuxDefault should not listening on unspecified address, use NewMultiUDPMuxFromPort instead")
 		var networks []NetworkType
 		switch {
-		case addr.IP.To4() != nil:
+		case udpAddr.IP.To4() != nil:
 			networks = []NetworkType{NetworkTypeUDP4}
 
-		case addr.IP.To16() != nil:
+		case udpAddr.IP.To16() != nil:
 			networks = []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}
 
 		default:
@@ -95,10 +95,14 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 				}
 			}
 
-			ips, err := localInterfaces(params.Net, nil, nil, networks, true)
+			_, addrs, err := localInterfaces(params.Net, nil, nil, networks, true)
 			if err == nil {
-				for _, ip := range ips {
-					localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{IP: ip, Port: addr.Port})
+				for _, addr := range addrs {
+					localAddrsForUnspecified = append(localAddrsForUnspecified, &net.UDPAddr{
+						IP:   addr.AsSlice(),
+						Port: udpAddr.Port,
+						Zone: addr.Zone(),
+					})
 				}
 			} else {
 				params.Logger.Errorf("Failed to get local interfaces for unspecified addr: %v", err)
@@ -304,7 +308,7 @@ func (m *UDPMuxDefault) connWorker() {
 			logger.Errorf("Underlying PacketConn did not return a UDPAddr")
 			return
 		}
-		udpAddr, err := newIPPort(netUDPAddr.IP, uint16(netUDPAddr.Port))
+		udpAddr, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port))
 		if err != nil {
 			logger.Errorf("Failed to create a new IP/Port host pair")
 			return
@@ -378,14 +382,14 @@ type ipPort struct {
 // newIPPort create a custom type of address based on netip.Addr and
 // port. The underlying ip address passed is converted to IPv6 format
 // to simplify ip address handling
-func newIPPort(ip net.IP, port uint16) (ipPort, error) {
+func newIPPort(ip net.IP, zone string, port uint16) (ipPort, error) {
 	n, ok := netip.AddrFromSlice(ip.To16())
 	if !ok {
 		return ipPort{}, errInvalidIPAddress
 	}
 
 	return ipPort{
-		addr: n,
+		addr: n.WithZone(zone),
 		port: port,
 	}, nil
 }

@@ -61,6 +61,7 @@ type Candidate interface {
 	Marshal() string
 
 	addr() net.Addr
+	filterForLocationTracking() bool
 	agent() *Agent
 	context() context.Context
 

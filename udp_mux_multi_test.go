@@ -8,7 +8,6 @@ package ice
 
 import (
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -114,11 +113,7 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	defer test.TimeOut(time.Second * 30).Stop()
 
 	muxPort := 7778
-	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(func(s string) bool {
-		defaultDockerBridgeNetwork := strings.Contains(s, "docker")
-		customDockerBridgeNetwork := strings.Contains(s, "br-")
-		return !defaultDockerBridgeNetwork && !customDockerBridgeNetwork
-	}))
+	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(problematicNetworkInterfaces))
 	require.NoError(t, err)
 
 	require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")

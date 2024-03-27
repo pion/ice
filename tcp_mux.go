@@ -142,6 +142,7 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 		return nil, ErrGetTransportAddress
 	}
 	localAddr := *addr
+	// Note: this is missing zone for IPv6
 	localAddr.IP = local
 
 	var alive time.Duration
@@ -169,13 +170,15 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 			m.connsIPv4[ufrag] = conns
 		}
 	}
-	conns[ipAddr(local.String())] = conn
+	// Note: this is missing zone for IPv6
+	connKey := ipAddr(local.String())
+	conns[connKey] = conn
 
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		<-conn.CloseChannel()
-		m.removeConnByUfragAndLocalHost(ufrag, local)
+		m.removeConnByUfragAndLocalHost(ufrag, connKey)
 	}()
 
 	return conn, nil
@@ -259,6 +262,7 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) {
 		return
 	}
 	m.mu.Lock()
+
 	packetConn, ok := m.getConn(ufrag, isIPv6, localAddr.IP)
 	if !ok {
 		packetConn, err = m.createConn(ufrag, isIPv6, localAddr.IP, true)
@@ -334,15 +338,14 @@ func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
-func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, local net.IP) {
+func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, localIPAddr ipAddr) {
 	removedConns := make([]*tcpPacketConn, 0, 4)
 
-	localIP := ipAddr(local.String())
 	// Keep lock section small to avoid deadlock with conn lock
 	m.mu.Lock()
 	if conns, ok := m.connsIPv4[ufrag]; ok {
-		if conn, ok := conns[localIP]; ok {
-			delete(conns, localIP)
+		if conn, ok := conns[localIPAddr]; ok {
+			delete(conns, localIPAddr)
 			if len(conns) == 0 {
 				delete(m.connsIPv4, ufrag)
 			}
@@ -350,8 +353,8 @@ func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, local net.IP
 		}
 	}
 	if conns, ok := m.connsIPv6[ufrag]; ok {
-		if conn, ok := conns[localIP]; ok {
-			delete(conns, localIP)
+		if conn, ok := conns[localIPAddr]; ok {
+			delete(conns, localIPAddr)
 			if len(conns) == 0 {
 				delete(m.connsIPv6, ufrag)
 			}
@@ -375,7 +378,9 @@ func (m *TCPMuxDefault) getConn(ufrag string, isIPv6 bool, local net.IP) (val *t
 		conns, ok = m.connsIPv4[ufrag]
 	}
 	if conns != nil {
-		val, ok = conns[ipAddr(local.String())]
+		// Note: this is missing zone for IPv6
+		connKey := ipAddr(local.String())
+		val, ok = conns[connKey]
 	}
 
 	return

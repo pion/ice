@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -228,9 +228,22 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		}
 	}
 
+	localIfcs, _, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, a.networkTypes, a.includeLoopback)
+	if err != nil {
+		return nil, fmt.Errorf("error getting local interfaces: %w", err)
+	}
+
 	// Opportunistic mDNS: If we can't open the connection, that's ok: we
 	// can continue without it.
-	if a.mDNSConn, a.mDNSMode, err = createMulticastDNS(a.net, mDNSMode, mDNSName, log); err != nil {
+	if a.mDNSConn, a.mDNSMode, err = createMulticastDNS(
+		a.net,
+		a.networkTypes,
+		localIfcs,
+		a.includeLoopback,
+		mDNSMode,
+		mDNSName,
+		log,
+	); err != nil {
 		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
 	}
 
@@ -592,19 +605,14 @@ func (a *Agent) resolveAndAddMulticastCandidate(c *CandidateHost) {
 	if a.mDNSConn == nil {
 		return
 	}
-	_, src, err := a.mDNSConn.Query(c.context(), c.Address())
+
+	_, src, err := a.mDNSConn.QueryAddr(c.context(), c.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
 		return
 	}
 
-	ip, ipOk := parseMulticastAnswerAddr(src)
-	if !ipOk {
-		a.log.Warnf("Failed to discover mDNS candidate %s: failed to parse IP", c.Address())
-		return
-	}
-
-	if err = c.setIP(ip); err != nil {
+	if err = c.setIPAddr(src); err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", c.Address(), err)
 		return
 	}
@@ -626,17 +634,23 @@ func (a *Agent) requestConnectivityCheck() {
 }
 
 func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
-	localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{remoteCandidate.NetworkType()}, a.includeLoopback)
+	_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{remoteCandidate.NetworkType()}, a.includeLoopback)
 	if err != nil {
 		a.log.Warnf("Failed to iterate local interfaces, host candidates will not be gathered %s", err)
 		return
 	}
 
 	for i := range localIPs {
+		ip, _, _, err := parseAddr(remoteCandidate.addr())
+		if err != nil {
+			a.log.Warnf("Failed to parse address: %s; error: %s", remoteCandidate.addr(), err)
+			continue
+		}
+
 		conn := newActiveTCPConn(
 			a.loop,
 			net.JoinHostPort(localIPs[i].String(), "0"),
-			net.JoinHostPort(remoteCandidate.Address(), strconv.Itoa(remoteCandidate.Port())),
+			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())),
 			a.log,
 		)
 
@@ -730,7 +744,9 @@ func (a *Agent) addCandidate(ctx context.Context, c Candidate, candidateConn net
 
 		a.requestConnectivityCheck()
 
-		a.candidateNotifier.EnqueueCandidate(c)
+		if !c.filterForLocationTracking() {
+			a.candidateNotifier.EnqueueCandidate(c)
+		}
 	})
 }
 
@@ -759,7 +775,12 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 	err := a.loop.Run(a.loop, func(_ context.Context) {
 		var candidates []Candidate
 		for _, set := range a.localCandidates {
-			candidates = append(candidates, set...)
+			for _, c := range set {
+				if c.filterForLocationTracking() {
+					continue
+				}
+				candidates = append(candidates, c)
+			}
 		}
 		res = candidates
 	})
@@ -841,9 +862,9 @@ func (a *Agent) deleteAllCandidates() {
 }
 
 func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
-	ip, port, _, ok := parseAddr(addr)
-	if !ok {
-		a.log.Warnf("Failed to parse address: %s", addr)
+	ip, port, _, err := parseAddr(addr)
+	if err != nil {
+		a.log.Warnf("Failed to parse address: %s; error: %s", addr, err)
 		return nil
 	}
 
@@ -873,15 +894,15 @@ func (a *Agent) sendBindingRequest(m *stun.Message, local, remote Candidate) {
 func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	base := remote
 
-	ip, port, _, ok := parseAddr(base.addr())
-	if !ok {
-		a.log.Warnf("Failed to parse address: %s", base.addr())
+	ip, port, _, err := parseAddr(base.addr())
+	if err != nil {
+		a.log.Warnf("Failed to parse address: %s; error: %s", base.addr(), err)
 		return
 	}
 
 	if out, err := stun.Build(m, stun.BindingSuccess,
 		&stun.XORMappedAddress{
-			IP:   ip,
+			IP:   ip.AsSlice(),
 			Port: port,
 		},
 		stun.NewShortTermIntegrity(a.localPwd),
@@ -983,9 +1004,9 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 		}
 
 		if remoteCandidate == nil {
-			ip, port, networkType, ok := parseAddr(remote)
-			if !ok {
-				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate")
+			ip, port, networkType, err := parseAddr(remote)
+			if err != nil {
+				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate: %s", err)
 				return
 			}
 

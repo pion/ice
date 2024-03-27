@@ -5,6 +5,7 @@ package ice
 
 import (
 	"net"
+	"net/netip"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v3"
@@ -12,12 +13,15 @@ import (
 
 // The conditions of invalidation written below are defined in
 // https://tools.ietf.org/html/rfc8445#section-5.1.1.1
-func isSupportedIPv6(ip net.IP) bool {
+// It is partial because the link-local check is done later in various gather local
+// candidate methods which conditionally accept IPv6 based on usage of mDNS or not.
+func isSupportedIPv6Partial(ip net.IP) bool {
 	if len(ip) != net.IPv6len ||
+		// Deprecated IPv4-compatible IPv6 addresses [RFC4291] and IPv6 site-
+		//   local unicast addresses [RFC3879] MUST NOT be included in the
+		//   address candidates.
 		isZeros(ip[0:12]) || // !(IPv4-compatible IPv6)
-		ip[0] == 0xfe && ip[1]&0xc0 == 0xc0 || // !(IPv6 site-local unicast)
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() {
+		ip[0] == 0xfe && ip[1]&0xc0 == 0xc0 { // !(IPv6 site-local unicast)
 		return false
 	}
 	return true
@@ -32,21 +36,35 @@ func isZeros(ip net.IP) bool {
 	return true
 }
 
-func localInterfaces(n transport.Net, interfaceFilter func(string) bool, ipFilter func(net.IP) bool, networkTypes []NetworkType, includeLoopback bool) ([]net.IP, error) { //nolint:gocognit
-	ips := []net.IP{}
+//nolint:gocognit
+func localInterfaces(
+	n transport.Net,
+	interfaceFilter func(string) bool,
+	ipFilter func(net.IP) bool,
+	networkTypes []NetworkType,
+	includeLoopback bool,
+) ([]*transport.Interface, []netip.Addr, error) {
+	ipAddrs := []netip.Addr{}
 	ifaces, err := n.Interfaces()
 	if err != nil {
-		return ips, err
+		return nil, ipAddrs, err
 	}
 
-	var IPv4Requested, IPv6Requested bool
-	for _, typ := range networkTypes {
-		if typ.IsIPv4() {
-			IPv4Requested = true
-		}
+	filteredIfaces := make([]*transport.Interface, 0, len(ifaces))
 
-		if typ.IsIPv6() {
-			IPv6Requested = true
+	var ipV4Requested, ipv6Requested bool
+	if len(networkTypes) == 0 {
+		ipV4Requested = true
+		ipv6Requested = true
+	} else {
+		for _, typ := range networkTypes {
+			if typ.IsIPv4() {
+				ipV4Requested = true
+			}
+
+			if typ.IsIPv6() {
+				ipv6Requested = true
+			}
 		}
 	}
 
@@ -62,41 +80,41 @@ func localInterfaces(n transport.Net, interfaceFilter func(string) bool, ipFilte
 			continue
 		}
 
-		addrs, err := iface.Addrs()
+		ifaceAddrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
 
-		for _, addr := range addrs {
-			var ip net.IP
-			switch addr := addr.(type) {
-			case *net.IPNet:
-				ip = addr.IP
-			case *net.IPAddr:
-				ip = addr.IP
-			}
-			if ip == nil || (ip.IsLoopback() && !includeLoopback) {
+		atLeastOneAddr := false
+		for _, addr := range ifaceAddrs {
+			ipAddr, _, _, err := parseAddrFromIface(addr, iface.Name)
+			if err != nil || (ipAddr.IsLoopback() && !includeLoopback) {
 				continue
 			}
-
-			if ipv4 := ip.To4(); ipv4 == nil {
-				if !IPv6Requested {
+			if ipAddr.Is6() {
+				if !ipv6Requested {
 					continue
-				} else if !isSupportedIPv6(ip) {
+				} else if !isSupportedIPv6Partial(ipAddr.AsSlice()) {
 					continue
 				}
-			} else if !IPv4Requested {
+			} else if !ipV4Requested {
 				continue
 			}
 
-			if ipFilter != nil && !ipFilter(ip) {
+			if ipFilter != nil && !ipFilter(ipAddr.AsSlice()) {
 				continue
 			}
 
-			ips = append(ips, ip)
+			atLeastOneAddr = true
+			ipAddrs = append(ipAddrs, ipAddr)
+		}
+
+		if atLeastOneAddr {
+			ifaceCopy := iface
+			filteredIfaces = append(filteredIfaces, ifaceCopy)
 		}
 	}
-	return ips, nil
+	return filteredIfaces, ipAddrs, nil
 }
 
 func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, portMin int, network string, lAddr *net.UDPAddr) (transport.UDPConn, error) {
