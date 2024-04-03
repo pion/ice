@@ -38,8 +38,8 @@ const (
 	// defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate
 	defaultRelayAcceptanceMinWait = 2000 * time.Millisecond
 
-	// defaultStunGatherTimeout is the wait time for STUN responses
-	defaultStunGatherTimeout = 5 * time.Second
+	// defaultSTUNGatherTimeout is the wait time for STUN responses
+	defaultSTUNGatherTimeout = 5 * time.Second
 
 	// defaultMaxBindingRequests is the maximum number of binding requests before considering a pair failed
 	defaultMaxBindingRequests = 7
@@ -139,8 +139,8 @@ type AgentConfig struct {
 	PrflxAcceptanceMinWait *time.Duration
 	// HostAcceptanceMinWait specify a minimum wait time before selecting relay candidates
 	RelayAcceptanceMinWait *time.Duration
-	// StunGatherTimeout specify a minimum wait time for STUN responses
-	StunGatherTimeout *time.Duration
+	// STUNGatherTimeout specify a minimum wait time for STUN responses
+	STUNGatherTimeout *time.Duration
 
 	// Net is the our abstracted network interface for internal development purpose only
 	// (see https://github.com/pion/transport)
@@ -227,10 +227,10 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
 
-	if config.StunGatherTimeout == nil {
-		a.stunGatherTimeout = defaultStunGatherTimeout
+	if config.STUNGatherTimeout == nil {
+		a.stunGatherTimeout = defaultSTUNGatherTimeout
 	} else {
-		a.stunGatherTimeout = *config.StunGatherTimeout
+		a.stunGatherTimeout = *config.STUNGatherTimeout
 	}
 
 	if config.TCPPriorityOffset == nil {
