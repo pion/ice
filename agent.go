@@ -69,6 +69,7 @@ type Agent struct {
 	srflxAcceptanceMinWait time.Duration
 	prflxAcceptanceMinWait time.Duration
 	relayAcceptanceMinWait time.Duration
+	stunGatherTimeout      time.Duration
 
 	tcpPriorityOffset uint16
 	disableActiveTCP  bool
