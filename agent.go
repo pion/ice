@@ -8,6 +8,7 @@ package ice
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"strings"
@@ -372,6 +373,9 @@ func (a *Agent) connectivityChecks() {
 		}
 	}
 
+	t := time.NewTimer(math.MaxInt64)
+	t.Stop()
+
 	for {
 		interval := defaultKeepaliveInterval
 
@@ -392,7 +396,8 @@ func (a *Agent) connectivityChecks() {
 		updateInterval(a.disconnectedTimeout)
 		updateInterval(a.failedTimeout)
 
-		t := time.NewTimer(interval)
+		t.Reset(interval)
+
 		select {
 		case <-a.forceCandidateContact:
 			t.Stop()
