@@ -484,7 +484,9 @@ func (a *Agent) connectivityChecks() {
 
 		select {
 		case <-a.forceCandidateContact:
-			t.Stop()
+			if !t.Stop() {
+				<-t.C
+			}
 			contact()
 		case <-t.C:
 			contact()
