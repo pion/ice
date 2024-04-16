@@ -133,11 +133,11 @@ type AgentConfig struct {
 
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
-	// HostAcceptanceMinWait specify a minimum wait time before selecting srflx candidates
+	// SrflxAcceptanceMinWait specify a minimum wait time before selecting srflx candidates
 	SrflxAcceptanceMinWait *time.Duration
-	// HostAcceptanceMinWait specify a minimum wait time before selecting prflx candidates
+	// PrflxAcceptanceMinWait specify a minimum wait time before selecting prflx candidates
 	PrflxAcceptanceMinWait *time.Duration
-	// HostAcceptanceMinWait specify a minimum wait time before selecting relay candidates
+	// RelayAcceptanceMinWait specify a minimum wait time before selecting relay candidates
 	RelayAcceptanceMinWait *time.Duration
 	// STUNGatherTimeout specify a minimum wait time for STUN responses
 	STUNGatherTimeout *time.Duration
