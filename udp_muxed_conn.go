@@ -7,8 +7,11 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"net/netip"
+	"reflect"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v3/packetio"
@@ -211,19 +214,26 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 }
 
 func encodeUDPAddr(addr *net.UDPAddr, buf []byte) (int, error) {
-	ipData, err := addr.IP.MarshalText()
-	if err != nil {
-		return 0, err
+	if len(addr.IP) != 0 && len(addr.IP) != net.IPv4len && len(addr.IP) != net.IPv6len {
+		return 0, errInvalidAddress
 	}
-	total := 2 + len(ipData) + 2 + len(addr.Zone)
+
+	var n int
+	if ip4 := addr.IP.To4(); len(ip4) == net.IPv4len {
+		d := (*reflect.SliceHeader)(unsafe.Pointer(&ip4))                                // nolint:gosec
+		n = len(netip.AddrFrom4(*(*[4]byte)(unsafe.Pointer(d.Data))).AppendTo(buf[2:2])) // nolint:gosec
+	} else if len(addr.IP) != 0 {
+		d := (*reflect.SliceHeader)(unsafe.Pointer(&addr.IP))                              // nolint:gosec
+		n = len(netip.AddrFrom16(*(*[16]byte)(unsafe.Pointer(d.Data))).AppendTo(buf[2:2])) // nolint:gosec
+	}
+
+	total := 2 + n + 2 + len(addr.Zone)
 	if total > len(buf) {
 		return 0, io.ErrShortBuffer
 	}
 
-	binary.LittleEndian.PutUint16(buf, uint16(len(ipData)))
-	offset := 2
-	n := copy(buf[offset:], ipData)
-	offset += n
+	binary.LittleEndian.PutUint16(buf, uint16(n))
+	offset := 2 + n
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(addr.Port))
 	offset += 2
 	copy(buf[offset:], addr.Zone)

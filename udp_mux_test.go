@@ -166,6 +166,20 @@ func TestAddressEncoding(t *testing.T) {
 	}
 }
 
+func BenchmarkAddressEncoding(b *testing.B) {
+	addr := &net.UDPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: 1234,
+	}
+	buf := make([]byte, 64)
+
+	for i := 0; i < b.N; i++ {
+		if _, err := encodeUDPAddr(addr, buf); err != nil {
+			require.NoError(b, err)
+		}
+	}
+}
+
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
