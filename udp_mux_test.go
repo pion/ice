@@ -173,11 +173,25 @@ func BenchmarkAddressEncoding(b *testing.B) {
 	}
 	buf := make([]byte, 64)
 
-	for i := 0; i < b.N; i++ {
-		if _, err := encodeUDPAddr(addr, buf); err != nil {
-			require.NoError(b, err)
+	b.Run("encode", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, err := encodeUDPAddr(addr, buf); err != nil {
+				require.NoError(b, err)
+			}
 		}
-	}
+	})
+
+	b.Run("decode", func(b *testing.B) {
+		n, _ := encodeUDPAddr(addr, buf)
+		var addr *net.UDPAddr
+		var err error
+		for i := 0; i < b.N; i++ {
+			if addr, err = decodeUDPAddr(buf[:n]); err != nil {
+				require.NoError(b, err)
+			}
+		}
+		_ = addr
+	})
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
