@@ -47,8 +47,6 @@ type UDPMuxDefault struct {
 	localAddrsForUnspecified []net.Addr
 }
 
-const maxAddrSize = 512
-
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
 	Logger  logging.LeveledLogger
@@ -113,7 +111,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		pool: &sync.Pool{
 			New: func() interface{} {
 				// Big enough buffer to fit both packet and address
-				return newBufferHolder(receiveMTU + maxAddrSize)
+				return newBufferHolder(receiveMTU)
 			},
 		},
 		localAddrsForUnspecified: localAddrsForUnspecified,
@@ -353,11 +351,18 @@ func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, o
 }
 
 type bufferHolder struct {
-	buf []byte
+	next *bufferHolder
+	buf  []byte
+	addr *net.UDPAddr
 }
 
 func newBufferHolder(size int) *bufferHolder {
 	return &bufferHolder{
 		buf: make([]byte, size),
 	}
+}
+
+func (b *bufferHolder) reset() {
+	b.next = nil
+	b.addr = nil
 }
