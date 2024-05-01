@@ -88,7 +88,7 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 
 		if c.state == udpMuxedConnClosed {
 			c.mu.Unlock()
-			return 0, nil, io.ErrClosedPipe
+			return 0, nil, io.EOF
 		}
 
 		c.state = udpMuxedConnWaiting
@@ -97,7 +97,7 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 		select {
 		case <-c.notify:
 		case <-c.closedChan:
-			return 0, nil, io.ErrClosedPipe
+			return 0, nil, io.EOF
 		}
 	}
 }
