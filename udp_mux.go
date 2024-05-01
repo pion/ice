@@ -343,7 +343,7 @@ func (m *UDPMuxDefault) connWorker() {
 		}
 
 		if destinationConn == nil {
-			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.addr.String(), addr.String())
+			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.addr, addr)
 			continue
 		}
 
