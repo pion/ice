@@ -144,6 +144,8 @@ func (c *udpMuxedConn) Close() error {
 
 			pkt = next
 		}
+		c.bufHead = nil
+		c.bufTail = nil
 
 		c.state = udpMuxedConnClosed
 		close(c.closedChan)
