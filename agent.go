@@ -126,6 +126,10 @@ type Agent struct {
 	taskLoopDone chan struct{}
 	err          atomicx.Error
 
+	// Callback that allows user to implement custom behavior
+	// for STUN Binding Requests
+	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool
+
 	gatherCandidateCancel func()
 	gatherCandidateDone   chan struct{}
 
@@ -322,6 +326,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		includeLoopback: config.IncludeLoopback,
 
 		disableActiveTCP: config.DisableActiveTCP,
+
+		userBindingRequestHandler: config.BindingRequestHandler,
 	}
 
 	if a.net == nil {

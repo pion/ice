@@ -111,6 +111,12 @@ func (s *controllingSelector) HandleBindingRequest(m *stun.Message, local, remot
 			s.nominatePair(p)
 		}
 	}
+
+	if s.agent.userBindingRequestHandler != nil {
+		if shouldSwitch := s.agent.userBindingRequestHandler(m, local, remote, p); shouldSwitch {
+			s.agent.setSelectedPair(p)
+		}
+	}
 }
 
 func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
@@ -242,14 +248,12 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 }
 
 func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote Candidate) {
-	useCandidate := m.Contains(stun.AttrUseCandidate)
-
 	p := s.agent.findPair(local, remote)
 	if p == nil {
 		p = s.agent.addPair(local, remote)
 	}
 
-	if useCandidate {
+	if m.Contains(stun.AttrUseCandidate) {
 		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 
 		if p.state == CandidatePairStateSucceeded {
@@ -257,8 +261,8 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 			// previously sent by this pair produced a successful response and
 			// generated a valid pair (Section 7.2.5.3.2).  The agent sets the
 			// nominated flag value of the valid pair to true.
-			if selectedPair := s.agent.getSelectedPair(); selectedPair == nil ||
-				(selectedPair != p && selectedPair.priority() <= p.priority()) {
+			selectedPair := s.agent.getSelectedPair()
+			if selectedPair == nil || (selectedPair != p && selectedPair.priority() <= p.priority()) {
 				s.agent.setSelectedPair(p)
 			} else if selectedPair != p {
 				s.log.Tracef("Ignore nominate new pair %s, already nominated pair %s", p, selectedPair)
@@ -278,6 +282,12 @@ func (s *controlledSelector) HandleBindingRequest(m *stun.Message, local, remote
 
 	s.agent.sendBindingSuccess(m, local, remote)
 	s.PingCandidate(local, remote)
+
+	if s.agent.userBindingRequestHandler != nil {
+		if shouldSwitch := s.agent.userBindingRequestHandler(m, local, remote, p); shouldSwitch {
+			s.agent.setSelectedPair(p)
+		}
+	}
 }
 
 type liteSelector struct {
