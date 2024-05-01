@@ -119,6 +119,10 @@ type Agent struct {
 	// 1:1 D-NAT IP address mapping
 	extIPMapper *externalIPMapper
 
+	// Callback that allows user to implement custom behavior
+	// for STUN Binding Requests
+	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool
+
 	gatherCandidateCancel func()
 	gatherCandidateDone   chan struct{}
 
@@ -213,6 +217,8 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		includeLoopback: config.IncludeLoopback,
 
 		disableActiveTCP: config.DisableActiveTCP,
+
+		userBindingRequestHandler: config.BindingRequestHandler,
 	}
 	a.connectionStateNotifier = &handlerNotifier{connectionStateFunc: a.onConnectionStateChange}
 	a.candidateNotifier = &handlerNotifier{candidateFunc: a.onCandidate}
