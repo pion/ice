@@ -184,7 +184,7 @@ func TestCandidateLastSent(t *testing.T) {
 	assert.Equal(t, candidate.LastSent(), time.Time{})
 	now := time.Now()
 	candidate.setLastSent(now)
-	assert.EqualValues(t, 0, now.Sub(candidate.LastSent()))
+	assert.Equal(t, candidate.LastSent(), now)
 }
 
 func TestCandidateLastReceived(t *testing.T) {
@@ -192,7 +192,7 @@ func TestCandidateLastReceived(t *testing.T) {
 	assert.Equal(t, candidate.LastReceived(), time.Time{})
 	now := time.Now()
 	candidate.setLastReceived(now)
-	assert.EqualValues(t, 0, now.Sub(candidate.LastReceived()))
+	assert.Equal(t, candidate.LastReceived(), now)
 }
 
 func TestCandidateFoundation(t *testing.T) {
