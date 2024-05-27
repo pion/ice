@@ -13,6 +13,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v3/packetio"
+	"golang.org/x/net/proxy"
 )
 
 type activeTCPConn struct {
@@ -21,7 +22,7 @@ type activeTCPConn struct {
 	closed                  int32
 }
 
-func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress netip.AddrPort, log logging.LeveledLogger) (a *activeTCPConn) {
+func newActiveTCPConn(ctx context.Context, proxyDialer proxy.Dialer, localAddress string, remoteAddress netip.AddrPort, log logging.LeveledLogger) (a *activeTCPConn) {
 	a = &activeTCPConn{
 		readBuffer:  packetio.NewBuffer(),
 		writeBuffer: packetio.NewBuffer(),
@@ -40,15 +41,26 @@ func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress ne
 			atomic.StoreInt32(&a.closed, 1)
 		}()
 
-		dialer := &net.Dialer{
-			LocalAddr: laddr,
-		}
-		conn, err := dialer.DialContext(ctx, "tcp", remoteAddress.String())
+		var conn net.Conn = nil
+		var err error = nil
+		raddr, err := net.ResolveTCPAddr("tcp", remoteAddress.String())
 		if err != nil {
 			log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
 			return
 		}
-		a.remoteAddr.Store(conn.RemoteAddr())
+		if proxyDialer != nil {
+			conn, err = proxyDialer.Dial("tcp", remoteAddress.String())
+		} else {
+			dialer := &net.Dialer{
+				LocalAddr: laddr,
+			}
+			conn, err = dialer.DialContext(ctx, "tcp", remoteAddress.String())
+		}
+		if err != nil {
+			log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
+			return
+		}
+		a.remoteAddr.Store(raddr)
 
 		go func() {
 			buff := make([]byte, receiveMTU)

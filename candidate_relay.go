@@ -48,7 +48,10 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	tcpType := TCPTypeUnspecified
+	if networkType.IsTCP() {
+		tcpType = TCPTypePassive
+	}
 	return &CandidateRelay{
 		candidateBase: candidateBase{
 			id:            candidateID,
@@ -69,6 +72,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 				Port:    config.RelPort,
 			},
 			remoteCandidateCaches: map[AddrPort]Candidate{},
+			tcpType:               tcpType,
 		},
 		relayProtocol: config.RelayProtocol,
 		onClose:       config.OnClose,

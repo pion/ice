@@ -44,7 +44,10 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 	if candidateID == "" {
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
-
+	tcpType := TCPTypeUnspecified
+	if networkType.IsTCP() {
+		tcpType = TCPTypePassive
+	}
 	return &CandidatePeerReflexive{
 		candidateBase: candidateBase{
 			id:                 candidateID,
@@ -61,6 +64,7 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 				Port:    config.RelPort,
 			},
 			remoteCandidateCaches: map[AddrPort]Candidate{},
+			tcpType:               tcpType,
 		},
 	}, nil
 }

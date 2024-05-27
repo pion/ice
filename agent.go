@@ -663,6 +663,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		conn := newActiveTCPConn(
 			a.loop,
+			a.proxyDialer,
 			net.JoinHostPort(localIPs[i].String(), "0"),
 			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())),
 			a.log,
