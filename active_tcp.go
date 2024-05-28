@@ -41,8 +41,8 @@ func newActiveTCPConn(ctx context.Context, proxyDialer proxy.Dialer, localAddres
 			atomic.StoreInt32(&a.closed, 1)
 		}()
 
-		var conn net.Conn = nil
-		var err error = nil
+		var conn net.Conn
+		var err error
 		raddr, err := net.ResolveTCPAddr("tcp", remoteAddress.String())
 		if err != nil {
 			log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
