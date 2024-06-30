@@ -309,6 +309,17 @@ func TestCandidateMarshal(t *testing.T) {
 		},
 		{
 			mustCandidateHost(&CandidateHostConfig{
+				Network:    NetworkTypeUDP6.String(),
+				Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%Local connection",
+				Port:       53987,
+				Priority:   500,
+				Foundation: "750",
+			}),
+			"750 1 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%Local%20connection 53987 typ host",
+			false,
+		},
+		{
+			mustCandidateHost(&CandidateHostConfig{
 				Network: NetworkTypeUDP4.String(),
 				Address: "10.0.75.1",
 				Port:    53634,

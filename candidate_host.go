@@ -52,8 +52,12 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		network: config.Network,
 	}
 
-	if !strings.HasSuffix(config.Address, ".local") {
-		ipAddr, err := netip.ParseAddr(config.Address)
+	if !strings.HasSuffix(c.candidateBase.address, ".local") {
+		if addr, zoneID, found := strings.Cut(c.candidateBase.address, "%"); found {
+			c.candidateBase.address = addr + "%" + strings.ReplaceAll(zoneID, " ", "%20")
+		}
+
+		ipAddr, err := netip.ParseAddr(c.candidateBase.address)
 		if err != nil {
 			return nil, err
 		}
