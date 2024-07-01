@@ -220,9 +220,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		userBindingRequestHandler: config.BindingRequestHandler,
 	}
-	a.connectionStateNotifier = &handlerNotifier{connectionStateFunc: a.onConnectionStateChange}
-	a.candidateNotifier = &handlerNotifier{candidateFunc: a.onCandidate}
-	a.selectedCandidatePairNotifier = &handlerNotifier{candidatePairFunc: a.onSelectedCandidatePairChange}
+	a.connectionStateNotifier = &handlerNotifier{connectionStateFunc: a.onConnectionStateChange, done: make(chan struct{})}
+	a.candidateNotifier = &handlerNotifier{candidateFunc: a.onCandidate, done: make(chan struct{})}
+	a.selectedCandidatePairNotifier = &handlerNotifier{candidatePairFunc: a.onSelectedCandidatePairChange, done: make(chan struct{})}
 
 	if a.net == nil {
 		a.net, err = stdnet.NewNet()
@@ -849,7 +849,11 @@ func (a *Agent) removeUfragFromMux() {
 
 // Close cleans up the Agent
 func (a *Agent) Close() error {
-	return a.loop.Close()
+	err := a.loop.Close()
+	a.connectionStateNotifier.Close()
+	a.candidateNotifier.Close()
+	a.selectedCandidatePairNotifier.Close()
+	return err
 }
 
 // Remove all candidates. This closes any listening sockets
