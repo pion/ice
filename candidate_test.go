@@ -391,7 +391,7 @@ func TestCandidateMarshal(t *testing.T) {
 
 		assert.NoError(t, err)
 
-		assert.True(t, test.candidate.Equal(actualCandidate))
+		assert.Truef(t, test.candidate.Equal(actualCandidate), "%s != %s", test.candidate.String(), actualCandidate.String())
 		assert.Equal(t, test.marshaled, actualCandidate.Marshal())
 	}
 }
@@ -434,4 +434,41 @@ func TestCandidateWriteTo(t *testing.T) {
 
 	_, err = c1.writeTo([]byte("test"), c2)
 	assert.Error(t, err, "writing to closed conn")
+}
+
+func TestMarshalUnmarshalCandidateWithZoneID(t *testing.T) {
+	candidateWithZoneID := &CandidateHost{
+		candidateBase{
+			networkType:        NetworkTypeUDP6,
+			candidateType:      CandidateTypeHost,
+			address:            "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%Local Connection",
+			port:               53987,
+			priorityOverride:   500,
+			foundationOverride: "750",
+		},
+		"",
+	}
+	candidateStr := "750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host"
+	require.Equal(t, candidateStr, candidateWithZoneID.Marshal())
+
+	candidate := &CandidateHost{
+		candidateBase{
+			networkType:        NetworkTypeUDP6,
+			candidateType:      CandidateTypeHost,
+			address:            "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			port:               53987,
+			priorityOverride:   500,
+			foundationOverride: "750",
+		},
+		"",
+	}
+	candidateWithZoneIDStr := "750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%eth0 53987 typ host"
+	candidate2, err := UnmarshalCandidate(candidateWithZoneIDStr)
+	require.NoError(t, err)
+	require.Truef(t, candidate.Equal(candidate2), "%s != %s", candidate.String(), candidate2.String())
+
+	candidateWithZoneIDStr2 := "750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%eth0%eth1 53987 typ host"
+	candidate2, err = UnmarshalCandidate(candidateWithZoneIDStr2)
+	require.NoError(t, err)
+	require.Truef(t, candidate.Equal(candidate2), "%s != %s", candidate.String(), candidate2.String())
 }
