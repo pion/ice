@@ -1379,12 +1379,11 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 
 	isClosed := make(chan interface{})
 	isConnected := make(chan interface{})
-	connectionStateConnectedSeen := make(chan interface{})
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
 		case ConnectionStateConnected:
 			<-isConnected
-			close(connectionStateConnectedSeen)
+			require.NoError(t, aAgent.Close())
 		case ConnectionStateClosed:
 			close(isClosed)
 		default:
@@ -1394,8 +1393,6 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 
 	connect(aAgent, bAgent)
 	close(isConnected)
-	<-connectionStateConnectedSeen
-	require.NoError(t, aAgent.Close())
 
 	<-isClosed
 	require.NoError(t, bAgent.Close())
