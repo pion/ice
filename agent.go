@@ -220,9 +220,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 
 		userBindingRequestHandler: config.BindingRequestHandler,
 	}
-	a.connectionStateNotifier = &handlerNotifier{connectionStateFunc: a.onConnectionStateChange}
-	a.candidateNotifier = &handlerNotifier{candidateFunc: a.onCandidate}
-	a.selectedCandidatePairNotifier = &handlerNotifier{candidatePairFunc: a.onSelectedCandidatePairChange}
+	a.connectionStateNotifier = &handlerNotifier{connectionStateFunc: a.onConnectionStateChange, done: make(chan struct{})}
+	a.candidateNotifier = &handlerNotifier{candidateFunc: a.onCandidate, done: make(chan struct{})}
+	a.selectedCandidatePairNotifier = &handlerNotifier{candidatePairFunc: a.onSelectedCandidatePairChange, done: make(chan struct{})}
 
 	if a.net == nil {
 		a.net, err = stdnet.NewNet()
@@ -849,7 +849,26 @@ func (a *Agent) removeUfragFromMux() {
 
 // Close cleans up the Agent
 func (a *Agent) Close() error {
-	return a.loop.Close()
+	return a.close(false)
+}
+
+// GracefulClose cleans up the Agent and waits for any goroutines it started
+// to complete. This is only safe to call outside of Agent callbacks or if in a callback,
+// in its own goroutine.
+func (a *Agent) GracefulClose() error {
+	return a.close(true)
+}
+
+func (a *Agent) close(graceful bool) error {
+	// the loop is safe to wait on no matter what
+	err := a.loop.Close()
+
+	// but we are in less control of the notifiers, so we will
+	// pass through `graceful`.
+	a.connectionStateNotifier.Close(graceful)
+	a.candidateNotifier.Close(graceful)
+	a.selectedCandidatePairNotifier.Close(graceful)
+	return err
 }
 
 // Remove all candidates. This closes any listening sockets
