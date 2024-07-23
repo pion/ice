@@ -9,7 +9,7 @@ require (
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/randutil v0.1.0
 	github.com/pion/stun/v2 v2.0.0
-	github.com/pion/transport/v3 v3.0.4
+	github.com/pion/transport/v3 v3.0.5
 	github.com/pion/turn/v3 v3.0.3
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/net v0.26.0
