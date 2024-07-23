@@ -45,7 +45,8 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 
 type handlerNotifier struct {
 	sync.Mutex
-	running bool
+	running   bool
+	notifiers sync.WaitGroup
 
 	connectionStates    []ConnectionState
 	connectionStateFunc func(ConnectionState)
@@ -55,13 +56,40 @@ type handlerNotifier struct {
 
 	selectedCandidatePairs []*CandidatePair
 	candidatePairFunc      func(*CandidatePair)
+
+	// State for closing
+	done chan struct{}
+}
+
+func (h *handlerNotifier) Close(graceful bool) {
+	h.Lock()
+
+	select {
+	case <-h.done:
+		h.Unlock()
+		return
+	default:
+	}
+	close(h.done)
+	h.Unlock()
+
+	if graceful {
+		h.notifiers.Wait()
+	}
 }
 
 func (h *handlerNotifier) EnqueueConnectionState(s ConnectionState) {
 	h.Lock()
 	defer h.Unlock()
 
+	select {
+	case <-h.done:
+		return
+	default:
+	}
+
 	notify := func() {
+		defer h.notifiers.Done()
 		for {
 			h.Lock()
 			if len(h.connectionStates) == 0 {
@@ -79,6 +107,7 @@ func (h *handlerNotifier) EnqueueConnectionState(s ConnectionState) {
 	h.connectionStates = append(h.connectionStates, s)
 	if !h.running {
 		h.running = true
+		h.notifiers.Add(1)
 		go notify()
 	}
 }
@@ -87,7 +116,14 @@ func (h *handlerNotifier) EnqueueCandidate(c Candidate) {
 	h.Lock()
 	defer h.Unlock()
 
+	select {
+	case <-h.done:
+		return
+	default:
+	}
+
 	notify := func() {
+		defer h.notifiers.Done()
 		for {
 			h.Lock()
 			if len(h.candidates) == 0 {
@@ -105,6 +141,7 @@ func (h *handlerNotifier) EnqueueCandidate(c Candidate) {
 	h.candidates = append(h.candidates, c)
 	if !h.running {
 		h.running = true
+		h.notifiers.Add(1)
 		go notify()
 	}
 }
@@ -113,7 +150,14 @@ func (h *handlerNotifier) EnqueueSelectedCandidatePair(p *CandidatePair) {
 	h.Lock()
 	defer h.Unlock()
 
+	select {
+	case <-h.done:
+		return
+	default:
+	}
+
 	notify := func() {
+		defer h.notifiers.Done()
 		for {
 			h.Lock()
 			if len(h.selectedCandidatePairs) == 0 {
@@ -131,6 +175,7 @@ func (h *handlerNotifier) EnqueueSelectedCandidatePair(p *CandidatePair) {
 	h.selectedCandidatePairs = append(h.selectedCandidatePairs, p)
 	if !h.running {
 		h.running = true
+		h.notifiers.Add(1)
 		go notify()
 	}
 }

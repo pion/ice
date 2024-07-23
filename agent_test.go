@@ -1799,3 +1799,55 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 		return
 	}
 }
+
+// Close can deadlock but GracefulClose must not
+func TestAgentGracefulCloseDeadlock(t *testing.T) {
+	defer test.CheckRoutinesStrict(t)()
+	defer test.TimeOut(time.Second * 5).Stop()
+
+	config := &AgentConfig{
+		NetworkTypes: supportedNetworkTypes(),
+	}
+	aAgent, err := NewAgent(config)
+	require.NoError(t, err)
+
+	bAgent, err := NewAgent(config)
+	require.NoError(t, err)
+
+	var connected, closeNow, closed sync.WaitGroup
+	connected.Add(2)
+	closeNow.Add(1)
+	closed.Add(2)
+	closeHdlr := func(agent *Agent) {
+		check(agent.OnConnectionStateChange(func(cs ConnectionState) {
+			if cs == ConnectionStateConnected {
+				connected.Done()
+				closeNow.Wait()
+
+				go func() {
+					if err := agent.GracefulClose(); err != nil {
+						require.NoError(t, err)
+					}
+					closed.Done()
+				}()
+			}
+		}))
+	}
+
+	closeHdlr(aAgent)
+	closeHdlr(bAgent)
+
+	t.Log("connecting agents")
+	_, _ = connect(aAgent, bAgent)
+
+	t.Log("waiting for them to confirm connection in callback")
+	connected.Wait()
+
+	t.Log("tell them to close themselves in the same callback and wait")
+	closeNow.Done()
+	closed.Wait()
+
+	// already closed
+	require.Error(t, aAgent.Close())
+	require.Error(t, bAgent.Close())
+}
