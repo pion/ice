@@ -13,8 +13,8 @@ import (
 	atomicx "github.com/pion/ice/v3/internal/atomic"
 )
 
-// errClosed indicates that the loop has been stopped
-var errClosed = errors.New("the agent is closed")
+// ErrClosed indicates that the loop has been stopped
+var ErrClosed = errors.New("the agent is closed")
 
 type task struct {
 	fn   func(context.Context)
@@ -68,7 +68,7 @@ func (l *Loop) Close() error {
 		return err
 	}
 
-	l.err.Store(errClosed)
+	l.err.Store(ErrClosed)
 
 	close(l.done)
 	<-l.taskLoopDone
@@ -104,7 +104,7 @@ func (l *Loop) Done() <-chan struct{} {
 func (l *Loop) Err() error {
 	select {
 	case <-l.done:
-		return errClosed
+		return ErrClosed
 	default:
 		return nil
 	}
