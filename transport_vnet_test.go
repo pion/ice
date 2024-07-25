@@ -61,6 +61,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 				urls: []*stun.URI{stunServerURL},
 			},
 		)
+		defer closePipe(t, ca, cb)
 
 		aRAddr := ca.RemoteAddr()
 		aLAddr := ca.LocalAddr()
@@ -86,9 +87,5 @@ func TestRemoteLocalAddr(t *testing.T) {
 		require.Equal(t, bRAddr.String(),
 			fmt.Sprintf("%s:%d", vnetGlobalIPA, aLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
 		)
-
-		// Close
-		require.NoError(t, ca.Close())
-		require.NoError(t, cb.Close())
 	})
 }

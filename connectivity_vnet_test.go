@@ -493,6 +493,9 @@ func TestDisconnectedToConnected(t *testing.T) {
 		CheckInterval:       &keepaliveInterval,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controllingAgent.Close())
+	}()
 
 	controlledAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:        supportedNetworkTypes(),
@@ -503,6 +506,9 @@ func TestDisconnectedToConnected(t *testing.T) {
 		CheckInterval:       &keepaliveInterval,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controlledAgent.Close())
+	}()
 
 	controllingStateChanges := make(chan ConnectionState, 100)
 	require.NoError(t, controllingAgent.OnConnectionStateChange(func(c ConnectionState) {
@@ -538,8 +544,6 @@ func TestDisconnectedToConnected(t *testing.T) {
 	blockUntilStateSeen(ConnectionStateConnected, controlledStateChanges)
 
 	require.NoError(t, wan.Stop())
-	require.NoError(t, controllingAgent.Close())
-	require.NoError(t, controlledAgent.Close())
 }
 
 // Agent.Write should use the best valid pair if a selected pair is not yet available
@@ -593,6 +597,9 @@ func TestWriteUseValidPair(t *testing.T) {
 		Net:              net0,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controllingAgent.Close())
+	}()
 
 	controlledAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     supportedNetworkTypes(),
@@ -600,6 +607,9 @@ func TestWriteUseValidPair(t *testing.T) {
 		Net:              net1,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controlledAgent.Close())
+	}()
 
 	gatherAndExchangeCandidates(controllingAgent, controlledAgent)
 
@@ -630,6 +640,4 @@ func TestWriteUseValidPair(t *testing.T) {
 	require.Equal(t, readBuf, testMessage)
 
 	require.NoError(t, wan.Stop())
-	require.NoError(t, controllingAgent.Close())
-	require.NoError(t, controlledAgent.Close())
 }

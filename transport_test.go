@@ -324,6 +324,7 @@ func TestConnStats(t *testing.T) {
 	if _, err := ca.Write(make([]byte, 10)); err != nil {
 		t.Fatal("unexpected error trying to write")
 	}
+	defer closePipe(t, ca, cb)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -343,17 +344,5 @@ func TestConnStats(t *testing.T) {
 
 	if cb.BytesReceived() != 10 {
 		t.Fatal("bytes received don't match")
-	}
-
-	err := ca.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
-	}
-
-	err = cb.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
 	}
 }

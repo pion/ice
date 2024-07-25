@@ -33,6 +33,9 @@ import (
 func TestListenUDP(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 	require.NotEqual(t, len(localAddrs), 0, "localInterfaces found no interfaces, unable to test")
@@ -84,8 +87,6 @@ func TestListenUDP(t *testing.T) {
 	}
 	_, err = listenUDPInPortRange(a.net, a.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
-
-	require.NoError(t, a.Close())
 }
 
 func TestGatherConcurrency(t *testing.T) {
@@ -98,6 +99,9 @@ func TestGatherConcurrency(t *testing.T) {
 		IncludeLoopback: true,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 	require.NoError(t, a.OnCandidate(func(Candidate) {
@@ -110,8 +114,6 @@ func TestGatherConcurrency(t *testing.T) {
 	}
 
 	<-candidateGathered.Done()
-
-	require.NoError(t, a.Close())
 }
 
 func TestLoopbackCandidate(t *testing.T) {
@@ -194,6 +196,9 @@ func TestLoopbackCandidate(t *testing.T) {
 		t.Run(tcase.name, func(t *testing.T) {
 			a, err := NewAgent(tc.agentConfig)
 			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, a.Close())
+			}()
 
 			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 			var loopback int32
@@ -212,7 +217,6 @@ func TestLoopbackCandidate(t *testing.T) {
 
 			<-candidateGathered.Done()
 
-			require.NoError(t, a.Close())
 			require.Equal(t, tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
 		})
 	}
@@ -243,6 +247,9 @@ func TestSTUNConcurrency(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
@@ -279,6 +286,9 @@ func TestSTUNConcurrency(t *testing.T) {
 		),
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -291,9 +301,6 @@ func TestSTUNConcurrency(t *testing.T) {
 	require.NoError(t, a.GatherCandidates())
 
 	<-candidateGathered.Done()
-
-	require.NoError(t, a.Close())
-	require.NoError(t, server.Close())
 }
 
 // Assert that TURN gathering is done concurrently
@@ -326,6 +333,9 @@ func TestTURNConcurrency(t *testing.T) {
 			ListenerConfigs:   listenerConfigs,
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, server.Close())
+		}()
 
 		urls := []*stun.URI{}
 		for i := 0; i <= 10; i++ {
@@ -354,6 +364,9 @@ func TestTURNConcurrency(t *testing.T) {
 			Urls:               urls,
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 		require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -364,9 +377,6 @@ func TestTURNConcurrency(t *testing.T) {
 		require.NoError(t, a.GatherCandidates())
 
 		<-candidateGathered.Done()
-
-		require.NoError(t, a.Close())
-		require.NoError(t, server.Close())
 	}
 
 	t.Run("UDP Relay", func(t *testing.T) {
@@ -433,6 +443,9 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
@@ -457,6 +470,9 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	{
 		gatherLim := test.TimeOut(time.Second * 3) // As TURN and STUN should be checked in parallel, this should complete before the default STUN timeout (5s)
@@ -471,9 +487,6 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 		<-candidateGathered.Done()
 		gatherLim.Stop()
 	}
-
-	require.NoError(t, a.Close())
-	require.NoError(t, server.Close())
 }
 
 // Assert that srflx candidates can be gathered from TURN servers
@@ -502,6 +515,9 @@ func TestTURNSrflx(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
 
 	urls := []*stun.URI{{
 		Scheme:   stun.SchemeTypeTURN,
@@ -518,6 +534,9 @@ func TestTURNSrflx(t *testing.T) {
 		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -529,21 +548,19 @@ func TestTURNSrflx(t *testing.T) {
 	require.NoError(t, a.GatherCandidates())
 
 	<-candidateGathered.Done()
-
-	require.NoError(t, a.Close())
-	require.NoError(t, server.Close())
 }
 
 func TestCloseConnLog(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	closeConnAndLog(nil, a.log, "normal nil")
 
 	var nc *net.UDPConn
 	closeConnAndLog(nc, a.log, "nil ptr")
-
-	require.NoError(t, a.Close())
 }
 
 type mockProxy struct {
@@ -598,6 +615,9 @@ func TestTURNProxyDialer(t *testing.T) {
 		ProxyDialer: proxyDialer,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateGatherFinish, candidateGatherFinishFunc := context.WithCancel(context.Background())
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -609,8 +629,6 @@ func TestTURNProxyDialer(t *testing.T) {
 	require.NoError(t, a.GatherCandidates())
 	<-candidateGatherFinish.Done()
 	<-proxyWasDialed.Done()
-
-	require.NoError(t, a.Close())
 }
 
 // TestUDPMuxDefaultWithNAT1To1IPsUsage requires that candidates
@@ -639,6 +657,9 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 		UDPMux:                 mux,
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	gatherCandidateDone := make(chan struct{})
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -652,8 +673,6 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 	<-gatherCandidateDone
 
 	require.NotEqual(t, 0, len(mux.connsIPv4))
-
-	require.NoError(t, a.Close())
 }
 
 // Assert that candidates are given for each mux in a MultiUDPMux
@@ -687,6 +706,9 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateCh := make(chan Candidate)
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -707,8 +729,6 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 	for _, port := range expectedPorts {
 		require.True(t, portFound[port], "There should be a candidate for each UDP mux port")
 	}
-
-	require.NoError(t, a.Close())
 }
 
 // Assert that candidates are given for each mux in a MultiTCPMux
@@ -743,6 +763,9 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		TCPMux:         NewMultiTCPMuxDefault(tcpMuxInstances...),
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
 
 	candidateCh := make(chan Candidate)
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -765,8 +788,6 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 	for _, port := range expectedPorts {
 		require.True(t, portFound[port], "There should be a candidate for each TCP mux port")
 	}
-
-	require.NoError(t, a.Close())
 }
 
 // Assert that UniversalUDPMux is used while gathering when configured in the Agent
@@ -802,6 +823,13 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		UDPMuxSrflx:    udpMuxSrflx,
 	})
 	require.NoError(t, err)
+	var aClosed bool
+	defer func() {
+		if aClosed {
+			return
+		}
+		require.NoError(t, a.Close())
+	}()
 
 	candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
 	require.NoError(t, a.OnCandidate(func(c Candidate) {
@@ -816,6 +844,8 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	<-candidateGathered.Done()
 
 	require.NoError(t, a.Close())
+	aClosed = true
+
 	// Twice because of 2 STUN servers configured
 	require.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
 	// One for Restart() when agent has been initialized and one time when Close() the agent
