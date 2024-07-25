@@ -33,14 +33,15 @@ func TestVNetGather(t *testing.T) {
 			Net: n,
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localIPs) > 0 {
 			t.Fatal("should return no local IP")
 		}
 		require.NoError(t, err)
-
-		require.NoError(t, a.Close())
 	})
 
 	t.Run("Gather a dynamic IP address", func(t *testing.T) {
@@ -72,6 +73,9 @@ func TestVNetGather(t *testing.T) {
 			Net: nw,
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localAddrs) == 0 {
@@ -87,8 +91,6 @@ func TestVNetGather(t *testing.T) {
 				t.Fatal("should be contained in the CIDR")
 			}
 		}
-
-		require.NoError(t, a.Close())
 	})
 
 	t.Run("listenUDP", func(t *testing.T) {
@@ -114,6 +116,9 @@ func TestVNetGather(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create agent: %s", err)
 		}
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		if len(localAddrs) == 0 {
@@ -145,6 +150,9 @@ func TestVNetGather(t *testing.T) {
 		} else if conn == nil {
 			t.Fatalf("listenUDP error with no port restriction return a nil conn")
 		}
+		defer func() {
+			require.NoError(t, conn.Close())
+		}()
 
 		_, port, err := net.SplitHostPort(conn.LocalAddr().String())
 
@@ -152,9 +160,6 @@ func TestVNetGather(t *testing.T) {
 		if port != "5000" {
 			t.Fatalf("listenUDP with port restriction of 5000 listened on incorrect port (%s)", port)
 		}
-
-		require.NoError(t, conn.Close())
-		require.NoError(t, a.Close())
 	})
 }
 
@@ -209,7 +214,9 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			Net:        nw,
 		})
 		require.NoError(t, err, "should succeed")
-		defer a.Close() //nolint:errcheck
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		done := make(chan struct{})
 		err = a.OnCandidate(func(c Candidate) {
@@ -309,7 +316,9 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			Net:                    nw,
 		})
 		require.NoError(t, err, "should succeed")
-		defer a.Close() //nolint:errcheck
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		done := make(chan struct{})
 		err = a.OnCandidate(func(c Candidate) {
@@ -384,6 +393,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
@@ -391,8 +403,6 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		if len(localIPs) != 0 {
 			t.Fatal("InterfaceFilter should have excluded everything")
 		}
-
-		require.NoError(t, a.Close())
 	})
 
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
@@ -404,6 +414,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
@@ -411,8 +424,6 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		if len(localIPs) != 0 {
 			t.Fatal("IPFilter should have excluded everything")
 		}
-
-		require.NoError(t, a.Close())
 	})
 
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
@@ -424,6 +435,9 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
 
 		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
@@ -431,8 +445,6 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		if len(localIPs) == 0 {
 			t.Fatal("InterfaceFilter should not have excluded anything")
 		}
-
-		require.NoError(t, a.Close())
 	})
 }
 
@@ -469,8 +481,10 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	}
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err, "should succeed")
+	defer func() {
+		// Assert relay conn leak on close.
+		require.NoError(t, aAgent.Close())
+	}()
 
 	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL})
-	// Assert relay conn leak on close.
-	require.NoError(t, aAgent.Close())
 }

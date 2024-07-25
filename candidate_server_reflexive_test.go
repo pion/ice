@@ -39,6 +39,9 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
 
 	cfg := &AgentConfig{
 		NetworkTypes: []NetworkType{NetworkTypeUDP4},
@@ -54,12 +57,18 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, aAgent.Close())
+	}()
 
 	aNotifier, aConnected := onConnected()
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, bAgent.Close())
+	}()
 
 	bNotifier, bConnected := onConnected()
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
@@ -67,8 +76,4 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	connect(aAgent, bAgent)
 	<-aConnected
 	<-bConnected
-
-	require.NoError(t, aAgent.Close())
-	require.NoError(t, bAgent.Close())
-	require.NoError(t, server.Close())
 }

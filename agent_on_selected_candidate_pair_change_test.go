@@ -15,6 +15,9 @@ import (
 
 func TestOnSelectedCandidatePairChange(t *testing.T) {
 	agent, candidatePair := fixtureTestOnSelectedCandidatePairChange(t)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
 
 	callbackCalled := make(chan struct{}, 1)
 	err := agent.OnSelectedCandidatePairChange(func(_, _ Candidate) {
@@ -28,7 +31,6 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 	require.NoError(t, err)
 
 	<-callbackCalled
-	require.NoError(t, agent.Close())
 }
 
 func fixtureTestOnSelectedCandidatePairChange(t *testing.T) (*Agent, *CandidatePair) {

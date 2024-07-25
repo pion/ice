@@ -250,6 +250,7 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 	})
+	defer closePipe(t, connA, connB)
 
 	aNotifier, aConnected := onConnected()
 	require.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
@@ -277,7 +278,4 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 	// Wait until both have gone back to connected
 	<-aConnected
 	<-bConnected
-
-	require.NoError(t, connA.agent.Close())
-	require.NoError(t, connB.agent.Close())
 }

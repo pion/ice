@@ -14,6 +14,9 @@ import (
 
 func TestAgentGetBestValidCandidatePair(t *testing.T) {
 	f := setupTestAgentGetBestValidCandidatePair(t)
+	defer func() {
+		require.NoError(t, f.sut.Close())
+	}()
 
 	remoteCandidatesFromLowestPriorityToHighest := []Candidate{f.relayRemote, f.srflxRemote, f.prflxRemote, f.hostRemote}
 
@@ -26,8 +29,6 @@ func TestAgentGetBestValidCandidatePair(t *testing.T) {
 
 		require.Equal(t, actualBestPair.String(), expectedBestPair.String())
 	}
-
-	require.NoError(t, f.sut.Close())
 }
 
 func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {

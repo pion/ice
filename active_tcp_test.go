@@ -71,7 +71,7 @@ func TestActiveTCP(t *testing.T) {
 				networkTypes:            []NetworkType{NetworkTypeTCP6},
 				listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP6),
 				selectedPairNetworkType: tcp,
-				// if we don't use mDNS, we will very liekly be filtering out location tracked ips.
+				// if we don't use mDNS, we will very likely be filtering out location tracked ips.
 				useMDNS: true,
 			},
 			testCase{
@@ -79,7 +79,7 @@ func TestActiveTCP(t *testing.T) {
 				networkTypes:            supportedNetworkTypes(),
 				listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP6),
 				selectedPairNetworkType: udp,
-				// if we don't use mDNS, we will very liekly be filtering out location tracked ips.
+				// if we don't use mDNS, we will very likely be filtering out location tracked ips.
 				useMDNS: true,
 			},
 		)
@@ -143,6 +143,11 @@ func TestActiveTCP(t *testing.T) {
 			r.NotNil(passiveAgentConn)
 			r.NotNil(activeAgenConn)
 
+			defer func() {
+				r.NoError(activeAgenConn.Close())
+				r.NoError(passiveAgentConn.Close())
+			}()
+
 			pair := passiveAgent.getSelectedPair()
 			r.NotNil(pair)
 			r.Equal(testCase.selectedPairNetworkType, pair.Local.NetworkType().NetworkShort())
@@ -163,9 +168,6 @@ func TestActiveTCP(t *testing.T) {
 			n, err = passiveAgentConn.Read(buffer)
 			r.NoError(err)
 			r.Equal(bar, buffer[:n])
-
-			r.NoError(activeAgenConn.Close())
-			r.NoError(passiveAgentConn.Close())
 		})
 	}
 }
@@ -185,8 +187,16 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 
+	defer func() {
+		require.NoError(t, aAgent.Close())
+	}()
+
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, bAgent.Close())
+	}()
 
 	isConnected := make(chan interface{})
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
@@ -205,6 +215,4 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	connect(aAgent, bAgent)
 
 	<-isConnected
-	require.NoError(t, aAgent.Close())
-	require.NoError(t, bAgent.Close())
 }
