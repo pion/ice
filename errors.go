@@ -3,7 +3,11 @@
 
 package ice
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/pion/ice/v3/internal/taskloop"
+)
 
 var (
 	// ErrUnknownType indicates an error with Unknown info.
@@ -36,7 +40,7 @@ var (
 	ErrProtoType = errors.New("invalid transport protocol type")
 
 	// ErrClosed indicates the agent is closed
-	ErrClosed = errors.New("the agent is closed")
+	ErrClosed = taskloop.ErrClosed
 
 	// ErrNoCandidatePairs indicates agent does not have a valid candidate pair
 	ErrNoCandidatePairs = errors.New("no candidate pairs available")
