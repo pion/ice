@@ -62,6 +62,12 @@ type handlerNotifier struct {
 }
 
 func (h *handlerNotifier) Close(graceful bool) {
+	if graceful {
+		// if we were closed ungracefully before, we now
+		// want ot wait.
+		defer h.notifiers.Wait()
+	}
+
 	h.Lock()
 
 	select {
@@ -72,10 +78,6 @@ func (h *handlerNotifier) Close(graceful bool) {
 	}
 	close(h.done)
 	h.Unlock()
-
-	if graceful {
-		h.notifiers.Wait()
-	}
 }
 
 func (h *handlerNotifier) EnqueueConnectionState(s ConnectionState) {
