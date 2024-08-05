@@ -861,14 +861,14 @@ func (a *Agent) GracefulClose() error {
 
 func (a *Agent) close(graceful bool) error {
 	// the loop is safe to wait on no matter what
-	err := a.loop.Close()
+	a.loop.Close()
 
 	// but we are in less control of the notifiers, so we will
 	// pass through `graceful`.
 	a.connectionStateNotifier.Close(graceful)
 	a.candidateNotifier.Close(graceful)
 	a.selectedCandidatePairNotifier.Close(graceful)
-	return err
+	return nil
 }
 
 // Remove all candidates. This closes any listening sockets

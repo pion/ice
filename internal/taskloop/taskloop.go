@@ -63,17 +63,15 @@ func (l *Loop) runLoop(onClose func()) {
 
 // Close stops the loop after finishing the execution of the current task.
 // Other pending tasks will not be executed.
-func (l *Loop) Close() error {
+func (l *Loop) Close() {
 	if err := l.Err(); err != nil {
-		return err
+		return
 	}
 
 	l.err.Store(ErrClosed)
 
 	close(l.done)
 	<-l.taskLoopDone
-
-	return nil
 }
 
 // Run serially executes the submitted callback.
