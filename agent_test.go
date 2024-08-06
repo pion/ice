@@ -1847,7 +1847,6 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 	closeNow.Done()
 	closed.Wait()
 
-	// already closed
-	require.Error(t, aAgent.Close())
-	require.Error(t, bAgent.Close())
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
 }

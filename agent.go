@@ -7,6 +7,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -927,6 +928,9 @@ func (a *Agent) GracefulClose() error {
 
 func (a *Agent) close(graceful bool) error {
 	if err := a.ok(); err != nil {
+		if errors.Is(err, ErrClosed) {
+			return nil
+		}
 		return err
 	}
 
