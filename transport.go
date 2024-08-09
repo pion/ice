@@ -74,6 +74,11 @@ func (c *Conn) Read(p []byte) (int, error) {
 	}
 
 	n, err := c.agent.buf.Read(p)
+	pair := c.agent.getSelectedPair()
+	if pair != nil {
+		atomic.AddUint64(&pair.bytesReceived, uint64(n))
+	}
+
 	atomic.AddUint64(&c.bytesReceived, uint64(n))
 	return n, err
 }

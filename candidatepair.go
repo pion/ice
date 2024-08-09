@@ -5,6 +5,7 @@ package ice
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/pion/stun/v2"
 )
@@ -21,6 +22,8 @@ func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair 
 // CandidatePair is a combination of a
 // local and remote candidate
 type CandidatePair struct {
+	bytesReceived            uint64
+	bytesSent                uint64
 	iceRoleControlling       bool
 	Remote                   Candidate
 	Local                    Candidate
@@ -90,7 +93,18 @@ func (p *CandidatePair) priority() uint64 {
 	return (1<<32-1)*min(g, d) + 2*max(g, d) + cmp(g, d)
 }
 
+// BytesSent returns the number of bytes sent
+func (p *CandidatePair) BytesSent() uint64 {
+	return atomic.LoadUint64(&p.bytesSent)
+}
+
+// BytesReceived returns the number of bytes received
+func (p *CandidatePair) BytesReceived() uint64 {
+	return atomic.LoadUint64(&p.bytesReceived)
+}
+
 func (p *CandidatePair) Write(b []byte) (int, error) {
+	atomic.AddUint64(&p.bytesSent, uint64(len(b)))
 	return p.Local.writeTo(b, p.Remote)
 }
 

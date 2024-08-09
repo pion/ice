@@ -22,8 +22,8 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 				Nominated:         cp.nominated,
 				// PacketsSent uint32
 				// PacketsReceived uint32
-				// BytesSent uint64
-				// BytesReceived uint64
+				BytesSent:     cp.BytesSent(),
+				BytesReceived: cp.BytesReceived(),
 				// LastPacketSentTimestamp time.Time
 				// LastPacketReceivedTimestamp time.Time
 				// FirstRequestTimestamp time.Time
