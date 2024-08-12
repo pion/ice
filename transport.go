@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pion/stun/v2"
+	"github.com/pion/stun/v3"
 )
 
 // Dial connects to the remote agent, acting as the controlling ice agent.

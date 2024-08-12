@@ -10,7 +10,7 @@ import (
 	"errors"
 	"time"
 
-	atomicx "github.com/pion/ice/v3/internal/atomic"
+	atomicx "github.com/pion/ice/v4/internal/atomic"
 )
 
 // ErrClosed indicates that the loop has been stopped

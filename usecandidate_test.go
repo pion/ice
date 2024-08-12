@@ -6,7 +6,7 @@ package ice
 import (
 	"testing"
 
-	"github.com/pion/stun/v2"
+	"github.com/pion/stun/v3"
 )
 
 func TestUseCandidateAttr_AddTo(t *testing.T) {

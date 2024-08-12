@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/stun/v2"
+	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
