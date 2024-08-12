@@ -9,7 +9,7 @@
   <a href="http://gophers.slack.com/messages/pion"><img src="https://img.shields.io/badge/join-us%20on%20slack-gray.svg?longCache=true&logo=slack&colorB=brightgreen" alt="Slack Widget"></a>
   <br>
   <img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/pion/ice/test.yaml">
-  <a href="https://pkg.go.dev/github.com/pion/ice/v3"><img src="https://pkg.go.dev/badge/github.com/pion/ice/v3.svg" alt="Go Reference"></a>
+  <a href="https://pkg.go.dev/github.com/pion/ice/v4"><img src="https://pkg.go.dev/badge/github.com/pion/ice/v4.svg" alt="Go Reference"></a>
   <a href="https://codecov.io/gh/pion/ice"><img src="https://codecov.io/gh/pion/ice/branch/master/graph/badge.svg" alt="Coverage Status"></a>
   <a href="https://goreportcard.com/report/github.com/pion/ice"><img src="https://goreportcard.com/badge/github.com/pion/ice" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
