@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/pion/logging"
-	"github.com/pion/stun/v2"
+	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v3"
 	"github.com/pion/transport/v3/stdnet"
 )

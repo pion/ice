@@ -13,12 +13,12 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/pion/dtls/v2"
-	"github.com/pion/ice/v3/internal/fakenet"
-	stunx "github.com/pion/ice/v3/internal/stun"
+	"github.com/pion/dtls/v3"
+	"github.com/pion/ice/v4/internal/fakenet"
+	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v2"
-	"github.com/pion/turn/v3"
+	"github.com/pion/stun/v3"
+	"github.com/pion/turn/v4"
 )
 
 // Close a net.Conn and log if we have a failure
@@ -680,11 +680,16 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 					return
 				}
 
-				conn, connectErr := dtls.ClientWithContext(ctx, udpConn, &dtls.Config{
+				conn, connectErr := dtls.Client(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(), &dtls.Config{
 					ServerName:         url.Host,
 					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
 				})
 				if connectErr != nil {
+					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
+					return
+				}
+
+				if connectErr = conn.HandshakeContext(ctx); connectErr != nil {
 					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
 					return
 				}

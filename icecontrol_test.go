@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pion/stun/v2"
+	"github.com/pion/stun/v3"
 )
 
 func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
