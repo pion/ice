@@ -11,6 +11,7 @@ require (
 	github.com/pion/stun/v2 v2.0.0
 	github.com/pion/transport/v3 v3.0.7
 	github.com/pion/turn/v3 v3.0.3
+	github.com/pion/turn/v4 v4.0.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/net v0.27.0
 )
