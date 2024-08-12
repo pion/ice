@@ -24,6 +24,8 @@ func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair 
 type CandidatePair struct {
 	bytesReceived            uint64
 	bytesSent                uint64
+	packetsReceived          uint32
+	packetsSent              uint32
 	iceRoleControlling       bool
 	Remote                   Candidate
 	Local                    Candidate
@@ -101,6 +103,16 @@ func (p *CandidatePair) BytesSent() uint64 {
 // BytesReceived returns the number of bytes received
 func (p *CandidatePair) BytesReceived() uint64 {
 	return atomic.LoadUint64(&p.bytesReceived)
+}
+
+// PacketsSent returns the number of bytes sent
+func (p *CandidatePair) PacketsSent() uint32 {
+	return atomic.LoadUint32(&p.packetsSent)
+}
+
+// PacketsReceived returns the number of bytes received
+func (p *CandidatePair) PacketsReceived() uint32 {
+	return atomic.LoadUint32(&p.packetsReceived)
 }
 
 func (p *CandidatePair) Write(b []byte) (int, error) {

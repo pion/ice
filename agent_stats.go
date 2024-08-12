@@ -20,10 +20,10 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 				RemoteCandidateID: cp.Remote.ID(),
 				State:             cp.state,
 				Nominated:         cp.nominated,
-				// PacketsSent uint32
-				// PacketsReceived uint32
-				BytesSent:     cp.BytesSent(),
-				BytesReceived: cp.BytesReceived(),
+				PacketsSent:       cp.PacketsSent(),
+				PacketsReceived:   cp.PacketsReceived(),
+				BytesSent:         cp.BytesSent(),
+				BytesReceived:     cp.BytesReceived(),
 				// LastPacketSentTimestamp time.Time
 				// LastPacketReceivedTimestamp time.Time
 				// FirstRequestTimestamp time.Time

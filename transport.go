@@ -27,9 +27,12 @@ func (a *Agent) Accept(ctx context.Context, remoteUfrag, remotePwd string) (*Con
 // Conn represents the ICE connection.
 // At the moment the lifetime of the Conn is equal to the Agent.
 type Conn struct {
-	bytesReceived uint64
-	bytesSent     uint64
-	agent         *Agent
+	bytesReceived   uint64
+	bytesSent       uint64
+	packetsReceived uint32
+	packetsSent     uint32
+	//selectedCandidatePairChanges uint32
+	agent *Agent
 }
 
 // BytesSent returns the number of bytes sent
@@ -40,6 +43,16 @@ func (c *Conn) BytesSent() uint64 {
 // BytesReceived returns the number of bytes received
 func (c *Conn) BytesReceived() uint64 {
 	return atomic.LoadUint64(&c.bytesReceived)
+}
+
+// PacketsSent returns the number of bytes sent
+func (c *Conn) PacketsSent() uint32 {
+	return atomic.LoadUint32(&c.packetsSent)
+}
+
+// PacketsReceived returns the number of bytes received
+func (c *Conn) PacketsReceived() uint32 {
+	return atomic.LoadUint32(&c.packetsReceived)
 }
 
 func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, remotePwd string) (*Conn, error) {
@@ -74,11 +87,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 	}
 
 	n, err := c.agent.buf.Read(p)
-	pair := c.agent.getSelectedPair()
-	if pair != nil {
-		atomic.AddUint64(&pair.bytesReceived, uint64(n))
-	}
-
+	atomic.AddUint32(&c.packetsReceived, uint32(1))
 	atomic.AddUint64(&c.bytesReceived, uint64(n))
 	return n, err
 }
@@ -106,7 +115,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 			return 0, err
 		}
 	}
-
+	atomic.AddUint32(&c.packetsSent, uint32(1))
 	atomic.AddUint64(&c.bytesSent, uint64(len(p)))
 	return pair.Write(p)
 }
