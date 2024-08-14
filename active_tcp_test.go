@@ -7,8 +7,10 @@
 package ice
 
 import (
+	"fmt"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -215,4 +217,68 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	connect(aAgent, bAgent)
 
 	<-isConnected
+}
+
+// Assert that we ignore remote TCP candidates when running a UDP Only Agent
+func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 5).Stop()
+
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	_, port, err := net.SplitHostPort(tcpListener.Addr().String())
+	require.NoError(t, err)
+
+	var incomingTCPCount uint64
+	go func() {
+		for {
+			conn, listenErr := tcpListener.Accept()
+			if listenErr != nil {
+				return
+			}
+
+			require.NoError(t, conn.Close())
+			atomic.AddUint64(&incomingTCPCount, ^uint64(0))
+		}
+	}()
+
+	cfg := &AgentConfig{
+		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+		InterfaceFilter: problematicNetworkInterfaces,
+		IncludeLoopback: true,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, aAgent.Close())
+	}()
+
+	bAgent, err := NewAgent(cfg)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, bAgent.Close())
+	}()
+
+	isConnected := make(chan interface{})
+	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateConnected {
+			close(isConnected)
+		}
+	})
+	require.NoError(t, err)
+
+	invalidCandidate, err := UnmarshalCandidate(fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port))
+	require.NoError(t, err)
+	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
+	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
+
+	connect(aAgent, bAgent)
+
+	<-isConnected
+	require.NoError(t, tcpListener.Close())
+	require.Equal(t, uint64(0), atomic.LoadUint64(&incomingTCPCount))
 }
