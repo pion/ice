@@ -244,7 +244,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	}()
 
 	cfg := &AgentConfig{
-		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6},
 		InterfaceFilter: problematicNetworkInterfaces,
 		IncludeLoopback: true,
 	}

@@ -704,14 +704,17 @@ func (a *Agent) addRemoteCandidate(c Candidate) {
 		}
 	}
 
-	tcpNetworkTypeFound := false
-	for _, networkType := range a.networkTypes {
-		if networkType.IsTCP() {
-			tcpNetworkTypeFound = true
+	acceptRemotePassiveTCPCandidate := false
+	// Assert that TCP4 or TCP6 is a enabled NetworkType locally
+	if !a.disableActiveTCP && c.TCPType() == TCPTypePassive {
+		for _, networkType := range a.networkTypes {
+			if c.NetworkType() == networkType {
+				acceptRemotePassiveTCPCandidate = true
+			}
 		}
 	}
 
-	if !a.disableActiveTCP && tcpNetworkTypeFound && c.TCPType() == TCPTypePassive {
+	if acceptRemotePassiveTCPCandidate {
 		a.addRemotePassiveTCPCandidate(c)
 	}
 
