@@ -66,13 +66,13 @@ func (p *CandidatePair) priority() uint64 {
 
 	// Just implement these here rather
 	// than fooling around with the math package
-	min := func(x, y uint32) uint64 {
+	localMin := func(x, y uint32) uint64 {
 		if x < y {
 			return uint64(x)
 		}
 		return uint64(y)
 	}
-	max := func(x, y uint32) uint64 {
+	localMax := func(x, y uint32) uint64 {
 		if x > y {
 			return uint64(x)
 		}
@@ -87,7 +87,7 @@ func (p *CandidatePair) priority() uint64 {
 
 	// 1<<32 overflows uint32; and if both g && d are
 	// maxUint32, this result would overflow uint64
-	return (1<<32-1)*min(g, d) + 2*max(g, d) + cmp(g, d)
+	return (1<<32-1)*localMin(g, d) + 2*localMax(g, d) + cmp(g, d)
 }
 
 func (p *CandidatePair) Write(b []byte) (int, error) {

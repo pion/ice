@@ -270,7 +270,7 @@ func (config *AgentConfig) initWithDefaults(a *Agent) {
 		a.checkInterval = *config.CheckInterval
 	}
 
-	if config.CandidateTypes == nil || len(config.CandidateTypes) == 0 {
+	if len(config.CandidateTypes) == 0 {
 		a.candidateTypes = defaultCandidateTypes()
 	} else {
 		a.candidateTypes = config.CandidateTypes
