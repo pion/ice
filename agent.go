@@ -267,7 +267,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit
 		return nil, ErrLiteUsingNonHostCandidates
 	}
 
-	if config.Urls != nil && len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
+	if len(config.Urls) > 0 && !containsCandidateType(CandidateTypeServerReflexive, a.candidateTypes) && !containsCandidateType(CandidateTypeRelay, a.candidateTypes) {
 		a.closeMulticastConn()
 		return nil, ErrUselessUrlsProvided
 	}
