@@ -12,7 +12,7 @@ require (
 	github.com/pion/transport/v3 v3.0.7
 	github.com/pion/turn/v4 v4.0.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/net v0.27.0
+	golang.org/x/net v0.28.0
 )
 
 require (
