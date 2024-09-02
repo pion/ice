@@ -91,7 +91,7 @@ type AgentConfig struct {
 
 	// KeepaliveInterval determines how often should we send ICE
 	// keepalives (should be less then connectiontimeout above)
-	// when this is nil, it defaults to 10 seconds.
+	// when this is nil, it defaults to 2 seconds.
 	// A keepalive interval of 0 means we never send keepalive packets
 	KeepaliveInterval *time.Duration
 
