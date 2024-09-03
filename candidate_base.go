@@ -287,6 +287,12 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 		c.addRemoteCandidateCache(remoteCandidate, srcAddr)
 	}
 
+	pair := a.getSelectedPair()
+	if pair != nil && pair.Local.ID() == c.id {
+		atomic.AddUint64(&pair.bytesReceived, uint64(len(buf)))
+		atomic.AddUint32(&pair.packetsReceived, uint32(1))
+	}
+
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
 	if _, err := a.buf.Write(buf); err != nil {
 		a.log.Warnf("Failed to write packet: %s", err)
@@ -334,6 +340,8 @@ func (c *candidateBase) close() error {
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	n, err := c.conn.WriteTo(raw, dst.addr())
 	if err != nil {
+		//packetsDiscardedOnSend
+		//bytesDiscardedOnSend
 		// If the connection is closed, we should return the error
 		if errors.Is(err, io.ErrClosedPipe) {
 			return n, err
@@ -342,6 +350,10 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 		return n, nil
 	}
 	c.seen(true)
+	pair := c.agent().getSelectedPair()
+	if pair != nil && pair.Local.ID() == c.id {
+		atomic.AddUint32(&pair.packetsSent, uint32(1))
+	}
 	return n, nil
 }
 

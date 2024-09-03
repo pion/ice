@@ -29,6 +29,7 @@ func (a *Agent) onSelectedCandidatePairChange(p *CandidatePair) {
 	if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok {
 		h(p.Local, p.Remote)
 	}
+	//add to the counter for conn.selectedCandidatePairChanges
 }
 
 func (a *Agent) onCandidate(c Candidate) {
