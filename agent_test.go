@@ -705,6 +705,10 @@ func TestCandidatePairStats(t *testing.T) {
 	p := a.findPair(hostLocal, prflxRemote)
 	p.state = CandidatePairStateFailed
 
+	for i := 0; i < 10; i++ {
+		p.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
+	}
+
 	stats := a.GetCandidatePairsStats()
 	if len(stats) != 4 {
 		t.Fatal("expected 4 candidate pairs stats")
@@ -749,6 +753,23 @@ func TestCandidatePairStats(t *testing.T) {
 	if prflxPairStat.State != CandidatePairStateFailed {
 		t.Fatalf("expected host-prflx pair to have state failed, it has state %s instead",
 			prflxPairStat.State.String())
+	}
+
+	expectedCurrentRoundTripTime := time.Duration(10) * time.Second
+	if prflxPairStat.CurrentRoundTripTime != expectedCurrentRoundTripTime.Seconds() {
+		t.Fatalf("expected current round trip time to be %f, it is %f instead",
+			expectedCurrentRoundTripTime.Seconds(), prflxPairStat.CurrentRoundTripTime)
+	}
+
+	expectedTotalRoundTripTime := time.Duration(55) * time.Second
+	if prflxPairStat.TotalRoundTripTime != expectedTotalRoundTripTime.Seconds() {
+		t.Fatalf("expected total round trip time to be %f, it is %f instead",
+			expectedTotalRoundTripTime.Seconds(), prflxPairStat.TotalRoundTripTime)
+	}
+
+	if prflxPairStat.ResponsesReceived != 10 {
+		t.Fatalf("expected responses received to be 10, it is %d instead",
+			prflxPairStat.ResponsesReceived)
 	}
 
 	assert.NoError(t, a.Close())
