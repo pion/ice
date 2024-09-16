@@ -5,6 +5,8 @@ package ice
 
 import (
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/pion/stun/v3"
 )
@@ -28,6 +30,11 @@ type CandidatePair struct {
 	state                    CandidatePairState
 	nominated                bool
 	nominateOnBindingSuccess bool
+
+	// stats
+	currentRoundTripTime atomic.Pointer[time.Duration]
+	totalRoundTripTime   atomic.Pointer[time.Duration]
+	responsesReceived    uint64
 }
 
 func (p *CandidatePair) String() string {
@@ -99,4 +106,47 @@ func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
 	if err != nil {
 		a.log.Tracef("Failed to send STUN message: %s", err)
 	}
+}
+
+// UpdateRoundTripTime sets the current round time of this pair and
+// accumulates total round trip time and responses received
+func (p *CandidatePair) UpdateRoundTripTime(rtt time.Duration) {
+	p.currentRoundTripTime.Store(&rtt)
+
+	prevTotalRoundTripTime := p.totalRoundTripTime.Load()
+	totalRoundTripTime := rtt
+	if prevTotalRoundTripTime != nil {
+		totalRoundTripTime += *prevTotalRoundTripTime
+	}
+	p.totalRoundTripTime.CompareAndSwap(prevTotalRoundTripTime, &totalRoundTripTime)
+
+	atomic.AddUint64(&p.responsesReceived, 1)
+}
+
+// CurrentRoundTripTime returns the current round trip time in seconds
+// https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-currentroundtriptime
+func (p *CandidatePair) CurrentRoundTripTime() float64 {
+	crtt := p.currentRoundTripTime.Load()
+	if crtt != nil {
+		return crtt.Seconds()
+	}
+
+	return 0
+}
+
+// TotalRoundTripTime returns the current round trip time in seconds
+// https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-totalroundtriptime
+func (p *CandidatePair) TotalRoundTripTime() float64 {
+	trtt := p.totalRoundTripTime.Load()
+	if trtt != nil {
+		return trtt.Seconds()
+	}
+
+	return 0
+}
+
+// ResponsesReceived returns the total number of connectivity responses received
+// https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-responsesreceived
+func (p *CandidatePair) ResponsesReceived() uint64 {
+	return atomic.LoadUint64(&p.responsesReceived)
 }
