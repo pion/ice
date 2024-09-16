@@ -32,8 +32,8 @@ type CandidatePair struct {
 	nominateOnBindingSuccess bool
 
 	// stats
-	currentRoundTripTime atomic.Pointer[time.Duration]
-	totalRoundTripTime   atomic.Pointer[time.Duration]
+	currentRoundTripTime int64 // in ns
+	totalRoundTripTime   int64 // in ns
 	responsesReceived    uint64
 }
 
@@ -111,38 +111,22 @@ func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
 // UpdateRoundTripTime sets the current round time of this pair and
 // accumulates total round trip time and responses received
 func (p *CandidatePair) UpdateRoundTripTime(rtt time.Duration) {
-	p.currentRoundTripTime.Store(&rtt)
-
-	prevTotalRoundTripTime := p.totalRoundTripTime.Load()
-	totalRoundTripTime := rtt
-	if prevTotalRoundTripTime != nil {
-		totalRoundTripTime += *prevTotalRoundTripTime
-	}
-	p.totalRoundTripTime.CompareAndSwap(prevTotalRoundTripTime, &totalRoundTripTime)
-
+	rttNs := rtt.Nanoseconds()
+	atomic.StoreInt64(&p.currentRoundTripTime, rttNs)
+	atomic.AddInt64(&p.totalRoundTripTime, rttNs)
 	atomic.AddUint64(&p.responsesReceived, 1)
 }
 
 // CurrentRoundTripTime returns the current round trip time in seconds
 // https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-currentroundtriptime
 func (p *CandidatePair) CurrentRoundTripTime() float64 {
-	crtt := p.currentRoundTripTime.Load()
-	if crtt != nil {
-		return crtt.Seconds()
-	}
-
-	return 0
+	return time.Duration(atomic.LoadInt64(&p.currentRoundTripTime)).Seconds()
 }
 
 // TotalRoundTripTime returns the current round trip time in seconds
 // https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-totalroundtriptime
 func (p *CandidatePair) TotalRoundTripTime() float64 {
-	trtt := p.totalRoundTripTime.Load()
-	if trtt != nil {
-		return trtt.Seconds()
-	}
-
-	return 0
+	return time.Duration(atomic.LoadInt64(&p.totalRoundTripTime)).Seconds()
 }
 
 // ResponsesReceived returns the total number of connectivity responses received
