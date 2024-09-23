@@ -8,7 +8,7 @@ package ice
 
 import (
 	"crypto/rand"
-	"crypto/sha1" //nolint:gosec
+	"crypto/sha256"
 	"encoding/binary"
 	"net"
 	"sync"
@@ -216,12 +216,12 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 	for written := 0; written < targetSize; {
 		buf := make([]byte, receiveMTU)
 		// Byte 0-4: sequence
-		// Bytes 4-24: sha1 checksum
-		// Bytes2 4-mtu: random data
-		_, err := rand.Read(buf[24:])
+		// Bytes 4-36: sha256 checksum
+		// Bytes2 36-mtu: random data
+		_, err := rand.Read(buf[36:])
 		require.NoError(t, err)
-		h := sha1.Sum(buf[24:]) //nolint:gosec
-		copy(buf[4:24], h[:])
+		h := sha256.Sum256(buf[36:])
+		copy(buf[4:36], h[:])
 		binary.LittleEndian.PutUint32(buf[0:4], uint32(sequence))
 
 		_, err = remoteConn.Write(buf)
@@ -240,8 +240,8 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
 	readSeq := binary.LittleEndian.Uint32(b[0:4])
 	require.Equal(t, nextSeq, readSeq)
-	h := sha1.Sum(b[24:]) //nolint:gosec
-	require.Equal(t, h[:], b[4:24])
+	h := sha256.Sum256(b[36:])
+	require.Equal(t, h[:], b[4:36])
 }
 
 func TestUDPMux_Agent_Restart(t *testing.T) {
