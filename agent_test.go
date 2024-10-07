@@ -621,9 +621,8 @@ func TestInvalidGather(t *testing.T) {
 	})
 }
 
-func TestCandidatePairStats(t *testing.T) {
-	report := test.CheckRoutines(t)
-	defer report()
+func TestCandidatePairsStats(t *testing.T) {
+	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
@@ -773,6 +772,89 @@ func TestCandidatePairStats(t *testing.T) {
 	}
 
 	assert.NoError(t, a.Close())
+}
+
+func TestSelectedCandidatePairStats(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	// Avoid deadlocks?
+	defer test.TimeOut(1 * time.Second).Stop()
+
+	a, err := NewAgent(&AgentConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create agent: %s", err)
+	}
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
+
+	hostConfig := &CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      19216,
+		Component: 1,
+	}
+	hostLocal, err := NewCandidateHost(hostConfig)
+	if err != nil {
+		t.Fatalf("Failed to construct local host candidate: %s", err)
+	}
+
+	srflxConfig := &CandidateServerReflexiveConfig{
+		Network:   "udp",
+		Address:   "10.10.10.2",
+		Port:      19218,
+		Component: 1,
+		RelAddr:   "4.3.2.1",
+		RelPort:   43212,
+	}
+	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
+	if err != nil {
+		t.Fatalf("Failed to construct remote srflx candidate: %s", err)
+	}
+
+	// no selected pair, should return not available
+	_, ok := a.GetSelectedCandidatePairStats()
+	require.False(t, ok)
+
+	// add pair and populate some RTT stats
+	p := a.findPair(hostLocal, srflxRemote)
+	if p == nil {
+		a.addPair(hostLocal, srflxRemote)
+		p = a.findPair(hostLocal, srflxRemote)
+	}
+	for i := 0; i < 10; i++ {
+		p.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
+	}
+
+	// set the pair as selected
+	a.setSelectedPair(p)
+
+	stats, ok := a.GetSelectedCandidatePairStats()
+	require.True(t, ok)
+
+	if stats.LocalCandidateID != hostLocal.ID() {
+		t.Fatal("invalid local candidate id")
+	}
+	if stats.RemoteCandidateID != srflxRemote.ID() {
+		t.Fatal("invalid remote candidate id")
+	}
+
+	expectedCurrentRoundTripTime := time.Duration(10) * time.Second
+	if stats.CurrentRoundTripTime != expectedCurrentRoundTripTime.Seconds() {
+		t.Fatalf("expected current round trip time to be %f, it is %f instead",
+			expectedCurrentRoundTripTime.Seconds(), stats.CurrentRoundTripTime)
+	}
+
+	expectedTotalRoundTripTime := time.Duration(55) * time.Second
+	if stats.TotalRoundTripTime != expectedTotalRoundTripTime.Seconds() {
+		t.Fatalf("expected total round trip time to be %f, it is %f instead",
+			expectedTotalRoundTripTime.Seconds(), stats.TotalRoundTripTime)
+	}
+
+	if stats.ResponsesReceived != 10 {
+		t.Fatalf("expected responses received to be 10, it is %d instead",
+			stats.ResponsesReceived)
+	}
 }
 
 func TestLocalCandidateStats(t *testing.T) {
