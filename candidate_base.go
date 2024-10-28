@@ -12,6 +12,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -212,6 +213,12 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 	go c.recvLoop(initializedCh)
 }
 
+var bufferPool = sync.Pool{ // nolint:gochecknoglobals
+	New: func() interface{} {
+		return make([]byte, receiveMTU)
+	},
+}
+
 func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	a := c.agent()
 
@@ -223,7 +230,13 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 		return
 	}
 
-	buf := make([]byte, receiveMTU)
+	bufferPoolBuffer := bufferPool.Get()
+	defer bufferPool.Put(bufferPoolBuffer)
+	buf, ok := bufferPoolBuffer.([]byte)
+	if !ok {
+		return
+	}
+
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
