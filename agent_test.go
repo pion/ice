@@ -1806,101 +1806,155 @@ func TestAcceptAggressiveNomination(t *testing.T) {
 
 	assert.NoError(t, wan.Start())
 
-	aNotifier, aConnected := onConnected()
-	bNotifier, bConnected := onConnected()
-
-	KeepaliveInterval := time.Hour
-	cfg0 := &AgentConfig{
-		NetworkTypes:     []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net0,
-
-		KeepaliveInterval:          &KeepaliveInterval,
-		CheckInterval:              &KeepaliveInterval,
-		AcceptAggressiveNomination: true,
+	testCases := []struct {
+		name                            string
+		isLite                          bool
+		enableUseCandidateCheckPriority bool
+		useHigherPriority               bool
+		isExpectedToSwitch              bool
+	}{
+		{"should accept higher priority - full agent", false, false, true, true},
+		{"should not accept lower priority - full agent", false, false, false, false},
+		{"should accept higher priority - no use-candidate priority check - lite agent", true, false, true, true},
+		{"should accept lower priority - no use-candidate priority check - lite agent", true, false, false, true},
+		{"should accept higher priority - use-candidate priority check - lite agent", true, true, true, true},
+		{"should not accept lower priority - use-candidate priority check - lite agent", true, true, false, false},
 	}
 
-	var aAgent, bAgent *Agent
-	aAgent, err = NewAgent(cfg0)
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			aNotifier, aConnected := onConnected()
+			bNotifier, bConnected := onConnected()
 
-	cfg1 := &AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		Net:               net1,
-		KeepaliveInterval: &KeepaliveInterval,
-		CheckInterval:     &KeepaliveInterval,
-	}
+			KeepaliveInterval := time.Hour
+			cfg0 := &AgentConfig{
+				NetworkTypes:                    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				MulticastDNSMode:                MulticastDNSModeDisabled,
+				Net:                             net0,
+				KeepaliveInterval:               &KeepaliveInterval,
+				CheckInterval:                   &KeepaliveInterval,
+				Lite:                            tc.isLite,
+				EnableUseCandidateCheckPriority: tc.enableUseCandidateCheckPriority,
+			}
+			if tc.isLite {
+				cfg0.CandidateTypes = []CandidateType{CandidateTypeHost}
+			}
 
-	bAgent, err = NewAgent(cfg1)
-	require.NoError(t, err)
-	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+			var aAgent, bAgent *Agent
+			aAgent, err = NewAgent(cfg0)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, aAgent.Close())
+			}()
+			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-	aConn, bConn := connect(aAgent, bAgent)
+			cfg1 := &AgentConfig{
+				NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
+				MulticastDNSMode:  MulticastDNSModeDisabled,
+				Net:               net1,
+				KeepaliveInterval: &KeepaliveInterval,
+				CheckInterval:     &KeepaliveInterval,
+			}
 
-	// Ensure pair selected
-	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
-	<-aConnected
-	<-bConnected
+			bAgent, err = NewAgent(cfg1)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, bAgent.Close())
+			}()
+			require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	// Send new USE-CANDIDATE message with higher priority to update the selected pair
-	buildMsg := func(class stun.MessageClass, username, key string, priority uint32) *stun.Message {
-		msg, err1 := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
-			stun.NewUsername(username),
-			stun.NewShortTermIntegrity(key),
-			UseCandidate(),
-			PriorityAttr(priority),
-			stun.Fingerprint,
-		)
-		if err1 != nil {
-			t.Fatal(err1)
-		}
+			aConn, bConn := connect(aAgent, bAgent)
 
-		return msg
-	}
+			// Ensure pair selected
+			// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
+			<-aConnected
+			<-bConnected
 
-	selectedCh := make(chan Candidate, 1)
-	var expectNewSelectedCandidate Candidate
-	err = aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
-		selectedCh <- remote
-	})
-	require.NoError(t, err)
-	var bcandidates []Candidate
-	bcandidates, err = bAgent.GetLocalCandidates()
-	require.NoError(t, err)
+			// Send new USE-CANDIDATE message with priority to update the selected pair
+			buildMsg := func(class stun.MessageClass, username, key string, priority uint32) *stun.Message {
+				msg, err1 := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
+					stun.NewUsername(username),
+					stun.NewShortTermIntegrity(key),
+					UseCandidate(),
+					PriorityAttr(priority),
+					stun.Fingerprint,
+				)
+				require.NoError(t, err1)
 
-	for _, c := range bcandidates {
-		if c != bAgent.getSelectedPair().Local {
-			if expectNewSelectedCandidate == nil {
-			incr_priority:
-				for _, candidates := range aAgent.remoteCandidates {
-					for _, candidate := range candidates {
-						if candidate.Equal(c) {
-							candidate.(*CandidateHost).priorityOverride += 1000 //nolint:forcetypeassert
-							break incr_priority
+				return msg
+			}
+
+			selectedCh := make(chan Candidate, 1)
+			var expectNewSelectedCandidate Candidate
+			err = aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
+				selectedCh <- remote
+			})
+			require.NoError(t, err)
+			var bcandidates []Candidate
+			bcandidates, err = bAgent.GetLocalCandidates()
+			require.NoError(t, err)
+
+			for _, c := range bcandidates {
+				if c != bAgent.getSelectedPair().Local {
+					if expectNewSelectedCandidate == nil {
+					expected_change_priority:
+						for _, candidates := range aAgent.remoteCandidates {
+							for _, candidate := range candidates {
+								if candidate.Equal(c) {
+									if tc.useHigherPriority {
+										candidate.(*CandidateHost).priorityOverride += 1000 //nolint:forcetypeassert
+									} else {
+										candidate.(*CandidateHost).priorityOverride -= 1000 //nolint:forcetypeassert
+									}
+									break expected_change_priority
+								}
+							}
+						}
+						if tc.isExpectedToSwitch {
+							expectNewSelectedCandidate = c
+						} else {
+							expectNewSelectedCandidate = aAgent.getSelectedPair().Remote
+						}
+					} else {
+						// a smaller change for other candidates other the new expected one
+					change_priority:
+						for _, candidates := range aAgent.remoteCandidates {
+							for _, candidate := range candidates {
+								if candidate.Equal(c) {
+									if tc.useHigherPriority {
+										candidate.(*CandidateHost).priorityOverride += 500 //nolint:forcetypeassert
+									} else {
+										candidate.(*CandidateHost).priorityOverride -= 500 //nolint:forcetypeassert
+									}
+									break change_priority
+								}
+							}
 						}
 					}
+					_, err = c.writeTo(buildMsg(stun.ClassRequest, aAgent.localUfrag+":"+aAgent.remoteUfrag, aAgent.localPwd, c.Priority()).Raw, bAgent.getSelectedPair().Remote)
+					require.NoError(t, err)
 				}
-				expectNewSelectedCandidate = c
 			}
-			_, err = c.writeTo(buildMsg(stun.ClassRequest, aAgent.localUfrag+":"+aAgent.remoteUfrag, aAgent.localPwd, c.Priority()).Raw, bAgent.getSelectedPair().Remote)
-			require.NoError(t, err)
-		}
-	}
 
-	time.Sleep(1 * time.Second)
-	select {
-	case selected := <-selectedCh:
-		assert.True(t, selected.Equal(expectNewSelectedCandidate))
-	default:
-		t.Fatal("No selected candidate pair")
+			time.Sleep(1 * time.Second)
+			select {
+			case selected := <-selectedCh:
+				require.True(t, selected.Equal(expectNewSelectedCandidate))
+			default:
+				if !tc.isExpectedToSwitch {
+					require.True(t, aAgent.getSelectedPair().Remote.Equal(expectNewSelectedCandidate))
+				} else {
+					t.Fatal("No selected candidate pair")
+				}
+			}
+
+			if !closePipe(t, aConn, bConn) {
+				return
+			}
+		})
 	}
 
 	assert.NoError(t, wan.Stop())
-	if !closePipe(t, aConn, bConn) {
-		return
-	}
 }
 
 // Close can deadlock but GracefulClose must not
