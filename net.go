@@ -39,8 +39,8 @@ func isZeros(ip net.IP) bool {
 //nolint:gocognit
 func localInterfaces(
 	n transport.Net,
-	interfaceFilter func(string) bool,
-	ipFilter func(net.IP) bool,
+	interfaceFilter func(string) (keep bool),
+	ipFilter func(net.IP) (keep bool),
 	networkTypes []NetworkType,
 	includeLoopback bool,
 ) ([]*transport.Interface, []netip.Addr, error) {
