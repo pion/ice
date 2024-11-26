@@ -138,8 +138,8 @@ type Agent struct {
 	udpMux      UDPMux
 	udpMuxSrflx UniversalUDPMux
 
-	interfaceFilter func(string) bool
-	ipFilter        func(net.IP) bool
+	interfaceFilter func(string) (keep bool)
+	ipFilter        func(net.IP) (keep bool)
 	includeLoopback bool
 
 	insecureSkipVerify bool

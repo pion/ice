@@ -387,7 +387,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	t.Run("InterfaceFilter should exclude the interface", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
-			InterfaceFilter: func(interfaceName string) bool {
+			InterfaceFilter: func(interfaceName string) (keep bool) {
 				require.Equal(t, "eth0", interfaceName)
 				return false
 			},
@@ -408,7 +408,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
-			IPFilter: func(ip net.IP) bool {
+			IPFilter: func(ip net.IP) (keep bool) {
 				require.Equal(t, net.IP{1, 2, 3, 1}, ip)
 				return false
 			},
@@ -429,7 +429,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
 		a, err := NewAgent(&AgentConfig{
 			Net: nw,
-			InterfaceFilter: func(interfaceName string) bool {
+			InterfaceFilter: func(interfaceName string) (keep bool) {
 				require.Equal(t, "eth0", interfaceName)
 				return true
 			},

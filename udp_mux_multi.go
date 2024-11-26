@@ -141,8 +141,8 @@ type UDPMuxFromPortOption interface {
 }
 
 type multiUDPMuxFromPortParam struct {
-	ifFilter        func(string) bool
-	ipFilter        func(ip net.IP) bool
+	ifFilter        func(string) (keep bool)
+	ipFilter        func(ip net.IP) (keep bool)
 	networks        []NetworkType
 	readBufferSize  int
 	writeBufferSize int
@@ -160,7 +160,7 @@ func (o *udpMuxFromPortOption) apply(p *multiUDPMuxFromPortParam) {
 }
 
 // UDPMuxFromPortWithInterfaceFilter set the filter to filter out interfaces that should not be used
-func UDPMuxFromPortWithInterfaceFilter(f func(string) bool) UDPMuxFromPortOption {
+func UDPMuxFromPortWithInterfaceFilter(f func(string) (keep bool)) UDPMuxFromPortOption {
 	return &udpMuxFromPortOption{
 		f: func(p *multiUDPMuxFromPortParam) {
 			p.ifFilter = f
@@ -169,7 +169,7 @@ func UDPMuxFromPortWithInterfaceFilter(f func(string) bool) UDPMuxFromPortOption
 }
 
 // UDPMuxFromPortWithIPFilter set the filter to filter out IP addresses that should not be used
-func UDPMuxFromPortWithIPFilter(f func(ip net.IP) bool) UDPMuxFromPortOption {
+func UDPMuxFromPortWithIPFilter(f func(ip net.IP) (keep bool)) UDPMuxFromPortOption {
 	return &udpMuxFromPortOption{
 		f: func(p *multiUDPMuxFromPortParam) {
 			p.ipFilter = f

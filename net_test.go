@@ -45,7 +45,7 @@ func TestCreateAddr(t *testing.T) {
 	require.Equal(t, &net.TCPAddr{IP: ipv6.AsSlice(), Port: port}, createAddr(NetworkTypeTCP6, ipv6, port))
 }
 
-func problematicNetworkInterfaces(s string) bool {
+func problematicNetworkInterfaces(s string) (keep bool) {
 	defaultDockerBridgeNetwork := strings.Contains(s, "docker")
 	customDockerBridgeNetwork := strings.Contains(s, "br-")
 
