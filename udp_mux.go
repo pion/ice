@@ -26,6 +26,10 @@ type UDPMux interface {
 	GetListenAddresses() []net.Addr
 }
 
+type UDPMuxSink interface {
+	InspectDroppedPacket(data []byte, addr *net.UDPAddr)
+}
+
 // UDPMuxDefault is an implementation of the interface
 type UDPMuxDefault struct {
 	params UDPMuxParams
@@ -58,6 +62,8 @@ type UDPMuxParams struct {
 	// in case a un UDPConn is passed which does not
 	// bind to a specific local address.
 	Net transport.Net
+	// Dropped packets are inspected by the Sink
+	Sink UDPMuxSink
 }
 
 // NewUDPMuxDefault creates an implementation of UDPMux
@@ -343,6 +349,10 @@ func (m *UDPMuxDefault) connWorker() {
 		}
 
 		if destinationConn == nil {
+			// If sink is enabled the packet is inspected before being dropped
+			if m.params.Sink != nil {
+				m.params.Sink.InspectDroppedPacket(buf[:n], netUDPAddr)
+			}
 			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.addr, addr)
 			continue
 		}
