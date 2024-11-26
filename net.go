@@ -137,8 +137,13 @@ func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, p
 	portStart := globalMathRandomGenerator.Intn(j-i+1) + i
 	portCurrent := portStart
 	for {
-		lAddr = &net.UDPAddr{IP: lAddr.IP, Port: portCurrent}
-		c, e := n.ListenUDP(network, lAddr)
+		addr := &net.UDPAddr{
+			IP:   lAddr.IP,
+			Zone: lAddr.Zone,
+			Port: portCurrent,
+		}
+
+		c, e := n.ListenUDP(network, addr)
 		if e == nil {
 			return c, e //nolint:nilerr
 		}
