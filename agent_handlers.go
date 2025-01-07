@@ -26,19 +26,19 @@ func (a *Agent) OnCandidate(f func(Candidate)) error {
 }
 
 func (a *Agent) onSelectedCandidatePairChange(p *CandidatePair) {
-	if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok {
+	if h, ok := a.onSelectedCandidatePairChangeHdlr.Load().(func(Candidate, Candidate)); ok && h != nil {
 		h(p.Local, p.Remote)
 	}
 }
 
 func (a *Agent) onCandidate(c Candidate) {
-	if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok {
+	if onCandidateHdlr, ok := a.onCandidateHdlr.Load().(func(Candidate)); ok && onCandidateHdlr != nil {
 		onCandidateHdlr(c)
 	}
 }
 
 func (a *Agent) onConnectionStateChange(s ConnectionState) {
-	if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok {
+	if hdlr, ok := a.onConnectionStateChangeHdlr.Load().(func(ConnectionState)); ok && hdlr != nil {
 		hdlr(s)
 	}
 }
