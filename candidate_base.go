@@ -402,7 +402,7 @@ func (c *candidateBase) Equal(other Candidate) bool {
 		if c.addr() == nil || other.addr() == nil {
 			return false
 		}
-		if c.addr().String() != other.addr().String() {
+		if !addrEqual(c.addr(), other.addr()) {
 			return false
 		}
 	}
