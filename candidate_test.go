@@ -274,6 +274,19 @@ func mustCandidateHost(conf *CandidateHostConfig) Candidate {
 	return cand
 }
 
+func mustCandidateHostWithExtensions(t *testing.T, conf *CandidateHostConfig, extensions []CandidateExtension) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateHost(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	cand.setExtensions(extensions)
+
+	return cand
+}
+
 func mustCandidateRelay(conf *CandidateRelayConfig) Candidate {
 	cand, err := NewCandidateRelay(conf)
 	if err != nil {
@@ -282,11 +295,50 @@ func mustCandidateRelay(conf *CandidateRelayConfig) Candidate {
 	return cand
 }
 
+func mustCandidateRelayWithExtensions(t *testing.T, conf *CandidateRelayConfig, extensions []CandidateExtension) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateRelay(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	cand.setExtensions(extensions)
+
+	return cand
+}
+
 func mustCandidateServerReflexive(conf *CandidateServerReflexiveConfig) Candidate {
 	cand, err := NewCandidateServerReflexive(conf)
 	if err != nil {
 		panic(err)
 	}
+	return cand
+}
+
+func mustCandidateServerReflexiveWithExtensions(t *testing.T, conf *CandidateServerReflexiveConfig, extensions []CandidateExtension) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateServerReflexive(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	cand.setExtensions(extensions)
+
+	return cand
+}
+
+func mustCandidatePeerReflexiveWithExtensions(t *testing.T, conf *CandidatePeerReflexiveConfig, extensions []CandidateExtension) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidatePeerReflexive(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	cand.setExtensions(extensions)
+
 	return cand
 }
 
@@ -325,6 +377,25 @@ func TestCandidateMarshal(t *testing.T) {
 				RelPort: 53991,
 			}),
 			"647372371 1 udp 1694498815 191.228.238.68 53991 typ srflx raddr 192.168.0.274 rport 53991",
+			false,
+		},
+		{
+			mustCandidatePeerReflexiveWithExtensions(
+				t,
+				&CandidatePeerReflexiveConfig{
+					Network: NetworkTypeTCP4.String(),
+					Address: "192.0.2.15",
+					Port:    50000,
+					RelAddr: "10.0.0.1",
+					RelPort: 12345,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "2"},
+					{"network-cost", "10"},
+				},
+			),
+			"4207374052 1 tcp 1685790463 192.0.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 generation 0 network-id 2 network-cost 10",
 			false,
 		},
 		{
@@ -368,6 +439,28 @@ func TestCandidateMarshal(t *testing.T) {
 			" 1 udp 500 " + localhostIPStr + " 80 typ host",
 			false,
 		},
+		{
+			mustCandidateHost(&CandidateHostConfig{
+				Network:    NetworkTypeUDP4.String(),
+				Address:    localhostIPStr,
+				Port:       80,
+				Priority:   500,
+				Foundation: "+/3713fhi",
+			}),
+			"+/3713fhi 1 udp 500 " + localhostIPStr + " 80 typ host",
+			false,
+		},
+		{
+			mustCandidateHost(&CandidateHostConfig{
+				Network:    NetworkTypeTCP4.String(),
+				Address:    "172.28.142.173",
+				Port:       7686,
+				Priority:   1671430143,
+				Foundation: "+/3713fhi",
+			}),
+			"3359356140 1 tcp 1671430143 172.28.142.173 7686 typ host",
+			false,
+		},
 
 		// Invalid candidates
 		{nil, "", true},
@@ -382,11 +475,52 @@ func TestCandidateMarshal(t *testing.T) {
 		{nil, "4207374051 INVALID udp 2130706431 10.0.75.1 INVALID typ host", true},
 		{nil, "4207374051 1 udp 2130706431 10.0.75.1 53634 typ INVALID", true},
 		{nil, "4207374051 1 INVALID 2130706431 10.0.75.1 53634 typ host", true},
+		{nil, "4207374051 1 INVALID 2130706431 10.0.75.1 53634 typ", true},
+		{nil, "4207374051 1 INVALID 2130706431 10.0.75.1 53634", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.^^1 5000 typ relay raddr 192.168.0.1 rport 5001", true},
+		{nil, "4207374052 1 tcp 1685790463 192.0#.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 rport 5001", true},
+		{nil, "647372371 1 udp 1694498815 191.228.2@338.68 53991 typ srflx raddr 192.168.0.274 rport 53991", true},
+		// invalid foundion; longer than 32 characters
+		{nil, "111111111111111111111111111111111 1 udp 500 " + localhostIPStr + " 80 typ host", true},
+		// Invalid ice-char
+		{nil, "3$3 1 udp 500 " + localhostIPStr + " 80 typ host", true},
+		// invalid component; longer than 5 digits
+		{nil, "4207374051 123456 udp 500 " + localhostIPStr + " 0 typ host", true},
+		// invalid priority; longer than 10 digits
+		{nil, "4207374051 99999 udp 12345678910 " + localhostIPStr + " 99999 typ host", true},
+		// invalid port;
+		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 65536 typ host", true},
+		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 999999 typ host", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 999999", true},
+
+		// bad byte-string in extension value
+		{nil, "750 1 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host ext valu\nu", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 654 ext valu\nu", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 654 ext valu\000e", true},
+
+		// bad byte-string in extension key
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 654 ext\r value", true},
+
+		// invalid tcptype
+		{nil, "1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype INVALID", true},
+
+		// expect rport after raddr
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 extension 322", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1", true},
+		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr", true},
+		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 80 typ", true},
+		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 80", true},
+		{nil, "4207374051 99999 udp 500 " + localhostIPStr, true},
+		{nil, "4207374051 99999 udp 500 ", true},
+		{nil, "4207374051 99999 udp", true},
+		{nil, "4207374051 99999", true},
+		{nil, "4207374051", true},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
 			actualCandidate, err := UnmarshalCandidate(test.marshaled)
 			if test.expectError {
-				require.Error(t, err)
+				require.Error(t, err, "expected error", test.marshaled)
 				return
 			}
 
@@ -465,4 +599,636 @@ func TestMarshalUnmarshalCandidateWithZoneID(t *testing.T) {
 	candidate2, err = UnmarshalCandidate(candidateWithZoneIDStr2)
 	require.NoError(t, err)
 	require.Truef(t, candidate.Equal(candidate2), "%s != %s", candidate.String(), candidate2.String())
+}
+
+func TestCandidateExtensionsMarshal(t *testing.T) {
+	testCases := []struct {
+		Extensions []CandidateExtension
+		candidate  string
+	}{
+		{
+			[]CandidateExtension{
+				{"generation", "0"},
+				{"ufrag", "QNvE"},
+				{"network-id", "4"},
+			},
+			"1299692247 1 udp 2122134271 fdc8:cc8:c835:e400:343c:feb:32c8:17b9 58240 typ host generation 0 ufrag QNvE network-id 4",
+		},
+		{
+			[]CandidateExtension{
+				{"generation", "1"},
+				{"network-id", "2"},
+				{"network-cost", "50"},
+			},
+			"647372371 1 udp 1694498815 191.228.238.68 53991 typ srflx raddr 192.168.0.274 rport 53991 generation 1 network-id 2 network-cost 50",
+		},
+		{
+			[]CandidateExtension{
+				{"generation", "0"},
+				{"network-id", "2"},
+				{"network-cost", "10"},
+			},
+			"4207374052 1 tcp 1685790463 192.0.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 generation 0 network-id 2 network-cost 10",
+		},
+		{
+			[]CandidateExtension{
+				{"generation", "0"},
+				{"network-id", "1"},
+				{"network-cost", "20"},
+				{"ufrag", "frag42abcdef"},
+				{"password", "abc123exp123"},
+			},
+			"848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 5001 generation 0 network-id 1 network-cost 20 ufrag frag42abcdef password abc123exp123",
+		},
+		{
+			[]CandidateExtension{
+				{"tcptype", "active"},
+				{"generation", "0"},
+			},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active generation 0",
+		},
+		{
+			[]CandidateExtension{
+				{"tcptype", "active"},
+				{"generation", "0"},
+			},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active generation 0",
+		},
+		{
+			[]CandidateExtension{},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host",
+		},
+		{
+			[]CandidateExtension{},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host",
+		},
+	}
+
+	for _, tc := range testCases {
+		candidate, err := UnmarshalCandidate(tc.candidate)
+		require.NoError(t, err)
+		require.Equal(t, tc.Extensions, candidate.Extensions(), "Extensions should be equal", tc.candidate)
+
+		valueStr := candidate.Marshal()
+		candidate2, err := UnmarshalCandidate(valueStr)
+
+		require.NoError(t, err)
+		require.Equal(t, tc.Extensions, candidate2.Extensions(), "Marshal() should preserve extensions")
+	}
+}
+
+func TestCandidateExtensionsDeepEqual(t *testing.T) {
+	noExt, err := UnmarshalCandidate("750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host")
+	require.NoError(t, err)
+
+	generation := "0"
+	ufrag := "QNvE"
+	networkID := "4"
+
+	extensions := []CandidateExtension{
+		{"generation", generation},
+		{"ufrag", ufrag},
+		{"network-id", networkID},
+	}
+
+	candidate, err := UnmarshalCandidate(
+		"750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host generation " +
+			generation + " ufrag " + ufrag + " network-id " + networkID,
+	)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		a     Candidate
+		b     Candidate
+		equal bool
+	}{
+		{
+			mustCandidateHost(&CandidateHostConfig{
+				Network:    NetworkTypeUDP4.String(),
+				Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+				Port:       53987,
+				Priority:   500,
+				Foundation: "750",
+			}),
+			noExt,
+			true,
+		},
+		{
+			mustCandidateHostWithExtensions(
+				t,
+				&CandidateHostConfig{
+					Network:    NetworkTypeUDP4.String(),
+					Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+					Port:       53987,
+					Priority:   500,
+					Foundation: "750",
+				},
+				[]CandidateExtension{},
+			),
+			noExt,
+			true,
+		},
+		{
+			mustCandidateHostWithExtensions(
+				t,
+				&CandidateHostConfig{
+					Network:    NetworkTypeUDP4.String(),
+					Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+					Port:       53987,
+					Priority:   500,
+					Foundation: "750",
+				},
+				extensions,
+			),
+			candidate,
+			true,
+		},
+		{
+			mustCandidateRelayWithExtensions(
+				t,
+				&CandidateRelayConfig{
+					Network: NetworkTypeUDP4.String(),
+					Address: "10.0.0.10",
+					Port:    5000,
+					RelAddr: "10.0.0.2",
+					RelPort: 5001,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "1"},
+				},
+			),
+			mustCandidateRelayWithExtensions(
+				t,
+				&CandidateRelayConfig{
+					Network: NetworkTypeUDP4.String(),
+					Address: "10.0.0.10",
+					Port:    5000,
+					RelAddr: "10.0.0.2",
+					RelPort: 5001,
+				},
+				[]CandidateExtension{
+					{"network-id", "1"},
+					{"generation", "0"},
+				},
+			),
+			true,
+		},
+		{
+			mustCandidatePeerReflexiveWithExtensions(
+				t,
+				&CandidatePeerReflexiveConfig{
+					Network: NetworkTypeTCP4.String(),
+					Address: "192.0.2.15",
+					Port:    50000,
+					RelAddr: "10.0.0.1",
+					RelPort: 12345,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "2"},
+					{"network-cost", "10"},
+				},
+			),
+			mustCandidatePeerReflexiveWithExtensions(
+				t,
+				&CandidatePeerReflexiveConfig{
+					Network: NetworkTypeTCP4.String(),
+					Address: "192.0.2.15",
+					Port:    50000,
+					RelAddr: "10.0.0.1",
+					RelPort: 12345,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "2"},
+					{"network-cost", "10"},
+				},
+			),
+			true,
+		},
+		{
+			mustCandidateServerReflexiveWithExtensions(
+				t,
+				&CandidateServerReflexiveConfig{
+					Network: NetworkTypeUDP4.String(),
+					Address: "191.228.238.68",
+					Port:    53991,
+					RelAddr: "192.168.0.274",
+					RelPort: 53991,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "2"},
+					{"network-cost", "10"},
+				},
+			),
+			mustCandidateServerReflexiveWithExtensions(
+				t,
+				&CandidateServerReflexiveConfig{
+					Network: NetworkTypeUDP4.String(),
+					Address: "191.228.238.68",
+					Port:    53991,
+					RelAddr: "192.168.0.274",
+					RelPort: 53991,
+				},
+				[]CandidateExtension{
+					{"generation", "0"},
+					{"network-id", "2"},
+					{"network-cost", "10"},
+				},
+			),
+			true,
+		},
+		{
+			mustCandidateHostWithExtensions(
+				t,
+				&CandidateHostConfig{
+					Network:    NetworkTypeUDP4.String(),
+					Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+					Port:       53987,
+					Priority:   500,
+					Foundation: "750",
+				},
+				[]CandidateExtension{
+					{"generation", "5"},
+					{"ufrag", ufrag},
+					{"network-id", networkID},
+				},
+			),
+			candidate,
+			false,
+		},
+		{
+			mustCandidateHostWithExtensions(
+				t,
+				&CandidateHostConfig{
+					Network:    NetworkTypeTCP4.String(),
+					Address:    "192.168.0.196",
+					Port:       0,
+					Priority:   2128609279,
+					Foundation: "1052353102",
+					TCPType:    TCPTypeActive,
+				},
+				[]CandidateExtension{
+					{"tcptype", TCPTypeActive.String()},
+					{"generation", "0"},
+				},
+			),
+			mustCandidateHostWithExtensions(
+				t,
+				&CandidateHostConfig{
+					Network:    NetworkTypeTCP4.String(),
+					Address:    "192.168.0.197",
+					Port:       0,
+					Priority:   2128609279,
+					Foundation: "1052353102",
+					TCPType:    TCPTypeActive,
+				},
+				[]CandidateExtension{
+					{"tcptype", TCPTypeActive.String()},
+					{"generation", "0"},
+				},
+			),
+			false,
+		},
+	}
+
+	for _, tc := range testCases {
+		require.Equal(t, tc.a.DeepEqual(tc.b), tc.equal, "a: %s, b: %s", tc.a.Marshal(), tc.b.Marshal())
+	}
+}
+
+func TestUnmarshalCandidateExtensions(t *testing.T) {
+	testCases := []struct {
+		name     string
+		value    string
+		expected []CandidateExtension
+		fail     bool
+	}{
+		{
+			name:     "empty string",
+			value:    "",
+			expected: []CandidateExtension{},
+			fail:     false,
+		},
+		{
+			name:     "valid extension string",
+			value:    "a b c d",
+			expected: []CandidateExtension{{"a", "b"}, {"c", "d"}},
+			fail:     false,
+		},
+		{
+			name:  "valid extension string",
+			value: "a b empty  c d",
+			expected: []CandidateExtension{
+				{"a", "b"},
+				{"empty", ""},
+				{"c", "d"},
+			},
+			fail: false,
+		},
+		{
+			name:     "invalid extension string",
+			value:    "invalid",
+			expected: []CandidateExtension{},
+			fail:     true,
+		},
+		{
+			name:     "invalid extension",
+			value:    " a b",
+			expected: []CandidateExtension{{"a", "b"}, {"c", "d"}},
+			fail:     true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			req := require.New(t)
+
+			actual, _, err := unmarshalCandidateExtensions(testCase.value)
+			if testCase.fail {
+				req.Error(err)
+			} else {
+				req.NoError(err)
+				req.EqualValuesf(
+					testCase.expected,
+					actual,
+					"UnmarshalCandidateExtensions() did not return the expected value %v",
+					testCase.value,
+				)
+			}
+		})
+	}
+}
+
+func TestCandidateGetExtension(t *testing.T) {
+	t.Run("Get extension", func(t *testing.T) {
+		extensions := []CandidateExtension{
+			{"a", "b"},
+			{"c", "d"},
+		}
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		candidate.setExtensions(extensions)
+
+		value, ok := candidate.GetExtension("c")
+		require.True(t, ok)
+		require.Equal(t, "c", value.Key)
+		require.Equal(t, "d", value.Value)
+
+		value, ok = candidate.GetExtension("a")
+		require.True(t, ok)
+		require.Equal(t, "a", value.Key)
+		require.Equal(t, "b", value.Value)
+
+		value, ok = candidate.GetExtension("b")
+		require.False(t, ok)
+		require.Equal(t, "b", value.Key)
+		require.Equal(t, "", value.Value)
+	})
+
+	// This is undefined behavior in the spec; extension-att-name is not unique
+	// but it implied that it's unique in the implementation
+	t.Run("Extension with multiple values", func(t *testing.T) {
+		extensions := []CandidateExtension{
+			{"a", "1"},
+			{"a", "2"},
+		}
+
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		candidate.setExtensions(extensions)
+
+		value, ok := candidate.GetExtension("a")
+		require.True(t, ok)
+		require.Equal(t, "a", value.Key)
+		require.Equal(t, "1", value.Value)
+	})
+
+	t.Run("TCPType extension", func(t *testing.T) {
+		extensions := []CandidateExtension{
+			{"tcptype", "passive"},
+		}
+
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeTCP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+			TCPType:    TCPTypeActive,
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		tcpType, ok := candidate.GetExtension("tcptype")
+
+		require.True(t, ok)
+		require.Equal(t, "tcptype", tcpType.Key)
+		require.Equal(t, TCPTypeActive.String(), tcpType.Value)
+
+		candidate.setExtensions(extensions)
+
+		tcpType, ok = candidate.GetExtension("tcptype")
+
+		require.True(t, ok)
+		require.Equal(t, "tcptype", tcpType.Key)
+		require.Equal(t, "passive", tcpType.Value)
+
+		candidate2, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeTCP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		tcpType, ok = candidate2.GetExtension("tcptype")
+
+		require.False(t, ok)
+		require.Equal(t, "tcptype", tcpType.Key)
+		require.Equal(t, "", tcpType.Value)
+	})
+}
+
+func TestBaseCandidateMarshalExtensions(t *testing.T) {
+	t.Run("Marshal extension", func(t *testing.T) {
+		extensions := []CandidateExtension{
+			{"generation", "0"},
+			{"ValuE", "KeE"},
+			{"empty", ""},
+			{"another", "value"},
+		}
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		candidate.setExtensions(extensions)
+
+		value := candidate.marshalExtensions()
+		require.Equal(t, "generation 0 ValuE KeE empty  another value", value)
+	})
+
+	t.Run("Marshal Empty", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		value := candidate.marshalExtensions()
+		require.Equal(t, "", value)
+	})
+
+	t.Run("Marshal TCPType no extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+			TCPType:    TCPTypeActive,
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		value := candidate.marshalExtensions()
+		require.Equal(t, "tcptype active", value)
+	})
+}
+
+func TestBaseCandidateExtensionsEqual(t *testing.T) {
+	testCases := []struct {
+		name        string
+		extensions1 []CandidateExtension
+		extensions2 []CandidateExtension
+		expected    bool
+	}{
+		{
+			name:        "Empty extensions",
+			extensions1: []CandidateExtension{},
+			extensions2: []CandidateExtension{},
+			expected:    true,
+		},
+		{
+			name:        "Single value extensions",
+			extensions1: []CandidateExtension{{"a", "b"}},
+			extensions2: []CandidateExtension{{"a", "b"}},
+			expected:    true,
+		},
+		{
+			name: "multiple value extensions",
+			extensions1: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			extensions2: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			expected: true,
+		},
+		{
+			name: "unsorted extensions",
+			extensions1: []CandidateExtension{
+				{"c", "d"},
+				{"a", "b"},
+			},
+			extensions2: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			expected: true,
+		},
+		{
+			name: "different values",
+			extensions1: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			extensions2: []CandidateExtension{
+				{"a", "b"},
+				{"c", "e"},
+			},
+			expected: false,
+		},
+		{
+			name: "different size",
+			extensions1: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			extensions2: []CandidateExtension{
+				{"a", "b"},
+			},
+			expected: false,
+		},
+		{
+			name: "different keys",
+			extensions1: []CandidateExtension{
+				{"a", "b"},
+				{"c", "d"},
+			},
+			extensions2: []CandidateExtension{
+				{"a", "b"},
+				{"e", "d"},
+			},
+			expected: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			cand, err := NewCandidateHost(&CandidateHostConfig{
+				Network:    NetworkTypeUDP4.String(),
+				Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+				Port:       53987,
+				Priority:   500,
+				Foundation: "750",
+			})
+			if err != nil {
+				t.Error(err)
+			}
+
+			cand.setExtensions(testCase.extensions1)
+
+			require.Equal(t, testCase.expected, cand.extensionsEqual(testCase.extensions2))
+		})
+	}
 }

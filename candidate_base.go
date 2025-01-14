@@ -45,6 +45,7 @@ type candidateBase struct {
 
 	remoteCandidateCaches map[AddrPort]Candidate
 	isLocationTracked     bool
+	extensions            []CandidateExtension
 }
 
 // Done implements context.Context
@@ -406,12 +407,18 @@ func (c *candidateBase) Equal(other Candidate) bool {
 			return false
 		}
 	}
+
 	return c.NetworkType() == other.NetworkType() &&
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
 		c.TCPType() == other.TCPType() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
+}
+
+// DeepEqual is same as Equal but also compares the extensions
+func (c *candidateBase) DeepEqual(other Candidate) bool {
+	return c.Equal(other) && c.extensionsEqual(other.Extensions())
 }
 
 // String makes the candidateBase printable
@@ -496,10 +503,6 @@ func (c *candidateBase) Marshal() string {
 		c.Port(),
 		c.Type())
 
-	if c.tcpType != TCPTypeUnspecified {
-		val += fmt.Sprintf(" tcptype %s", c.tcpType.String())
-	}
-
 	if r := c.RelatedAddress(); r != nil && r.Address != "" && r.Port != 0 {
 		val = fmt.Sprintf("%s raddr %s rport %d",
 			val,
@@ -507,92 +510,468 @@ func (c *candidateBase) Marshal() string {
 			r.Port)
 	}
 
+	extensions := c.marshalExtensions()
+
+	if extensions != "" {
+		val = fmt.Sprintf("%s %s", val, extensions)
+	}
+
 	return val
 }
 
-// UnmarshalCandidate creates a Candidate from its string representation
-func UnmarshalCandidate(raw string) (Candidate, error) {
-	split := strings.Fields(raw)
-	// Foundation not specified: not RFC 8445 compliant but seen in the wild
-	if len(raw) != 0 && raw[0] == ' ' {
-		split = append([]string{" "}, split...)
+// CandidateExtension represents a single candidate extension
+// as defined in https://tools.ietf.org/html/rfc5245#section-15.1
+// .
+type CandidateExtension struct {
+	Key   string
+	Value string
+}
+
+func (c *candidateBase) Extensions() []CandidateExtension {
+	// IF Extensions were not parsed using UnmarshalCandidate
+	// For backwards compatibility when the TCPType is set manually
+	if len(c.extensions) == 0 && c.TCPType() != TCPTypeUnspecified {
+		return []CandidateExtension{{
+			Key:   "tcptype",
+			Value: c.TCPType().String(),
+		}}
 	}
-	if len(split) < 8 {
-		return nil, fmt.Errorf("%w (%d)", errAttributeTooShortICECandidate, len(split))
-	}
 
-	// Foundation
-	foundation := split[0]
+	extensions := make([]CandidateExtension, len(c.extensions))
+	copy(extensions, c.extensions)
 
-	// Component
-	rawComponent, err := strconv.ParseUint(split[1], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParseComponent, err) //nolint:errorlint
-	}
-	component := uint16(rawComponent)
+	return extensions
+}
 
-	// Protocol
-	protocol := split[2]
+// Get returns the value of the given key if it exists.
+func (c *candidateBase) GetExtension(key string) (CandidateExtension, bool) {
+	extension := CandidateExtension{Key: key}
 
-	// Priority
-	priorityRaw, err := strconv.ParseUint(split[3], 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParsePriority, err) //nolint:errorlint
-	}
-	priority := uint32(priorityRaw)
+	for i := range c.extensions {
+		if c.extensions[i].Key == key {
+			extension.Value = c.extensions[i].Value
 
-	// Address
-	address := removeZoneIDFromAddress(split[4])
-
-	// Port
-	rawPort, err := strconv.ParseUint(split[5], 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errParsePort, err) //nolint:errorlint
-	}
-	port := int(rawPort)
-	typ := split[7]
-
-	relatedAddress := ""
-	relatedPort := 0
-	tcpType := TCPTypeUnspecified
-
-	if len(split) > 8 {
-		split = split[8:]
-
-		if split[0] == "raddr" {
-			if len(split) < 4 {
-				return nil, fmt.Errorf("%w: incorrect length", errParseRelatedAddr)
-			}
-
-			// RelatedAddress
-			relatedAddress = split[1]
-
-			// RelatedPort
-			rawRelatedPort, parseErr := strconv.ParseUint(split[3], 10, 16)
-			if parseErr != nil {
-				return nil, fmt.Errorf("%w: %v", errParsePort, parseErr) //nolint:errorlint
-			}
-			relatedPort = int(rawRelatedPort)
-		} else if split[0] == "tcptype" {
-			if len(split) < 2 {
-				return nil, fmt.Errorf("%w: incorrect length", errParseTCPType)
-			}
-
-			tcpType = NewTCPType(split[1])
+			return extension, true
 		}
 	}
 
-	switch typ {
-	case "host":
-		return NewCandidateHost(&CandidateHostConfig{"", protocol, address, port, component, priority, foundation, tcpType, false})
-	case "srflx":
-		return NewCandidateServerReflexive(&CandidateServerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
-	case "prflx":
-		return NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort})
-	case "relay":
-		return NewCandidateRelay(&CandidateRelayConfig{"", protocol, address, port, component, priority, foundation, relatedAddress, relatedPort, "", nil})
-	default:
+	// TCPType was manually set.
+	if key == "tcptype" && c.TCPType() != TCPTypeUnspecified {
+		extension.Value = c.TCPType().String()
+
+		return extension, true
 	}
 
-	return nil, fmt.Errorf("%w (%s)", ErrUnknownCandidateTyp, typ)
+	return extension, false
+}
+
+// marshalExtensions returns the string representation of the candidate extensions.
+func (c *candidateBase) marshalExtensions() string {
+	value := ""
+	exts := c.Extensions()
+
+	for i := range exts {
+		if value != "" {
+			value += " "
+		}
+
+		value += exts[i].Key + " " + exts[i].Value
+	}
+
+	return value
+}
+
+// Equal returns true if the candidate extensions are equal.
+func (c *candidateBase) extensionsEqual(other []CandidateExtension) bool {
+	freq1 := make(map[CandidateExtension]int)
+	freq2 := make(map[CandidateExtension]int)
+
+	if len(c.extensions) != len(other) {
+		return false
+	}
+
+	if len(c.extensions) == 0 {
+		return true
+	}
+
+	if len(c.extensions) == 1 {
+		return c.extensions[0] == other[0]
+	}
+
+	for i := range c.extensions {
+		freq1[c.extensions[i]]++
+		freq2[other[i]]++
+	}
+
+	for k, v := range freq1 {
+		if freq2[k] != v {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (c *candidateBase) setExtensions(extensions []CandidateExtension) {
+	c.extensions = extensions
+}
+
+// UnmarshalCandidate Parses a candidate from a string
+// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
+func UnmarshalCandidate(raw string) (Candidate, error) {
+	// rfc5245
+
+	pos := 0
+
+	// foundation ( 1*32ice-char ) But we allow for empty foundation,
+	foundation, pos, err := readCandidateCharToken(raw, pos, 32)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v in %s", errParseFoundation, err, raw) //nolint:errorlint // we wrap the error
+	}
+
+	// Empty foundation, not RFC 8445 compliant but seen in the wild
+	if foundation == "" {
+		foundation = " "
+	}
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected component in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// component-id ( 1*5DIGIT )
+	component, pos, err := readCandidateDigitToken(raw, pos, 5)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v in %s", errParseComponent, err, raw) //nolint:errorlint // we wrap the error
+	}
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected transport in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// transport ( "UDP" / transport-extension ; from RFC 3261 ) SP
+	protocol, pos := readCandidateStringToken(raw, pos)
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected priority in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// priority ( 1*10DIGIT ) SP
+	priority, pos, err := readCandidateDigitToken(raw, pos, 10)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v in %s", errParsePriority, err, raw) //nolint:errorlint // we wrap the error
+	}
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected address in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// connection-address SP     ;from RFC 4566
+	address, pos := readCandidateStringToken(raw, pos)
+
+	// Remove IPv6 ZoneID: https://github.com/pion/ice/pull/704
+	address = removeZoneIDFromAddress(address)
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected port in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// port from RFC 4566
+	port, pos, err := readCandidatePort(raw, pos)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v in %s", errParsePort, err, raw) //nolint:errorlint // we wrap the error
+	}
+
+	// "typ" SP
+	typeKey, pos := readCandidateStringToken(raw, pos)
+	if typeKey != "typ" {
+		return nil, fmt.Errorf("%w (%s)", ErrUnknownCandidateTyp, typeKey)
+	}
+
+	if pos >= len(raw) {
+		return nil, fmt.Errorf("%w: expected candidate type in %s", errAttributeTooShortICECandidate, raw)
+	}
+
+	// SP cand-type ("host" / "srflx" / "prflx" / "relay")
+	typ, pos := readCandidateStringToken(raw, pos)
+
+	raddr, rport, pos, err := tryReadRelativeAddrs(raw, pos)
+	if err != nil {
+		return nil, err
+	}
+
+	tcpType := TCPTypeUnspecified
+	var extensions []CandidateExtension
+	var tcpTypeRaw string
+
+	if pos < len(raw) {
+		extensions, tcpTypeRaw, err = unmarshalCandidateExtensions(raw[pos:])
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", errParseExtension, err) //nolint:errorlint // we wrap the error
+		}
+
+		if tcpTypeRaw != "" {
+			tcpType = NewTCPType(tcpTypeRaw)
+			if tcpType == TCPTypeUnspecified {
+				return nil, fmt.Errorf("%w: invalid or unsupported TCPtype %s", errParseTCPType, tcpTypeRaw)
+			}
+		}
+	}
+
+	// this code is ugly because we can't break backwards compatibility
+	// with the old way of parsing candidates
+	switch typ {
+	case "host":
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			"",
+			protocol,
+			address,
+			port,
+			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
+			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
+			foundation,
+			tcpType,
+			false,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		candidate.setExtensions(extensions)
+
+		return candidate, nil
+	case "srflx":
+		candidate, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
+			"",
+			protocol,
+			address,
+			port,
+			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
+			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
+			foundation,
+			raddr,
+			rport,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		candidate.setExtensions(extensions)
+
+		return candidate, nil
+	case "prflx":
+		candidate, err := NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
+			"",
+			protocol,
+			address,
+			port,
+			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
+			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
+			foundation,
+			raddr,
+			rport,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		candidate.setExtensions(extensions)
+
+		return candidate, nil
+	case "relay":
+		candidate, err := NewCandidateRelay(&CandidateRelayConfig{
+			"",
+			protocol,
+			address,
+			port,
+			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
+			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
+			foundation,
+			raddr,
+			rport,
+			"",
+			nil,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		candidate.setExtensions(extensions)
+
+		return candidate, nil
+	default:
+		return nil, fmt.Errorf("%w (%s)", ErrUnknownCandidateTyp, typ)
+	}
+}
+
+// Read an ice-char token from the raw string
+// ice-char = ALPHA / DIGIT / "+" / "/"
+// stop reading when a space is encountered or the end of the string
+func readCandidateCharToken(raw string, start int, limit int) (string, int, error) {
+	for i, char := range raw[start:] {
+		if char == 0x20 { // SP
+			return raw[start : start+i], start + i + 1, nil
+		}
+
+		if i == limit {
+			return "", 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit) //nolint: err113 // handled by caller
+		}
+
+		if !(char >= 'A' && char <= 'Z' ||
+			char >= 'a' && char <= 'z' ||
+			char >= '0' && char <= '9' ||
+			char == '+' || char == '/') {
+			return "", 0, fmt.Errorf("invalid ice-char token: %c", char) //nolint: err113 // handled by caller
+		}
+	}
+
+	return raw[start:], len(raw), nil
+}
+
+// Read an ice string token from the raw string until a space is encountered
+// Or the end of the string, we imply that ice string are UTF-8 encoded
+func readCandidateStringToken(raw string, start int) (string, int) {
+	for i, char := range raw[start:] {
+		if char == 0x20 { // SP
+			return raw[start : start+i], start + i + 1
+		}
+	}
+
+	return raw[start:], len(raw)
+}
+
+// Read a digit token from the raw string
+// stop reading when a space is encountered or the end of the string
+func readCandidateDigitToken(raw string, start, limit int) (int, int, error) {
+	var val int
+	for i, char := range raw[start:] {
+		if char == 0x20 { // SP
+			return val, start + i + 1, nil
+		}
+
+		if i == limit {
+			return 0, 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit) //nolint: err113 // handled by caller
+		}
+
+		if !(char >= '0' && char <= '9') {
+			return 0, 0, fmt.Errorf("invalid digit token: %c", char) //nolint: err113 // handled by caller
+		}
+
+		val = val*10 + int(char-'0')
+	}
+
+	return val, len(raw), nil
+}
+
+// Read and validate RFC 4566 port from the raw string
+func readCandidatePort(raw string, start int) (int, int, error) {
+	port, pos, err := readCandidateDigitToken(raw, start, 5)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if port > 65535 {
+		return 0, 0, fmt.Errorf("invalid RFC 4566 port %d", port) //nolint: err113 // handled by caller
+	}
+
+	return port, pos, nil
+}
+
+// Read a byte-string token from the raw string
+// As defined in RFC 4566  1*(%x01-09/%x0B-0C/%x0E-FF) ;any byte except NUL, CR, or LF
+// we imply that extensions byte-string are UTF-8 encoded
+func readCandidateByteString(raw string, start int) (string, int, error) {
+	for i, char := range raw[start:] {
+		if char == 0x20 { // SP
+			return raw[start : start+i], start + i + 1, nil
+		}
+
+		// 1*(%x01-09/%x0B-0C/%x0E-FF)
+		if !(char >= 0x01 && char <= 0x09 ||
+			char >= 0x0B && char <= 0x0C ||
+			char >= 0x0E && char <= 0xFF) {
+			return "", 0, fmt.Errorf("invalid byte-string character: %c", char) //nolint: err113 // handled by caller
+		}
+	}
+
+	return raw[start:], len(raw), nil
+}
+
+// Read and validate raddr and rport from the raw string
+// [SP rel-addr] [SP rel-port]
+// defined in https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
+// .
+func tryReadRelativeAddrs(raw string, start int) (raddr string, rport, pos int, err error) {
+	key, pos := readCandidateStringToken(raw, start)
+
+	if key != "raddr" {
+		return "", 0, start, nil
+	}
+
+	if pos >= len(raw) {
+		return "", 0, 0, fmt.Errorf("%w: expected raddr value in %s", errParseRelatedAddr, raw)
+	}
+
+	raddr, pos = readCandidateStringToken(raw, pos)
+
+	if pos >= len(raw) {
+		return "", 0, 0, fmt.Errorf("%w: expected rport in %s", errParseRelatedAddr, raw)
+	}
+
+	key, pos = readCandidateStringToken(raw, pos)
+	if key != "rport" {
+		return "", 0, 0, fmt.Errorf("%w: expected rport in %s", errParseRelatedAddr, raw)
+	}
+
+	if pos >= len(raw) {
+		return "", 0, 0, fmt.Errorf("%w: expected rport value in %s", errParseRelatedAddr, raw)
+	}
+
+	rport, pos, err = readCandidatePort(raw, pos)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("%w: %v", errParseRelatedAddr, err) //nolint:errorlint // we wrap the error
+	}
+
+	return raddr, rport, pos, nil
+}
+
+// UnmarshalCandidateExtensions parses the candidate extensions from the raw string.
+// *(SP extension-att-name SP extension-att-value)
+// Where extension-att-name, and extension-att-value are byte-strings
+// as defined in https://tools.ietf.org/html/rfc5245#section-15.1
+func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, rawTCPTypeRaw string, err error) {
+	extensions = make([]CandidateExtension, 0)
+
+	if raw == "" {
+		return extensions, "", nil
+	}
+
+	if raw[0] == 0x20 { // SP
+		return extensions, "", fmt.Errorf("%w: unexpected space %s", errParseExtension, raw)
+	}
+
+	for i := 0; i < len(raw); {
+		key, next, err := readCandidateByteString(raw, i)
+		if err != nil {
+			return extensions, "", fmt.Errorf("%w: failed to read key %v", errParseExtension, err) //nolint: errorlint // we wrap the error
+		}
+		i = next
+
+		if i >= len(raw) {
+			return extensions, "", fmt.Errorf("%w: missing value for %s in %s", errParseExtension, key, raw)
+		}
+
+		value, next, err := readCandidateByteString(raw, i)
+		if err != nil {
+			return extensions, "", fmt.Errorf("%w: failed to read value %v", errParseExtension, err) //nolint: errorlint // we are wrapping the error
+		}
+		i = next
+
+		if key == "tcptype" {
+			rawTCPTypeRaw = value
+		}
+
+		extensions = append(extensions, CandidateExtension{key, value})
+	}
+
+	return
 }

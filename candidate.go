@@ -52,11 +52,27 @@ type Candidate interface {
 	//  candidate, which is useful for diagnostics and other purposes
 	RelatedAddress() *CandidateRelatedAddress
 
+	// Extensions returns a copy of all extension attributes associated with the ICECandidate.
+	// In the order of insertion, *(key value).
+	// Extension attributes are defined in RFC 5245, Section 15.1:
+	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
+	//.
+	Extensions() []CandidateExtension
+
+	// GetExtension returns the value of the extension attribute associated with the ICECandidate.
+	// Extension attributes are defined in RFC 5245, Section 15.1:
+	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
+	//.
+	GetExtension(key string) (value CandidateExtension, ok bool)
+
 	String() string
 	Type() CandidateType
 	TCPType() TCPType
 
 	Equal(other Candidate) bool
+
+	// DeepEqual same as Equal, But it also compares the candidate extensions.
+	DeepEqual(other Candidate) bool
 
 	Marshal() string
 
