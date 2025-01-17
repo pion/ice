@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUDPMux(t *testing.T) {
+func TestUDPMux(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 30).Stop()
@@ -127,6 +127,8 @@ func TestUDPMux(t *testing.T) {
 }
 
 func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
+	t.Helper()
+
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {
@@ -145,6 +147,8 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 }
 
 func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net.UDPConn, ufrag string) {
+	t.Helper()
+
 	// Initial messages are dropped
 	_, err := remoteConn.Write([]byte("dropped bytes"))
 	require.NoError(t, err)
@@ -222,7 +226,7 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 		require.NoError(t, err)
 		h := sha256.Sum256(buf[36:])
 		copy(buf[4:36], h[:])
-		binary.LittleEndian.PutUint32(buf[0:4], uint32(sequence))
+		binary.LittleEndian.PutUint32(buf[0:4], uint32(sequence)) //nolint:gosec // G115
 
 		_, err = remoteConn.Write(buf)
 		require.NoError(t, err)
@@ -238,6 +242,8 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net
 }
 
 func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
+	t.Helper()
+
 	readSeq := binary.LittleEndian.Uint32(b[0:4])
 	require.Equal(t, nextSeq, readSeq)
 	h := sha256.Sum256(b[36:])

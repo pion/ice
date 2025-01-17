@@ -16,7 +16,7 @@ import (
 const localhostIPStr = "127.0.0.1"
 
 func TestCandidateTypePreference(t *testing.T) {
-	r := require.New(t)
+	req := require.New(t)
 
 	hostDefaultPreference := uint16(126)
 	prflxDefaultPreference := uint16(110)
@@ -53,16 +53,16 @@ func TestCandidateTypePreference(t *testing.T) {
 			}
 
 			if networkType.IsTCP() {
-				r.Equal(hostDefaultPreference-tcpOffset, hostCandidate.TypePreference())
-				r.Equal(prflxDefaultPreference-tcpOffset, prflxCandidate.TypePreference())
-				r.Equal(srflxDefaultPreference-tcpOffset, srflxCandidate.TypePreference())
+				req.Equal(hostDefaultPreference-tcpOffset, hostCandidate.TypePreference())
+				req.Equal(prflxDefaultPreference-tcpOffset, prflxCandidate.TypePreference())
+				req.Equal(srflxDefaultPreference-tcpOffset, srflxCandidate.TypePreference())
 			} else {
-				r.Equal(hostDefaultPreference, hostCandidate.TypePreference())
-				r.Equal(prflxDefaultPreference, prflxCandidate.TypePreference())
-				r.Equal(srflxDefaultPreference, srflxCandidate.TypePreference())
+				req.Equal(hostDefaultPreference, hostCandidate.TypePreference())
+				req.Equal(prflxDefaultPreference, prflxCandidate.TypePreference())
+				req.Equal(srflxDefaultPreference, srflxCandidate.TypePreference())
 			}
 
-			r.Equal(relayDefaultPreference, relayCandidate.TypePreference())
+			req.Equal(relayDefaultPreference, relayCandidate.TypePreference())
 		}
 	}
 }
@@ -266,20 +266,27 @@ func TestCandidateFoundation(t *testing.T) {
 		}).Foundation())
 }
 
-func mustCandidateHost(conf *CandidateHostConfig) Candidate {
-	cand, err := NewCandidateHost(conf)
-	if err != nil {
-		panic(err)
-	}
-	return cand
-}
-
-func mustCandidateHostWithExtensions(t *testing.T, conf *CandidateHostConfig, extensions []CandidateExtension) Candidate {
+func mustCandidateHost(t *testing.T, conf *CandidateHostConfig) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidateHost(conf)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
+	}
+
+	return cand
+}
+
+func mustCandidateHostWithExtensions(
+	t *testing.T,
+	conf *CandidateHostConfig,
+	extensions []CandidateExtension,
+) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateHost(conf)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	cand.setExtensions(extensions)
@@ -287,20 +294,27 @@ func mustCandidateHostWithExtensions(t *testing.T, conf *CandidateHostConfig, ex
 	return cand
 }
 
-func mustCandidateRelay(conf *CandidateRelayConfig) Candidate {
-	cand, err := NewCandidateRelay(conf)
-	if err != nil {
-		panic(err)
-	}
-	return cand
-}
-
-func mustCandidateRelayWithExtensions(t *testing.T, conf *CandidateRelayConfig, extensions []CandidateExtension) Candidate {
+func mustCandidateRelay(t *testing.T, conf *CandidateRelayConfig) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidateRelay(conf)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
+	}
+
+	return cand
+}
+
+func mustCandidateRelayWithExtensions(
+	t *testing.T,
+	conf *CandidateRelayConfig,
+	extensions []CandidateExtension,
+) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateRelay(conf)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	cand.setExtensions(extensions)
@@ -308,20 +322,27 @@ func mustCandidateRelayWithExtensions(t *testing.T, conf *CandidateRelayConfig, 
 	return cand
 }
 
-func mustCandidateServerReflexive(conf *CandidateServerReflexiveConfig) Candidate {
-	cand, err := NewCandidateServerReflexive(conf)
-	if err != nil {
-		panic(err)
-	}
-	return cand
-}
-
-func mustCandidateServerReflexiveWithExtensions(t *testing.T, conf *CandidateServerReflexiveConfig, extensions []CandidateExtension) Candidate {
+func mustCandidateServerReflexive(t *testing.T, conf *CandidateServerReflexiveConfig) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidateServerReflexive(conf)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
+	}
+
+	return cand
+}
+
+func mustCandidateServerReflexiveWithExtensions(
+	t *testing.T,
+	conf *CandidateServerReflexiveConfig,
+	extensions []CandidateExtension,
+) Candidate {
+	t.Helper()
+
+	cand, err := NewCandidateServerReflexive(conf)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	cand.setExtensions(extensions)
@@ -329,12 +350,16 @@ func mustCandidateServerReflexiveWithExtensions(t *testing.T, conf *CandidateSer
 	return cand
 }
 
-func mustCandidatePeerReflexiveWithExtensions(t *testing.T, conf *CandidatePeerReflexiveConfig, extensions []CandidateExtension) Candidate {
+func mustCandidatePeerReflexiveWithExtensions(
+	t *testing.T,
+	conf *CandidatePeerReflexiveConfig,
+	extensions []CandidateExtension,
+) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidatePeerReflexive(conf)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	cand.setExtensions(extensions)
@@ -349,7 +374,7 @@ func TestCandidateMarshal(t *testing.T) {
 		expectError bool
 	}{
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeUDP6.String(),
 				Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
 				Port:       53987,
@@ -360,7 +385,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network: NetworkTypeUDP4.String(),
 				Address: "10.0.75.1",
 				Port:    53634,
@@ -369,7 +394,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateServerReflexive(&CandidateServerReflexiveConfig{
+			mustCandidateServerReflexive(t, &CandidateServerReflexiveConfig{
 				Network: NetworkTypeUDP4.String(),
 				Address: "191.228.238.68",
 				Port:    53991,
@@ -395,11 +420,12 @@ func TestCandidateMarshal(t *testing.T) {
 					{"network-cost", "10"},
 				},
 			),
+			//nolint: lll
 			"4207374052 1 tcp 1685790463 192.0.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 generation 0 network-id 2 network-cost 10",
 			false,
 		},
 		{
-			mustCandidateRelay(&CandidateRelayConfig{
+			mustCandidateRelay(t, &CandidateRelayConfig{
 				Network: NetworkTypeUDP4.String(),
 				Address: "50.0.0.1",
 				Port:    5000,
@@ -410,7 +436,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network: NetworkTypeTCP4.String(),
 				Address: "192.168.0.196",
 				Port:    0,
@@ -420,7 +446,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network: NetworkTypeUDP4.String(),
 				Address: "e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local",
 				Port:    60542,
@@ -429,7 +455,7 @@ func TestCandidateMarshal(t *testing.T) {
 		},
 		// Missing Foundation
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeUDP4.String(),
 				Address:    localhostIPStr,
 				Port:       80,
@@ -440,7 +466,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeUDP4.String(),
 				Address:    localhostIPStr,
 				Port:       80,
@@ -451,7 +477,7 @@ func TestCandidateMarshal(t *testing.T) {
 			false,
 		},
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeTCP4.String(),
 				Address:    "172.28.142.173",
 				Port:       7686,
@@ -467,8 +493,10 @@ func TestCandidateMarshal(t *testing.T) {
 		{nil, "1938809241", true},
 		{nil, "1986380506 99999999 udp 2122063615 10.0.75.1 53634 typ host generation 0 network-id 2", true},
 		{nil, "1986380506 1 udp 99999999999 10.0.75.1 53634 typ host", true},
+		//nolint: lll
 		{nil, "4207374051 1 udp 1685790463 191.228.238.68 99999999 typ srflx raddr 192.168.0.278 rport 53991 generation 0 network-id 3", true},
 		{nil, "4207374051 1 udp 1685790463 191.228.238.68 53991 typ srflx raddr", true},
+		//nolint: lll
 		{nil, "4207374051 1 udp 1685790463 191.228.238.68 53991 typ srflx raddr 192.168.0.278 rport 99999999 generation 0 network-id 3", true},
 		{nil, "4207374051 INVALID udp 2130706431 10.0.75.1 53634 typ host", true},
 		{nil, "4207374051 1 udp INVALID 10.0.75.1 53634 typ host", true},
@@ -521,12 +549,19 @@ func TestCandidateMarshal(t *testing.T) {
 			actualCandidate, err := UnmarshalCandidate(test.marshaled)
 			if test.expectError {
 				require.Error(t, err, "expected error", test.marshaled)
+
 				return
 			}
 
 			require.NoError(t, err)
 
-			require.Truef(t, test.candidate.Equal(actualCandidate), "%s != %s", test.candidate.String(), actualCandidate.String())
+			require.Truef(
+				t,
+				test.candidate.Equal(actualCandidate),
+				"%s != %s",
+				test.candidate.String(),
+				actualCandidate.String(),
+			)
 			require.Equal(t, test.marshaled, actualCandidate.Marshal())
 		})
 	}
@@ -573,7 +608,7 @@ func TestCandidateWriteTo(t *testing.T) {
 }
 
 func TestMarshalUnmarshalCandidateWithZoneID(t *testing.T) {
-	candidateWithZoneID := mustCandidateHost(&CandidateHostConfig{
+	candidateWithZoneID := mustCandidateHost(t, &CandidateHostConfig{
 		Network:    NetworkTypeUDP6.String(),
 		Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a%Local Connection",
 		Port:       53987,
@@ -583,7 +618,7 @@ func TestMarshalUnmarshalCandidateWithZoneID(t *testing.T) {
 	candidateStr := "750 0 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host"
 	require.Equal(t, candidateStr, candidateWithZoneID.Marshal())
 
-	candidate := mustCandidateHost(&CandidateHostConfig{
+	candidate := mustCandidateHost(t, &CandidateHostConfig{
 		Network:    NetworkTypeUDP6.String(),
 		Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
 		Port:       53987,
@@ -612,6 +647,7 @@ func TestCandidateExtensionsMarshal(t *testing.T) {
 				{"ufrag", "QNvE"},
 				{"network-id", "4"},
 			},
+			//nolint: lll
 			"1299692247 1 udp 2122134271 fdc8:cc8:c835:e400:343c:feb:32c8:17b9 58240 typ host generation 0 ufrag QNvE network-id 4",
 		},
 		{
@@ -620,6 +656,7 @@ func TestCandidateExtensionsMarshal(t *testing.T) {
 				{"network-id", "2"},
 				{"network-cost", "50"},
 			},
+			//nolint:lll
 			"647372371 1 udp 1694498815 191.228.238.68 53991 typ srflx raddr 192.168.0.274 rport 53991 generation 1 network-id 2 network-cost 50",
 		},
 		{
@@ -628,6 +665,7 @@ func TestCandidateExtensionsMarshal(t *testing.T) {
 				{"network-id", "2"},
 				{"network-cost", "10"},
 			},
+			//nolint:lll
 			"4207374052 1 tcp 1685790463 192.0.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 generation 0 network-id 2 network-cost 10",
 		},
 		{
@@ -638,6 +676,7 @@ func TestCandidateExtensionsMarshal(t *testing.T) {
 				{"ufrag", "frag42abcdef"},
 				{"password", "abc123exp123"},
 			},
+			//nolint: lll
 			"848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 5001 generation 0 network-id 1 network-cost 20 ufrag frag42abcdef password abc123exp123",
 		},
 		{
@@ -703,7 +742,7 @@ func TestCandidateExtensionsDeepEqual(t *testing.T) {
 		equal bool
 	}{
 		{
-			mustCandidateHost(&CandidateHostConfig{
+			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeUDP4.String(),
 				Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
 				Port:       53987,

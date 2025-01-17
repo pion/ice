@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// GetCandidatePairsStats returns a list of candidate pair stats
+// GetCandidatePairsStats returns a list of candidate pair stats.
 func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 	var res []CandidatePairStats
 	err := a.loop.Run(a.loop, func(_ context.Context) {
@@ -49,13 +49,15 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 	})
 	if err != nil {
 		a.log.Errorf("Failed to get candidate pairs stats: %v", err)
+
 		return []CandidatePairStats{}
 	}
+
 	return res
 }
 
 // GetSelectedCandidatePairStats returns a candidate pair stats for selected candidate pair.
-// Returns false if there is no selected pair
+// Returns false if there is no selected pair.
 func (a *Agent) GetSelectedCandidatePairStats() (CandidatePairStats, bool) {
 	isAvailable := false
 	var res CandidatePairStats
@@ -98,33 +100,34 @@ func (a *Agent) GetSelectedCandidatePairStats() (CandidatePairStats, bool) {
 	})
 	if err != nil {
 		a.log.Errorf("Failed to get selected candidate pair stats: %v", err)
+
 		return CandidatePairStats{}, false
 	}
 
 	return res, isAvailable
 }
 
-// GetLocalCandidatesStats returns a list of local candidates stats
+// GetLocalCandidatesStats returns a list of local candidates stats.
 func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 	var res []CandidateStats
 	err := a.loop.Run(a.loop, func(_ context.Context) {
 		result := make([]CandidateStats, 0, len(a.localCandidates))
 		for networkType, localCandidates := range a.localCandidates {
-			for _, c := range localCandidates {
+			for _, cand := range localCandidates {
 				relayProtocol := ""
-				if c.Type() == CandidateTypeRelay {
-					if cRelay, ok := c.(*CandidateRelay); ok {
+				if cand.Type() == CandidateTypeRelay {
+					if cRelay, ok := cand.(*CandidateRelay); ok {
 						relayProtocol = cRelay.RelayProtocol()
 					}
 				}
 				stat := CandidateStats{
 					Timestamp:     time.Now(),
-					ID:            c.ID(),
+					ID:            cand.ID(),
 					NetworkType:   networkType,
-					IP:            c.Address(),
-					Port:          c.Port(),
-					CandidateType: c.Type(),
-					Priority:      c.Priority(),
+					IP:            cand.Address(),
+					Port:          cand.Port(),
+					CandidateType: cand.Type(),
+					Priority:      cand.Priority(),
 					// URL string
 					RelayProtocol: relayProtocol,
 					// Deleted bool
@@ -136,12 +139,14 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 	})
 	if err != nil {
 		a.log.Errorf("Failed to get candidate pair stats: %v", err)
+
 		return []CandidateStats{}
 	}
+
 	return res
 }
 
-// GetRemoteCandidatesStats returns a list of remote candidates stats
+// GetRemoteCandidatesStats returns a list of remote candidates stats.
 func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	var res []CandidateStats
 	err := a.loop.Run(a.loop, func(_ context.Context) {
@@ -166,7 +171,9 @@ func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
 	})
 	if err != nil {
 		a.log.Errorf("Failed to get candidate pair stats: %v", err)
+
 		return []CandidateStats{}
 	}
+
 	return res
 }

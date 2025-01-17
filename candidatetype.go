@@ -3,10 +3,10 @@
 
 package ice
 
-// CandidateType represents the type of candidate
+// CandidateType represents the type of candidate.
 type CandidateType byte
 
-// CandidateType enum
+// CandidateType enum.
 const (
 	CandidateTypeUnspecified CandidateType = iota
 	CandidateTypeHost
@@ -15,7 +15,7 @@ const (
 	CandidateTypeRelay
 )
 
-// String makes CandidateType printable
+// String makes CandidateType printable.
 func (c CandidateType) String() string {
 	switch c {
 	case CandidateTypeHost:
@@ -29,6 +29,7 @@ func (c CandidateType) String() string {
 	case CandidateTypeUnspecified:
 		return "Unknown candidate type"
 	}
+
 	return "Unknown candidate type"
 }
 
@@ -49,6 +50,7 @@ func (c CandidateType) Preference() uint16 {
 	case CandidateTypeRelay, CandidateTypeUnspecified:
 		return 0
 	}
+
 	return 0
 }
 
@@ -61,5 +63,6 @@ func containsCandidateType(candidateType CandidateType, candidateTypeList []Cand
 			return true
 		}
 	}
+
 	return false
 }

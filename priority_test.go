@@ -12,11 +12,11 @@ import (
 
 func TestPriority_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
-	var p PriorityAttr
-	if err := p.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
+	var priority PriorityAttr
+	if err := priority.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
-	if err := m.Build(stun.BindingRequest, &p); err != nil {
+	if err := m.Build(stun.BindingRequest, &priority); err != nil {
 		t.Error(err)
 	}
 	m1 := new(stun.Message)
@@ -27,7 +27,7 @@ func TestPriority_GetFrom(t *testing.T) { //nolint:dupl
 	if err := p1.GetFrom(m1); err != nil {
 		t.Error(err)
 	}
-	if p1 != p {
+	if p1 != priority {
 		t.Error("not equal")
 	}
 	t.Run("IncorrectSize", func(t *testing.T) {

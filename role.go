@@ -26,6 +26,7 @@ func (r *Role) UnmarshalText(text []byte) error {
 	default:
 		return fmt.Errorf("%w %q", errUnknownRole, text)
 	}
+
 	return nil
 }
 

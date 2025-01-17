@@ -20,8 +20,7 @@ func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair 
 	}
 }
 
-// CandidatePair is a combination of a
-// local and remote candidate
+// CandidatePair is a combination of a local and remote candidate.
 type CandidatePair struct {
 	iceRoleControlling       bool
 	Remote                   Candidate
@@ -42,8 +41,17 @@ func (p *CandidatePair) String() string {
 		return ""
 	}
 
-	return fmt.Sprintf("prio %d (local, prio %d) %s <-> %s (remote, prio %d), state: %s, nominated: %v, nominateOnBindingSuccess: %v",
-		p.priority(), p.Local.Priority(), p.Local, p.Remote, p.Remote.Priority(), p.state, p.nominated, p.nominateOnBindingSuccess)
+	return fmt.Sprintf(
+		"prio %d (local, prio %d) %s <-> %s (remote, prio %d), state: %s, nominated: %v, nominateOnBindingSuccess: %v",
+		p.priority(),
+		p.Local.Priority(),
+		p.Local,
+		p.Remote,
+		p.Remote.Priority(),
+		p.state,
+		p.nominated,
+		p.nominateOnBindingSuccess,
+	)
 }
 
 func (p *CandidatePair) equal(other *CandidatePair) bool {
@@ -53,6 +61,7 @@ func (p *CandidatePair) equal(other *CandidatePair) bool {
 	if p == nil || other == nil {
 		return false
 	}
+
 	return p.Local.Equal(other.Local) && p.Remote.Equal(other.Remote)
 }
 
@@ -60,9 +69,9 @@ func (p *CandidatePair) equal(other *CandidatePair) bool {
 // Let G be the priority for the candidate provided by the controlling
 // agent.  Let D be the priority for the candidate provided by the
 // controlled agent.
-// pair priority = 2^32*MIN(G,D) + 2*MAX(G,D) + (G>D?1:0)
+// pair priority = 2^32*MIN(G,D) + 2*MAX(G,D) + (G>D?1:0).
 func (p *CandidatePair) priority() uint64 {
-	var g, d uint32
+	var g, d uint32 //nolint:varnamelen // clearer to use g and d here
 	if p.iceRoleControlling {
 		g = p.Local.Priority()
 		d = p.Remote.Priority()
@@ -77,18 +86,21 @@ func (p *CandidatePair) priority() uint64 {
 		if x < y {
 			return uint64(x)
 		}
+
 		return uint64(y)
 	}
 	localMax := func(x, y uint32) uint64 {
 		if x > y {
 			return uint64(x)
 		}
+
 		return uint64(y)
 	}
 	cmp := func(x, y uint32) uint64 {
 		if x > y {
 			return uint64(1)
 		}
+
 		return uint64(0)
 	}
 
@@ -109,7 +121,7 @@ func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
 }
 
 // UpdateRoundTripTime sets the current round time of this pair and
-// accumulates total round trip time and responses received
+// accumulates total round trip time and responses received.
 func (p *CandidatePair) UpdateRoundTripTime(rtt time.Duration) {
 	rttNs := rtt.Nanoseconds()
 	atomic.StoreInt64(&p.currentRoundTripTime, rttNs)

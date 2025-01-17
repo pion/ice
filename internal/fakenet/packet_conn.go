@@ -8,18 +8,19 @@ import (
 	"net"
 )
 
-// Compile-time assertion
+// Compile-time assertion.
 var _ net.PacketConn = (*PacketConn)(nil)
 
-// PacketConn wraps a net.Conn and emulates net.PacketConn
+// PacketConn wraps a net.Conn and emulates net.PacketConn.
 type PacketConn struct {
 	net.Conn
 }
 
-// ReadFrom reads a packet from the connection,
+// ReadFrom reads a packet from the connection.
 func (f *PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, err = f.Conn.Read(p)
 	addr = f.Conn.RemoteAddr()
+
 	return
 }
 

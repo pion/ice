@@ -13,6 +13,8 @@ import (
 )
 
 func newHostRemote(t *testing.T) *CandidateHost {
+	t.Helper()
+
 	remoteHostConfig := &CandidateHostConfig{
 		Network:   "udp",
 		Address:   "1.2.3.5",
@@ -21,10 +23,13 @@ func newHostRemote(t *testing.T) *CandidateHost {
 	}
 	hostRemote, err := NewCandidateHost(remoteHostConfig)
 	require.NoError(t, err)
+
 	return hostRemote
 }
 
 func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
+	t.Helper()
+
 	prflxConfig := &CandidatePeerReflexiveConfig{
 		Network:   "udp",
 		Address:   "10.10.10.2",
@@ -35,10 +40,13 @@ func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
 	}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	require.NoError(t, err)
+
 	return prflxRemote
 }
 
 func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
+	t.Helper()
+
 	srflxConfig := &CandidateServerReflexiveConfig{
 		Network:   "udp",
 		Address:   "10.10.10.2",
@@ -49,10 +57,13 @@ func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
 	}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
+
 	return srflxRemote
 }
 
 func newRelayRemote(t *testing.T) *CandidateRelay {
+	t.Helper()
+
 	relayConfig := &CandidateRelayConfig{
 		Network:   "udp",
 		Address:   "1.2.3.4",
@@ -63,10 +74,13 @@ func newRelayRemote(t *testing.T) *CandidateRelay {
 	}
 	relayRemote, err := NewCandidateRelay(relayConfig)
 	require.NoError(t, err)
+
 	return relayRemote
 }
 
 func newHostLocal(t *testing.T) *CandidateHost {
+	t.Helper()
+
 	localHostConfig := &CandidateHostConfig{
 		Network:   "udp",
 		Address:   "192.168.1.1",
@@ -75,5 +89,6 @@ func newHostLocal(t *testing.T) *CandidateHost {
 	}
 	hostLocal, err := NewCandidateHost(localHostConfig)
 	require.NoError(t, err)
+
 	return hostLocal
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/pion/transport/v3/stdnet"
 )
 
-// UDPMux allows multiple connections to go over a single UDP port
+// UDPMux allows multiple connections to go over a single UDP port.
 type UDPMux interface {
 	io.Closer
 	GetConn(ufrag string, addr net.Addr) (net.PacketConn, error)
@@ -26,7 +26,7 @@ type UDPMux interface {
 	GetListenAddresses() []net.Addr
 }
 
-// UDPMuxDefault is an implementation of the interface
+// UDPMuxDefault is an implementation of the interface.
 type UDPMuxDefault struct {
 	params UDPMuxParams
 
@@ -60,14 +60,14 @@ type UDPMuxParams struct {
 	Net transport.Net
 }
 
-// NewUDPMuxDefault creates an implementation of UDPMux
-func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
+// NewUDPMuxDefault creates an implementation of UDPMux.
+func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault { //nolint:cyclop
 	if params.Logger == nil {
 		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
 	}
 
 	var localAddrsForUnspecified []net.Addr
-	if udpAddr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok {
+	if udpAddr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok { //nolint:nestif
 		params.Logger.Errorf("LocalAddr is not a net.UDPAddr, got %T", params.UDPConn.LocalAddr())
 	} else if ok && udpAddr.IP.IsUnspecified() {
 		// For unspecified addresses, the correct behavior is to return errListenUnspecified, but
@@ -109,7 +109,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	}
 	params.UDPConnString = params.UDPConn.LocalAddr().String()
 
-	m := &UDPMuxDefault{
+	mux := &UDPMuxDefault{
 		addressMap: map[ipPort]*udpMuxedConn{},
 		params:     params,
 		connsIPv4:  make(map[string]*udpMuxedConn),
@@ -124,17 +124,17 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		localAddrsForUnspecified: localAddrsForUnspecified,
 	}
 
-	go m.connWorker()
+	go mux.connWorker()
 
-	return m
+	return mux
 }
 
-// LocalAddr returns the listening address of this UDPMuxDefault
+// LocalAddr returns the listening address of this UDPMuxDefault.
 func (m *UDPMuxDefault) LocalAddr() net.Addr {
 	return m.params.UDPConn.LocalAddr()
 }
 
-// GetListenAddresses returns the list of addresses that this mux is listening on
+// GetListenAddresses returns the list of addresses that this mux is listening on.
 func (m *UDPMuxDefault) GetListenAddresses() []net.Addr {
 	if len(m.localAddrsForUnspecified) > 0 {
 		return m.localAddrsForUnspecified
@@ -143,8 +143,8 @@ func (m *UDPMuxDefault) GetListenAddresses() []net.Addr {
 	return []net.Addr{m.LocalAddr()}
 }
 
-// GetConn returns a PacketConn given the connection's ufrag and network address
-// creates the connection if an existing one can't be found
+// GetConn returns a PacketConn given the connection's ufrag and network address.
+// creates the connection if an existing one can't be found.
 func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	// don't check addr for mux using unspecified address
 	if len(m.localAddrsForUnspecified) == 0 && m.params.UDPConnString != addr.String() {
@@ -181,11 +181,11 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 	return c, nil
 }
 
-// RemoveConnByUfrag stops and removes the muxed packet connection
+// RemoveConnByUfrag stops and removes the muxed packet connection.
 func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	removedConns := make([]*udpMuxedConn, 0, 2)
 
-	// Keep lock section small to avoid deadlock with conn lock
+	// Keep lock section small to avoid deadlock with conn lock.
 	m.mu.Lock()
 	if c, ok := m.connsIPv4[ufrag]; ok {
 		delete(m.connsIPv4, ufrag)
@@ -198,7 +198,7 @@ func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	m.mu.Unlock()
 
 	if len(removedConns) == 0 {
-		// No need to lock if no connection was found
+		// No need to lock if no connection was found.
 		return
 	}
 
@@ -213,7 +213,7 @@ func (m *UDPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
-// IsClosed returns true if the mux had been closed
+// IsClosed returns true if the mux had been closed.
 func (m *UDPMuxDefault) IsClosed() bool {
 	select {
 	case <-m.closedChan:
@@ -223,7 +223,7 @@ func (m *UDPMuxDefault) IsClosed() bool {
 	}
 }
 
-// Close the mux, no further connections could be created
+// Close the mux, no further connections could be created.
 func (m *UDPMuxDefault) Close() error {
 	var err error
 	m.closeOnce.Do(func() {
@@ -244,6 +244,7 @@ func (m *UDPMuxDefault) Close() error {
 
 		_ = m.params.UDPConn.Close()
 	})
+
 	return err
 }
 
@@ -276,10 +277,11 @@ func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
 		LocalAddr: m.LocalAddr(),
 		Logger:    m.params.Logger,
 	})
+
 	return c
 }
 
-func (m *UDPMuxDefault) connWorker() {
+func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
 	logger := m.params.Logger
 
 	defer func() {
@@ -304,11 +306,13 @@ func (m *UDPMuxDefault) connWorker() {
 		netUDPAddr, ok := addr.(*net.UDPAddr)
 		if !ok {
 			logger.Errorf("Underlying PacketConn did not return a UDPAddr")
+
 			return
 		}
-		udpAddr, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port))
+		udpAddr, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port)) //nolint:gosec
 		if err != nil {
 			logger.Errorf("Failed to create a new IP/Port host pair")
+
 			return
 		}
 
@@ -325,12 +329,14 @@ func (m *UDPMuxDefault) connWorker() {
 
 			if err = msg.Decode(); err != nil {
 				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
+
 				continue
 			}
 
 			attr, stunAttrErr := msg.Get(stun.AttrUsername)
 			if stunAttrErr != nil {
 				m.params.Logger.Warnf("No Username attribute in STUN message from %s", addr.String())
+
 				continue
 			}
 
@@ -344,6 +350,7 @@ func (m *UDPMuxDefault) connWorker() {
 
 		if destinationConn == nil {
 			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.addr, addr)
+
 			continue
 		}
 
@@ -359,6 +366,7 @@ func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, o
 	} else {
 		val, ok = m.connsIPv4[ufrag]
 	}
+
 	return
 }
 
@@ -386,7 +394,7 @@ type ipPort struct {
 
 // newIPPort create a custom type of address based on netip.Addr and
 // port. The underlying ip address passed is converted to IPv6 format
-// to simplify ip address handling
+// to simplify ip address handling.
 func newIPPort(ip net.IP, zone string, port uint16) (ipPort, error) {
 	n, ok := netip.AddrFromSlice(ip.To16())
 	if !ok {

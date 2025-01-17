@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// MockPacketConn for tests
+// MockPacketConn for tests.
 type MockPacketConn struct{}
 
 func (m *MockPacketConn) ReadFrom([]byte) (n int, addr net.Addr, err error) { return 0, nil, nil } //nolint:revive

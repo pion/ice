@@ -14,44 +14,44 @@ import (
 )
 
 const (
-	// defaultCheckInterval is the interval at which the agent performs candidate checks in the connecting phase
+	// defaultCheckInterval is the interval at which the agent performs candidate checks in the connecting phase.
 	defaultCheckInterval = 200 * time.Millisecond
 
-	// keepaliveInterval used to keep candidates alive
+	// keepaliveInterval used to keep candidates alive.
 	defaultKeepaliveInterval = 2 * time.Second
 
-	// defaultDisconnectedTimeout is the default time till an Agent transitions disconnected
+	// defaultDisconnectedTimeout is the default time till an Agent transitions disconnected.
 	defaultDisconnectedTimeout = 5 * time.Second
 
-	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected
+	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected.
 	defaultFailedTimeout = 25 * time.Second
 
-	// defaultHostAcceptanceMinWait is the wait time before nominating a host candidate
+	// defaultHostAcceptanceMinWait is the wait time before nominating a host candidate.
 	defaultHostAcceptanceMinWait = 0
 
-	// defaultSrflxAcceptanceMinWait is the wait time before nominating a srflx candidate
+	// defaultSrflxAcceptanceMinWait is the wait time before nominating a srflx candidate.
 	defaultSrflxAcceptanceMinWait = 500 * time.Millisecond
 
-	// defaultPrflxAcceptanceMinWait is the wait time before nominating a prflx candidate
+	// defaultPrflxAcceptanceMinWait is the wait time before nominating a prflx candidate.
 	defaultPrflxAcceptanceMinWait = 1000 * time.Millisecond
 
-	// defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate
+	// defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate.
 	defaultRelayAcceptanceMinWait = 2000 * time.Millisecond
 
-	// defaultSTUNGatherTimeout is the wait time for STUN responses
+	// defaultSTUNGatherTimeout is the wait time for STUN responses.
 	defaultSTUNGatherTimeout = 5 * time.Second
 
-	// defaultMaxBindingRequests is the maximum number of binding requests before considering a pair failed
+	// defaultMaxBindingRequests is the maximum number of binding requests before considering a pair failed.
 	defaultMaxBindingRequests = 7
 
 	// TCPPriorityOffset is a number which is subtracted from the default (UDP) candidate type preference
 	// for host, srflx and prfx candidate types.
 	defaultTCPPriorityOffset = 27
 
-	// maxBufferSize is the number of bytes that can be buffered before we start to error
+	// maxBufferSize is the number of bytes that can be buffered before we start to error.
 	maxBufferSize = 1000 * 1000 // 1MB
 
-	// maxBindingRequestTimeout is the wait time before binding requests can be deleted
+	// maxBindingRequestTimeout is the wait time before binding requests can be deleted.
 	maxBindingRequestTimeout = 4000 * time.Millisecond
 )
 
@@ -60,7 +60,7 @@ func defaultCandidateTypes() []CandidateType {
 }
 
 // AgentConfig collects the arguments to ice.Agent construction into
-// a single structure, for future-proofness of the interface
+// a single structure, for future-proofness of the interface.
 type AgentConfig struct {
 	Urls []*stun.URI
 
@@ -209,109 +209,111 @@ type AgentConfig struct {
 	EnableUseCandidateCheckPriority bool
 }
 
-// initWithDefaults populates an agent and falls back to defaults if fields are unset
-func (config *AgentConfig) initWithDefaults(a *Agent) {
+// initWithDefaults populates an agent and falls back to defaults if fields are unset.
+func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	if config.MaxBindingRequests == nil {
-		a.maxBindingRequests = defaultMaxBindingRequests
+		agent.maxBindingRequests = defaultMaxBindingRequests
 	} else {
-		a.maxBindingRequests = *config.MaxBindingRequests
+		agent.maxBindingRequests = *config.MaxBindingRequests
 	}
 
 	if config.HostAcceptanceMinWait == nil {
-		a.hostAcceptanceMinWait = defaultHostAcceptanceMinWait
+		agent.hostAcceptanceMinWait = defaultHostAcceptanceMinWait
 	} else {
-		a.hostAcceptanceMinWait = *config.HostAcceptanceMinWait
+		agent.hostAcceptanceMinWait = *config.HostAcceptanceMinWait
 	}
 
 	if config.SrflxAcceptanceMinWait == nil {
-		a.srflxAcceptanceMinWait = defaultSrflxAcceptanceMinWait
+		agent.srflxAcceptanceMinWait = defaultSrflxAcceptanceMinWait
 	} else {
-		a.srflxAcceptanceMinWait = *config.SrflxAcceptanceMinWait
+		agent.srflxAcceptanceMinWait = *config.SrflxAcceptanceMinWait
 	}
 
 	if config.PrflxAcceptanceMinWait == nil {
-		a.prflxAcceptanceMinWait = defaultPrflxAcceptanceMinWait
+		agent.prflxAcceptanceMinWait = defaultPrflxAcceptanceMinWait
 	} else {
-		a.prflxAcceptanceMinWait = *config.PrflxAcceptanceMinWait
+		agent.prflxAcceptanceMinWait = *config.PrflxAcceptanceMinWait
 	}
 
 	if config.RelayAcceptanceMinWait == nil {
-		a.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
+		agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
 	} else {
-		a.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
+		agent.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
 
 	if config.STUNGatherTimeout == nil {
-		a.stunGatherTimeout = defaultSTUNGatherTimeout
+		agent.stunGatherTimeout = defaultSTUNGatherTimeout
 	} else {
-		a.stunGatherTimeout = *config.STUNGatherTimeout
+		agent.stunGatherTimeout = *config.STUNGatherTimeout
 	}
 
 	if config.TCPPriorityOffset == nil {
-		a.tcpPriorityOffset = defaultTCPPriorityOffset
+		agent.tcpPriorityOffset = defaultTCPPriorityOffset
 	} else {
-		a.tcpPriorityOffset = *config.TCPPriorityOffset
+		agent.tcpPriorityOffset = *config.TCPPriorityOffset
 	}
 
 	if config.DisconnectedTimeout == nil {
-		a.disconnectedTimeout = defaultDisconnectedTimeout
+		agent.disconnectedTimeout = defaultDisconnectedTimeout
 	} else {
-		a.disconnectedTimeout = *config.DisconnectedTimeout
+		agent.disconnectedTimeout = *config.DisconnectedTimeout
 	}
 
 	if config.FailedTimeout == nil {
-		a.failedTimeout = defaultFailedTimeout
+		agent.failedTimeout = defaultFailedTimeout
 	} else {
-		a.failedTimeout = *config.FailedTimeout
+		agent.failedTimeout = *config.FailedTimeout
 	}
 
 	if config.KeepaliveInterval == nil {
-		a.keepaliveInterval = defaultKeepaliveInterval
+		agent.keepaliveInterval = defaultKeepaliveInterval
 	} else {
-		a.keepaliveInterval = *config.KeepaliveInterval
+		agent.keepaliveInterval = *config.KeepaliveInterval
 	}
 
 	if config.CheckInterval == nil {
-		a.checkInterval = defaultCheckInterval
+		agent.checkInterval = defaultCheckInterval
 	} else {
-		a.checkInterval = *config.CheckInterval
+		agent.checkInterval = *config.CheckInterval
 	}
 
 	if len(config.CandidateTypes) == 0 {
-		a.candidateTypes = defaultCandidateTypes()
+		agent.candidateTypes = defaultCandidateTypes()
 	} else {
-		a.candidateTypes = config.CandidateTypes
+		agent.candidateTypes = config.CandidateTypes
 	}
 }
 
-func (config *AgentConfig) initExtIPMapping(a *Agent) error {
+func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
 	var err error
-	a.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+	agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
 	if err != nil {
 		return err
 	}
-	if a.extIPMapper == nil {
+	if agent.extIPMapper == nil {
 		return nil // This may happen when config.NAT1To1IPs is an empty array
 	}
-	if a.extIPMapper.candidateType == CandidateTypeHost {
-		if a.mDNSMode == MulticastDNSModeQueryAndGather {
+	if agent.extIPMapper.candidateType == CandidateTypeHost { //nolint:nestif
+		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
 		candiHostEnabled := false
-		for _, candiType := range a.candidateTypes {
+		for _, candiType := range agent.candidateTypes {
 			if candiType == CandidateTypeHost {
 				candiHostEnabled = true
+
 				break
 			}
 		}
 		if !candiHostEnabled {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-	} else if a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+	} else if agent.extIPMapper.candidateType == CandidateTypeServerReflexive {
 		candiSrflxEnabled := false
-		for _, candiType := range a.candidateTypes {
+		for _, candiType := range agent.candidateTypes {
 			if candiType == CandidateTypeServerReflexive {
 				candiSrflxEnabled = true
+
 				break
 			}
 		}
@@ -319,5 +321,6 @@ func (config *AgentConfig) initExtIPMapping(a *Agent) error {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
 	}
+
 	return nil
 }

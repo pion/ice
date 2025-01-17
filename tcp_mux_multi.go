@@ -40,6 +40,7 @@ func (m *MultiTCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net
 	if len(m.muxes) == 0 {
 		return nil, errNoTCPMuxAvailable
 	}
+
 	return m.muxes[0].GetConnByUfrag(ufrag, isIPv6, local)
 }
 
@@ -51,7 +52,7 @@ func (m *MultiTCPMuxDefault) RemoveConnByUfrag(ufrag string) {
 	}
 }
 
-// GetAllConns returns a PacketConn for each underlying TCPMux
+// GetAllConns returns a PacketConn for each underlying TCPMux.
 func (m *MultiTCPMuxDefault) GetAllConns(ufrag string, isIPv6 bool, local net.IP) ([]net.PacketConn, error) {
 	if len(m.muxes) == 0 {
 		// Make sure that we either return at least one connection or an error.
@@ -68,10 +69,11 @@ func (m *MultiTCPMuxDefault) GetAllConns(ufrag string, isIPv6 bool, local net.IP
 			conns = append(conns, conn)
 		}
 	}
+
 	return conns, nil
 }
 
-// Close the multi mux, no further connections could be created
+// Close the multi mux, no further connections could be created.
 func (m *MultiTCPMuxDefault) Close() error {
 	var err error
 	for _, mux := range m.muxes {
@@ -79,5 +81,6 @@ func (m *MultiTCPMuxDefault) Close() error {
 			err = e
 		}
 	}
+
 	return err
 }

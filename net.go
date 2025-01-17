@@ -24,6 +24,7 @@ func isSupportedIPv6Partial(ip net.IP) bool {
 		ip[0] == 0xfe && ip[1]&0xc0 == 0xc0 { // !(IPv6 site-local unicast)
 		return false
 	}
+
 	return true
 }
 
@@ -33,10 +34,11 @@ func isZeros(ip net.IP) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
-//nolint:gocognit
+//nolint:gocognit,cyclop
 func localInterfaces(
 	n transport.Net,
 	interfaceFilter func(string) (keep bool),
@@ -114,27 +116,35 @@ func localInterfaces(
 			filteredIfaces = append(filteredIfaces, ifaceCopy)
 		}
 	}
+
 	return filteredIfaces, ipAddrs, nil
 }
 
-func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, portMin int, network string, lAddr *net.UDPAddr) (transport.UDPConn, error) {
+//nolint:cyclop
+func listenUDPInPortRange(
+	netTransport transport.Net,
+	log logging.LeveledLogger,
+	portMax, portMin int,
+	network string,
+	lAddr *net.UDPAddr,
+) (transport.UDPConn, error) {
 	if (lAddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
-		return n.ListenUDP(network, lAddr)
+		return netTransport.ListenUDP(network, lAddr)
 	}
-	var i, j int
-	i = portMin
-	if i == 0 {
-		i = 1024 // Start at 1024 which is non-privileged
+
+	if portMin == 0 {
+		portMin = 1024 // Start at 1024 which is non-privileged
 	}
-	j = portMax
-	if j == 0 {
-		j = 0xFFFF
+
+	if portMax == 0 {
+		portMax = 0xFFFF
 	}
-	if i > j {
+
+	if portMin > portMax {
 		return nil, ErrPort
 	}
 
-	portStart := globalMathRandomGenerator.Intn(j-i+1) + i
+	portStart := globalMathRandomGenerator.Intn(portMax-portMin+1) + portMin
 	portCurrent := portStart
 	for {
 		addr := &net.UDPAddr{
@@ -143,18 +153,19 @@ func listenUDPInPortRange(n transport.Net, log logging.LeveledLogger, portMax, p
 			Port: portCurrent,
 		}
 
-		c, e := n.ListenUDP(network, addr)
+		c, e := netTransport.ListenUDP(network, addr)
 		if e == nil {
 			return c, e //nolint:nilerr
 		}
 		log.Debugf("Failed to listen %s: %v", lAddr.String(), e)
 		portCurrent++
-		if portCurrent > j {
-			portCurrent = i
+		if portCurrent > portMax {
+			portCurrent = portMin
 		}
 		if portCurrent == portStart {
 			break
 		}
 	}
+
 	return nil, ErrPort
 }

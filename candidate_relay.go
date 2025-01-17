@@ -16,7 +16,7 @@ type CandidateRelay struct {
 	onClose       func() error
 }
 
-// CandidateRelayConfig is the config required to create a new CandidateRelay
+// CandidateRelayConfig is the config required to create a new CandidateRelay.
 type CandidateRelayConfig struct {
 	CandidateID   string
 	Network       string
@@ -31,7 +31,7 @@ type CandidateRelayConfig struct {
 	OnClose       func() error
 }
 
-// NewCandidateRelay creates a new relay candidate
+// NewCandidateRelay creates a new relay candidate.
 func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 	candidateID := config.CandidateID
 
@@ -75,7 +75,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 	}, nil
 }
 
-// LocalPreference returns the local preference for this candidate
+// LocalPreference returns the local preference for this candidate.
 func (c *CandidateRelay) LocalPreference() uint16 {
 	// These preference values come from libwebrtc
 	// https://github.com/mozilla/libwebrtc/blob/1389c76d9c79839a2ca069df1db48aa3f2e6a1ac/p2p/base/turn_port.cc#L61
@@ -103,6 +103,7 @@ func (c *CandidateRelay) close() error {
 		err = c.onClose()
 		c.onClose = nil
 	}
+
 	return err
 }
 

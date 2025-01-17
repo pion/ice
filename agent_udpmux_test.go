@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux
+// TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux.
 func TestMuxAgent(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -58,7 +58,7 @@ func TestMuxAgent(t *testing.T) {
 				require.NoError(t, muxedA.Close())
 			}()
 
-			a, err := NewAgent(&AgentConfig{
+			agent, err := NewAgent(&AgentConfig{
 				CandidateTypes: []CandidateType{CandidateTypeHost},
 				NetworkTypes:   supportedNetworkTypes(),
 			})
@@ -68,10 +68,10 @@ func TestMuxAgent(t *testing.T) {
 				if aClosed {
 					return
 				}
-				require.NoError(t, a.Close())
+				require.NoError(t, agent.Close())
 			}()
 
-			conn, muxedConn := connect(a, muxedA)
+			conn, muxedConn := connect(agent, muxedA)
 
 			pair := muxedA.getSelectedPair()
 			require.NotNil(t, pair)

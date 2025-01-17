@@ -8,14 +8,14 @@ import (
 	"strings"
 )
 
-// CandidateHost is a candidate of type host
+// CandidateHost is a candidate of type host.
 type CandidateHost struct {
 	candidateBase
 
 	network string
 }
 
-// CandidateHostConfig is the config required to create a new CandidateHost
+// CandidateHostConfig is the config required to create a new CandidateHost.
 type CandidateHostConfig struct {
 	CandidateID       string
 	Network           string
@@ -28,7 +28,7 @@ type CandidateHostConfig struct {
 	IsLocationTracked bool
 }
 
-// NewCandidateHost creates a new host candidate
+// NewCandidateHost creates a new host candidate.
 func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	candidateID := config.CandidateID
 
@@ -36,7 +36,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
-	c := &CandidateHost{
+	candidateHost := &CandidateHost{
 		candidateBase: candidateBase{
 			id:                    candidateID,
 			address:               config.Address,
@@ -58,15 +58,15 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			return nil, err
 		}
 
-		if err := c.setIPAddr(ipAddr); err != nil {
+		if err := candidateHost.setIPAddr(ipAddr); err != nil {
 			return nil, err
 		}
 	} else {
 		// Until mDNS candidate is resolved assume it is UDPv4
-		c.candidateBase.networkType = NetworkTypeUDP4
+		candidateHost.candidateBase.networkType = NetworkTypeUDP4
 	}
 
-	return c, nil
+	return candidateHost, nil
 }
 
 func (c *CandidateHost) setIPAddr(addr netip.Addr) error {

@@ -13,10 +13,13 @@ func validateIPString(ipStr string) (net.IP, bool, error) {
 	if ip == nil {
 		return nil, false, ErrInvalidNAT1To1IPMapping
 	}
+
 	return ip, (ip.To4() != nil), nil
 }
 
-// ipMapping holds the mapping of local and external IP address for a particular IP family
+// ipMapping holds the mapping of local and external IP address
+//
+//	for a particular IP family.
 type ipMapping struct {
 	ipSole net.IP            // When non-nil, this is the sole external IP for one local IP assumed
 	ipMap  map[string]net.IP // Local-to-external IP mapping (k: local, v: external)
@@ -75,7 +78,11 @@ type externalIPMapper struct {
 	candidateType CandidateType
 }
 
-func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIPMapper, error) { //nolint:gocognit
+//nolint:gocognit,cyclop
+func newExternalIPMapper(
+	candidateType CandidateType,
+	ips []string,
+) (*externalIPMapper, error) {
 	if len(ips) == 0 {
 		return nil, nil //nolint:nilnil
 	}
@@ -85,7 +92,7 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 		return nil, ErrUnsupportedNAT1To1IPCandidateType
 	}
 
-	m := &externalIPMapper{
+	mapper := &externalIPMapper{
 		ipv4Mapping:   ipMapping{ipMap: map[string]net.IP{}},
 		ipv6Mapping:   ipMapping{ipMap: map[string]net.IP{}},
 		candidateType: candidateType,
@@ -101,13 +108,13 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 		if err != nil {
 			return nil, err
 		}
-		if len(ipPair) == 1 {
+		if len(ipPair) == 1 { //nolint:nestif
 			if isExtIPv4 {
-				if err := m.ipv4Mapping.setSoleIP(extIP); err != nil {
+				if err := mapper.ipv4Mapping.setSoleIP(extIP); err != nil {
 					return nil, err
 				}
 			} else {
-				if err := m.ipv6Mapping.setSoleIP(extIP); err != nil {
+				if err := mapper.ipv6Mapping.setSoleIP(extIP); err != nil {
 					return nil, err
 				}
 			}
@@ -121,7 +128,7 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 					return nil, ErrInvalidNAT1To1IPMapping
 				}
 
-				if err := m.ipv4Mapping.addIPMapping(locIP, extIP); err != nil {
+				if err := mapper.ipv4Mapping.addIPMapping(locIP, extIP); err != nil {
 					return nil, err
 				}
 			} else {
@@ -129,14 +136,14 @@ func newExternalIPMapper(candidateType CandidateType, ips []string) (*externalIP
 					return nil, ErrInvalidNAT1To1IPMapping
 				}
 
-				if err := m.ipv6Mapping.addIPMapping(locIP, extIP); err != nil {
+				if err := mapper.ipv6Mapping.addIPMapping(locIP, extIP); err != nil {
 					return nil, err
 				}
 			}
 		}
 	}
 
-	return m, nil
+	return mapper, nil
 }
 
 func (m *externalIPMapper) findExternalIP(localIPStr string) (net.IP, error) {

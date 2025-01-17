@@ -43,6 +43,8 @@ func TestUniversalUDPMux(t *testing.T) {
 }
 
 func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag string, network string) {
+	t.Helper()
+
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
 	require.NoError(t, err, "error retrieving muxed connection for ufrag")
 	defer func() {

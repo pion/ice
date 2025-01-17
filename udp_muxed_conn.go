@@ -28,7 +28,7 @@ type udpMuxedConnParams struct {
 	Logger    logging.LeveledLogger
 }
 
-// udpMuxedConn represents a logical packet conn for a single remote as identified by ufrag
+// udpMuxedConn represents a logical packet conn for a single remote as identified by ufrag.
 type udpMuxedConn struct {
 	params *udpMuxedConnParams
 	// Remote addresses that we have sent to on this conn
@@ -72,11 +72,12 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 			pkt.reset()
 			c.params.AddrPool.Put(pkt)
 
-			return
+			return n, rAddr, err
 		}
 
 		if c.state == udpMuxedConnClosed {
 			c.mu.Unlock()
+
 			return 0, nil, io.EOF
 		}
 
@@ -101,6 +102,7 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, errFailedToCastUDPAddr
 	}
 
+	//nolint:gosec // TODO add port validation G115
 	ipAndPort, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port))
 	if err != nil {
 		return 0, err
@@ -150,12 +152,14 @@ func (c *udpMuxedConn) Close() error {
 		c.state = udpMuxedConnClosed
 		close(c.closedChan)
 	}
+
 	return nil
 }
 
 func (c *udpMuxedConn) isClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.state == udpMuxedConnClosed
 }
 
@@ -164,6 +168,7 @@ func (c *udpMuxedConn) getAddresses() []ipPort {
 	defer c.mu.Unlock()
 	addresses := make([]ipPort, len(c.addresses))
 	copy(addresses, c.addresses)
+
 	return addresses
 }
 
@@ -198,6 +203,7 @@ func (c *udpMuxedConn) containsAddress(addr ipPort) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -205,6 +211,7 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	pkt := c.params.AddrPool.Get().(*bufferHolder) //nolint:forcetypeassert
 	if cap(pkt.buf) < len(data) {
 		c.params.AddrPool.Put(pkt)
+
 		return io.ErrShortBuffer
 	}
 

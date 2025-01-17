@@ -13,13 +13,13 @@ const (
 	receiveMTU             = 8192
 	defaultLocalPreference = 65535
 
-	// ComponentRTP indicates that the candidate is used for RTP
+	// ComponentRTP indicates that the candidate is used for RTP.
 	ComponentRTP uint16 = 1
-	// ComponentRTCP indicates that the candidate is used for RTCP
+	// ComponentRTCP indicates that the candidate is used for RTCP.
 	ComponentRTCP
 )
 
-// Candidate represents an ICE candidate
+// Candidate represents an ICE candidate.
 type Candidate interface {
 	// An arbitrary string used in the freezing algorithm to
 	// group similar candidates.  It is the same for two candidates that

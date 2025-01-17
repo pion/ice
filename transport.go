@@ -32,12 +32,12 @@ type Conn struct {
 	agent         *Agent
 }
 
-// BytesSent returns the number of bytes sent
+// BytesSent returns the number of bytes sent.
 func (c *Conn) BytesSent() uint64 {
 	return atomic.LoadUint64(&c.bytesSent)
 }
 
-// BytesReceived returns the number of bytes received
+// BytesReceived returns the number of bytes received.
 func (c *Conn) BytesReceived() uint64 {
 	return atomic.LoadUint64(&c.bytesReceived)
 }
@@ -74,18 +74,19 @@ func (c *Conn) Read(p []byte) (int, error) {
 	}
 
 	n, err := c.agent.buf.Read(p)
-	atomic.AddUint64(&c.bytesReceived, uint64(n))
+	atomic.AddUint64(&c.bytesReceived, uint64(n)) //nolint:gosec // G115
+
 	return n, err
 }
 
 // Write implements the Conn Write method.
-func (c *Conn) Write(p []byte) (int, error) {
+func (c *Conn) Write(packet []byte) (int, error) {
 	err := c.agent.loop.Err()
 	if err != nil {
 		return 0, err
 	}
 
-	if stun.IsMessage(p) {
+	if stun.IsMessage(packet) {
 		return 0, errWriteSTUNMessageToIceConn
 	}
 
@@ -102,8 +103,9 @@ func (c *Conn) Write(p []byte) (int, error) {
 		}
 	}
 
-	atomic.AddUint64(&c.bytesSent, uint64(len(p)))
-	return pair.Write(p)
+	atomic.AddUint64(&c.bytesSent, uint64(len(packet)))
+
+	return pair.Write(packet)
 }
 
 // Close implements the Conn Close method. It is used to close
@@ -132,17 +134,17 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return pair.Remote.addr()
 }
 
-// SetDeadline is a stub
+// SetDeadline is a stub.
 func (c *Conn) SetDeadline(time.Time) error {
 	return nil
 }
 
-// SetReadDeadline is a stub
+// SetReadDeadline is a stub.
 func (c *Conn) SetReadDeadline(time.Time) error {
 	return nil
 }
 
-// SetWriteDeadline is a stub
+// SetWriteDeadline is a stub.
 func (c *Conn) SetWriteDeadline(time.Time) error {
 	return nil
 }

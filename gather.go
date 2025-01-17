@@ -21,10 +21,11 @@ import (
 	"github.com/pion/turn/v4"
 )
 
-// Close a net.Conn and log if we have a failure
+// Close a net.Conn and log if we have a failure.
 func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ...interface{}) {
 	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
 		log.Warnf("Connection is not allocated: "+msg, args...)
+
 		return
 	}
 
@@ -41,9 +42,11 @@ func (a *Agent) GatherCandidates() error {
 	if runErr := a.loop.Run(a.loop, func(ctx context.Context) {
 		if a.gatheringState != GatheringStateNew {
 			gatherErr = ErrMultipleGatherAttempted
+
 			return
 		} else if a.onCandidateHdlr.Load() == nil {
 			gatherErr = ErrNoOnCandidateHandler
+
 			return
 		}
 
@@ -57,13 +60,15 @@ func (a *Agent) GatherCandidates() error {
 	}); runErr != nil {
 		return runErr
 	}
+
 	return gatherErr
 }
 
-func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {
+func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //nolint:cyclop
 	defer close(done)
 	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
 		a.log.Warnf("Failed to set gatheringState to GatheringStateGathering: %v", err)
+
 		return
 	}
 
@@ -111,7 +116,8 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) {
 	}
 }
 
-func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) { //nolint:gocognit
+//nolint:gocognit,gocyclo,cyclop
+func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) {
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
 		if networkType.IsTCP() {
@@ -132,16 +138,19 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes, a.includeLoopback)
 	if err != nil {
 		a.log.Warnf("Failed to iterate local interfaces, host candidates will not be gathered %s", err)
+
 		return
 	}
 
 	for _, addr := range localAddrs {
 		mappedIP := addr
-		if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
+			a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 			if _mappedIP, innerErr := a.extIPMapper.findExternalIP(addr.String()); innerErr == nil {
 				conv, ok := netip.AddrFromSlice(_mappedIP)
 				if !ok {
 					a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
+
 					continue
 				}
 				// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
@@ -186,6 +195,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
 					if err != nil {
 						a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+
 						continue
 					}
 				} else {
@@ -194,6 +204,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
 					if err != nil {
 						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+
 						continue
 					}
 					muxConns = []net.PacketConn{conn}
@@ -222,6 +233,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				})
 				if err != nil {
 					a.log.Warnf("Failed to listen %s %s", network, addr)
+
 					continue
 				}
 
@@ -229,6 +241,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					conns = append(conns, connAndPort{conn, udpConn.Port})
 				} else {
 					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, addr, a.localUfrag)
+
 					continue
 				}
 			}
@@ -245,21 +258,38 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					IsLocationTracked: isLocationTracked,
 				}
 
-				c, err := NewCandidateHost(&hostConfig)
+				candidateHost, err := NewCandidateHost(&hostConfig)
 				if err != nil {
-					closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
+					closeConnAndLog(
+						connAndPort.conn,
+						a.log,
+						"failed to create host candidate: %s %s %d: %v",
+						network, mappedIP,
+						connAndPort.port,
+						err,
+					)
+
 					continue
 				}
 
 				if a.mDNSMode == MulticastDNSModeQueryAndGather {
-					if err = c.setIPAddr(addr); err != nil {
-						closeConnAndLog(connAndPort.conn, a.log, "failed to create host candidate: %s %s %d: %v", network, mappedIP, connAndPort.port, err)
+					if err = candidateHost.setIPAddr(addr); err != nil {
+						closeConnAndLog(
+							connAndPort.conn,
+							a.log,
+							"failed to create host candidate: %s %s %d: %v",
+							network,
+							mappedIP,
+							connAndPort.port,
+							err,
+						)
+
 						continue
 					}
 				}
 
-				if err := a.addCandidate(ctx, c, connAndPort.conn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
+				if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
+					if closeErr := candidateHost.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -287,10 +317,11 @@ func shouldFilterLocationTracked(candidateIP net.IP) bool {
 	if !ok {
 		return false
 	}
+
 	return shouldFilterLocationTrackedIP(addr)
 }
 
-func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolint:gocognit
+func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolint:gocognit,cyclop
 	if a.udpMux == nil {
 		return errUDPMuxDisabled
 	}
@@ -317,6 +348,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
 			if err != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
+
 				continue
 			}
 
@@ -359,6 +391,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		c, err := NewCandidateHost(&hostConfig)
 		if err != nil {
 			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+
 			continue
 		}
 
@@ -368,6 +401,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			}
 
 			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+
 			continue
 		}
 
@@ -391,26 +425,37 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 		go func() {
 			defer wg.Done()
 
-			conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: nil, Port: 0})
+			conn, err := listenUDPInPortRange(
+				a.net,
+				a.log,
+				int(a.portMax),
+				int(a.portMin),
+				network,
+				&net.UDPAddr{IP: nil, Port: 0},
+			)
 			if err != nil {
 				a.log.Warnf("Failed to listen %s: %v", network, err)
+
 				return
 			}
 
 			lAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 			if !ok {
 				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but LocalAddr is not a UDPAddr")
+
 				return
 			}
 
 			mappedIP, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
 			if err != nil {
 				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
+
 				return
 			}
 
 			if shouldFilterLocationTracked(mappedIP) {
 				closeConnAndLog(conn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
+
 				return
 			}
 
@@ -429,6 +474,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					mappedIP.String(),
 					lAddr.Port,
 					err)
+
 				return
 			}
 
@@ -442,7 +488,8 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) { //nolint:gocognit
+//nolint:gocognit,cyclop
+func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -456,6 +503,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 				udpAddr, ok := listenAddr.(*net.UDPAddr)
 				if !ok {
 					a.log.Warn("Failed to cast udpMuxSrflx listen address to UDPAddr")
+
 					continue
 				}
 				wg.Add(1)
@@ -466,23 +514,27 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 					if err != nil {
 						a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, err)
+
 						return
 					}
 
 					if shouldFilterLocationTracked(serverAddr.IP) {
 						a.log.Warnf("STUN host %s is somehow filtered for location tracking reasons", hostPort)
+
 						return
 					}
 
 					xorAddr, err := a.udpMuxSrflx.GetXORMappedAddr(serverAddr, a.stunGatherTimeout)
 					if err != nil {
 						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
+
 						return
 					}
 
 					conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), localAddr)
 					if err != nil {
 						a.log.Warnf("Failed to find connection in UDPMuxSrflx %s %s: %v", network, url, err)
+
 						return
 					}
 
@@ -500,6 +552,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 					c, err := NewCandidateServerReflexive(&srflxConfig)
 					if err != nil {
 						closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
+
 						return
 					}
 
@@ -515,7 +568,8 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 	}
 }
 
-func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) { //nolint:gocognit
+//nolint:cyclop,gocognit
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -533,17 +587,27 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 				serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 				if err != nil {
 					a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, err)
+
 					return
 				}
 
 				if shouldFilterLocationTracked(serverAddr.IP) {
 					a.log.Warnf("STUN host %s is somehow filtered for location tracking reasons", hostPort)
+
 					return
 				}
 
-				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{IP: nil, Port: 0})
+				conn, err := listenUDPInPortRange(
+					a.net,
+					a.log,
+					int(a.portMax),
+					int(a.portMin),
+					network,
+					&net.UDPAddr{IP: nil, Port: 0},
+				)
 				if err != nil {
 					closeConnAndLog(conn, a.log, "failed to listen for %s: %v", serverAddr.String(), err)
+
 					return
 				}
 				// If the agent closes midway through the connection
@@ -562,6 +626,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 				xorAddr, err := stunx.GetXORMappedAddr(conn, serverAddr, a.stunGatherTimeout)
 				if err != nil {
 					closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v", network, url, err)
+
 					return
 				}
 
@@ -580,6 +645,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 				c, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
 					closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
+
 					return
 				}
 
@@ -594,7 +660,8 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 	}
 }
 
-func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { //nolint:gocognit
+//nolint:maintidx,gocognit,gocyclo,cyclop
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -605,9 +672,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 			continue
 		case urls[i].Username == "":
 			a.log.Errorf("Failed to gather relay candidates: %v", ErrUsernameEmpty)
+
 			return
 		case urls[i].Password == "":
 			a.log.Errorf("Failed to gather relay candidates: %v", ErrPasswordEmpty)
+
 			return
 		}
 
@@ -627,6 +696,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 			case url.Proto == stun.ProtoTypeUDP && url.Scheme == stun.SchemeTypeTURN:
 				if locConn, err = a.net.ListenPacket(network, "0.0.0.0:0"); err != nil {
 					a.log.Warnf("Failed to listen %s: %v", network, err)
+
 					return
 				}
 
@@ -638,6 +708,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				conn, connectErr := a.proxyDialer.Dial(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to dial TCP address %s via proxy dialer: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
@@ -654,12 +725,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve TCP address %s: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
 				conn, connectErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to dial TCP address %s: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
@@ -671,12 +744,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				udpAddr, connectErr := a.net.ResolveUDPAddr(network, turnServerAddr)
 				if connectErr != nil {
 					a.log.Warnf("Failed to resolve UDP address %s: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
 				udpConn, dialErr := a.net.DialUDP("udp", nil, udpAddr)
 				if dialErr != nil {
 					a.log.Warnf("Failed to dial DTLS address %s: %v", turnServerAddr, dialErr)
+
 					return
 				}
 
@@ -686,11 +761,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				})
 				if connectErr != nil {
 					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
 				if connectErr = conn.HandshakeContext(ctx); connectErr != nil {
 					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
+
 					return
 				}
 
@@ -702,12 +779,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				tcpAddr, resolvErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if resolvErr != nil {
 					a.log.Warnf("Failed to resolve relay address %s: %v", turnServerAddr, resolvErr)
+
 					return
 				}
 
 				tcpConn, dialErr := a.net.DialTCP(NetworkTypeTCP4.String(), nil, tcpAddr)
 				if dialErr != nil {
 					a.log.Warnf("Failed to connect to relay: %v", dialErr)
+
 					return
 				}
 
@@ -721,6 +800,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 						a.log.Errorf("Failed to close relay connection: %v", closeErr)
 					}
 					a.log.Warnf("Failed to connect to relay: %v", hsErr)
+
 					return
 				}
 
@@ -730,6 +810,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				locConn = turn.NewSTUNConn(conn)
 			default:
 				a.log.Warnf("Unable to handle URL in gatherCandidatesRelay %v", url)
+
 				return
 			}
 
@@ -743,12 +824,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 			})
 			if err != nil {
 				closeConnAndLog(locConn, a.log, "failed to create new TURN client %s %s", turnServerAddr, err)
+
 				return
 			}
 
 			if err = client.Listen(); err != nil {
 				client.Close()
 				closeConnAndLog(locConn, a.log, "failed to listen on TURN client %s %s", turnServerAddr, err)
+
 				return
 			}
 
@@ -756,6 +839,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 			if err != nil {
 				client.Close()
 				closeConnAndLog(locConn, a.log, "failed to allocate on TURN client %s %s", turnServerAddr, err)
+
 				return
 			}
 
@@ -763,6 +847,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 
 			if shouldFilterLocationTracked(rAddr.IP) {
 				a.log.Warnf("TURN address %s is somehow filtered for location tracking reasons", rAddr.IP)
+
 				return
 			}
 
@@ -776,6 +861,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 				RelayProtocol: relayProtocol,
 				OnClose: func() error {
 					client.Close()
+
 					return locConn.Close()
 				},
 			}
@@ -790,6 +876,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) { /
 
 				client.Close()
 				closeConnAndLog(locConn, a.log, "failed to create relay candidate: %s %s: %v", network, rAddr.String(), err)
+
 				return
 			}
 

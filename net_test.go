@@ -54,6 +54,7 @@ func problematicNetworkInterfaces(s string) (keep bool) {
 	appleWirelessDirectLink := strings.Contains(s, "awdl")
 	appleLowLatencyWLANInterface := strings.Contains(s, "llw")
 	appleTunnelingInterface := strings.Contains(s, "utun")
+
 	return !defaultDockerBridgeNetwork &&
 		!customDockerBridgeNetwork &&
 		!accessPoint &&
@@ -68,5 +69,6 @@ func mustAddr(t *testing.T, ip net.IP) netip.Addr {
 	if !ok {
 		t.Fatal(ipConvertError{ip})
 	}
+
 	return addr
 }

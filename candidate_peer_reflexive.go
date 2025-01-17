@@ -15,7 +15,7 @@ type CandidatePeerReflexive struct {
 	candidateBase
 }
 
-// CandidatePeerReflexiveConfig is the config required to create a new CandidatePeerReflexive
+// CandidatePeerReflexiveConfig is the config required to create a new CandidatePeerReflexive.
 type CandidatePeerReflexiveConfig struct {
 	CandidateID string
 	Network     string
@@ -28,7 +28,7 @@ type CandidatePeerReflexiveConfig struct {
 	RelPort     int
 }
 
-// NewCandidatePeerReflexive creates a new peer reflective candidate
+// NewCandidatePeerReflexive creates a new peer reflective candidate.
 func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*CandidatePeerReflexive, error) {
 	ipAddr, err := netip.ParseAddr(config.Address)
 	if err != nil {

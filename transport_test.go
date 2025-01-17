@@ -30,13 +30,15 @@ func TestStressDuplex(t *testing.T) {
 	stressDuplex(t)
 }
 
-func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
+func testTimeout(t *testing.T, conn *Conn, timeout time.Duration) {
+	t.Helper()
+
 	const pollRate = 100 * time.Millisecond
 	const margin = 20 * time.Millisecond // Allow 20msec error in time
 	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
-		err := c.Close()
+		err := conn.Close()
 		if err != nil {
 			t.Error(err)
 		}
@@ -49,8 +51,8 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 
 		var cs ConnectionState
 
-		err := c.agent.loop.Run(context.Background(), func(_ context.Context) {
-			cs = c.agent.connectionState
+		err := conn.agent.loop.Run(context.Background(), func(_ context.Context) {
+			cs = conn.agent.connectionState
 		})
 		if err != nil {
 			// We should never get here.
@@ -63,6 +65,7 @@ func testTimeout(t *testing.T, c *Conn, timeout time.Duration) {
 				t.Fatalf("Connection timed out %f msec early", elapsed.Seconds()*1000)
 			} else {
 				t.Logf("Connection timed out in %f msec", elapsed.Seconds()*1000)
+
 				return
 			}
 		}
@@ -133,6 +136,8 @@ func TestReadClosed(t *testing.T) {
 }
 
 func stressDuplex(t *testing.T) {
+	t.Helper()
+
 	ca, cb := pipe(nil)
 
 	defer func() {
@@ -219,6 +224,7 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 
 	// Ensure accepted
 	<-accepted
+
 	return aConn, bConn
 }
 
@@ -288,6 +294,7 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 
 func onConnected() (func(ConnectionState), chan struct{}) {
 	done := make(chan struct{})
+
 	return func(state ConnectionState) {
 		if state == ConnectionStateConnected {
 			close(done)
@@ -295,11 +302,11 @@ func onConnected() (func(ConnectionState), chan struct{}) {
 	}, done
 }
 
-func randomPort(t testing.TB) int {
-	t.Helper()
+func randomPort(tb testing.TB) int {
+	tb.Helper()
 	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to pickPort: %v", err)
+		tb.Fatalf("failed to pickPort: %v", err)
 	}
 	defer func() {
 		_ = conn.Close()
@@ -308,7 +315,8 @@ func randomPort(t testing.TB) int {
 	case *net.UDPAddr:
 		return addr.Port
 	default:
-		t.Fatalf("unknown addr type %T", addr)
+		tb.Fatalf("unknown addr type %T", addr)
+
 		return 0
 	}
 }

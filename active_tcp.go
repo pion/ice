@@ -21,7 +21,12 @@ type activeTCPConn struct {
 	closed                  int32
 }
 
-func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress netip.AddrPort, log logging.LeveledLogger) (a *activeTCPConn) {
+func newActiveTCPConn(
+	ctx context.Context,
+	localAddress string,
+	remoteAddress netip.AddrPort,
+	log logging.LeveledLogger,
+) (a *activeTCPConn) {
 	a = &activeTCPConn{
 		readBuffer:  packetio.NewBuffer(),
 		writeBuffer: packetio.NewBuffer(),
@@ -31,7 +36,8 @@ func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress ne
 	if err != nil {
 		atomic.StoreInt32(&a.closed, 1)
 		log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
-		return
+
+		return a
 	}
 	a.localAddr.Store(laddr)
 
@@ -46,6 +52,7 @@ func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress ne
 		conn, err := dialer.DialContext(ctx, "tcp", remoteAddress.String())
 		if err != nil {
 			log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
+
 			return
 		}
 		a.remoteAddr.Store(conn.RemoteAddr())
@@ -57,11 +64,13 @@ func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress ne
 				n, err := readStreamingPacket(conn, buff)
 				if err != nil {
 					log.Infof("Failed to read streaming packet: %s", err)
+
 					break
 				}
 
 				if _, err := a.readBuffer.Write(buff[:n]); err != nil {
 					log.Infof("Failed to write to buffer: %s", err)
+
 					break
 				}
 			}
@@ -73,11 +82,13 @@ func newActiveTCPConn(ctx context.Context, localAddress string, remoteAddress ne
 			n, err := a.writeBuffer.Read(buff)
 			if err != nil {
 				log.Infof("Failed to read from buffer: %s", err)
+
 				break
 			}
 
 			if _, err = writeStreamingPacket(conn, buff[:n]); err != nil {
 				log.Infof("Failed to write streaming packet: %s", err)
+
 				break
 			}
 		}
@@ -98,6 +109,7 @@ func (a *activeTCPConn) ReadFrom(buff []byte) (n int, srcAddr net.Addr, err erro
 	n, err = a.readBuffer.Read(buff)
 	// RemoteAddr is assuredly set *after* we can read from the buffer
 	srcAddr = a.RemoteAddr()
+
 	return
 }
 
@@ -113,6 +125,7 @@ func (a *activeTCPConn) Close() error {
 	atomic.StoreInt32(&a.closed, 1)
 	_ = a.readBuffer.Close()
 	_ = a.writeBuffer.Close()
+
 	return nil
 }
 

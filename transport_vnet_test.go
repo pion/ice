@@ -30,9 +30,9 @@ func TestRemoteLocalAddr(t *testing.T) {
 	// Agent1 is behind 1:1 NAT
 	natType1 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
 
-	v, errVnet := buildVNet(natType0, natType1)
+	builtVnet, errVnet := buildVNet(natType0, natType1)
 	require.NoError(t, errVnet, "should succeed")
-	defer v.close()
+	defer builtVnet.close()
 
 	stunServerURL := &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
@@ -53,7 +53,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	})
 
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
-		ca, cb := pipeWithVNet(v,
+		ca, cb := pipeWithVNet(builtVnet,
 			&agentTestConfig{
 				urls: []*stun.URI{stunServerURL},
 			},

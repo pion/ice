@@ -29,7 +29,8 @@ type UniversalUDPMuxDefault struct {
 	*UDPMuxDefault
 	params UniversalUDPMuxParams
 
-	// Since we have a shared socket, for srflx candidates it makes sense to have a shared mapped address across all the agents
+	// Since we have a shared socket, for srflx candidates it makes sense
+	// to have a shared mapped address across all the agents
 	// stun.XORMappedAddress indexed by the STUN server addr
 	xorMappedMap map[string]*xorMapped
 }
@@ -42,7 +43,7 @@ type UniversalUDPMuxParams struct {
 	Net                   transport.Net
 }
 
-// NewUniversalUDPMuxDefault creates an implementation of UniversalUDPMux embedding UDPMux
+// NewUniversalUDPMuxDefault creates an implementation of UniversalUDPMux embedding UDPMux.
 func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDefault {
 	if params.Logger == nil {
 		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
@@ -51,31 +52,31 @@ func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDef
 		params.XORMappedAddrCacheTTL = time.Second * 25
 	}
 
-	m := &UniversalUDPMuxDefault{
+	mux := &UniversalUDPMuxDefault{
 		params:       params,
 		xorMappedMap: make(map[string]*xorMapped),
 	}
 
 	// Wrap UDP connection, process server reflexive messages
 	// before they are passed to the UDPMux connection handler (connWorker)
-	m.params.UDPConn = &udpConn{
+	mux.params.UDPConn = &udpConn{
 		PacketConn: params.UDPConn,
-		mux:        m,
+		mux:        mux,
 		logger:     params.Logger,
 	}
 
 	// Embed UDPMux
 	udpMuxParams := UDPMuxParams{
 		Logger:  params.Logger,
-		UDPConn: m.params.UDPConn,
-		Net:     m.params.Net,
+		UDPConn: mux.params.UDPConn,
+		Net:     mux.params.Net,
 	}
-	m.UDPMuxDefault = NewUDPMuxDefault(udpMuxParams)
+	mux.UDPMuxDefault = NewUDPMuxDefault(udpMuxParams)
 
-	return m
+	return mux
 }
 
-// udpConn is a wrapper around UDPMux conn that overrides ReadFrom and handles STUN/TURN packets
+// udpConn is a wrapper around UDPMux conn that overrides ReadFrom and handles STUN/TURN packets.
 type udpConn struct {
 	net.PacketConn
 	mux    *UniversalUDPMuxDefault
@@ -88,7 +89,8 @@ func (m *UniversalUDPMuxDefault) GetRelayedAddr(net.Addr, time.Duration) (*net.A
 	return nil, errNotImplemented
 }
 
-// GetConnForURL add uniques to the muxed connection by concatenating ufrag and URL (e.g. STUN URL) to be able to support multiple STUN/TURN servers
+// GetConnForURL add uniques to the muxed connection by concatenating ufrag and URL
+// (e.g. STUN URL) to be able to support multiple STUN/TURN servers
 // and return a unique connection per server.
 func (m *UniversalUDPMuxDefault) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
 	return m.UDPMuxDefault.GetConn(fmt.Sprintf("%s%s", ufrag, url), addr)
@@ -99,24 +101,24 @@ func (m *UniversalUDPMuxDefault) GetConnForURL(ufrag string, url string, addr ne
 func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.PacketConn.ReadFrom(p)
 	if err != nil {
-		return
+		return n, addr, err
 	}
 
-	if stun.IsMessage(p[:n]) {
+	if stun.IsMessage(p[:n]) { //nolint:nestif
 		msg := &stun.Message{
 			Raw: append([]byte{}, p[:n]...),
 		}
 
 		if err = msg.Decode(); err != nil {
 			c.logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
-			err = nil
-			return
+
+			return n, addr, nil
 		}
 
 		udpAddr, ok := addr.(*net.UDPAddr)
 		if !ok {
 			// Message about this err will be logged in the UDPMux
-			return
+			return n, addr, err
 		}
 
 		if c.mux.isXORMappedResponse(msg, udpAddr.String()) {
@@ -125,9 +127,11 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 				c.logger.Debugf("%w: %v", errGetXorMappedAddrResponse, err)
 				err = nil
 			}
-			return
+
+			return n, addr, err
 		}
 	}
+
 	return n, addr, err
 }
 
@@ -135,14 +139,16 @@ func (c *udpConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 func (m *UniversalUDPMuxDefault) isXORMappedResponse(msg *stun.Message, stunAddr string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Check first if it is a STUN server address because remote peer can also send similar messages but as a BindingSuccess
+	// Check first if it is a STUN server address,
+	// because remote peer can also send similar messages but as a BindingSuccess.
 	_, ok := m.xorMappedMap[stunAddr]
 	_, err := msg.Get(stun.AttrXORMappedAddress)
+
 	return err == nil && ok
 }
 
-// handleXORMappedResponse parses response from the STUN server, extracts XORMappedAddress attribute
-// and set the mapped address for the server
+// handleXORMappedResponse parses response from the STUN server, extracts XORMappedAddress attribute.
+// and set the mapped address for the server.
 func (m *UniversalUDPMuxDefault) handleXORMappedResponse(stunAddr *net.UDPAddr, msg *stun.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -167,7 +173,10 @@ func (m *UniversalUDPMuxDefault) handleXORMappedResponse(stunAddr *net.UDPAddr, 
 // Makes a STUN binding request to discover mapped address otherwise.
 // Blocks until the stun.XORMappedAddress has been discovered or deadline.
 // Method is safe for concurrent use.
-func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline time.Duration) (*stun.XORMappedAddress, error) {
+func (m *UniversalUDPMuxDefault) GetXORMappedAddr(
+	serverAddr net.Addr,
+	deadline time.Duration,
+) (*stun.XORMappedAddress, error) {
 	m.mu.Lock()
 	mappedAddr, ok := m.xorMappedMap[serverAddr.String()]
 	// If we already have a mapping for this STUN server (address already received)
@@ -203,6 +212,7 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(serverAddr net.Addr, deadline 
 		if mappedAddr.addr == nil {
 			return nil, errNoXorAddrMapping
 		}
+
 		return mappedAddr.addr, nil
 	case <-time.After(deadline):
 		return nil, errXORMappedAddrTimeout

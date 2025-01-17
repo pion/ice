@@ -36,6 +36,7 @@ func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) n
 	}
 
 	go bc.writeProcess()
+
 	return bc
 }
 
@@ -44,6 +45,7 @@ func (bc *bufferedConn) Write(b []byte) (int, error) {
 	if err != nil {
 		return n, err
 	}
+
 	return n, nil
 }
 
@@ -57,11 +59,13 @@ func (bc *bufferedConn) writeProcess() {
 
 		if err != nil {
 			bc.logger.Warnf("Failed to read from buffer: %s", err)
+
 			continue
 		}
 
 		if _, err := bc.Conn.Write(pktBuf[:n]); err != nil {
 			bc.logger.Warnf("Failed to write: %s", err)
+
 			continue
 		}
 	}
@@ -70,6 +74,7 @@ func (bc *bufferedConn) writeProcess() {
 func (bc *bufferedConn) Close() error {
 	atomic.StoreInt32(&bc.closed, 1)
 	_ = bc.buf.Close()
+
 	return bc.Conn.Close()
 }
 
@@ -103,7 +108,7 @@ type tcpPacketParams struct {
 }
 
 func newTCPPacketConn(params tcpPacketParams) *tcpPacketConn {
-	p := &tcpPacketConn{
+	packet := &tcpPacketConn{
 		params: &params,
 
 		conns: map[string]net.Conn{},
@@ -113,13 +118,13 @@ func newTCPPacketConn(params tcpPacketParams) *tcpPacketConn {
 	}
 
 	if params.AliveDuration > 0 {
-		p.aliveTimer = time.AfterFunc(params.AliveDuration, func() {
-			p.params.Logger.Warn("close tcp packet conn by alive timeout")
-			_ = p.Close()
+		packet.aliveTimer = time.AfterFunc(params.AliveDuration, func() {
+			packet.params.Logger.Warn("close tcp packet conn by alive timeout")
+			_ = packet.Close()
 		})
 	}
 
-	return p
+	return packet
 }
 
 func (t *tcpPacketConn) ClearAliveTimer() {
@@ -131,7 +136,12 @@ func (t *tcpPacketConn) ClearAliveTimer() {
 }
 
 func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
-	t.params.Logger.Infof("Added connection: %s remote %s to local %s", conn.RemoteAddr().Network(), conn.RemoteAddr(), conn.LocalAddr())
+	t.params.Logger.Infof(
+		"Added connection: %s remote %s to local %s",
+		conn.RemoteAddr().Network(),
+		conn.RemoteAddr(),
+		conn.LocalAddr(),
+	)
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -183,6 +193,7 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 			if last || !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
 				t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
 			}
+
 			return
 		}
 
@@ -236,6 +247,7 @@ func (t *tcpPacketConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 
 	n = len(pkt.Data)
 	copy(b, pkt.Data[:n])
+
 	return n, pkt.RAddr, err
 }
 
@@ -252,6 +264,7 @@ func (t *tcpPacketConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	n, err = writeStreamingPacket(conn, buf)
 	if err != nil {
 		t.params.Logger.Tracef("%w %s", errWrite, rAddr)
+
 		return n, err
 	}
 
@@ -272,6 +285,7 @@ func (t *tcpPacketConn) removeConn(conn net.Conn) bool {
 	t.closeAndLogError(conn)
 
 	delete(t.conns, conn.RemoteAddr().String())
+
 	return len(t.conns) == 0
 }
 

@@ -13,7 +13,7 @@ type CandidateServerReflexive struct {
 	candidateBase
 }
 
-// CandidateServerReflexiveConfig is the config required to create a new CandidateServerReflexive
+// CandidateServerReflexiveConfig is the config required to create a new CandidateServerReflexive.
 type CandidateServerReflexiveConfig struct {
 	CandidateID string
 	Network     string
@@ -26,7 +26,7 @@ type CandidateServerReflexiveConfig struct {
 	RelPort     int
 }
 
-// NewCandidateServerReflexive creates a new server reflective candidate
+// NewCandidateServerReflexive creates a new server reflective candidate.
 func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*CandidateServerReflexive, error) {
 	ipAddr, err := netip.ParseAddr(config.Address)
 	if err != nil {

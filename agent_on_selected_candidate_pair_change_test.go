@@ -34,17 +34,23 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 }
 
 func fixtureTestOnSelectedCandidatePairChange(t *testing.T) (*Agent, *CandidatePair) {
+	t.Helper()
+
 	agent, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
 
 	candidatePair := makeCandidatePair(t)
+
 	return agent, candidatePair
 }
 
 func makeCandidatePair(t *testing.T) *CandidatePair {
+	t.Helper()
+
 	hostLocal := newHostLocal(t)
 	relayRemote := newRelayRemote(t)
 
 	candidatePair := newCandidatePair(hostLocal, relayRemote, false)
+
 	return candidatePair
 }

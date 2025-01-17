@@ -23,6 +23,8 @@ import (
 )
 
 func sendUntilDone(t *testing.T, writingConn, readingConn net.Conn, maxAttempts int) bool {
+	t.Helper()
+
 	testMessage := []byte("Hello World")
 	testBuffer := make([]byte, len(testMessage))
 
@@ -73,6 +75,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		CheckInterval:     &oneHour,
 		BindingRequestHandler: func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 			controlledLoggingFired.Store(true)
+
 			return false
 		},
 	})
@@ -87,6 +90,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		BindingRequestHandler: func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 			// Don't switch candidate pair until we are ready
 			val, ok := switchToNewCandidatePair.Load().(bool)
+
 			return ok && val
 		},
 	})

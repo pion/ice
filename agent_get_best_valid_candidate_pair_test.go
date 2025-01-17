@@ -32,6 +32,8 @@ func TestAgentGetBestValidCandidatePair(t *testing.T) {
 }
 
 func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {
+	t.Helper()
+
 	fixture := new(TestAgentGetBestValidCandidatePairFixture)
 	fixture.hostLocal = newHostLocal(t)
 	fixture.relayRemote = newRelayRemote(t)

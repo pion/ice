@@ -48,12 +48,12 @@ type candidateBase struct {
 	extensions            []CandidateExtension
 }
 
-// Done implements context.Context
+// Done implements context.Context.
 func (c *candidateBase) Done() <-chan struct{} {
 	return c.closeCh
 }
 
-// Err implements context.Context
+// Err implements context.Context.
 func (c *candidateBase) Err() error {
 	select {
 	case <-c.closedCh:
@@ -63,17 +63,17 @@ func (c *candidateBase) Err() error {
 	}
 }
 
-// Deadline implements context.Context
+// Deadline implements context.Context.
 func (c *candidateBase) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
-// Value implements context.Context
+// Value implements context.Context.
 func (c *candidateBase) Value(interface{}) interface{} {
 	return nil
 }
 
-// ID returns Candidate ID
+// ID returns Candidate ID.
 func (c *candidateBase) ID() string {
 	return c.id
 }
@@ -86,27 +86,27 @@ func (c *candidateBase) Foundation() string {
 	return fmt.Sprintf("%d", crc32.ChecksumIEEE([]byte(c.Type().String()+c.address+c.networkType.String())))
 }
 
-// Address returns Candidate Address
+// Address returns Candidate Address.
 func (c *candidateBase) Address() string {
 	return c.address
 }
 
-// Port returns Candidate Port
+// Port returns Candidate Port.
 func (c *candidateBase) Port() int {
 	return c.port
 }
 
-// Type returns candidate type
+// Type returns candidate type.
 func (c *candidateBase) Type() CandidateType {
 	return c.candidateType
 }
 
-// NetworkType returns candidate NetworkType
+// NetworkType returns candidate NetworkType.
 func (c *candidateBase) NetworkType() NetworkType {
 	return c.networkType
 }
 
-// Component returns candidate component
+// Component returns candidate component.
 func (c *candidateBase) Component() uint16 {
 	return c.component
 }
@@ -115,8 +115,8 @@ func (c *candidateBase) SetComponent(component uint16) {
 	c.component = component
 }
 
-// LocalPreference returns the local preference for this candidate
-func (c *candidateBase) LocalPreference() uint16 {
+// LocalPreference returns the local preference for this candidate.
+func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
 	if c.NetworkType().IsTCP() {
 		// RFC 6544, section 4.2
 		//
@@ -182,6 +182,7 @@ func (c *candidateBase) LocalPreference() uint16 {
 			case CandidateTypeUnspecified:
 				return 0
 			}
+
 			return 0
 		}()
 
@@ -191,7 +192,7 @@ func (c *candidateBase) LocalPreference() uint16 {
 	return defaultLocalPreference
 }
 
-// RelatedAddress returns *CandidateRelatedAddress
+// RelatedAddress returns *CandidateRelatedAddress.
 func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
 	return c.relatedAddress
 }
@@ -200,10 +201,11 @@ func (c *candidateBase) TCPType() TCPType {
 	return c.tcpType
 }
 
-// start runs the candidate using the provided connection
+// start runs the candidate using the provided connection.
 func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{}) {
 	if c.conn != nil {
 		c.agent().log.Warn("Can't start already started candidateBase")
+
 		return
 	}
 	c.currAgent = a
@@ -221,7 +223,7 @@ var bufferPool = sync.Pool{ // nolint:gochecknoglobals
 }
 
 func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
-	a := c.agent()
+	agent := c.agent()
 
 	defer close(c.closedCh)
 
@@ -242,8 +244,9 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 		n, srcAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
 			if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
-				a.log.Warnf("Failed to read from candidate %s: %v", c, err)
+				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
 			}
+
 			return
 		}
 
@@ -254,8 +257,10 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 func (c *candidateBase) validateSTUNTrafficCache(addr net.Addr) bool {
 	if candidate, ok := c.remoteCandidateCaches[toAddrPort(addr)]; ok {
 		candidate.seen(false)
+
 		return true
 	}
+
 	return false
 }
 
@@ -267,48 +272,51 @@ func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net
 }
 
 func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
-	a := c.agent()
+	agent := c.agent()
 
 	if stun.IsMessage(buf) {
-		m := &stun.Message{
+		msg := &stun.Message{
 			Raw: make([]byte, len(buf)),
 		}
 
 		// Explicitly copy raw buffer so Message can own the memory.
-		copy(m.Raw, buf)
+		copy(msg.Raw, buf)
 
-		if err := m.Decode(); err != nil {
-			a.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+		if err := msg.Decode(); err != nil {
+			agent.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+
 			return
 		}
 
-		if err := a.loop.Run(c, func(_ context.Context) {
+		if err := agent.loop.Run(c, func(_ context.Context) {
 			// nolint: contextcheck
-			a.handleInbound(m, c, srcAddr)
+			agent.handleInbound(msg, c, srcAddr)
 		}); err != nil {
-			a.log.Warnf("Failed to handle message: %v", err)
+			agent.log.Warnf("Failed to handle message: %v", err)
 		}
 
 		return
 	}
 
 	if !c.validateSTUNTrafficCache(srcAddr) {
-		remoteCandidate, valid := a.validateNonSTUNTraffic(c, srcAddr) //nolint:contextcheck
+		remoteCandidate, valid := agent.validateNonSTUNTraffic(c, srcAddr) //nolint:contextcheck
 		if !valid {
-			a.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+			agent.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+
 			return
 		}
 		c.addRemoteCandidateCache(remoteCandidate, srcAddr)
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
-	if _, err := a.buf.Write(buf); err != nil {
-		a.log.Warnf("Failed to write packet: %s", err)
+	if _, err := agent.buf.Write(buf); err != nil {
+		agent.log.Warnf("Failed to write packet: %s", err)
+
 		return
 	}
 }
 
-// close stops the recvLoop
+// close stops the recvLoop.
 func (c *candidateBase) close() error {
 	// If conn has never been started will be nil
 	if c.Done() == nil {
@@ -353,13 +361,15 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 			return n, err
 		}
 		c.agent().log.Infof("Failed to send packet: %v", err)
+
 		return n, nil
 	}
 	c.seen(true)
+
 	return n, nil
 }
 
-// TypePreference returns the type preference for this candidate
+// TypePreference returns the type preference for this candidate.
 func (c *candidateBase) TypePreference() uint16 {
 	pref := c.Type().Preference()
 	if pref == 0 {
@@ -397,7 +407,7 @@ func (c *candidateBase) Priority() uint32 {
 		(1<<0)*uint32(256-c.Component())
 }
 
-// Equal is used to compare two candidateBases
+// Equal is used to compare two candidateBases.
 func (c *candidateBase) Equal(other Candidate) bool {
 	if c.addr() != other.addr() {
 		if c.addr() == nil || other.addr() == nil {
@@ -416,22 +426,30 @@ func (c *candidateBase) Equal(other Candidate) bool {
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
 
-// DeepEqual is same as Equal but also compares the extensions
+// DeepEqual is same as Equal but also compares the extensions.
 func (c *candidateBase) DeepEqual(other Candidate) bool {
 	return c.Equal(other) && c.extensionsEqual(other.Extensions())
 }
 
-// String makes the candidateBase printable
+// String makes the candidateBase printable.
 func (c *candidateBase) String() string {
-	return fmt.Sprintf("%s %s %s%s (resolved: %v)", c.NetworkType(), c.Type(), net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())), c.relatedAddress, c.resolvedAddr)
+	return fmt.Sprintf(
+		"%s %s %s%s (resolved: %v)",
+		c.NetworkType(),
+		c.Type(),
+		net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())),
+		c.relatedAddress,
+		c.resolvedAddr,
+	)
 }
 
 // LastReceived returns a time.Time indicating the last time
-// this candidate was received
+// this candidate was received.
 func (c *candidateBase) LastReceived() time.Time {
 	if lastReceived, ok := c.lastReceived.Load().(time.Time); ok {
 		return lastReceived
 	}
+
 	return time.Time{}
 }
 
@@ -440,11 +458,12 @@ func (c *candidateBase) setLastReceived(t time.Time) {
 }
 
 // LastSent returns a time.Time indicating the last time
-// this candidate was sent
+// this candidate was sent.
 func (c *candidateBase) LastSent() time.Time {
 	if lastSent, ok := c.lastSent.Load().(time.Time); ok {
 		return lastSent
 	}
+
 	return time.Time{}
 }
 
@@ -484,10 +503,11 @@ func removeZoneIDFromAddress(addr string) string {
 	if i := strings.Index(addr, "%"); i != -1 {
 		return addr[:i]
 	}
+
 	return addr
 }
 
-// Marshal returns the string representation of the ICECandidate
+// Marshal returns the string representation of the ICECandidate.
 func (c *candidateBase) Marshal() string {
 	val := c.Foundation()
 	if val == " " {
@@ -618,9 +638,7 @@ func (c *candidateBase) setExtensions(extensions []CandidateExtension) {
 
 // UnmarshalCandidate Parses a candidate from a string
 // https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
-func UnmarshalCandidate(raw string) (Candidate, error) {
-	// rfc5245
-
+func UnmarshalCandidate(raw string) (Candidate, error) { //nolint:cyclop
 	pos := 0
 
 	// foundation ( 1*32ice-char ) But we allow for empty foundation,
@@ -805,15 +823,16 @@ func UnmarshalCandidate(raw string) (Candidate, error) {
 
 // Read an ice-char token from the raw string
 // ice-char = ALPHA / DIGIT / "+" / "/"
-// stop reading when a space is encountered or the end of the string
-func readCandidateCharToken(raw string, start int, limit int) (string, int, error) {
+// stop reading when a space is encountered or the end of the string.
+func readCandidateCharToken(raw string, start int, limit int) (string, int, error) { //nolint:cyclop
 	for i, char := range raw[start:] {
 		if char == 0x20 { // SP
 			return raw[start : start+i], start + i + 1, nil
 		}
 
 		if i == limit {
-			return "", 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit) //nolint: err113 // handled by caller
+			//nolint: err113 // handled by caller
+			return "", 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit)
 		}
 
 		if !(char >= 'A' && char <= 'Z' ||
@@ -828,7 +847,7 @@ func readCandidateCharToken(raw string, start int, limit int) (string, int, erro
 }
 
 // Read an ice string token from the raw string until a space is encountered
-// Or the end of the string, we imply that ice string are UTF-8 encoded
+// Or the end of the string, we imply that ice string are UTF-8 encoded.
 func readCandidateStringToken(raw string, start int) (string, int) {
 	for i, char := range raw[start:] {
 		if char == 0x20 { // SP
@@ -840,7 +859,7 @@ func readCandidateStringToken(raw string, start int) (string, int) {
 }
 
 // Read a digit token from the raw string
-// stop reading when a space is encountered or the end of the string
+// stop reading when a space is encountered or the end of the string.
 func readCandidateDigitToken(raw string, start, limit int) (int, int, error) {
 	var val int
 	for i, char := range raw[start:] {
@@ -849,7 +868,8 @@ func readCandidateDigitToken(raw string, start, limit int) (int, int, error) {
 		}
 
 		if i == limit {
-			return 0, 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit) //nolint: err113 // handled by caller
+			//nolint: err113 // handled by caller
+			return 0, 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit)
 		}
 
 		if !(char >= '0' && char <= '9') {
@@ -862,7 +882,7 @@ func readCandidateDigitToken(raw string, start, limit int) (int, int, error) {
 	return val, len(raw), nil
 }
 
-// Read and validate RFC 4566 port from the raw string
+// Read and validate RFC 4566 port from the raw string.
 func readCandidatePort(raw string, start int) (int, int, error) {
 	port, pos, err := readCandidateDigitToken(raw, start, 5)
 	if err != nil {
@@ -878,7 +898,7 @@ func readCandidatePort(raw string, start int) (int, int, error) {
 
 // Read a byte-string token from the raw string
 // As defined in RFC 4566  1*(%x01-09/%x0B-0C/%x0E-FF) ;any byte except NUL, CR, or LF
-// we imply that extensions byte-string are UTF-8 encoded
+// we imply that extensions byte-string are UTF-8 encoded.
 func readCandidateByteString(raw string, start int) (string, int, error) {
 	for i, char := range raw[start:] {
 		if char == 0x20 { // SP
@@ -952,17 +972,23 @@ func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, 
 	for i := 0; i < len(raw); {
 		key, next, err := readCandidateByteString(raw, i)
 		if err != nil {
-			return extensions, "", fmt.Errorf("%w: failed to read key %v", errParseExtension, err) //nolint: errorlint // we wrap the error
+			return extensions, "", fmt.Errorf(
+				"%w: failed to read key %v", errParseExtension, err, //nolint: errorlint // we wrap the error
+			)
 		}
 		i = next
 
 		if i >= len(raw) {
-			return extensions, "", fmt.Errorf("%w: missing value for %s in %s", errParseExtension, key, raw)
+			return extensions, "", fmt.Errorf(
+				"%w: missing value for %s in %s", errParseExtension, key, raw, //nolint: errorlint // we are wrapping the error
+			)
 		}
 
 		value, next, err := readCandidateByteString(raw, i)
 		if err != nil {
-			return extensions, "", fmt.Errorf("%w: failed to read value %v", errParseExtension, err) //nolint: errorlint // we are wrapping the error
+			return extensions, "", fmt.Errorf(
+				"%w: failed to read value %v", errParseExtension, err, //nolint: errorlint // we are wrapping the error
+			)
 		}
 		i = next
 
@@ -973,5 +999,5 @@ func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, 
 		extensions = append(extensions, CandidateExtension{key, value})
 	}
 
-	return
+	return extensions, rawTCPTypeRaw, nil
 }

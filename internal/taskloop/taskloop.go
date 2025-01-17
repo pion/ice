@@ -13,7 +13,7 @@ import (
 	atomicx "github.com/pion/ice/v4/internal/atomic"
 )
 
-// ErrClosed indicates that the loop has been stopped
+// ErrClosed indicates that the loop has been stopped.
 var ErrClosed = errors.New("the agent is closed")
 
 type task struct {
@@ -21,7 +21,7 @@ type task struct {
 	done chan struct{}
 }
 
-// Loop runs submitted task serially in a dedicated Goroutine
+// Loop runs submitted task serially in a dedicated Goroutine.
 type Loop struct {
 	tasks chan task
 
@@ -31,7 +31,7 @@ type Loop struct {
 	err          atomicx.Error
 }
 
-// New creates and starts a new task loop
+// New creates and starts a new task loop.
 func New(onClose func()) *Loop {
 	l := &Loop{
 		tasks:        make(chan task),
@@ -40,6 +40,7 @@ func New(onClose func()) *Loop {
 	}
 
 	go l.runLoop(onClose)
+
 	return l
 }
 
@@ -86,6 +87,7 @@ func (l *Loop) Run(ctx context.Context, t func(context.Context)) error {
 		return ctx.Err()
 	case l.tasks <- task{t, done}:
 		<-done
+
 		return nil
 	}
 }
@@ -113,7 +115,7 @@ func (l *Loop) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
-// Value is not supported for task loops
+// Value is not supported for task loops.
 func (l *Loop) Value(interface{}) interface{} {
 	return nil
 }

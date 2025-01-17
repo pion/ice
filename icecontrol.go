@@ -20,6 +20,7 @@ func (a tiebreaker) AddToAs(m *stun.Message, t stun.AttrType) error {
 	v := make([]byte, tiebreakerSize)
 	binary.BigEndian.PutUint64(v, uint64(a))
 	m.Add(t, v)
+
 	return nil
 }
 
@@ -33,6 +34,7 @@ func (a *tiebreaker) GetFromAs(m *stun.Message, t stun.AttrType) error {
 		return err
 	}
 	*a = tiebreaker(binary.BigEndian.Uint64(v))
+
 	return nil
 }
 
@@ -73,6 +75,7 @@ func (c AttrControl) AddTo(m *stun.Message) error {
 	if c.Role == Controlling {
 		return tiebreaker(c.Tiebreaker).AddToAs(m, stun.AttrICEControlling)
 	}
+
 	return tiebreaker(c.Tiebreaker).AddToAs(m, stun.AttrICEControlled)
 }
 
@@ -80,11 +83,14 @@ func (c AttrControl) AddTo(m *stun.Message) error {
 func (c *AttrControl) GetFrom(m *stun.Message) error {
 	if m.Contains(stun.AttrICEControlling) {
 		c.Role = Controlling
+
 		return (*tiebreaker)(&c.Tiebreaker).GetFromAs(m, stun.AttrICEControlling)
 	}
 	if m.Contains(stun.AttrICEControlled) {
 		c.Role = Controlled
+
 		return (*tiebreaker)(&c.Tiebreaker).GetFromAs(m, stun.AttrICEControlled)
 	}
+
 	return stun.ErrAttributeNotFound
 }

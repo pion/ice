@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVNetGather(t *testing.T) {
+func TestVNetGather(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
@@ -51,7 +51,7 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to parse CIDR: %s", err)
 		}
 
-		r, err := vnet.NewRouter(&vnet.RouterConfig{
+		router, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:          cider,
 			LoggerFactory: loggerFactory,
 		})
@@ -64,7 +64,7 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
-		err = r.AddNet(nw)
+		err = router.AddNet(nw)
 		if err != nil {
 			t.Fatalf("Failed to add a Net to the router: %s", err)
 		}
@@ -94,7 +94,7 @@ func TestVNetGather(t *testing.T) {
 	})
 
 	t.Run("listenUDP", func(t *testing.T) {
-		r, err := vnet.NewRouter(&vnet.RouterConfig{
+		router, err := vnet.NewRouter(&vnet.RouterConfig{
 			CIDR:          "1.2.3.0/24",
 			LoggerFactory: loggerFactory,
 		})
@@ -107,20 +107,26 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("Failed to create a Net: %s", err)
 		}
 
-		err = r.AddNet(nw)
+		err = router.AddNet(nw)
 		if err != nil {
 			t.Fatalf("Failed to add a Net to the router: %s", err)
 		}
 
-		a, err := NewAgent(&AgentConfig{Net: nw})
+		agent, err := NewAgent(&AgentConfig{Net: nw})
 		if err != nil {
 			t.Fatalf("Failed to create agent: %s", err)
 		}
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
-		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localAddrs, err := localInterfaces(
+			agent.net,
+			agent.interfaceFilter,
+			agent.ipFilter,
+			[]NetworkType{NetworkTypeUDP4},
+			false,
+		)
 		if len(localAddrs) == 0 {
 			t.Fatal("localInterfaces found no interfaces, unable to test")
 		}
@@ -128,7 +134,7 @@ func TestVNetGather(t *testing.T) {
 
 		ip := localAddrs[0].AsSlice()
 
-		conn, err := listenUDPInPortRange(a.net, a.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err := listenUDPInPortRange(agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != nil {
 			t.Fatalf("listenUDP error with no port restriction %v", err)
 		} else if conn == nil {
@@ -139,12 +145,12 @@ func TestVNetGather(t *testing.T) {
 			t.Fatalf("failed to close conn")
 		}
 
-		_, err = listenUDPInPortRange(a.net, a.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		_, err = listenUDPInPortRange(agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if !errors.Is(err, ErrPort) {
 			t.Fatal("listenUDP with invalid port range did not return ErrPort")
 		}
 
-		conn, err = listenUDPInPortRange(a.net, a.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		if err != nil {
 			t.Fatalf("listenUDP error with no port restriction %v", err)
 		} else if conn == nil {
@@ -163,7 +169,7 @@ func TestVNetGather(t *testing.T) {
 	})
 }
 
-func TestVNetGatherWithNAT1To1(t *testing.T) {
+func TestVNetGatherWithNAT1To1(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
@@ -206,7 +212,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = lan.AddNet(nw)
 		require.NoError(t, err, "should succeed")
 
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			NetworkTypes: []NetworkType{
 				NetworkTypeUDP4,
 			},
@@ -215,25 +221,25 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		})
 		require.NoError(t, err, "should succeed")
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
 		done := make(chan struct{})
-		err = a.OnCandidate(func(c Candidate) {
+		err = agent.OnCandidate(func(c Candidate) {
 			if c == nil {
 				close(done)
 			}
 		})
 		require.NoError(t, err, "should succeed")
 
-		err = a.GatherCandidates()
+		err = agent.GatherCandidates()
 		require.NoError(t, err, "should succeed")
 
 		log.Debug("Wait until gathering is complete...")
 		<-done
 		log.Debug("Gathering is done")
 
-		candidates, err := a.GetLocalCandidates()
+		candidates, err := agent.GetLocalCandidates()
 		require.NoError(t, err, "should succeed")
 
 		if len(candidates) != 2 {
@@ -248,7 +254,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 			}
 		}
 
-		if candidates[0].Address() == externalIP0 {
+		if candidates[0].Address() == externalIP0 { //nolint:nestif
 			if candidates[1].Address() != externalIP1 {
 				t.Fatalf("Unexpected candidate IP: %s", candidates[1].Address())
 			}
@@ -305,7 +311,7 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		err = lan.AddNet(nw)
 		require.NoError(t, err, "should succeed")
 
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			NetworkTypes: []NetworkType{
 				NetworkTypeUDP4,
 			},
@@ -317,25 +323,25 @@ func TestVNetGatherWithNAT1To1(t *testing.T) {
 		})
 		require.NoError(t, err, "should succeed")
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
 		done := make(chan struct{})
-		err = a.OnCandidate(func(c Candidate) {
+		err = agent.OnCandidate(func(c Candidate) {
 			if c == nil {
 				close(done)
 			}
 		})
 		require.NoError(t, err, "should succeed")
 
-		err = a.GatherCandidates()
+		err = agent.GatherCandidates()
 		require.NoError(t, err, "should succeed")
 
 		log.Debug("Wait until gathering is complete...")
 		<-done
 		log.Debug("Gathering is done")
 
-		candidates, err := a.GetLocalCandidates()
+		candidates, err := agent.GetLocalCandidates()
 		require.NoError(t, err, "should succeed")
 
 		if len(candidates) != 2 {
@@ -367,7 +373,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	r, err := vnet.NewRouter(&vnet.RouterConfig{
+	router, err := vnet.NewRouter(&vnet.RouterConfig{
 		CIDR:          "1.2.3.0/24",
 		LoggerFactory: loggerFactory,
 	})
@@ -380,24 +386,31 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		t.Fatalf("Failed to create a Net: %s", err)
 	}
 
-	if err = r.AddNet(nw); err != nil {
+	if err = router.AddNet(nw); err != nil {
 		t.Fatalf("Failed to add a Net to the router: %s", err)
 	}
 
 	t.Run("InterfaceFilter should exclude the interface", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			Net: nw,
 			InterfaceFilter: func(interfaceName string) (keep bool) {
 				require.Equal(t, "eth0", interfaceName)
+
 				return false
 			},
 		})
 		require.NoError(t, err)
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(
+			agent.net,
+			agent.interfaceFilter,
+			agent.ipFilter,
+			[]NetworkType{NetworkTypeUDP4},
+			false,
+		)
 		require.NoError(t, err)
 
 		if len(localIPs) != 0 {
@@ -406,19 +419,26 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	})
 
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			Net: nw,
 			IPFilter: func(ip net.IP) (keep bool) {
 				require.Equal(t, net.IP{1, 2, 3, 1}, ip)
+
 				return false
 			},
 		})
 		require.NoError(t, err)
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(
+			agent.net,
+			agent.interfaceFilter,
+			agent.ipFilter,
+			[]NetworkType{NetworkTypeUDP4},
+			false,
+		)
 		require.NoError(t, err)
 
 		if len(localIPs) != 0 {
@@ -427,19 +447,26 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	})
 
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			Net: nw,
 			InterfaceFilter: func(interfaceName string) (keep bool) {
 				require.Equal(t, "eth0", interfaceName)
+
 				return true
 			},
 		})
 		require.NoError(t, err)
 		defer func() {
-			require.NoError(t, a.Close())
+			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(
+			agent.net,
+			agent.interfaceFilter,
+			agent.ipFilter,
+			[]NetworkType{NetworkTypeUDP4},
+			false,
+		)
 		require.NoError(t, err)
 
 		if len(localIPs) == 0 {

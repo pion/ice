@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// CandidatePairStats contains ICE candidate pair statistics
+// CandidatePairStats contains ICE candidate pair statistics.
 type CandidatePairStats struct {
 	// Timestamp is the timestamp associated with this object.
 	Timestamp time.Time

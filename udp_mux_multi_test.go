@@ -79,6 +79,8 @@ func TestMultiUDPMux(t *testing.T) {
 }
 
 func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, ufrag string, network string) {
+	t.Helper()
+
 	addrs := udpMuxMulti.GetListenAddresses()
 	pktConns := make([]net.PacketConn, 0, len(addrs))
 	for _, addr := range addrs {

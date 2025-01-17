@@ -45,7 +45,7 @@ func (v *virtualNet) close() {
 	v.wan.Stop()     //nolint:errcheck,gosec
 }
 
-func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
+func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint:cyclop
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN
@@ -77,6 +77,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 					vnetGlobalIPA + "/" + vnetLocalIPA,
 				}
 			}
+
 			return []string{
 				vnetGlobalIPA,
 			}
@@ -114,6 +115,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 					vnetGlobalIPB + "/" + vnetLocalIPB,
 				}
 			}
+
 			return []string{
 				vnetGlobalIPB,
 			}
@@ -175,6 +177,7 @@ func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.S
 			if pw, ok := credMap[username]; ok {
 				return turn.GenerateAuthKey(username, realm, pw), true
 			}
+
 			return nil, false
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{
@@ -222,6 +225,7 @@ func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 
 	// Ensure accepted
 	<-accepted
+
 	return aConn, bConn
 }
 
@@ -230,7 +234,7 @@ type agentTestConfig struct {
 	nat1To1IPCandidateType CandidateType
 }
 
-func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
+func pipeWithVNet(vnet *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
@@ -247,7 +251,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
 		NAT1To1IPCandidateType: a0TestConfig.nat1To1IPCandidateType,
-		Net:                    v.net0,
+		Net:                    vnet.net0,
 	}
 
 	aAgent, err := NewAgent(cfg0)
@@ -270,7 +274,7 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 		MulticastDNSMode:       MulticastDNSModeDisabled,
 		NAT1To1IPs:             nat1To1IPs,
 		NAT1To1IPCandidateType: a1TestConfig.nat1To1IPCandidateType,
-		Net:                    v.net1,
+		Net:                    vnet.net1,
 	}
 
 	bAgent, err := NewAgent(cfg1)
@@ -293,6 +297,8 @@ func pipeWithVNet(v *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*
 }
 
 func closePipe(t *testing.T, ca *Conn, cb *Conn) {
+	t.Helper()
+
 	require.NoError(t, ca.Close())
 	require.NoError(t, cb.Close())
 }
@@ -325,10 +331,10 @@ func TestConnectivityVNet(t *testing.T) {
 			MappingBehavior:   vnet.EndpointIndependent,
 			FilteringBehavior: vnet.EndpointIndependent,
 		}
-		v, err := buildVNet(natType, natType)
+		vnet, err := buildVNet(natType, natType)
 
 		require.NoError(t, err, "should succeed")
-		defer v.close()
+		defer vnet.close()
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
@@ -341,7 +347,7 @@ func TestConnectivityVNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
 
 		time.Sleep(1 * time.Second)
 
@@ -358,10 +364,10 @@ func TestConnectivityVNet(t *testing.T) {
 			MappingBehavior:   vnet.EndpointAddrPortDependent,
 			FilteringBehavior: vnet.EndpointAddrPortDependent,
 		}
-		v, err := buildVNet(natType, natType)
+		vnet, err := buildVNet(natType, natType)
 
 		require.NoError(t, err, "should succeed")
-		defer v.close()
+		defer vnet.close()
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
@@ -375,7 +381,7 @@ func TestConnectivityVNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
@@ -394,10 +400,10 @@ func TestConnectivityVNet(t *testing.T) {
 			MappingBehavior:   vnet.EndpointAddrPortDependent,
 			FilteringBehavior: vnet.EndpointAddrPortDependent,
 		}
-		v, err := buildVNet(natType0, natType1)
+		vnet, err := buildVNet(natType0, natType1)
 
 		require.NoError(t, err, "should succeed")
-		defer v.close()
+		defer vnet.close()
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
@@ -407,7 +413,7 @@ func TestConnectivityVNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
@@ -426,10 +432,10 @@ func TestConnectivityVNet(t *testing.T) {
 			MappingBehavior:   vnet.EndpointAddrPortDependent,
 			FilteringBehavior: vnet.EndpointAddrPortDependent,
 		}
-		v, err := buildVNet(natType0, natType1)
+		vnet, err := buildVNet(natType0, natType1)
 
 		require.NoError(t, err, "should succeed")
-		defer v.close()
+		defer vnet.close()
 
 		log.Debug("Connecting...")
 		a0TestConfig := &agentTestConfig{
@@ -439,14 +445,15 @@ func TestConnectivityVNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		ca, cb := pipeWithVNet(v, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
 	})
 }
 
-// TestDisconnectedToConnected requires that an agent can go to disconnected, and then return to connected successfully
+// TestDisconnectedToConnected requires that an agent can go to disconnected,
+// and then return to connected successfully.
 func TestDisconnectedToConnected(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -546,7 +553,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 	require.NoError(t, wan.Stop())
 }
 
-// Agent.Write should use the best valid pair if a selected pair is not yet available
+// Agent.Write should use the best valid pair if a selected pair is not yet available.
 func TestWriteUseValidPair(t *testing.T) {
 	defer test.CheckRoutines(t)()
 

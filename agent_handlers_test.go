@@ -15,7 +15,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 		defer test.CheckRoutines(t)()
 
 		updates := make(chan struct{}, 1)
-		c := &handlerNotifier{
+		notifier := &handlerNotifier{
 			connectionStateFunc: func(_ ConnectionState) {
 				updates <- struct{}{}
 			},
@@ -24,7 +24,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 		// Enqueue all updates upfront to ensure that it
 		// doesn't block
 		for i := 0; i < 10000; i++ {
-			c.EnqueueConnectionState(ConnectionStateNew)
+			notifier.EnqueueConnectionState(ConnectionStateNew)
 		}
 		done := make(chan struct{})
 		go func() {
@@ -39,12 +39,12 @@ func TestConnectionStateNotifier(t *testing.T) {
 			close(done)
 		}()
 		<-done
-		c.Close(true)
+		notifier.Close(true)
 	})
 	t.Run("TestUpdateOrdering", func(t *testing.T) {
 		defer test.CheckRoutines(t)()
 		updates := make(chan ConnectionState)
-		c := &handlerNotifier{
+		notifer := &handlerNotifier{
 			connectionStateFunc: func(cs ConnectionState) {
 				updates <- cs
 			},
@@ -66,9 +66,9 @@ func TestConnectionStateNotifier(t *testing.T) {
 			close(done)
 		}()
 		for i := 0; i < 10000; i++ {
-			c.EnqueueConnectionState(ConnectionState(i))
+			notifer.EnqueueConnectionState(ConnectionState(i))
 		}
 		<-done
-		c.Close(true)
+		notifer.Close(true)
 	})
 }

@@ -12,11 +12,11 @@ import (
 
 func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
-	var c AttrControlled
-	if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
+	var attrCtr AttrControlled
+	if err := attrCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
-	if err := m.Build(stun.BindingRequest, &c); err != nil {
+	if err := m.Build(stun.BindingRequest, &attrCtr); err != nil {
 		t.Error(err)
 	}
 	m1 := new(stun.Message)
@@ -27,7 +27,7 @@ func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
 	if err := c1.GetFrom(m1); err != nil {
 		t.Error(err)
 	}
-	if c1 != c {
+	if c1 != attrCtr {
 		t.Error("not equal")
 	}
 	t.Run("IncorrectSize", func(t *testing.T) {
@@ -42,11 +42,11 @@ func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
 
 func TestControlling_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
-	var c AttrControlling
-	if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
+	var attrCtr AttrControlling
+	if err := attrCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 		t.Error("unexpected error")
 	}
-	if err := m.Build(stun.BindingRequest, &c); err != nil {
+	if err := m.Build(stun.BindingRequest, &attrCtr); err != nil {
 		t.Error(err)
 	}
 	m1 := new(stun.Message)
@@ -57,7 +57,7 @@ func TestControlling_GetFrom(t *testing.T) { //nolint:dupl
 	if err := c1.GetFrom(m1); err != nil {
 		t.Error(err)
 	}
-	if c1 != c {
+	if c1 != attrCtr {
 		t.Error("not equal")
 	}
 	t.Run("IncorrectSize", func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestControlling_GetFrom(t *testing.T) { //nolint:dupl
 	})
 }
 
-func TestControl_GetFrom(t *testing.T) {
+func TestControl_GetFrom(t *testing.T) { //nolint:cyclop
 	t.Run("Blank", func(t *testing.T) {
 		m := new(stun.Message)
 		var c AttrControl
@@ -80,13 +80,13 @@ func TestControl_GetFrom(t *testing.T) {
 	})
 	t.Run("Controlling", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
-		var c AttrControl
-		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
+		var attCtr AttrControl
+		if err := attCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 			t.Error("unexpected error")
 		}
-		c.Role = Controlling
-		c.Tiebreaker = 4321
-		if err := m.Build(stun.BindingRequest, &c); err != nil {
+		attCtr.Role = Controlling
+		attCtr.Tiebreaker = 4321
+		if err := m.Build(stun.BindingRequest, &attCtr); err != nil {
 			t.Error(err)
 		}
 		m1 := new(stun.Message)
@@ -97,7 +97,7 @@ func TestControl_GetFrom(t *testing.T) {
 		if err := c1.GetFrom(m1); err != nil {
 			t.Error(err)
 		}
-		if c1 != c {
+		if c1 != attCtr {
 			t.Error("not equal")
 		}
 		t.Run("IncorrectSize", func(t *testing.T) {
@@ -111,13 +111,13 @@ func TestControl_GetFrom(t *testing.T) {
 	})
 	t.Run("Controlled", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
-		var c AttrControl
-		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
+		var attrCtrl AttrControl
+		if err := attrCtrl.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
 			t.Error("unexpected error")
 		}
-		c.Role = Controlled
-		c.Tiebreaker = 1234
-		if err := m.Build(stun.BindingRequest, &c); err != nil {
+		attrCtrl.Role = Controlled
+		attrCtrl.Tiebreaker = 1234
+		if err := m.Build(stun.BindingRequest, &attrCtrl); err != nil {
 			t.Error(err)
 		}
 		m1 := new(stun.Message)
@@ -128,7 +128,7 @@ func TestControl_GetFrom(t *testing.T) {
 		if err := c1.GetFrom(m1); err != nil {
 			t.Error(err)
 		}
-		if c1 != c {
+		if c1 != attrCtrl {
 			t.Error("not equal")
 		}
 		t.Run("IncorrectSize", func(t *testing.T) {
