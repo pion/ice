@@ -2071,3 +2071,42 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 	closeNow.Done()
 	closed.Wait()
 }
+
+func TestSetCandidatesUfrag(t *testing.T) {
+	var config AgentConfig
+
+	agent, err := NewAgent(&config)
+	if err != nil {
+		t.Fatalf("Error constructing ice.Agent: %v", err)
+	}
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	dummyConn := &net.UDPConn{}
+
+	for i := 0; i < 5; i++ {
+		cfg := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      1000 + i,
+			Component: 1,
+		}
+
+		cand, errCand := NewCandidateHost(&cfg)
+		require.NoError(t, errCand)
+
+		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		require.NoError(t, err)
+	}
+
+	actualCandidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+
+	for _, candidate := range actualCandidates {
+		ext, ok := candidate.GetExtension("ufrag")
+
+		require.True(t, ok)
+		require.Equal(t, agent.localUfrag, ext.Value)
+	}
+}

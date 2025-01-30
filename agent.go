@@ -799,6 +799,7 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 			}
 		}
 
+		a.setCandidateExtensions(cand)
 		cand.start(a, candidateConn, a.startedCh)
 
 		set = append(set, cand)
@@ -816,6 +817,16 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 			a.candidateNotifier.EnqueueCandidate(cand)
 		}
 	})
+}
+
+func (a *Agent) setCandidateExtensions(cand Candidate) {
+	err := cand.AddExtension(CandidateExtension{
+		Key:   "ufrag",
+		Value: a.localUfrag,
+	})
+	if err != nil {
+		a.log.Errorf("Failed to add ufrag extension to candidate: %v", err)
+	}
 }
 
 // GetRemoteCandidates returns the remote candidates.
