@@ -58,12 +58,18 @@ type Candidate interface {
 	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
 	//.
 	Extensions() []CandidateExtension
-
 	// GetExtension returns the value of the extension attribute associated with the ICECandidate.
 	// Extension attributes are defined in RFC 5245, Section 15.1:
 	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
 	//.
 	GetExtension(key string) (value CandidateExtension, ok bool)
+	// AddExtension adds an extension attribute to the ICECandidate.
+	// If an extension with the same key already exists, it will be overwritten.
+	// Extension attributes are defined in RFC 5245, Section 15.1:
+	AddExtension(extension CandidateExtension) error
+	// RemoveExtension removes an extension attribute from the ICECandidate.
+	// Extension attributes are defined in RFC 5245, Section 15.1:
+	RemoveExtension(key string) (ok bool)
 
 	String() string
 	Type() CandidateType

@@ -1271,3 +1271,159 @@ func TestBaseCandidateExtensionsEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestCandidateAddExtension(t *testing.T) {
+	t.Run("Add extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
+
+		extensions := candidate.Extensions()
+		require.Equal(t, []CandidateExtension{{"a", "b"}, {"c", "d"}}, extensions)
+	})
+
+	t.Run("Add extension with existing key", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "d"}))
+
+		extensions := candidate.Extensions()
+		require.Equal(t, []CandidateExtension{{"a", "d"}}, extensions)
+	})
+
+	t.Run("Keep tcptype extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeTCP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+			TCPType:    TCPTypeActive,
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		ext, ok := candidate.GetExtension("tcptype")
+		require.True(t, ok)
+		require.Equal(t, ext, CandidateExtension{"tcptype", "active"})
+		require.Equal(t, candidate.Extensions(), []CandidateExtension{{"tcptype", "active"}})
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
+
+		ext, ok = candidate.GetExtension("tcptype")
+		require.True(t, ok)
+		require.Equal(t, ext, CandidateExtension{"tcptype", "active"})
+		require.Equal(t, candidate.Extensions(), []CandidateExtension{{"tcptype", "active"}, {"a", "b"}})
+	})
+
+	t.Run("TcpType change extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeTCP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"tcptype", "active"}))
+
+		extensions := candidate.Extensions()
+		require.Equal(t, []CandidateExtension{{"tcptype", "active"}}, extensions)
+		require.Equal(t, TCPTypeActive, candidate.TCPType())
+
+		require.Error(t, candidate.AddExtension(CandidateExtension{"tcptype", "INVALID"}))
+	})
+}
+
+func TestCandidateRemoveExtension(t *testing.T) {
+	t.Run("Remove extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
+
+		require.True(t, candidate.RemoveExtension("a"))
+
+		extensions := candidate.Extensions()
+		require.Equal(t, []CandidateExtension{{"c", "d"}}, extensions)
+	})
+
+	t.Run("Remove extension that does not exist", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
+
+		require.False(t, candidate.RemoveExtension("b"))
+
+		extensions := candidate.Extensions()
+		require.Equal(t, []CandidateExtension{{"a", "b"}, {"c", "d"}}, extensions)
+	})
+
+	t.Run("Remove tcptype extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeTCP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+			TCPType:    TCPTypeActive,
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		// tcptype extension should be removed, even if it's not in the extensions list (Not Parsed)
+		require.True(t, candidate.RemoveExtension("tcptype"))
+		require.Equal(t, TCPTypeUnspecified, candidate.TCPType())
+		require.Empty(t, candidate.Extensions())
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"tcptype", "passive"}))
+
+		require.True(t, candidate.RemoveExtension("tcptype"))
+		require.Equal(t, TCPTypeUnspecified, candidate.TCPType())
+		require.Empty(t, candidate.Extensions())
+	})
+}

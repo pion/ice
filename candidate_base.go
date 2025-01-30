@@ -548,17 +548,22 @@ type CandidateExtension struct {
 }
 
 func (c *candidateBase) Extensions() []CandidateExtension {
-	// IF Extensions were not parsed using UnmarshalCandidate
-	// For backwards compatibility when the TCPType is set manually
-	if len(c.extensions) == 0 && c.TCPType() != TCPTypeUnspecified {
-		return []CandidateExtension{{
-			Key:   "tcptype",
-			Value: c.TCPType().String(),
-		}}
+	tcpType := c.TCPType()
+	hasTCPType := 0
+	if tcpType != TCPTypeUnspecified {
+		hasTCPType = 1
 	}
 
-	extensions := make([]CandidateExtension, len(c.extensions))
-	copy(extensions, c.extensions)
+	extensions := make([]CandidateExtension, len(c.extensions)+hasTCPType)
+	// We store the TCPType in c.tcpType, but we need to return it as an extension.
+	if hasTCPType == 1 {
+		extensions[0] = CandidateExtension{
+			Key:   "tcptype",
+			Value: tcpType.String(),
+		}
+	}
+
+	copy(extensions[hasTCPType:], c.extensions)
 
 	return extensions
 }
@@ -576,13 +581,62 @@ func (c *candidateBase) GetExtension(key string) (CandidateExtension, bool) {
 	}
 
 	// TCPType was manually set.
-	if key == "tcptype" && c.TCPType() != TCPTypeUnspecified {
+	if key == "tcptype" && c.TCPType() != TCPTypeUnspecified { //nolint:goconst
 		extension.Value = c.TCPType().String()
 
 		return extension, true
 	}
 
 	return extension, false
+}
+
+func (c *candidateBase) AddExtension(ext CandidateExtension) error {
+	if ext.Key == "tcptype" {
+		tcpType := NewTCPType(ext.Value)
+		if tcpType == TCPTypeUnspecified {
+			return fmt.Errorf("%w: invalid or unsupported TCPtype %s", errParseTCPType, ext.Value)
+		}
+
+		c.tcpType = tcpType
+
+		return nil
+	}
+
+	if ext.Key == "" {
+		return fmt.Errorf("%w: key is empty", errParseExtension)
+	}
+
+	// per spec, Extensions aren't explicitly unique, we only set the first one.
+	// If the exteion is set multiple times.
+	for i := range c.extensions {
+		if c.extensions[i].Key == ext.Key {
+			c.extensions[i] = ext
+
+			return nil
+		}
+	}
+
+	c.extensions = append(c.extensions, ext)
+
+	return nil
+}
+
+func (c *candidateBase) RemoveExtension(key string) (ok bool) {
+	if key == "tcptype" {
+		c.tcpType = TCPTypeUnspecified
+		ok = true
+	}
+
+	for i := range c.extensions {
+		if c.extensions[i].Key == key {
+			c.extensions = append(c.extensions[:i], c.extensions[i+1:]...)
+			ok = true
+
+			break
+		}
+	}
+
+	return ok
 }
 
 // marshalExtensions returns the string representation of the candidate extensions.
@@ -994,6 +1048,8 @@ func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, 
 
 		if key == "tcptype" {
 			rawTCPTypeRaw = value
+
+			continue
 		}
 
 		extensions = append(extensions, CandidateExtension{key, value})
