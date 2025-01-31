@@ -1032,19 +1032,17 @@ func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, 
 		}
 		i = next
 
-		if i >= len(raw) {
-			return extensions, "", fmt.Errorf(
-				"%w: missing value for %s in %s", errParseExtension, key, raw, //nolint: errorlint // we are wrapping the error
-			)
+		// while not spec-compliant, we allow for empty values, as seen in the wild
+		var value string
+		if i < len(raw) {
+			value, next, err = readCandidateByteString(raw, i)
+			if err != nil {
+				return extensions, "", fmt.Errorf(
+					"%w: failed to read value %v", errParseExtension, err, //nolint: errorlint // we are wrapping the error
+				)
+			}
+			i = next
 		}
-
-		value, next, err := readCandidateByteString(raw, i)
-		if err != nil {
-			return extensions, "", fmt.Errorf(
-				"%w: failed to read value %v", errParseExtension, err, //nolint: errorlint // we are wrapping the error
-			)
-		}
-		i = next
 
 		if key == "tcptype" {
 			rawTCPTypeRaw = value

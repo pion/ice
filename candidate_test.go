@@ -698,8 +698,20 @@ func TestCandidateExtensionsMarshal(t *testing.T) {
 			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host",
 		},
 		{
-			[]CandidateExtension{},
-			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host",
+			[]CandidateExtension{
+				{"tcptype", "active"},
+				{"empty-value-1", ""},
+				{"empty-value-2", ""},
+			},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active empty-value-1  empty-value-2",
+		},
+		{
+			[]CandidateExtension{
+				{"tcptype", "active"},
+				{"empty-value-1", ""},
+				{"empty-value-2", ""},
+			},
+			"1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active empty-value-1  empty-value-2 ",
 		},
 	}
 
@@ -968,15 +980,9 @@ func TestUnmarshalCandidateExtensions(t *testing.T) {
 			fail: false,
 		},
 		{
-			name:     "invalid extension string",
-			value:    "invalid",
-			expected: []CandidateExtension{},
-			fail:     true,
-		},
-		{
 			name:     "invalid extension",
-			value:    " a b",
-			expected: []CandidateExtension{{"a", "b"}, {"c", "d"}},
+			value:    " a b d",
+			expected: []CandidateExtension{{"", "a"}, {"b", "d"}},
 			fail:     true,
 		},
 	}
@@ -1356,6 +1362,27 @@ func TestCandidateAddExtension(t *testing.T) {
 		require.Equal(t, TCPTypeActive, candidate.TCPType())
 
 		require.Error(t, candidate.AddExtension(CandidateExtension{"tcptype", "INVALID"}))
+	})
+
+	t.Run("Add empty extension", func(t *testing.T) {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:    NetworkTypeUDP4.String(),
+			Address:    "fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a",
+			Port:       53987,
+			Priority:   500,
+			Foundation: "750",
+		})
+		if err != nil {
+			t.Error(err)
+		}
+
+		require.Error(t, candidate.AddExtension(CandidateExtension{"", ""}))
+
+		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", ""}))
+
+		extensions := candidate.Extensions()
+
+		require.Equal(t, []CandidateExtension{{"a", ""}}, extensions)
 	})
 }
 
