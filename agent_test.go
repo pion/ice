@@ -636,7 +636,7 @@ func TestInvalidGather(t *testing.T) {
 	})
 }
 
-func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop
+func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 	defer test.CheckRoutines(t)()
 
 	// Avoid deadlocks?
@@ -715,14 +715,18 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop
 		p := agent.findPair(hostLocal, remote)
 
 		if p == nil {
-			agent.addPair(hostLocal, remote)
+			p = agent.addPair(hostLocal, remote)
 		}
+		p.UpdateRequestReceived()
+		p.UpdateRequestSent()
+		p.UpdateResponseSent()
+		p.UpdateRoundTripTime(time.Second)
 	}
 
 	p := agent.findPair(hostLocal, prflxRemote)
 	p.state = CandidatePairStateFailed
 
-	for i := 0; i < 10; i++ {
+	for i := 1; i < 10; i++ {
 		p.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
 	}
 
@@ -748,6 +752,13 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop
 			hostPairStat = cps
 		default:
 			t.Fatal("invalid remote candidate ID")
+		}
+
+		if cps.FirstRequestTimestamp.IsZero() || cps.LastRequestTimestamp.IsZero() ||
+			cps.FirstResponseTimestamp.IsZero() || cps.LastResponseTimestamp.IsZero() ||
+			cps.FirstRequestReceivedTimestamp.IsZero() || cps.LastRequestReceivedTimestamp.IsZero() ||
+			cps.RequestsReceived == 0 || cps.RequestsSent == 0 || cps.ResponsesSent == 0 || cps.ResponsesReceived == 0 {
+			t.Fatal("failed to verify pair stats counter and timestamps", cps)
 		}
 	}
 
