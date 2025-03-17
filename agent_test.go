@@ -2121,3 +2121,42 @@ func TestSetCandidatesUfrag(t *testing.T) {
 		require.Equal(t, agent.localUfrag, ext.Value)
 	}
 }
+
+func TestAlwaysSentKeepAlive(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+
+	// Avoid deadlocks?
+	defer test.TimeOut(1 * time.Second).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create agent: %s", err)
+	}
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	log := logging.NewDefaultLoggerFactory().NewLogger("agent")
+	agent.selector = &controllingSelector{agent: agent, log: log}
+	pair := makeCandidatePair(t)
+	if s, ok := pair.Local.(*CandidateHost); ok {
+		s.conn = &fakenet.MockPacketConn{}
+	} else {
+		t.Fatalf("Invalid local candidate")
+	}
+	agent.setSelectedPair(pair)
+
+	pair.Remote.seen(false)
+
+	lastSent := pair.Local.LastSent()
+	agent.checkKeepalive()
+	newLastSent := pair.Local.LastSent()
+	require.NotEqual(t, lastSent, newLastSent)
+	lastSent = newLastSent
+
+	// sleep, so there is difference in sent time of local candidate
+	time.Sleep(10 * time.Millisecond)
+	agent.checkKeepalive()
+	newLastSent = pair.Local.LastSent()
+	require.NotEqual(t, lastSent, newLastSent)
+}
