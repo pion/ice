@@ -6,6 +6,7 @@ package ice
 import (
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -465,6 +466,18 @@ func TestCandidateMarshal(t *testing.T) {
 			" 1 udp 500 " + localhostIPStr + " 80 typ host",
 			false,
 		},
+		// Missing Foundation
+		{
+			mustCandidateHost(t, &CandidateHostConfig{
+				Network:    NetworkTypeUDP4.String(),
+				Address:    localhostIPStr,
+				Port:       80,
+				Priority:   500,
+				Foundation: " ",
+			}),
+			"candidate: 1 udp 500 " + localhostIPStr + " 80 typ host",
+			false,
+		},
 		{
 			mustCandidateHost(t, &CandidateHostConfig{
 				Network:    NetworkTypeUDP4.String(),
@@ -485,6 +498,17 @@ func TestCandidateMarshal(t *testing.T) {
 				Foundation: "+/3713fhi",
 			}),
 			"3359356140 1 tcp 1671430143 172.28.142.173 7686 typ host",
+			false,
+		},
+		{
+			mustCandidateHost(t, &CandidateHostConfig{
+				Network:    NetworkTypeTCP4.String(),
+				Address:    "172.28.142.173",
+				Port:       7686,
+				Priority:   1671430143,
+				Foundation: "+/3713fhi",
+			}),
+			"candidate:3359356140 1 tcp 1671430143 172.28.142.173 7686 typ host",
 			false,
 		},
 
@@ -562,7 +586,12 @@ func TestCandidateMarshal(t *testing.T) {
 				test.candidate.String(),
 				actualCandidate.String(),
 			)
-			require.Equal(t, test.marshaled, actualCandidate.Marshal())
+
+			if strings.HasPrefix(test.marshaled, "candidate:") {
+				require.Equal(t, test.marshaled[len("candidate:"):], actualCandidate.Marshal())
+			} else {
+				require.Equal(t, test.marshaled, actualCandidate.Marshal())
+			}
 		})
 	}
 }
