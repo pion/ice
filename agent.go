@@ -267,6 +267,7 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit,cyclop
 		mDNSMode,
 		mDNSName,
 		log,
+		loggerFactory,
 	); err != nil {
 		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
 	}
