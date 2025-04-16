@@ -1046,11 +1046,12 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 
 					turnServerAddr := net.JoinHostPort(url.Host, strconv.Itoa(url.Port))
 					var (
-						locConn       net.PacketConn
-						err           error
-						relAddr       string
-						relPort       int
-						relayProtocol string
+						locConn             net.PacketConn
+						err                 error
+						relAddr             string
+						relPort             int
+						relayProtocol       string
+						needsTURNServerAddr bool
 					)
 
 					switch {
@@ -1064,6 +1065,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 						relAddr = locConn.LocalAddr().(*net.UDPAddr).IP.String() //nolint:forcetypeassert
 						relPort = locConn.LocalAddr().(*net.UDPAddr).Port        //nolint:forcetypeassert
 						relayProtocol = udp
+						needsTURNServerAddr = true
 					case a.proxyDialer != nil && urlProto == stun.ProtoTypeTCP &&
 						(url.Scheme == stun.SchemeTypeTURN || url.Scheme == stun.SchemeTypeTURNS):
 						conn, connectErr := a.proxyDialer.Dial(network, turnServerAddr)
@@ -1187,14 +1189,18 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 						factory = defaultTurnClient
 					}
 
-					client, err := factory(&turn.ClientConfig{
-						TURNServerAddr: turnServerAddr,
-						Conn:           locConn,
-						Username:       url.Username,
-						Password:       url.Password,
-						LoggerFactory:  a.loggerFactory,
-						Net:            a.net,
-					})
+					clientConfig := &turn.ClientConfig{
+						Conn:          locConn,
+						Username:      url.Username,
+						Password:      url.Password,
+						LoggerFactory: a.loggerFactory,
+						Net:           a.net,
+					}
+					if needsTURNServerAddr {
+						clientConfig.TURNServerAddr = turnServerAddr
+					}
+
+					client, err := factory(clientConfig)
 					if err != nil {
 						closeConnAndLog(locConn, a.log, "failed to create new TURN client %s %s", turnServerAddr, err)
 
