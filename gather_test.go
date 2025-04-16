@@ -777,6 +777,17 @@ type relayGatherNet struct {
 	addr *net.UDPAddr
 }
 
+type unresolvableRelayGatherNet struct {
+	*relayGatherNet
+	resolveUDPCalls atomic.Int32
+}
+
+func (n *unresolvableRelayGatherNet) ResolveUDPAddr(string, string) (*net.UDPAddr, error) {
+	n.resolveUDPCalls.Add(1)
+
+	return nil, errors.New("DNS unavailable") //nolint:err113 // test
+}
+
 func newRelayGatherNet(addr *net.UDPAddr) *relayGatherNet {
 	if addr == nil {
 		addr = &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
@@ -1880,6 +1891,54 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 	case <-time.After(time.Second):
 		require.FailNow(t, "expected relay candidate for TURN over TCP")
 	}
+}
+
+func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	turnNet := &unresolvableRelayGatherNet{
+		relayGatherNet: newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000}),
+	}
+	agent, err := NewAgentWithOptions(
+		WithNet(turnNet),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithUrls([]*stun.URI{
+			{
+				Scheme:   stun.SchemeTypeTURN,
+				Host:     "unresolvable.invalid",
+				Port:     3478,
+				Username: "username",
+				Password: "password",
+				Proto:    stun.ProtoTypeTCP,
+			},
+		}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	agent.proxyDialer = &relayTCPProxyDialer{
+		localAddr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 55000},
+	}
+	clientConfig := make(chan *turn.ClientConfig, 1)
+	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+		clientConfig <- cfg
+
+		return nil, errors.New("stop after capturing config") //nolint:err113 // test
+	}
+
+	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+	var config *turn.ClientConfig
+	select {
+	case config = <-clientConfig:
+	case <-time.After(time.Second):
+		require.FailNow(t, "TURN client was not created")
+	}
+	require.Empty(t, config.TURNServerAddr)
+	require.Same(t, turnNet, config.Net)
+	require.Zero(t, turnNet.resolveUDPCalls.Load())
 }
 
 func buildSimpleVNet(t *testing.T) (*vnet.Router, *vnet.Net) {
