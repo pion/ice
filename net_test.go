@@ -13,25 +13,11 @@ import (
 )
 
 func TestIsSupportedIPv6Partial(t *testing.T) {
-	if isSupportedIPv6Partial(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1}) {
-		t.Errorf("isSupportedIPv6Partial returned true with IPv4-compatible IPv6 address")
-	}
-
-	if isSupportedIPv6Partial(net.ParseIP("fec0::2333")) {
-		t.Errorf("isSupportedIPv6Partial returned true with IPv6 site-local unicast address")
-	}
-
-	if !isSupportedIPv6Partial(net.ParseIP("fe80::2333")) {
-		t.Errorf("isSupportedIPv6Partial returned false with IPv6 link-local address")
-	}
-
-	if !isSupportedIPv6Partial(net.ParseIP("ff02::2333")) {
-		t.Errorf("isSupportedIPv6Partial returned false with IPv6 link-local multicast address")
-	}
-
-	if !isSupportedIPv6Partial(net.ParseIP("2001::1")) {
-		t.Errorf("isSupportedIPv6Partial returned false with IPv6 global unicast address")
-	}
+	require.False(t, isSupportedIPv6Partial(net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1}))
+	require.False(t, isSupportedIPv6Partial(net.ParseIP("fec0::2333")))
+	require.True(t, isSupportedIPv6Partial(net.ParseIP("fe80::2333")))
+	require.True(t, isSupportedIPv6Partial(net.ParseIP("ff02::2333")))
+	require.True(t, isSupportedIPv6Partial(net.ParseIP("2001::1")))
 }
 
 func TestCreateAddr(t *testing.T) {
@@ -67,7 +53,7 @@ func mustAddr(t *testing.T, ip net.IP) netip.Addr {
 	t.Helper()
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
-		t.Fatal(ipConvertError{ip})
+		t.Fatal(ipConvertError{ip}) // nolint
 	}
 
 	return addr

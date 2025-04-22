@@ -46,13 +46,8 @@ func TestNetworkTypeParsing_Success(t *testing.T) {
 		},
 	} {
 		actual, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
-		if err != nil {
-			t.Errorf("NetworkTypeParsing failed: %v", err)
-		}
-		if actual != test.expected {
-			t.Errorf("NetworkTypeParsing: '%s' -- input:%s expected:%s actual:%s",
-				test.name, test.inNetwork, test.expected, actual)
-		}
+		require.NoError(t, err)
+		require.Equal(t, test.expected, actual)
 	}
 }
 
@@ -70,11 +65,8 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 			ipv6,
 		},
 	} {
-		actual, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
-		if err == nil {
-			t.Errorf("NetworkTypeParsing should fail: '%s' -- input:%s actual:%s",
-				test.name, test.inNetwork, actual)
-		}
+		_, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
+		require.Error(t, err)
 	}
 }
 

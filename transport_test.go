@@ -38,10 +38,7 @@ func testTimeout(t *testing.T, conn *Conn, timeout time.Duration) {
 	ticker := time.NewTicker(pollRate)
 	defer func() {
 		ticker.Stop()
-		err := conn.Close()
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, conn.Close())
 	}()
 
 	startedAt := time.Now()
@@ -51,26 +48,18 @@ func testTimeout(t *testing.T, conn *Conn, timeout time.Duration) {
 
 		var cs ConnectionState
 
-		err := conn.agent.loop.Run(context.Background(), func(_ context.Context) {
+		require.NoError(t, conn.agent.loop.Run(context.Background(), func(_ context.Context) {
 			cs = conn.agent.connectionState
-		})
-		if err != nil {
-			// We should never get here.
-			panic(err)
-		}
+		}))
 
 		if cs != ConnectionStateConnected {
 			elapsed := time.Since(startedAt)
-			if elapsed+margin < timeout {
-				t.Fatalf("Connection timed out %f msec early", elapsed.Seconds()*1000)
-			} else {
-				t.Logf("Connection timed out in %f msec", elapsed.Seconds()*1000)
+			require.Less(t, timeout, elapsed+margin)
 
-				return
-			}
+			return
 		}
 	}
-	t.Fatalf("Connection failed to time out in time. (expected timeout: %v)", timeout)
+	t.Fatalf("Connection failed to time out in time. (expected timeout: %v)", timeout) //nolint
 }
 
 func TestTimeout(t *testing.T) {
@@ -85,24 +74,14 @@ func TestTimeout(t *testing.T) {
 	defer test.TimeOut(time.Second * 20).Stop()
 
 	t.Run("WithoutDisconnectTimeout", func(t *testing.T) {
-		ca, cb := pipe(nil)
-		err := cb.Close()
-		if err != nil {
-			// We should never get here.
-			panic(err)
-		}
-
+		ca, cb := pipe(t, nil)
+		require.NoError(t, cb.Close())
 		testTimeout(t, ca, defaultDisconnectedTimeout)
 	})
 
 	t.Run("WithDisconnectTimeout", func(t *testing.T) {
-		ca, cb := pipeWithTimeout(5*time.Second, 3*time.Second)
-		err := cb.Close()
-		if err != nil {
-			// We should never get here.
-			panic(err)
-		}
-
+		ca, cb := pipeWithTimeout(t, 5*time.Second, 3*time.Second)
+		require.NoError(t, cb.Close())
 		testTimeout(t, ca, 5*time.Second)
 	})
 }
@@ -114,31 +93,19 @@ func TestReadClosed(t *testing.T) {
 	// Limit runtime in case of deadlocks
 	defer test.TimeOut(time.Second * 20).Stop()
 
-	ca, cb := pipe(nil)
-
-	err := ca.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
-	}
-
-	err = cb.Close()
-	if err != nil {
-		// We should never get here.
-		panic(err)
-	}
+	ca, cb := pipe(t, nil)
+	require.NoError(t, ca.Close())
+	require.NoError(t, cb.Close())
 
 	empty := make([]byte, 10)
-	_, err = ca.Read(empty)
-	if err == nil {
-		t.Fatalf("Reading from a closed channel should return an error")
-	}
+	_, err := ca.Read(empty)
+	require.Error(t, err)
 }
 
 func stressDuplex(t *testing.T) {
 	t.Helper()
 
-	ca, cb := pipe(nil)
+	ca, cb := pipe(t, nil)
 
 	defer func() {
 		require.NoError(t, ca.Close())
@@ -153,58 +120,52 @@ func stressDuplex(t *testing.T) {
 	require.NoError(t, test.StressDuplex(ca, cb, opt))
 }
 
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func gatherAndExchangeCandidates(aAgent, bAgent *Agent) {
+func gatherAndExchangeCandidates(t *testing.T, aAgent, bAgent *Agent) {
+	t.Helper()
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	check(aAgent.OnCandidate(func(candidate Candidate) {
+	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	check(aAgent.GatherCandidates())
+	require.NoError(t, aAgent.GatherCandidates())
 
-	check(bAgent.OnCandidate(func(candidate Candidate) {
+	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	check(bAgent.GatherCandidates())
+	require.NoError(t, bAgent.GatherCandidates())
 
 	wg.Wait()
 
 	candidates, err := aAgent.GetLocalCandidates()
-	check(err)
+	require.NoError(t, err)
 
 	for _, c := range candidates {
 		if addr, parseErr := netip.ParseAddr(c.Address()); parseErr == nil {
-			if shouldFilterLocationTrackedIP(addr) {
-				panic(addr)
-			}
+			require.False(t, shouldFilterLocationTrackedIP(addr))
 		}
 		candidateCopy, copyErr := c.copy()
-		check(copyErr)
-		check(bAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(t, copyErr)
+		require.NoError(t, bAgent.AddRemoteCandidate(candidateCopy))
 	}
 
 	candidates, err = bAgent.GetLocalCandidates()
 
-	check(err)
+	require.NoError(t, err)
 	for _, c := range candidates {
 		candidateCopy, copyErr := c.copy()
-		check(copyErr)
-		check(aAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(t, copyErr)
+		require.NoError(t, aAgent.AddRemoteCandidate(candidateCopy))
 	}
 }
 
-func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
-	gatherAndExchangeCandidates(aAgent, bAgent)
+func connect(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	t.Helper()
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -212,15 +173,15 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	go func() {
 		var acceptErr error
 		bUfrag, bPwd, acceptErr := bAgent.GetLocalUserCredentials()
-		check(acceptErr)
+		require.NoError(t, acceptErr)
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-		check(acceptErr)
+		require.NoError(t, acceptErr)
 		close(accepted)
 	}()
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(t, err)
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-	check(err)
+	require.NoError(t, err)
 
 	// Ensure accepted
 	<-accepted
@@ -228,7 +189,8 @@ func connect(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
+func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
+	t.Helper()
 	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
@@ -243,15 +205,15 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	cfg.NetworkTypes = supportedNetworkTypes()
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
-	check(aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	check(err)
+	require.NoError(t, err)
 
-	check(bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connect(aAgent, bAgent)
+	aConn, bConn := connect(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -261,7 +223,8 @@ func pipe(defaultConfig *AgentConfig) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
+func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
+	t.Helper()
 	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
@@ -275,14 +238,14 @@ func pipeWithTimeout(disconnectTimeout time.Duration, iceKeepalive time.Duration
 	}
 
 	aAgent, err := NewAgent(cfg)
-	check(err)
-	check(aAgent.OnConnectionStateChange(aNotifier))
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	bAgent, err := NewAgent(cfg)
-	check(err)
-	check(bAgent.OnConnectionStateChange(bNotifier))
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connect(aAgent, bAgent)
+	aConn, bConn := connect(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -328,29 +291,22 @@ func TestConnStats(t *testing.T) {
 	// Limit runtime in case of deadlocks
 	defer test.TimeOut(time.Second * 20).Stop()
 
-	ca, cb := pipe(nil)
-	if _, err := ca.Write(make([]byte, 10)); err != nil {
-		t.Fatal("unexpected error trying to write")
-	}
+	ca, cb := pipe(t, nil)
+	_, err := ca.Write(make([]byte, 10))
+	require.NoError(t, err)
 	defer closePipe(t, ca, cb)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		buf := make([]byte, 10)
-		if _, err := cb.Read(buf); err != nil {
-			panic(errRead)
-		}
+		_, err := cb.Read(buf)
+		require.NoError(t, err)
 		wg.Done()
 	}()
 
 	wg.Wait()
 
-	if ca.BytesSent() != 10 {
-		t.Fatal("bytes sent don't match")
-	}
-
-	if cb.BytesReceived() != 10 {
-		t.Fatal("bytes received don't match")
-	}
+	require.Equal(t, uint64(10), ca.BytesSent())
+	require.Equal(t, uint64(10), cb.BytesReceived())
 }

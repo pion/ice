@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -78,19 +77,13 @@ func TestListenUDP(t *testing.T) {
 		require.NoError(t, err)
 
 		p, _ := strconv.Atoi(port)
-		if p < portMin || p > portMax {
-			t.Fatalf("listenUDP with port restriction [%d, %d] listened on incorrect port (%s)", portMin, portMax, port)
-		}
+		require.False(t, p < portMin || p > portMax)
 		result = append(result, p)
 		portRange = append(portRange, portMin+i)
 	}
-	if sort.IntsAreSorted(result) {
-		t.Fatalf("listenUDP with port restriction [%d, %d], ports result should be random", portMin, portMax)
-	}
+	require.False(t, sort.IntsAreSorted(result))
 	sort.Ints(result)
-	if !reflect.DeepEqual(result, portRange) {
-		t.Fatalf("listenUDP with port restriction [%d, %d], got:%v, want:%v", portMin, portMax, result, portRange)
-	}
+	require.Equal(t, result, portRange)
 	_, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 }

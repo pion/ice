@@ -136,7 +136,6 @@ var (
 	errParseRelatedAddr              = errors.New("failed to parse related addresses")
 	errParseExtension                = errors.New("failed to parse extension")
 	errParseTCPType                  = errors.New("failed to parse TCP type")
-	errRead                          = errors.New("failed to read")
 	errUDPMuxDisabled                = errors.New("UDPMux is not enabled")
 	errUnknownRole                   = errors.New("unknown role")
 	errWrite                         = errors.New("failed to write")

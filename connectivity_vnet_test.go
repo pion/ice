@@ -200,15 +200,16 @@ func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.S
 	return server, err
 }
 
-func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
+func connectWithVNet(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	t.Helper()
 	// Manual signaling
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(t, err)
 
 	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
-	check(err)
+	require.NoError(t, err)
 
-	gatherAndExchangeCandidates(aAgent, bAgent)
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -216,12 +217,12 @@ func connectWithVNet(aAgent, bAgent *Agent) (*Conn, *Conn) {
 	go func() {
 		var acceptErr error
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-		check(acceptErr)
+		require.NoError(t, acceptErr)
 		close(accepted)
 	}()
 
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-	check(err)
+	require.NoError(t, err)
 
 	// Ensure accepted
 	<-accepted
@@ -234,7 +235,8 @@ type agentTestConfig struct {
 	nat1To1IPCandidateType CandidateType
 }
 
-func pipeWithVNet(vnet *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
+func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig) (*Conn, *Conn) {
+	t.Helper()
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
@@ -255,13 +257,8 @@ func pipeWithVNet(vnet *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig)
 	}
 
 	aAgent, err := NewAgent(cfg0)
-	if err != nil {
-		panic(err)
-	}
-	err = aAgent.OnConnectionStateChange(aNotifier)
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
 		nat1To1IPs = []string{
@@ -278,15 +275,10 @@ func pipeWithVNet(vnet *virtualNet, a0TestConfig, a1TestConfig *agentTestConfig)
 	}
 
 	bAgent, err := NewAgent(cfg1)
-	if err != nil {
-		panic(err)
-	}
-	err = bAgent.OnConnectionStateChange(bNotifier)
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	aConn, bConn := connectWithVNet(aAgent, bAgent)
+	aConn, bConn := connectWithVNet(t, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -347,7 +339,7 @@ func TestConnectivityVNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		time.Sleep(1 * time.Second)
 
@@ -381,7 +373,7 @@ func TestConnectivityVNet(t *testing.T) {
 				stunServerURL,
 			},
 		}
-		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
@@ -413,7 +405,7 @@ func TestConnectivityVNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
@@ -445,7 +437,7 @@ func TestConnectivityVNet(t *testing.T) {
 		a1TestConfig := &agentTestConfig{
 			urls: []*stun.URI{},
 		}
-		ca, cb := pipeWithVNet(vnet, a0TestConfig, a1TestConfig)
+		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
@@ -527,7 +519,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 		controlledStateChanges <- c
 	}))
 
-	connectWithVNet(controllingAgent, controlledAgent)
+	connectWithVNet(t, controllingAgent, controlledAgent)
 	blockUntilStateSeen := func(expectedState ConnectionState, stateQueue chan ConnectionState) {
 		for s := range stateQueue {
 			if s == expectedState {
@@ -618,7 +610,7 @@ func TestWriteUseValidPair(t *testing.T) {
 		require.NoError(t, controlledAgent.Close())
 	}()
 
-	gatherAndExchangeCandidates(controllingAgent, controlledAgent)
+	gatherAndExchangeCandidates(t, controllingAgent, controlledAgent)
 
 	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
 	require.NoError(t, err)

@@ -147,7 +147,7 @@ func TestActiveTCP(t *testing.T) {
 			req.NoError(err)
 			req.NotNil(activeAgent)
 
-			passiveAgentConn, activeAgenConn := connect(passiveAgent, activeAgent)
+			passiveAgentConn, activeAgenConn := connect(t, passiveAgent, activeAgent)
 			req.NotNil(passiveAgentConn)
 			req.NotNil(activeAgenConn)
 
@@ -220,7 +220,7 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	<-isConnected
 }
@@ -284,7 +284,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 
 	<-isConnected
 	require.NoError(t, tcpListener.Close())

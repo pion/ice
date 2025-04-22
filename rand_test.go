@@ -67,15 +67,10 @@ func TestRandomGeneratorCollision(t *testing.T) {
 				}
 				wg.Wait()
 
-				if len(rands) != num {
-					t.Fatal("Failed to generate randoms")
-				}
-
+				require.Len(t, rands, num)
 				for i := 0; i < num; i++ {
 					for j := i + 1; j < num; j++ {
-						if rands[i] == rands[j] {
-							t.Fatalf("generateRandString caused collision: %s == %s", rands[i], rands[j])
-						}
+						require.NotEqual(t, rands[i], rands[j])
 					}
 				}
 			}

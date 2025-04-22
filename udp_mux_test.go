@@ -252,7 +252,7 @@ func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
 
 func TestUDPMux_Agent_Restart(t *testing.T) {
 	oneSecond := time.Second
-	connA, connB := pipe(&AgentConfig{
+	connA, connB := pipe(t, &AgentConfig{
 		DisconnectedTimeout: &oneSecond,
 		FailedTimeout:       &oneSecond,
 	})
@@ -279,7 +279,7 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 
 	require.NoError(t, connA.agent.SetRemoteCredentials(ufragB, pwdB))
 	require.NoError(t, connB.agent.SetRemoteCredentials(ufragA, pwdA))
-	gatherAndExchangeCandidates(connA.agent, connB.agent)
+	gatherAndExchangeCandidates(t, connA.agent, connB.agent)
 
 	// Wait until both have gone back to connected
 	<-aConnected

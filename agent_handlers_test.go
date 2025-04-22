@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/transport/v3/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestConnectionStateNotifier(t *testing.T) {
@@ -33,7 +34,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 			}
 			select {
 			case <-updates:
-				t.Errorf("received more updates than expected")
+				t.Errorf("received more updates than expected") // nolint
 			case <-time.After(1 * time.Second):
 			}
 			close(done)
@@ -53,14 +54,11 @@ func TestConnectionStateNotifier(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			for i := 0; i < 10000; i++ {
-				x := <-updates
-				if x != ConnectionState(i) {
-					t.Errorf("expected %d got %d", x, i)
-				}
+				assert.Equal(t, ConnectionState(i), <-updates)
 			}
 			select {
 			case <-updates:
-				t.Errorf("received more updates than expected")
+				t.Errorf("received more updates than expected") // nolint
 			case <-time.After(1 * time.Second):
 			}
 			close(done)
