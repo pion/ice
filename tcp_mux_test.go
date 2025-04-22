@@ -51,7 +51,7 @@ func TestTCPMux_Recv(t *testing.T) {
 
 			require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
-			conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
+			conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr)) // nolint
 			require.NoError(t, err, "error dialing test TCP connection")
 
 			msg := stun.New()
@@ -150,7 +150,7 @@ func TestTCPMux_FirstPacketTimeout(t *testing.T) {
 
 	require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
-	conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
+	conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr)) // nolint
 	require.NoError(t, err, "error dialing test TCP connection")
 	defer func() {
 		_ = conn.Close()
@@ -192,7 +192,7 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 	require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 	t.Run("close connection from stun msg after timeout", func(t *testing.T) {
-		conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
+		conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr)) // nolint
 		require.NoError(t, err, "error dialing test TCP connection")
 		defer func() {
 			_ = conn.Close()
@@ -217,7 +217,7 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 	})
 
 	t.Run("connection keep alive if access by user", func(t *testing.T) {
-		conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr))
+		conn, err := net.DialTCP("tcp", nil, tcpMux.LocalAddr().(*net.TCPAddr)) // nolint
 		require.NoError(t, err, "error dialing test TCP connection")
 		defer func() {
 			_ = conn.Close()

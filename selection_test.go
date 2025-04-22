@@ -97,7 +97,7 @@ func TestBindingRequestHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, controlledAgent.OnConnectionStateChange(bNotifier))
 
-	controlledConn, controllingConn := connect(controlledAgent, controllingAgent)
+	controlledConn, controllingConn := connect(t, controlledAgent, controllingAgent)
 	<-aConnected
 	<-bConnected
 

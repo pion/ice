@@ -61,7 +61,7 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 				defer func() {
 					_ = pktConn.Close()
 				}()
-				conn, err := net.DialTCP("tcp", nil, pktConn.LocalAddr().(*net.TCPAddr))
+				conn, err := net.DialTCP("tcp", nil, pktConn.LocalAddr().(*net.TCPAddr)) // nolint
 				require.NoError(t, err, "error dialing test TCP connection")
 
 				msg := stun.New()

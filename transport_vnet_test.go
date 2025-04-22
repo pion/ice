@@ -53,7 +53,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	})
 
 	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
-		ca, cb := pipeWithVNet(builtVnet,
+		ca, cb := pipeWithVNet(t, builtVnet,
 			&agentTestConfig{
 				urls: []*stun.URI{stunServerURL},
 			},

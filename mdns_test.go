@@ -65,7 +65,7 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 			bNotifier, bConnected := onConnected()
 			require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-			connect(aAgent, bAgent)
+			connect(t, aAgent, bAgent)
 			<-aConnected
 			<-bConnected
 		})
@@ -124,7 +124,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 			bNotifier, bConnected := onConnected()
 			require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-			connect(aAgent, bAgent)
+			connect(t, aAgent, bAgent)
 			<-aConnected
 			<-bConnected
 		})
@@ -195,7 +195,5 @@ func TestGenerateMulticastDNSName(t *testing.T) {
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`,
 	).MatchString
 
-	if !isMDNSName(name) {
-		t.Fatalf("mDNS name must be UUID v4 + \".local\" suffix, got %s", name)
-	}
+	require.True(t, isMDNSName(name))
 }

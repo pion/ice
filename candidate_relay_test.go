@@ -80,7 +80,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	bNotifier, bConnected := onConnected()
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	connect(aAgent, bAgent)
+	connect(t, aAgent, bAgent)
 	<-aConnected
 	<-bConnected
 }

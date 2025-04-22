@@ -176,9 +176,7 @@ func TestCandidatePriority(t *testing.T) {
 			WantPriority: 16777215,
 		},
 	} {
-		if got, want := test.Candidate.Priority(), test.WantPriority; got != want {
-			t.Fatalf("Candidate(%v).Priority() = %d, want %d", test.Candidate, got, want)
-		}
+		require.Equal(t, test.Candidate.Priority(), test.WantPriority)
 	}
 }
 
@@ -271,9 +269,7 @@ func mustCandidateHost(t *testing.T, conf *CandidateHostConfig) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidateHost(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return cand
 }
@@ -286,9 +282,7 @@ func mustCandidateHostWithExtensions(
 	t.Helper()
 
 	cand, err := NewCandidateHost(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cand.setExtensions(extensions)
 
@@ -299,9 +293,7 @@ func mustCandidateRelay(t *testing.T, conf *CandidateRelayConfig) Candidate {
 	t.Helper()
 
 	cand, err := NewCandidateRelay(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return cand
 }
@@ -314,9 +306,7 @@ func mustCandidateRelayWithExtensions(
 	t.Helper()
 
 	cand, err := NewCandidateRelay(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cand.setExtensions(extensions)
 
@@ -327,9 +317,7 @@ func mustCandidateServerReflexive(t *testing.T, conf *CandidateServerReflexiveCo
 	t.Helper()
 
 	cand, err := NewCandidateServerReflexive(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return cand
 }
@@ -342,9 +330,7 @@ func mustCandidateServerReflexiveWithExtensions(
 	t.Helper()
 
 	cand, err := NewCandidateServerReflexive(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cand.setExtensions(extensions)
 
@@ -359,9 +345,7 @@ func mustCandidatePeerReflexiveWithExtensions(
 	t.Helper()
 
 	cand, err := NewCandidatePeerReflexive(conf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cand.setExtensions(extensions)
 
@@ -603,7 +587,7 @@ func TestCandidateWriteTo(t *testing.T) {
 	})
 	require.NoError(t, err, "error creating test TCP listener")
 
-	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
+	conn, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr)) // nolint
 	require.NoError(t, err, "error dialing test TCP connection")
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
@@ -1049,9 +1033,7 @@ func TestCandidateGetExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		candidate.setExtensions(extensions)
 
@@ -1086,9 +1068,7 @@ func TestCandidateGetExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		candidate.setExtensions(extensions)
 
@@ -1111,9 +1091,7 @@ func TestCandidateGetExtension(t *testing.T) {
 			Foundation: "750",
 			TCPType:    TCPTypeActive,
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		tcpType, ok := candidate.GetExtension("tcptype")
 
@@ -1136,9 +1114,7 @@ func TestCandidateGetExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		tcpType, ok = candidate2.GetExtension("tcptype")
 
@@ -1163,9 +1139,7 @@ func TestBaseCandidateMarshalExtensions(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		candidate.setExtensions(extensions)
 
@@ -1181,9 +1155,7 @@ func TestBaseCandidateMarshalExtensions(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		value := candidate.marshalExtensions()
 		require.Equal(t, "", value)
@@ -1198,9 +1170,7 @@ func TestBaseCandidateMarshalExtensions(t *testing.T) {
 			Foundation: "750",
 			TCPType:    TCPTypeActive,
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		value := candidate.marshalExtensions()
 		require.Equal(t, "tcptype active", value)
@@ -1296,9 +1266,7 @@ func TestBaseCandidateExtensionsEqual(t *testing.T) {
 				Priority:   500,
 				Foundation: "750",
 			})
-			if err != nil {
-				t.Error(err)
-			}
+			require.NoError(t, err)
 
 			cand.setExtensions(testCase.extensions1)
 
@@ -1316,9 +1284,7 @@ func TestCandidateAddExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
@@ -1335,9 +1301,7 @@ func TestCandidateAddExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "d"}))
@@ -1355,9 +1319,7 @@ func TestCandidateAddExtension(t *testing.T) {
 			Foundation: "750",
 			TCPType:    TCPTypeActive,
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		ext, ok := candidate.GetExtension("tcptype")
 		require.True(t, ok)
@@ -1380,9 +1342,7 @@ func TestCandidateAddExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"tcptype", "active"}))
 
@@ -1401,9 +1361,7 @@ func TestCandidateAddExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.Error(t, candidate.AddExtension(CandidateExtension{"", ""}))
 
@@ -1424,9 +1382,7 @@ func TestCandidateRemoveExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
@@ -1445,9 +1401,7 @@ func TestCandidateRemoveExtension(t *testing.T) {
 			Priority:   500,
 			Foundation: "750",
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"a", "b"}))
 		require.NoError(t, candidate.AddExtension(CandidateExtension{"c", "d"}))
@@ -1467,9 +1421,7 @@ func TestCandidateRemoveExtension(t *testing.T) {
 			Foundation: "750",
 			TCPType:    TCPTypeActive,
 		})
-		if err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, err)
 
 		// tcptype extension should be removed, even if it's not in the extensions list (Not Parsed)
 		require.True(t, candidate.RemoveExtension("tcptype"))

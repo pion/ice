@@ -51,7 +51,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 		_ = pktConn.Close()
 	}()
 
-	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{
+	remoteConn, err := net.DialUDP(network, nil, &net.UDPAddr{ // nolint
 		Port: udpMux.LocalAddr().(*net.UDPAddr).Port,
 	})
 	require.NoError(t, err, "error dialing test UDP connection")

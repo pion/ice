@@ -4,69 +4,52 @@
 package ice
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/pion/stun/v3"
+	"github.com/stretchr/testify/require"
 )
 
 func TestControlled_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
 	var attrCtr AttrControlled
-	if err := attrCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-		t.Error("unexpected error")
-	}
-	if err := m.Build(stun.BindingRequest, &attrCtr); err != nil {
-		t.Error(err)
-	}
+	require.ErrorIs(t, stun.ErrAttributeNotFound, attrCtr.GetFrom(m))
+	require.NoError(t, m.Build(stun.BindingRequest, &attrCtr))
+
 	m1 := new(stun.Message)
-	if _, err := m1.Write(m.Raw); err != nil {
-		t.Error(err)
-	}
+	_, err := m1.Write(m.Raw)
+	require.NoError(t, err)
+
 	var c1 AttrControlled
-	if err := c1.GetFrom(m1); err != nil {
-		t.Error(err)
-	}
-	if c1 != attrCtr {
-		t.Error("not equal")
-	}
+	require.NoError(t, c1.GetFrom(m1))
+	require.Equal(t, c1, attrCtr)
+
 	t.Run("IncorrectSize", func(t *testing.T) {
 		m3 := new(stun.Message)
 		m3.Add(stun.AttrICEControlled, make([]byte, 100))
 		var c2 AttrControlled
-		if err := c2.GetFrom(m3); !stun.IsAttrSizeInvalid(err) {
-			t.Error("should error")
-		}
+		require.True(t, stun.IsAttrSizeInvalid(c2.GetFrom(m3)))
 	})
 }
 
 func TestControlling_GetFrom(t *testing.T) { //nolint:dupl
 	m := new(stun.Message)
 	var attrCtr AttrControlling
-	if err := attrCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-		t.Error("unexpected error")
-	}
-	if err := m.Build(stun.BindingRequest, &attrCtr); err != nil {
-		t.Error(err)
-	}
+	require.ErrorIs(t, stun.ErrAttributeNotFound, attrCtr.GetFrom(m))
+	require.NoError(t, m.Build(stun.BindingRequest, &attrCtr))
+
 	m1 := new(stun.Message)
-	if _, err := m1.Write(m.Raw); err != nil {
-		t.Error(err)
-	}
+	_, err := m1.Write(m.Raw)
+	require.NoError(t, err)
+
 	var c1 AttrControlling
-	if err := c1.GetFrom(m1); err != nil {
-		t.Error(err)
-	}
-	if c1 != attrCtr {
-		t.Error("not equal")
-	}
+	require.NoError(t, c1.GetFrom(m1))
+	require.Equal(t, c1, attrCtr)
 	t.Run("IncorrectSize", func(t *testing.T) {
 		m3 := new(stun.Message)
 		m3.Add(stun.AttrICEControlling, make([]byte, 100))
 		var c2 AttrControlling
-		if err := c2.GetFrom(m3); !stun.IsAttrSizeInvalid(err) {
-			t.Error("should error")
-		}
+		require.True(t, stun.IsAttrSizeInvalid(c2.GetFrom(m3)))
 	})
 }
 
@@ -74,70 +57,49 @@ func TestControl_GetFrom(t *testing.T) { //nolint:cyclop
 	t.Run("Blank", func(t *testing.T) {
 		m := new(stun.Message)
 		var c AttrControl
-		if err := c.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-			t.Error("unexpected error")
-		}
+		require.ErrorIs(t, stun.ErrAttributeNotFound, c.GetFrom(m))
 	})
 	t.Run("Controlling", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
 		var attCtr AttrControl
-		if err := attCtr.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-			t.Error("unexpected error")
-		}
+		require.ErrorIs(t, stun.ErrAttributeNotFound, attCtr.GetFrom(m))
 		attCtr.Role = Controlling
 		attCtr.Tiebreaker = 4321
-		if err := m.Build(stun.BindingRequest, &attCtr); err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, m.Build(stun.BindingRequest, &attCtr))
 		m1 := new(stun.Message)
-		if _, err := m1.Write(m.Raw); err != nil {
-			t.Error(err)
-		}
+		_, err := m1.Write(m.Raw)
+		require.NoError(t, err)
 		var c1 AttrControl
-		if err := c1.GetFrom(m1); err != nil {
-			t.Error(err)
-		}
-		if c1 != attCtr {
-			t.Error("not equal")
-		}
+		require.NoError(t, c1.GetFrom(m1))
+		require.Equal(t, c1, attCtr)
 		t.Run("IncorrectSize", func(t *testing.T) {
 			m3 := new(stun.Message)
 			m3.Add(stun.AttrICEControlling, make([]byte, 100))
 			var c2 AttrControl
-			if err := c2.GetFrom(m3); !stun.IsAttrSizeInvalid(err) {
-				t.Error("should error")
-			}
+			err := c2.GetFrom(m3)
+			require.True(t, stun.IsAttrSizeInvalid(err))
 		})
 	})
 	t.Run("Controlled", func(t *testing.T) { //nolint:dupl
 		m := new(stun.Message)
 		var attrCtrl AttrControl
-		if err := attrCtrl.GetFrom(m); !errors.Is(err, stun.ErrAttributeNotFound) {
-			t.Error("unexpected error")
-		}
+		require.ErrorIs(t, stun.ErrAttributeNotFound, attrCtrl.GetFrom(m))
 		attrCtrl.Role = Controlled
 		attrCtrl.Tiebreaker = 1234
-		if err := m.Build(stun.BindingRequest, &attrCtrl); err != nil {
-			t.Error(err)
-		}
+		require.NoError(t, m.Build(stun.BindingRequest, &attrCtrl))
 		m1 := new(stun.Message)
-		if _, err := m1.Write(m.Raw); err != nil {
-			t.Error(err)
-		}
+		_, err := m1.Write(m.Raw)
+		require.NoError(t, err)
+
 		var c1 AttrControl
-		if err := c1.GetFrom(m1); err != nil {
-			t.Error(err)
-		}
-		if c1 != attrCtrl {
-			t.Error("not equal")
-		}
+		require.NoError(t, c1.GetFrom(m1))
+		require.Equal(t, c1, attrCtrl)
 		t.Run("IncorrectSize", func(t *testing.T) {
 			m3 := new(stun.Message)
 			m3.Add(stun.AttrICEControlling, make([]byte, 100))
 			var c2 AttrControl
-			if err := c2.GetFrom(m3); !stun.IsAttrSizeInvalid(err) {
-				t.Error("should error")
-			}
+			err := c2.GetFrom(m3)
+			require.True(t, stun.IsAttrSizeInvalid(err))
 		})
 	})
 }

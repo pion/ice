@@ -115,9 +115,7 @@ func TestCandidatePairPriority(t *testing.T) {
 			WantPriority: 72057593987596287,
 		},
 	} {
-		if got, want := test.Pair.priority(), test.WantPriority; got != want {
-			t.Fatalf("CandidatePair(%v).Priority() = %d, want %d", test.Pair, got, want)
-		}
+		require.Equal(t, test.Pair.priority(), test.WantPriority)
 	}
 }
 
@@ -125,9 +123,7 @@ func TestCandidatePairEquality(t *testing.T) {
 	pairA := newCandidatePair(hostCandidate(), srflxCandidate(), true)
 	pairB := newCandidatePair(hostCandidate(), srflxCandidate(), false)
 
-	if !pairA.equal(pairB) {
-		t.Fatalf("Expected %v to equal %v", pairA, pairB)
-	}
+	require.True(t, pairA.equal(pairB))
 }
 
 func TestNilCandidatePairString(t *testing.T) {
