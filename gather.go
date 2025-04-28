@@ -690,6 +690,8 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 				relAddr       string
 				relPort       int
 				relayProtocol string
+
+				omitTurnServerAddr bool
 			)
 
 			switch {
@@ -721,6 +723,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 				}
 				locConn = turn.NewSTUNConn(conn)
 
+				// We don't need to resolve address of the turn server, since we are using
+				// proxy dialer.
+				if _, err = a.net.ResolveUDPAddr("udp4", turnServerAddr); err != nil {
+					omitTurnServerAddr = true
+				}
 			case url.Proto == stun.ProtoTypeTCP && url.Scheme == stun.SchemeTypeTURN:
 				tcpAddr, connectErr := a.net.ResolveTCPAddr(NetworkTypeTCP4.String(), turnServerAddr)
 				if connectErr != nil {
@@ -815,14 +822,18 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 				return
 			}
 
-			client, err := turn.NewClient(&turn.ClientConfig{
-				TURNServerAddr: turnServerAddr,
-				Conn:           locConn,
-				Username:       url.Username,
-				Password:       url.Password,
-				LoggerFactory:  a.loggerFactory,
-				Net:            a.net,
-			})
+			clientCfg := &turn.ClientConfig{
+				Conn:          locConn,
+				Username:      url.Username,
+				Password:      url.Password,
+				LoggerFactory: a.loggerFactory,
+				Net:           a.net,
+			}
+			if !omitTurnServerAddr {
+				clientCfg.TURNServerAddr = turnServerAddr
+			}
+
+			client, err := turn.NewClient(clientCfg)
 			if err != nil {
 				closeConnAndLog(locConn, a.log, "failed to create new TURN client %s %s", turnServerAddr, err)
 
