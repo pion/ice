@@ -69,7 +69,7 @@ func (c *candidateBase) Deadline() (deadline time.Time, ok bool) {
 }
 
 // Value implements context.Context.
-func (c *candidateBase) Value(interface{}) interface{} {
+func (c *candidateBase) Value(any) any {
 	return nil
 }
 
@@ -217,7 +217,7 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 }
 
 var bufferPool = sync.Pool{ // nolint:gochecknoglobals
-	New: func() interface{} {
+	New: func() any {
 		return make([]byte, receiveMTU)
 	},
 }
