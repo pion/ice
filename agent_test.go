@@ -505,7 +505,7 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 		InterfaceFilter:     problematicNetworkInterfaces,
 	}
 
-	isClosed := make(chan interface{})
+	isClosed := make(chan any)
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
@@ -529,10 +529,10 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isChecking := make(chan interface{})
-	isConnected := make(chan interface{})
-	isDisconnected := make(chan interface{})
-	isFailed := make(chan interface{})
+	isChecking := make(chan any)
+	isConnected := make(chan any)
+	isDisconnected := make(chan any)
+	isFailed := make(chan any)
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
 		case ConnectionStateChecking:
@@ -1058,7 +1058,7 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isFailed := make(chan interface{})
+	isFailed := make(chan any)
 	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateFailed {
 			close(isFailed)
@@ -1364,8 +1364,8 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isClosed := make(chan interface{})
-	isConnected := make(chan interface{})
+	isClosed := make(chan any)
+	isConnected := make(chan any)
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {
 		case ConnectionStateConnected:
@@ -1414,7 +1414,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isComplete := make(chan interface{})
+	isComplete := make(chan any)
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
@@ -1459,8 +1459,8 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isComplete := make(chan interface{})
-	isTested := make(chan interface{})
+	isComplete := make(chan any)
+	isTested := make(chan any)
 	err = aAgent.OnSelectedCandidatePairChange(func(Candidate, Candidate) {
 		go func() {
 			_, _, errCred := aAgent.GetLocalUserCredentials()
@@ -1528,9 +1528,9 @@ func TestLiteLifecycle(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	bConnected := make(chan interface{})
-	bDisconnected := make(chan interface{})
-	bFailed := make(chan interface{})
+	bConnected := make(chan any)
+	bDisconnected := make(chan any)
+	bFailed := make(chan any)
 
 	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
 		switch c {

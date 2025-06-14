@@ -22,7 +22,7 @@ import (
 )
 
 // Close a net.Conn and log if we have a failure.
-func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ...interface{}) {
+func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ...any) {
 	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
 		log.Warnf("Connection is not allocated: "+msg, args...)
 

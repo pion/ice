@@ -116,6 +116,6 @@ func (l *Loop) Deadline() (deadline time.Time, ok bool) {
 }
 
 // Value is not supported for task loops.
-func (l *Loop) Value(interface{}) interface{} {
+func (l *Loop) Value(any) any {
 	return nil
 }

@@ -206,7 +206,7 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isConnected := make(chan interface{})
+	isConnected := make(chan any)
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			close(isConnected)
@@ -269,7 +269,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 		require.NoError(t, bAgent.Close())
 	}()
 
-	isConnected := make(chan interface{})
+	isConnected := make(chan any)
 	err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
 		if c == ConnectionStateConnected {
 			close(isConnected)

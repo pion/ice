@@ -116,7 +116,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault { //nolint:cyclop
 		connsIPv6:  make(map[string]*udpMuxedConn),
 		closedChan: make(chan struct{}, 1),
 		pool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				// Big enough buffer to fit both packet and address
 				return newBufferHolder(receiveMTU)
 			},
