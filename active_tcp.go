@@ -18,7 +18,7 @@ import (
 type activeTCPConn struct {
 	readBuffer, writeBuffer *packetio.Buffer
 	localAddr, remoteAddr   atomic.Value
-	closed                  int32
+	closed                  atomic.Bool
 }
 
 func newActiveTCPConn(
@@ -34,7 +34,7 @@ func newActiveTCPConn(
 
 	laddr, err := getTCPAddrOnInterface(localAddress)
 	if err != nil {
-		atomic.StoreInt32(&a.closed, 1)
+		a.closed.Store(true)
 		log.Infof("Failed to dial TCP address %s: %v", remoteAddress, err)
 
 		return a
@@ -43,7 +43,7 @@ func newActiveTCPConn(
 
 	go func() {
 		defer func() {
-			atomic.StoreInt32(&a.closed, 1)
+			a.closed.Store(true)
 		}()
 
 		dialer := &net.Dialer{
@@ -60,7 +60,7 @@ func newActiveTCPConn(
 		go func() {
 			buff := make([]byte, receiveMTU)
 
-			for atomic.LoadInt32(&a.closed) == 0 {
+			for !a.closed.Load() {
 				n, err := readStreamingPacket(conn, buff)
 				if err != nil {
 					log.Infof("Failed to read streaming packet: %s", err)
@@ -78,7 +78,7 @@ func newActiveTCPConn(
 
 		buff := make([]byte, receiveMTU)
 
-		for atomic.LoadInt32(&a.closed) == 0 {
+		for !a.closed.Load() {
 			n, err := a.writeBuffer.Read(buff)
 			if err != nil {
 				log.Infof("Failed to read from buffer: %s", err)
@@ -102,7 +102,7 @@ func newActiveTCPConn(
 }
 
 func (a *activeTCPConn) ReadFrom(buff []byte) (n int, srcAddr net.Addr, err error) {
-	if atomic.LoadInt32(&a.closed) == 1 {
+	if a.closed.Load() {
 		return 0, nil, io.ErrClosedPipe
 	}
 
@@ -114,7 +114,7 @@ func (a *activeTCPConn) ReadFrom(buff []byte) (n int, srcAddr net.Addr, err erro
 }
 
 func (a *activeTCPConn) WriteTo(buff []byte, _ net.Addr) (n int, err error) {
-	if atomic.LoadInt32(&a.closed) == 1 {
+	if a.closed.Load() {
 		return 0, io.ErrClosedPipe
 	}
 
@@ -122,7 +122,7 @@ func (a *activeTCPConn) WriteTo(buff []byte, _ net.Addr) (n int, err error) {
 }
 
 func (a *activeTCPConn) Close() error {
-	atomic.StoreInt32(&a.closed, 1)
+	a.closed.Store(true)
 	_ = a.readBuffer.Close()
 	_ = a.writeBuffer.Close()
 
