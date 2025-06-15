@@ -27,19 +27,19 @@ func (a *Agent) Accept(ctx context.Context, remoteUfrag, remotePwd string) (*Con
 // Conn represents the ICE connection.
 // At the moment the lifetime of the Conn is equal to the Agent.
 type Conn struct {
-	bytesReceived uint64
-	bytesSent     uint64
+	bytesReceived atomic.Uint64
+	bytesSent     atomic.Uint64
 	agent         *Agent
 }
 
 // BytesSent returns the number of bytes sent.
 func (c *Conn) BytesSent() uint64 {
-	return atomic.LoadUint64(&c.bytesSent)
+	return c.bytesSent.Load()
 }
 
 // BytesReceived returns the number of bytes received.
 func (c *Conn) BytesReceived() uint64 {
-	return atomic.LoadUint64(&c.bytesReceived)
+	return c.bytesReceived.Load()
 }
 
 func (a *Agent) connect(ctx context.Context, isControlling bool, remoteUfrag, remotePwd string) (*Conn, error) {
@@ -74,7 +74,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 	}
 
 	n, err := c.agent.buf.Read(p)
-	atomic.AddUint64(&c.bytesReceived, uint64(n)) //nolint:gosec // G115
+	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
 
 	return n, err
 }
@@ -103,7 +103,7 @@ func (c *Conn) Write(packet []byte) (int, error) {
 		}
 	}
 
-	atomic.AddUint64(&c.bytesSent, uint64(len(packet)))
+	c.bytesSent.Add(uint64(len(packet)))
 
 	return pair.Write(packet)
 }
