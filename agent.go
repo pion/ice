@@ -66,7 +66,7 @@ type Agent struct {
 	muHaveStarted sync.Mutex
 	startedCh     <-chan struct{}
 	startedFn     func()
-	isControlling bool
+	isControlling atomic.Bool
 
 	maxBindingRequests uint16
 
@@ -107,7 +107,9 @@ type Agent struct {
 	remoteCandidates map[NetworkType][]Candidate
 
 	checklist []*CandidatePair
-	selector  pairCandidateSelector
+
+	selectorLock sync.RWMutex
+	selector     pairCandidateSelector
 
 	selectedPair atomic.Value // *CandidatePair
 
@@ -399,21 +401,11 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.run(a.context(), func(ctx context.Context, agent *Agent) {
-		agent.isControlling = isControlling
-		agent.remoteUfrag = remoteUfrag
-		agent.remotePwd = remotePwd
+		a.isControlling.Store(isControlling)
+		a.remoteUfrag = remoteUfrag
+		a.remotePwd = remotePwd
+		a.setSelector()
 
-		if isControlling {
-			a.selector = &controllingSelector{agent: a, log: a.log}
-		} else {
-			a.selector = &controlledSelector{agent: a, log: a.log}
-		}
-
-		if a.lite {
-			a.selector = &liteSelector{pairCandidateSelector: a.selector}
-		}
-
-		a.selector.Start()
 		a.startedFn()
 
 		agent.updateConnectionState(ConnectionStateChecking)
@@ -452,7 +444,7 @@ func (a *Agent) connectivityChecks() {
 			default:
 			}
 
-			a.selector.ContactCandidates()
+			a.getSelector().ContactCandidates()
 		}); err != nil {
 			a.log.Warnf("Failed to start connectivity checks: %v", err)
 		}
@@ -554,7 +546,7 @@ func (a *Agent) pingAllCandidates() {
 			a.log.Tracef("Maximum requests reached for pair %s, marking it as failed", p)
 			p.state = CandidatePairStateFailed
 		} else {
-			a.selector.PingCandidate(p.Local, p.Remote)
+			a.getSelector().PingCandidate(p.Local, p.Remote)
 			p.bindingRequestCount++
 		}
 	}
@@ -593,7 +585,7 @@ func (a *Agent) getBestValidCandidatePair() *CandidatePair {
 }
 
 func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
-	p := newCandidatePair(local, remote, a.isControlling)
+	p := newCandidatePair(local, remote, a.isControlling.Load())
 	a.checklist = append(a.checklist, p)
 	return p
 }
@@ -649,7 +641,7 @@ func (a *Agent) checkKeepalive() {
 			(time.Since(selectedPair.Remote.LastReceived()) > a.keepaliveInterval)) {
 		// We use binding request instead of indication to support refresh consent schemas
 		// see https://tools.ietf.org/html/rfc7675
-		a.selector.PingCandidate(selectedPair.Local, selectedPair.Remote)
+		a.getSelector().PingCandidate(selectedPair.Local, selectedPair.Remote)
 	}
 }
 
@@ -1071,9 +1063,39 @@ func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bo
 	return false, nil, 0
 }
 
+func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, remoteTieBreaker *AttrControl) {
+	localIsGreaterOrEqual := a.tieBreaker >= remoteTieBreaker.Tiebreaker
+	a.log.Warnf("Role conflict local and remote same role(%s), localIsGreaterOrEqual(%t)", a.role(), localIsGreaterOrEqual)
+
+	// https://datatracker.ietf.org/doc/html/rfc8445#section-7.3.1.1
+	//  An agent MUST examine the Binding request for either the ICE-
+	//  CONTROLLING or ICE-CONTROLLED attribute.  It MUST follow these
+	// procedures:
+
+	// If the agent's tiebreaker value is larger than or equal to the contents of the ICE-CONTROLLING attribute
+	// If the agent's tiebreaker value is less than the contents of the ICE-CONTROLLED attribute
+	//  the agent generates a Binding error response
+	if (a.isControlling.Load() && localIsGreaterOrEqual) || (!a.isControlling.Load() && !localIsGreaterOrEqual) {
+		if roleConflictMsg, err := stun.Build(msg, stun.BindingError,
+			stun.ErrorCodeAttribute{
+				Code:   stun.CodeRoleConflict,
+				Reason: []byte("Role Conflict"),
+			},
+			stun.NewShortTermIntegrity(a.localPwd),
+			stun.Fingerprint,
+		); err != nil {
+			a.log.Warnf("Failed to generate Role Conflict message from: %s to: %s error: %s", local, remote, err)
+		} else {
+			a.sendSTUN(roleConflictMsg, local, remote)
+		}
+	} else {
+		a.isControlling.Store(!a.isControlling.Load())
+		a.setSelector()
+	}
+}
+
 // handleInbound processes STUN traffic from a remote candidate
 func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr) { //nolint:gocognit
-	var err error
 	if m == nil || local == nil {
 		return
 	}
@@ -1086,24 +1108,10 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 		return
 	}
 
-	if a.isControlling {
-		if m.Contains(stun.AttrICEControlling) {
-			a.log.Debug("Inbound STUN message: isControlling && a.isControlling == true")
-			return
-		} else if m.Contains(stun.AttrUseCandidate) {
-			a.log.Debug("Inbound STUN message: useCandidate && a.isControlling == true")
-			return
-		}
-	} else {
-		if m.Contains(stun.AttrICEControlled) {
-			a.log.Debug("Inbound STUN message: isControlled && a.isControlling == false")
-			return
-		}
-	}
-
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
-	if m.Type.Class == stun.ClassSuccessResponse {
-		if err = stun.MessageIntegrity([]byte(a.remotePwd)).Check(m); err != nil {
+
+	if m.Type.Class == stun.ClassSuccessResponse { //nolint:nestif
+		if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(m); err != nil {
 			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
 		}
@@ -1113,14 +1121,19 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			return
 		}
 
-		a.selector.HandleSuccessResponse(m, local, remoteCandidate, remote)
+		a.getSelector().HandleSuccessResponse(m, local, remoteCandidate, remote)
 	} else if m.Type.Class == stun.ClassRequest {
-		a.log.Tracef("Inbound STUN (Request) from %s to %s, useCandidate: %v", remote, local, m.Contains(stun.AttrUseCandidate))
+		a.log.Tracef(
+			"Inbound STUN (Request) from %s to %s, useCandidate: %v",
+			remote,
+			local,
+			m.Contains(stun.AttrUseCandidate),
+		)
 
-		if err = stunx.AssertUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
+		if err := stunx.AssertUsername(m, a.localUfrag+":"+a.remoteUfrag); err != nil {
 			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
-		} else if err = stun.MessageIntegrity([]byte(a.localPwd)).Check(m); err != nil {
+		} else if err := stun.MessageIntegrity([]byte(a.localPwd)).Check(m); err != nil {
 			a.log.Warnf("Discard message from (%s), %v", remote, err)
 			return
 		}
@@ -1152,7 +1165,16 @@ func (a *Agent) handleInbound(m *stun.Message, local Candidate, remote net.Addr)
 			a.addRemoteCandidate(remoteCandidate)
 		}
 
-		a.selector.HandleBindingRequest(m, local, remoteCandidate)
+		// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
+		// keeping to maintain backwards compat
+		remoteTieBreaker := &AttrControl{}
+		if err := remoteTieBreaker.GetFrom(m); err == nil && remoteTieBreaker.Role == a.role() {
+			a.handleRoleConflict(m, local, remoteCandidate, remoteTieBreaker)
+
+			return
+		}
+
+		a.getSelector().HandleBindingRequest(m, local, remoteCandidate)
 	}
 
 	if remoteCandidate != nil {
@@ -1274,9 +1296,7 @@ func (a *Agent) Restart(ufrag, pwd string) error {
 		a.pendingBindingRequests = make([]bindingRequest, 0)
 		a.setSelectedPair(nil)
 		a.deleteAllCandidates()
-		if a.selector != nil {
-			a.selector.Start()
-		}
+		a.setSelector()
 
 		// Restart is used by NewAgent. Accept/Connect should be used to move to checking
 		// for new Agents
@@ -1308,4 +1328,37 @@ func (a *Agent) setGatheringState(newState GatheringState) error {
 
 func (a *Agent) needsToCheckPriorityOnNominated() bool {
 	return !a.lite || a.enableUseCandidateCheckPriority
+}
+
+func (a *Agent) role() Role {
+	if a.isControlling.Load() {
+		return Controlling
+	}
+
+	return Controlled
+}
+
+func (a *Agent) setSelector() {
+	a.selectorLock.Lock()
+	defer a.selectorLock.Unlock()
+
+	var s pairCandidateSelector
+	if a.isControlling.Load() {
+		s = &controllingSelector{agent: a, log: a.log}
+	} else {
+		s = &controlledSelector{agent: a, log: a.log}
+	}
+	if a.lite {
+		s = &liteSelector{pairCandidateSelector: s}
+	}
+
+	s.Start()
+	a.selector = s
+}
+
+func (a *Agent) getSelector() pairCandidateSelector {
+	a.selectorLock.Lock()
+	defer a.selectorLock.Unlock()
+
+	return a.selector
 }
