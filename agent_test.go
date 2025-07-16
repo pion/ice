@@ -2007,3 +2007,66 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 	require.NoError(t, aAgent.Close())
 	require.NoError(t, bAgent.Close())
 }
+
+func TestRoleConflict(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	runTest := func(doDial bool) {
+		cfg := &AgentConfig{
+			NetworkTypes:     supportedNetworkTypes(),
+			MulticastDNSMode: MulticastDNSModeDisabled,
+		}
+
+		aAgent, err := NewAgent(cfg)
+		require.NoError(t, err)
+
+		bAgent, err := NewAgent(cfg)
+		require.NoError(t, err)
+
+		isConnected := make(chan interface{})
+		err = aAgent.OnConnectionStateChange(func(c ConnectionState) {
+			if c == ConnectionStateConnected {
+				close(isConnected)
+			}
+		})
+		require.NoError(t, err)
+
+		gatherAndExchangeCandidates(aAgent, bAgent)
+
+		go func() {
+			ufrag, pwd, routineErr := bAgent.GetLocalUserCredentials()
+			require.NoError(t, routineErr)
+
+			if doDial {
+				_, routineErr = aAgent.Dial(context.TODO(), ufrag, pwd)
+			} else {
+				_, routineErr = aAgent.Accept(context.TODO(), ufrag, pwd)
+			}
+			require.NoError(t, routineErr)
+		}()
+
+		ufrag, pwd, err := aAgent.GetLocalUserCredentials()
+		require.NoError(t, err)
+
+		if doDial {
+			_, err = bAgent.Dial(context.TODO(), ufrag, pwd)
+		} else {
+			_, err = bAgent.Accept(context.TODO(), ufrag, pwd)
+		}
+		require.NoError(t, err)
+
+		<-isConnected
+
+		require.NoError(t, aAgent.Close())
+		require.NoError(t, bAgent.Close())
+	}
+
+	t.Run("Controlling", func(t *testing.T) {
+		runTest(true)
+	})
+
+	t.Run("Controlled", func(t *testing.T) {
+		runTest(false)
+	})
+}
