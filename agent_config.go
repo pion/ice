@@ -59,6 +59,12 @@ func defaultCandidateTypes() []CandidateType {
 	return []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
 }
 
+type PortMapping struct {
+	InternalPort int
+	ExternalPort int
+	Protocol     string
+}
+
 // AgentConfig collects the arguments to ice.Agent construction into
 // a single structure, for future-proofness of the interface.
 type AgentConfig struct {
@@ -207,6 +213,10 @@ type AgentConfig struct {
 	// switched to that irrespective of relative priority between current selected pair
 	// and priority of the pair being switched to.
 	EnableUseCandidateCheckPriority bool
+
+	// PortMappings is a list of port mappings that will be used to map internal ports to external ports
+	// Useful in Docker.
+	PortMappings []PortMapping
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset.
@@ -282,6 +292,13 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	} else {
 		agent.candidateTypes = config.CandidateTypes
 	}
+}
+
+func (config *AgentConfig) initPortMapping(agent *Agent) error {
+	var err error
+	agent.portMapper, err = newPortMapper(config.PortMappings)
+
+	return err
 }
 
 func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
