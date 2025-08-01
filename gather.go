@@ -423,7 +423,11 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				Component: ComponentRTP,
 			})
 		} else if a.hostUDPAdvertisedAddrsMapper != nil {
-			adv := a.hostUDPAdvertisedAddrsMapper(udpAddr)
+			adv := a.hostUDPAdvertisedAddrsMapper(&net.UDPAddr{
+				IP:   candidateIP,
+				Port: udpAddr.Port,
+				Zone: udpAddr.Zone,
+			})
 			for _, advertisedAddr := range adv {
 				hostConfigs = append(hostConfigs, CandidateHostConfig{
 					Network:           udp,
