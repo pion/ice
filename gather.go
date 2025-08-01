@@ -247,52 +247,110 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 
 			for _, connAndPort := range conns {
-				hostConfig := CandidateHostConfig{
-					Network:   network,
-					Address:   address,
-					Port:      connAndPort.port,
-					Component: ComponentRTP,
-					TCPType:   tcpType,
-					// we will still process this candidate so that we start up the right
-					// listeners.
-					IsLocationTracked: isLocationTracked,
+				var hostConfigs []CandidateHostConfig
+				if network == udp && a.hostUDPAdvertisedAddrsMapper != nil && a.mDNSMode != MulticastDNSModeQueryAndGather {
+					advertisedAddrs := a.hostUDPAdvertisedAddrsMapper(connAndPort.conn.LocalAddr().(*net.UDPAddr))
+					for _, advertisedAddr := range advertisedAddrs {
+						hostConfigs = append(hostConfigs, CandidateHostConfig{
+							Network:           network,
+							Address:           advertisedAddr.IP.String(),
+							Port:              advertisedAddr.Port,
+							Component:         ComponentRTP,
+							TCPType:           tcpType,
+							IsLocationTracked: shouldFilterLocationTracked(advertisedAddr.IP),
+						})
+					}
+				} else if network == tcp && a.hostTCPAdvertisedAddrsMapper != nil && a.mDNSMode != MulticastDNSModeQueryAndGather {
+					advertisedAddrs := a.hostTCPAdvertisedAddrsMapper(connAndPort.conn.LocalAddr().(*net.TCPAddr))
+					for _, advertisedAddr := range advertisedAddrs {
+						hostConfigs = append(hostConfigs, CandidateHostConfig{
+							Network:           network,
+							Address:           advertisedAddr.IP.String(),
+							Port:              advertisedAddr.Port,
+							Component:         ComponentRTP,
+							TCPType:           tcpType,
+							IsLocationTracked: shouldFilterLocationTracked(advertisedAddr.IP),
+						})
+					}
+				} else {
+					hostConfigs = append(hostConfigs, CandidateHostConfig{
+						Network:   network,
+						Address:   address,
+						Port:      connAndPort.port,
+						Component: ComponentRTP,
+						TCPType:   tcpType,
+						// we will still process this candidate so that we start up the right
+						// listeners.
+						IsLocationTracked: isLocationTracked,
+					})
 				}
 
-				candidateHost, err := NewCandidateHost(&hostConfig)
-				if err != nil {
-					closeConnAndLog(
-						connAndPort.conn,
+				if len(hostConfigs) == 0 {
+					closeConnAndLog(connAndPort.conn,
 						a.log,
-						"failed to create host candidate: %s %s %d: %v",
-						network, mappedIP,
-						connAndPort.port,
-						err,
-					)
+						"gatherCandidatesLocal: no host configs allowed for %s %s %d",
+						network,
+						mappedIP,
+						connAndPort.port)
 
 					continue
 				}
 
-				if a.mDNSMode == MulticastDNSModeQueryAndGather {
-					if err = candidateHost.setIPAddr(addr); err != nil {
+				var shared *sharedPacketConn
+				if len(hostConfigs) > 1 {
+					shared = newSharedPacketConn(connAndPort.conn)
+				}
+
+				for i := range hostConfigs {
+					useConn := connAndPort.conn
+					if shared != nil {
+						useConn = shared.Ref()
+					}
+
+					candidateHost, err := NewCandidateHost(&hostConfigs[i])
+					if err != nil {
+						failedAddr := hostConfigs[i].Address
+						if a.mDNSMode == MulticastDNSModeQueryAndGather {
+							failedAddr = mappedIP.String()
+						}
 						closeConnAndLog(
-							connAndPort.conn,
+							useConn,
 							a.log,
 							"failed to create host candidate: %s %s %d: %v",
-							network,
-							mappedIP,
-							connAndPort.port,
+							network, failedAddr,
+							hostConfigs[i].Port,
 							err,
 						)
 
 						continue
 					}
+
+					if a.mDNSMode == MulticastDNSModeQueryAndGather {
+						if err = candidateHost.setIPAddr(addr); err != nil {
+							closeConnAndLog(
+								useConn,
+								a.log,
+								"failed to create host candidate: %s %s %d: %v",
+								network,
+								mappedIP,
+								connAndPort.port,
+								err,
+							)
+
+							continue
+						}
+					}
+
+					if err := a.addCandidate(ctx, candidateHost, useConn); err != nil {
+						if closeErr := candidateHost.close(); closeErr != nil {
+							a.log.Warnf("Failed to close candidate: %v", closeErr)
+						}
+						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+					}
 				}
 
-				if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
-					if closeErr := candidateHost.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
-					}
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+				if shared != nil {
+					shared.Release()
 				}
 			}
 		}
@@ -355,31 +413,37 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			candidateIP = mappedIP
 		}
 
-		var address string
-		var isLocationTracked bool
+		var hostConfigs []CandidateHostConfig
+
 		if a.mDNSMode == MulticastDNSModeQueryAndGather {
-			address = a.mDNSName
+			hostConfigs = append(hostConfigs, CandidateHostConfig{
+				Network:   udp,
+				Address:   a.mDNSName,
+				Port:      udpAddr.Port,
+				Component: ComponentRTP,
+			})
+		} else if a.hostUDPAdvertisedAddrsMapper != nil {
+			adv := a.hostUDPAdvertisedAddrsMapper(udpAddr)
+			for _, advertisedAddr := range adv {
+				hostConfigs = append(hostConfigs, CandidateHostConfig{
+					Network:           udp,
+					Address:           advertisedAddr.IP.String(),
+					Port:              advertisedAddr.Port,
+					Component:         ComponentRTP,
+					IsLocationTracked: shouldFilterLocationTracked(advertisedAddr.IP),
+				})
+			}
 		} else {
-			address = candidateIP.String()
-			// Here, we are not doing multicast gathering, so we will need to skip this address so
-			// that we don't accidentally reveal location tracking information. Otherwise, the
-			// case above hides the IP behind an mDNS address.
-			isLocationTracked = shouldFilterLocationTracked(candidateIP)
+			hostConfigs = append(hostConfigs, CandidateHostConfig{
+				Network:           udp,
+				Address:           candidateIP.String(),
+				Port:              udpAddr.Port,
+				Component:         ComponentRTP,
+				IsLocationTracked: shouldFilterLocationTracked(candidateIP),
+			})
 		}
 
-		hostConfig := CandidateHostConfig{
-			Network:           udp,
-			Address:           address,
-			Port:              udpAddr.Port,
-			Component:         ComponentRTP,
-			IsLocationTracked: isLocationTracked,
-		}
-
-		// Detect a duplicate candidate before calling addCandidate().
-		// otherwise, addCandidate() detects the duplicate candidate
-		// and close its connection, invalidating all candidates
-		// that share the same connection.
-		if _, ok := existingConfigs[hostConfig]; ok {
+		if len(hostConfigs) == 0 {
 			continue
 		}
 
@@ -388,24 +452,56 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			return err
 		}
 
-		c, err := NewCandidateHost(&hostConfig)
-		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
-
-			continue
+		var shared *sharedPacketConn
+		if len(hostConfigs) > 1 {
+			shared = newSharedPacketConn(conn)
 		}
 
-		if err := a.addCandidate(ctx, c, conn); err != nil {
-			if closeErr := c.close(); closeErr != nil {
-				a.log.Warnf("Failed to close candidate: %v", closeErr)
+		for i := range hostConfigs {
+			if _, ok := existingConfigs[hostConfigs[i]]; ok {
+				continue
 			}
 
-			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+			useConn := conn
+			if shared != nil {
+				useConn = shared.Ref()
+			}
 
-			continue
+			candidateHost, err := NewCandidateHost(&hostConfigs[i])
+			if err != nil {
+				closeConnAndLog(useConn,
+					a.log,
+					"failed to create host mux candidate: %s %d: %v",
+					hostConfigs[i].Address,
+					hostConfigs[i].Port,
+					err,
+				)
+
+				continue
+			}
+
+			if err := a.addCandidate(ctx, candidateHost, useConn); err != nil {
+				if closeErr := candidateHost.close(); closeErr != nil {
+					a.log.Warnf("Failed to close candidate: %v", closeErr)
+				}
+				closeConnAndLog(
+					useConn,
+					a.log,
+					"failed to add candidate: %s %d: %v",
+					hostConfigs[i].Address,
+					hostConfigs[i].Port,
+					err,
+				)
+
+				continue
+			}
+
+			existingConfigs[hostConfigs[i]] = struct{}{}
 		}
 
-		existingConfigs[hostConfig] = struct{}{}
+		if shared != nil {
+			shared.Release()
+		}
 	}
 
 	return nil
