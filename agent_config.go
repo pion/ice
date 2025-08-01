@@ -131,6 +131,9 @@ type AgentConfig struct {
 	// candidate gathering.
 	NAT1To1IPs []string
 
+	HostUDPAdvertisedAddrsMapper func(*net.UDPAddr) []net.UDPAddr
+	HostTCPAdvertisedAddrsMapper func(*net.TCPAddr) []net.TCPAddr
+
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
 	// SrflxAcceptanceMinWait specify a minimum wait time before selecting srflx candidates

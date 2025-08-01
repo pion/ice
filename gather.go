@@ -443,7 +443,14 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			})
 		}
 
-		if len(hostConfigs) == 0 {
+		var numActualConfigs int
+		for _, hostConfig := range hostConfigs {
+			if _, ok := existingConfigs[hostConfig]; ok {
+				continue
+			}
+			numActualConfigs++
+		}
+		if numActualConfigs == 0 {
 			continue
 		}
 
@@ -453,7 +460,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		}
 
 		var shared *sharedPacketConn
-		if len(hostConfigs) > 1 {
+		if numActualConfigs > 1 {
 			shared = newSharedPacketConn(conn)
 		}
 
