@@ -121,6 +121,9 @@ type Agent struct {
 	// 1:1 D-NAT IP address mapping
 	extIPMapper *externalIPMapper
 
+	hostUDPAdvertisedAddrsMapper func(*net.UDPAddr) []net.UDPAddr
+	hostTCPAdvertisedAddrsMapper func(*net.TCPAddr) []net.TCPAddr
+
 	// Callback that allows user to implement custom behavior
 	// for STUN Binding Requests
 	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool
@@ -139,6 +142,9 @@ type Agent struct {
 	tcpMux      TCPMux
 	udpMux      UDPMux
 	udpMuxSrflx UniversalUDPMux
+
+	// Track shared-close groups for underlying PacketConn so only last close acts
+	// connCloseGroups sync.Map // key: net.PacketConn, value: *sharedCloseConn
 
 	interfaceFilter func(string) (keep bool)
 	ipFilter        func(net.IP) (keep bool)
@@ -225,6 +231,9 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit,cyclop
 		userBindingRequestHandler: config.BindingRequestHandler,
 
 		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
+
+		hostUDPAdvertisedAddrsMapper: config.HostUDPAdvertisedAddrsMapper,
+		hostTCPAdvertisedAddrsMapper: config.HostTCPAdvertisedAddrsMapper,
 	}
 	agent.connectionStateNotifier = &handlerNotifier{
 		connectionStateFunc: agent.onConnectionStateChange,
@@ -1364,3 +1373,30 @@ func (a *Agent) getSelector() pairCandidateSelector {
 
 	return a.selector
 }
+
+// func (a *Agent) wrapConnPrimary(conn net.PacketConn) net.PacketConn {
+// 	group := a.getOrCreateSharedClose(conn)
+// 	a.incGroupRef(group)
+// 	return &countedConn{shared: group, allowDeadline: true}
+// }
+
+// func (a *Agent) wrapConnAlias(conn net.PacketConn) net.PacketConn {
+// 	group := a.getOrCreateSharedClose(conn)
+// 	a.incGroupRef(group)
+// 	return &countedConn{shared: group, allowDeadline: false}
+// }
+
+// func (a *Agent) getOrCreateSharedClose(conn net.PacketConn) *sharedCloseConn {
+// 	if v, ok := a.connCloseGroups.Load(conn); ok {
+// 		return v.(*sharedCloseConn) //nolint:forcetypeassert
+// 	}
+// 	group := &sharedCloseConn{parent: conn}
+// 	actual, _ := a.connCloseGroups.LoadOrStore(conn, group)
+// 	return actual.(*sharedCloseConn) //nolint:forcetypeassert
+// }
+
+// func (a *Agent) incGroupRef(group *sharedCloseConn) {
+// 	group.mu.Lock()
+// 	group.refs++
+// 	group.mu.Unlock()
+// }
