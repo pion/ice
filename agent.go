@@ -121,6 +121,9 @@ type Agent struct {
 	// 1:1 D-NAT IP address mapping
 	extIPMapper *externalIPMapper
 
+	// mapper for external IP address
+	extIPMapperAdvanced *externalIPMapperAdvanced
+
 	// Callback that allows user to implement custom behavior
 	// for STUN Binding Requests
 	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool

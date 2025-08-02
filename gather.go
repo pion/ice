@@ -91,7 +91,8 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //no
 				}
 				wg.Done()
 			}()
-			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+			if (a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive) ||
+				(a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeServerReflexive) {
 				wg.Add(1)
 				go func() {
 					a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
@@ -143,35 +144,49 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	}
 
 	for _, addr := range localAddrs {
-		mappedIP := addr
-		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
-			a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-			if _mappedIP, innerErr := a.extIPMapper.findExternalIP(addr.String()); innerErr == nil {
-				conv, ok := netip.AddrFromSlice(_mappedIP)
-				if !ok {
-					a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
-
-					continue
-				}
-				// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
-				mappedIP = conv.Unmap()
-			} else {
-				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", addr.String())
-			}
-		}
-
-		address := mappedIP.String()
-		var isLocationTracked bool
-		if a.mDNSMode == MulticastDNSModeQueryAndGather {
-			address = a.mDNSName
-		} else {
-			// Here, we are not doing multicast gathering, so we will need to skip this address so
-			// that we don't accidentally reveal location tracking information. Otherwise, the
-			// case above hides the IP behind an mDNS address.
-			isLocationTracked = shouldFilterLocationTrackedIP(mappedIP)
-		}
-
 		for network := range networks {
+			mappedIP := addr
+			if a.mDNSMode != MulticastDNSModeQueryAndGather {
+				if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeHost {
+					// port is not used for host candidates
+					if _mappedIP, _, innerErr := a.extIPMapperAdvanced.findExternalEndpoint(network, addr.AsSlice()); innerErr == nil {
+						conv, ok := netip.AddrFromSlice(_mappedIP)
+						if !ok {
+							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
+
+							continue
+						}
+						// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
+						mappedIP = conv.Unmap()
+					} else {
+						a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", addr.String())
+					}
+				} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+					if _mappedIP, innerErr := a.extIPMapper.findExternalIP(addr.String()); innerErr == nil {
+						conv, ok := netip.AddrFromSlice(_mappedIP)
+						if !ok {
+							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
+
+							continue
+						}
+						// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
+						mappedIP = conv.Unmap()
+					} else {
+						a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", addr.String())
+					}
+				}
+			}
+
+			address := mappedIP.String()
+			var isLocationTracked bool
+			if a.mDNSMode == MulticastDNSModeQueryAndGather {
+				address = a.mDNSName
+			} else {
+				// Here, we are not doing multicast gathering, so we will need to skip this address so
+				// that we don't accidentally reveal location tracking information. Otherwise, the
+				// case above hides the IP behind an mDNS address.
+				isLocationTracked = shouldFilterLocationTrackedIP(mappedIP)
+			}
 			type connAndPort struct {
 				conn net.PacketConn
 				port int
@@ -335,6 +350,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			return errInvalidAddress
 		}
 		candidateIP := udpAddr.IP
+		advertisedPort := udpAddr.Port
 
 		if _, ok := a.udpMux.(*UDPMuxDefault); ok && !a.includeLoopback && candidateIP.IsLoopback() {
 			// Unlike MultiUDPMux Default, UDPMuxDefault doesn't have
@@ -342,17 +358,29 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			continue
 		}
 
-		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
-			a.extIPMapper != nil &&
-			a.extIPMapper.candidateType == CandidateTypeHost {
-			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
-			if err != nil {
-				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
+		if a.mDNSMode != MulticastDNSModeQueryAndGather {
+			if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeHost {
+				mappedIP, mappedPort, err := a.extIPMapperAdvanced.findExternalEndpoint(udp, candidateIP)
+				if err != nil {
+					a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
 
-				continue
+					continue
+				}
+				candidateIP = mappedIP
+				if mappedPort != 0 {
+					// Advertise the mapped external port, but keep using the local listen port for GetConn
+					advertisedPort = mappedPort
+				}
+			} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+				mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
+				if err != nil {
+					a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
+
+					continue
+				}
+				candidateIP = mappedIP
 			}
 
-			candidateIP = mappedIP
 		}
 
 		var address string
@@ -370,7 +398,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		hostConfig := CandidateHostConfig{
 			Network:           udp,
 			Address:           address,
-			Port:              udpAddr.Port,
+			Port:              advertisedPort,
 			Component:         ComponentRTP,
 			IsLocationTracked: isLocationTracked,
 		}
@@ -390,7 +418,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 
 		c, err := NewCandidateHost(&hostConfig)
 		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, advertisedPort, err)
 
 			continue
 		}
@@ -400,7 +428,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				a.log.Warnf("Failed to close candidate: %v", closeErr)
 			}
 
-			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, advertisedPort, err)
 
 			continue
 		}
@@ -446,11 +474,28 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			mappedIP, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
-			if err != nil {
-				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
+			var mappedIP net.IP
+			port := lAddr.Port
 
-				return
+			if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeServerReflexive {
+				mappedIPReal, mappedPortReal, err := a.extIPMapperAdvanced.findExternalEndpoint(network, lAddr.IP)
+				if err != nil {
+					closeConnAndLog(conn, a.log, "External IP mapping is enabled but no external IP is found for %s", lAddr.IP.String())
+
+					return
+				}
+				if mappedPortReal != 0 {
+					port = mappedPortReal
+				}
+				mappedIP = mappedIPReal
+			} else {
+				mappedIPReal, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
+				if err != nil {
+					closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
+
+					return
+				}
+				mappedIP = mappedIPReal
 			}
 
 			if shouldFilterLocationTracked(mappedIP) {
@@ -462,7 +507,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 			srflxConfig := CandidateServerReflexiveConfig{
 				Network:   network,
 				Address:   mappedIP.String(),
-				Port:      lAddr.Port,
+				Port:      port,
 				Component: ComponentRTP,
 				RelAddr:   lAddr.IP.String(),
 				RelPort:   lAddr.Port,
@@ -472,7 +517,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
 					network,
 					mappedIP.String(),
-					lAddr.Port,
+					port,
 					err)
 
 				return
