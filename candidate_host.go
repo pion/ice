@@ -46,6 +46,14 @@ type CandidateHostConfig struct {
 	IsLocationTracked bool
 }
 
+func (c *CandidateHost) Addresses() []string {
+	return c.addresses
+}
+
+func (c *CandidateHost) Ports() []int {
+	return c.ports
+}
+
 // NewCandidateHost creates a new host candidate.
 func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	candidateID := config.CandidateID
