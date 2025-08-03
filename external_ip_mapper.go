@@ -5,7 +5,6 @@ package ice
 
 import (
 	"net"
-	"strconv"
 	"strings"
 )
 
