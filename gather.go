@@ -512,7 +512,8 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 			}
 
 			// only use first endpoint mapping for now
-			endpoints, err := a.extIPMapper.findExternalEndpoints(network, lAddr.IP)
+			baseNet := strings.TrimSuffix(strings.TrimSuffix(network, "4"), "6")
+			endpoints, err := a.extIPMapper.findExternalEndpoints(baseNet, lAddr.IP)
 			if err != nil {
 				closeConnAndLog(conn, a.log, "External IP mapping is enabled but no external IP is found for %s", lAddr.IP.String())
 
