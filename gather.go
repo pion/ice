@@ -511,22 +511,30 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			port := lAddr.Port
-
-			mappedIP, mappedPort, err := a.extIPMapper.findExternalEndpoint(network, lAddr.IP)
+			// only use first endpoint mapping for now
+			endpoints, err := a.extIPMapper.findExternalEndpoints(network, lAddr.IP)
 			if err != nil {
 				closeConnAndLog(conn, a.log, "External IP mapping is enabled but no external IP is found for %s", lAddr.IP.String())
 
 				return
 			}
-			if mappedPort != 0 {
-				port = mappedPort
+
+			if len(endpoints) == 0 {
+				closeConnAndLog(conn, a.log, "External IP mapping is enabled so this candidate is not useful %s", lAddr.IP.String())
+
+				return
 			}
 
+			mappedIP := endpoints[0].ip
 			if shouldFilterLocationTracked(mappedIP) {
 				closeConnAndLog(conn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
 
 				return
+			}
+
+			port := lAddr.Port
+			if endpoints[0].port != 0 {
+				port = endpoints[0].port
 			}
 
 			srflxConfig := CandidateServerReflexiveConfig{
