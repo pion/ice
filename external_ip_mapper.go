@@ -73,9 +73,25 @@ func (m *ipMapping) findExternalIP(locIP net.IP) (net.IP, error) {
 	return extIP, nil
 }
 
+type endpoint struct {
+	ip   net.IP
+	port int // 0 = use local
+}
+
+type protoMaps struct {
+	// defaults per family
+	v4Default *endpoint
+	v6Default *endpoint
+	// per-local mappings
+	v4 map[string]endpoint
+	v6 map[string]endpoint
+}
+
 type externalIPMapper struct {
 	ipv4Mapping   ipMapping
 	ipv6Mapping   ipMapping
+	udp           protoMaps
+	tcp           protoMaps
 	candidateType CandidateType
 }
 
@@ -96,6 +112,8 @@ func newExternalIPMapper(
 	mapper := &externalIPMapper{
 		ipv4Mapping:   ipMapping{ipMap: map[string]net.IP{}},
 		ipv6Mapping:   ipMapping{ipMap: map[string]net.IP{}},
+		udp:           protoMaps{v4: make(map[string]endpoint), v6: make(map[string]endpoint)},
+		tcp:           protoMaps{v4: make(map[string]endpoint), v6: make(map[string]endpoint)},
 		candidateType: candidateType,
 	}
 
@@ -160,36 +178,14 @@ func (m *externalIPMapper) findExternalIP(localIPStr string) (net.IP, error) {
 	return m.ipv6Mapping.findExternalIP(locIP)
 }
 
-// ----- Extended per-protocol, port-aware mapping support (optional) -----
-
-type endpoint struct {
-	ip   net.IP
-	port int // 0 = use local
-}
-
-type protoMaps struct {
-	// defaults per family
-	v4Default *endpoint
-	v6Default *endpoint
-	// per-local mappings
-	v4 map[string]endpoint
-	v6 map[string]endpoint
-}
-
-type externalIPMapperAdvanced struct {
-	udp protoMaps
-	tcp protoMaps
-	candidateType CandidateType
-}
-
-// newExternalIPMapperFromAdvanced creates a mapper using advanced entries.
+// newExternalIPMapperAdvanced creates a mapper using advanced entries.
 // Entry format:
 //
 //	"udp:extIP[:port]" or "tcp:extIP[:port]" (sole per-proto)
 //	"udp:extIP[:port]/localIP" or "tcp:extIP[:port]/localIP" (per-local per-proto)
 //
 // IPv6 with port must be bracketed (e.g. tcp:[2001:db8::1]:443/fe80::1).
-func newExternalIPMapperAdvanced(candidateType CandidateType, entries []string) (*externalIPMapperAdvanced, error) {
+func newExternalIPMapperAdvanced(candidateType CandidateType, entries []string) (*externalIPMapper, error) {
 	if len(entries) == 0 {
 		return nil, nil //nolint:nilnil
 	}
@@ -197,17 +193,13 @@ func newExternalIPMapperAdvanced(candidateType CandidateType, entries []string) 
 		candidateType = CandidateTypeHost
 	} else if candidateType != CandidateTypeHost && candidateType != CandidateTypeServerReflexive {
 		return nil, ErrUnsupportedNAT1To1IPCandidateType
-	}	
+	}
 
-	mapper := &externalIPMapperAdvanced{
-		udp: protoMaps{
-			v4: make(map[string]endpoint),
-			v6: make(map[string]endpoint),
-		},
-		tcp: protoMaps{
-			v4: make(map[string]endpoint),
-			v6: make(map[string]endpoint),
-		},
+	mapper := &externalIPMapper{
+		ipv4Mapping:   ipMapping{ipMap: map[string]net.IP{}},
+		ipv6Mapping:   ipMapping{ipMap: map[string]net.IP{}},
+		udp:           protoMaps{v4: make(map[string]endpoint), v6: make(map[string]endpoint)},
+		tcp:           protoMaps{v4: make(map[string]endpoint), v6: make(map[string]endpoint)},
 		candidateType: candidateType,
 	}
 
@@ -219,7 +211,7 @@ func newExternalIPMapperAdvanced(candidateType CandidateType, entries []string) 
 			}
 			port, perr := strconv.Atoi(p)
 			if perr != nil || port < 0 || port > 65535 {
-				return nil, 0, ErrInvalidNAT1To1IPMapping
+				return nil, 0, ErrInvalidExternalIPMapping
 			}
 			return ip, port, nil
 		}
@@ -290,27 +282,37 @@ func newExternalIPMapperAdvanced(candidateType CandidateType, entries []string) 
 
 // findExternalEndpoint returns the external IP and port for a given proto/local.
 // If advanced mapping exists it is used; otherwise falls back to legacy per-family mapping
-// and returns the input localPort unchanged.
-func (m *externalIPMapperAdvanced) findExternalEndpoint(network string, localIP net.IP) (net.IP, int, error) {
+// and returns the input localPort unchanged (0 is returned to indicate no port rewrite).
+func (m *externalIPMapper) findExternalEndpoint(network string, localIP net.IP) (net.IP, int, error) {
+	if m == nil {
+		return nil, 0, ErrExternalMappedIPNotFound
+	}
 	isV4 := localIP.To4() != nil
 	pm := m.udp
 	if network == "tcp" {
 		pm = m.tcp
 	}
+	// Prefer advanced mapping if configured
 	if isV4 {
-		if ep, ok2 := pm.v4[localIP.String()]; ok2 {
+		if ep, ok := pm.v4[localIP.String()]; ok {
 			return ep.ip, ep.port, nil
 		}
 		if pm.v4Default != nil {
 			return pm.v4Default.ip, pm.v4Default.port, nil
 		}
 	} else {
-		if ep, ok2 := pm.v6[localIP.String()]; ok2 {
+		if ep, ok := pm.v6[localIP.String()]; ok {
 			return ep.ip, ep.port, nil
 		}
 		if pm.v6Default != nil {
 			return pm.v6Default.ip, pm.v6Default.port, nil
 		}
 	}
-	return nil, 0, ErrExternalMappedIPNotFound
+	// Fallback to legacy per-family mapping
+	if isV4 {
+		ip, err := m.ipv4Mapping.findExternalIP(localIP)
+		return ip, 0, err
+	}
+	ip, err := m.ipv6Mapping.findExternalIP(localIP)
+	return ip, 0, err
 }

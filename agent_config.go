@@ -294,17 +294,21 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 
 func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
 	var err error
-	agent.extIPMapperAdvanced, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.NAT1To1IPMappings)
-	if err != nil {
-		return err
+	// Prefer advanced mappings if provided; otherwise use legacy list
+	if len(config.NAT1To1IPMappings) > 0 {
+		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.NAT1To1IPMappings)
+		if err != nil {
+			return err
+		}
+	} else {
+		agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+		if err != nil {
+			return err
+		}
 	}
 
-	agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
-	if err != nil {
-		return err
-	}
 	if agent.extIPMapper == nil {
-		return nil // This may happen when config.NAT1To1IPs is an empty array
+		return nil // This may happen when config.NAT1To1IPs/Mappings is an empty array
 	}
 	if agent.extIPMapper.candidateType == CandidateTypeHost { //nolint:nestif
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {

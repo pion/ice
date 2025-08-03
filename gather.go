@@ -91,8 +91,7 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //no
 				}
 				wg.Done()
 			}()
-			if (a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive) ||
-				(a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeServerReflexive) {
+			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
 				wg.Add(1)
 				go func() {
 					a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
@@ -146,34 +145,18 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	for _, addr := range localAddrs {
 		for network := range networks {
 			mappedIP := addr
-			if a.mDNSMode != MulticastDNSModeQueryAndGather {
-				if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeHost {
-					// port is not used for host candidates
-					if _mappedIP, _, innerErr := a.extIPMapperAdvanced.findExternalEndpoint(network, addr.AsSlice()); innerErr == nil {
-						conv, ok := netip.AddrFromSlice(_mappedIP)
-						if !ok {
-							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
+			if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+				if _mappedIP, _, innerErr := a.extIPMapper.findExternalEndpoint(network, addr.AsSlice()); innerErr == nil {
+					conv, ok := netip.AddrFromSlice(_mappedIP)
+					if !ok {
+						a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
 
-							continue
-						}
-						// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
-						mappedIP = conv.Unmap()
-					} else {
-						a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", addr.String())
+						continue
 					}
-				} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-					if _mappedIP, innerErr := a.extIPMapper.findExternalIP(addr.String()); innerErr == nil {
-						conv, ok := netip.AddrFromSlice(_mappedIP)
-						if !ok {
-							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
-
-							continue
-						}
-						// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
-						mappedIP = conv.Unmap()
-					} else {
-						a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", addr.String())
-					}
+					// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
+					mappedIP = conv.Unmap()
+				} else {
+					a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", addr.String())
 				}
 			}
 
@@ -359,8 +342,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		}
 
 		if a.mDNSMode != MulticastDNSModeQueryAndGather {
-			if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeHost {
-				mappedIP, mappedPort, err := a.extIPMapperAdvanced.findExternalEndpoint(udp, candidateIP)
+			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+				mappedIP, mappedPort, err := a.extIPMapper.findExternalEndpoint(udp, candidateIP)
 				if err != nil {
 					a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
 
@@ -371,16 +354,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 					// Advertise the mapped external port, but keep using the local listen port for GetConn
 					advertisedPort = mappedPort
 				}
-			} else if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-				mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
-				if err != nil {
-					a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
-
-					continue
-				}
-				candidateIP = mappedIP
 			}
-
 		}
 
 		var address string
@@ -474,28 +448,16 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			var mappedIP net.IP
 			port := lAddr.Port
 
-			if a.extIPMapperAdvanced != nil && a.extIPMapperAdvanced.candidateType == CandidateTypeServerReflexive {
-				mappedIPReal, mappedPortReal, err := a.extIPMapperAdvanced.findExternalEndpoint(network, lAddr.IP)
-				if err != nil {
-					closeConnAndLog(conn, a.log, "External IP mapping is enabled but no external IP is found for %s", lAddr.IP.String())
+			mappedIP, mappedPort, err := a.extIPMapper.findExternalEndpoint(network, lAddr.IP)
+			if err != nil {
+				closeConnAndLog(conn, a.log, "External IP mapping is enabled but no external IP is found for %s", lAddr.IP.String())
 
-					return
-				}
-				if mappedPortReal != 0 {
-					port = mappedPortReal
-				}
-				mappedIP = mappedIPReal
-			} else {
-				mappedIPReal, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
-				if err != nil {
-					closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
-
-					return
-				}
-				mappedIP = mappedIPReal
+				return
+			}
+			if mappedPort != 0 {
+				port = mappedPort
 			}
 
 			if shouldFilterLocationTracked(mappedIP) {
