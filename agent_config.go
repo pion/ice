@@ -131,13 +131,8 @@ type AgentConfig struct {
 	// candidate gathering.
 	NAT1To1IPs []string
 
-	// NAT1To1IPMappings is an advanced alternative to NAT1To1IPs that allows per-protocol
-	// and per-local-IP mapping with optional external port transformation. Each entry may be:
-	//   "udp:extIP[:port]" or "tcp:extIP[:port]" (sole per protocol)
-	//   "udp:extIP[:port]/localIP" or "tcp:extIP[:port]/localIP" (per-local per protocol)
-	// IPv6 with port must be bracketed (e.g. tcp:[2001:db8::1]:443/fe80::1). If port is omitted
-	// the local port is used. If this field is provided it takes precedence over NAT1To1IPs.
-	NAT1To1IPMappings []string
+	HostUDPAdvertisedAddrsMapper func(net.IP) []endpoint
+	HostTCPAdvertisedAddrsMapper func(net.IP) []endpoint
 
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
@@ -295,8 +290,8 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
 	var err error
 	// Prefer advanced mappings if provided; otherwise use legacy list
-	if len(config.NAT1To1IPMappings) > 0 {
-		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.NAT1To1IPMappings)
+	if config.HostUDPAdvertisedAddrsMapper != nil || config.HostTCPAdvertisedAddrsMapper != nil {
+		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.HostUDPAdvertisedAddrsMapper, config.HostTCPAdvertisedAddrsMapper)
 		if err != nil {
 			return err
 		}

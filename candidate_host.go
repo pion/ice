@@ -17,6 +17,20 @@ type CandidateHost struct {
 	ports []int
 }
 
+type CandidateHostConfigSerialized struct {
+	CandidateID       string
+	Network           string
+	Address           string
+	Addresses         string
+	Port              int
+	Ports             string
+	Component         uint16
+	Priority          uint32
+	Foundation        string
+	TCPType           TCPType
+	IsLocationTracked bool
+}
+
 // CandidateHostConfig is the config required to create a new CandidateHost.
 type CandidateHostConfig struct {
 	CandidateID       string
@@ -40,22 +54,14 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
-	primaryAddress := config.Address
-	primaryPort := config.Port
-	if len(config.Addresses) > 0 {
-		primaryAddress = config.Addresses[0]
-	}
-	if len(config.Ports) > 0 {
-		primaryPort = config.Ports[0]
-	}
 
 	candidateHost := &CandidateHost{
 		candidateBase: candidateBase{
 			id:                    candidateID,
-			address:               primaryAddress,
+			address:               config.Address,
 			candidateType:         CandidateTypeHost,
 			component:             config.Component,
-			port:                  primaryPort,
+			port:                  config.Port,
 			tcpType:               config.TCPType,
 			foundationOverride:    config.Foundation,
 			priorityOverride:      config.Priority,
@@ -67,8 +73,8 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		ports:     config.Ports,
 	}
 
-	if !strings.HasSuffix(primaryAddress, ".local") {
-		ipAddr, err := netip.ParseAddr(primaryAddress)
+	if !strings.HasSuffix(config.Address, ".local") {
+		ipAddr, err := netip.ParseAddr(config.Address)
 		if err != nil {
 			return nil, err
 		}
