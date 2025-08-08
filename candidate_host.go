@@ -13,6 +13,22 @@ type CandidateHost struct {
 	candidateBase
 
 	network string
+	addresses []string
+	ports []int
+}
+
+type CandidateHostConfigSerialized struct {
+	CandidateID       string
+	Network           string
+	Address           string
+	Addresses         string
+	Port              int
+	Ports             string
+	Component         uint16
+	Priority          uint32
+	Foundation        string
+	TCPType           TCPType
+	IsLocationTracked bool
 }
 
 // CandidateHostConfig is the config required to create a new CandidateHost.
@@ -20,12 +36,22 @@ type CandidateHostConfig struct {
 	CandidateID       string
 	Network           string
 	Address           string
+	Addresses         []string
 	Port              int
+	Ports             []int
 	Component         uint16
 	Priority          uint32
 	Foundation        string
 	TCPType           TCPType
 	IsLocationTracked bool
+}
+
+func (c *CandidateHost) Addresses() []string {
+	return c.addresses
+}
+
+func (c *CandidateHost) Ports() []int {
+	return c.ports
 }
 
 // NewCandidateHost creates a new host candidate.
@@ -35,6 +61,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	if candidateID == "" {
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
+
 
 	candidateHost := &CandidateHost{
 		candidateBase: candidateBase{
@@ -50,6 +77,8 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			isLocationTracked:     config.IsLocationTracked,
 		},
 		network: config.Network,
+		addresses: config.Addresses,
+		ports:     config.Ports,
 	}
 
 	if !strings.HasSuffix(config.Address, ".local") {
