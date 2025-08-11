@@ -969,53 +969,94 @@ func TestUDPMuxDefaultWithAdvancedMapperSkip(t *testing.T) {
 	require.Equal(t, 0, hostCount)
 }
 
-// Verify ServerReflexive candidates are created from advanced mapper without STUN.
-func TestSrflxWithAdvancedMapper(t *testing.T) {
+// Verify gatherCandidatesSrflxMapped handles multiple endpoints and zero-port inheritance.
+func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	advIP := net.ParseIP("203.0.113.1")
-	advPort := 55555
+	advIP1 := net.ParseIP("203.0.113.10")
+	advPort1 := 55001
+	advIP2 := net.ParseIP("203.0.113.11")
+	// advIP2 will inherit local port (endpoint.port == 0)
 
 	agent, err := NewAgent(&AgentConfig{
 		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
 		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
 		NAT1To1IPCandidateType:       CandidateTypeServerReflexive,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advIP, port: advPort}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advIP1, port: advPort1}, {ip: advIP2, port: 0}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
 	done := make(chan struct{})
-	var gotSrflx Candidate
+	var srflx []Candidate
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
 			return
 		}
 		if c.Type() == CandidateTypeServerReflexive {
-			gotSrflx = c
+			srflx = append(srflx, c)
 		}
 	}))
 
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	if gotSrflx == nil {
-		// Inspect local candidates for debugging and to avoid races in callback ordering
-		locals, err := agent.GetLocalCandidates()
-		require.NoError(t, err)
-		for _, c := range locals {
-			if c.Type() == CandidateTypeServerReflexive {
-				gotSrflx = c
-				break
-			}
-		}
+	// Expect two srflx candidates
+	require.Len(t, srflx, 2)
+
+	// Index by address for assertions
+	m := map[string]Candidate{}
+	for _, c := range srflx {
+		m[c.Address()] = c
 	}
-	require.NotNil(t, gotSrflx)
-	require.Equal(t, advIP.String(), gotSrflx.Address())
-	require.Equal(t, advPort, gotSrflx.Port())
+
+	c1 := m[advIP1.String()]
+	require.NotNil(t, c1)
+	require.Equal(t, advPort1, c1.Port())
+	require.NotNil(t, c1.RelatedAddress())
+	require.Greater(t, c1.RelatedAddress().Port, 0)
+
+	c2 := m[advIP2.String()]
+	require.NotNil(t, c2)
+	// For endpoint.port == 0, mapped port must equal the local port (RelPort)
+	require.NotNil(t, c2.RelatedAddress())
+	require.Equal(t, c2.RelatedAddress().Port, c2.Port())
+}
+
+// Verify that an empty endpoint list yields no srflx candidates.
+func TestSrflxAdvancedMapperSkip(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	agent, err := NewAgent(&AgentConfig{
+		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
+		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
+		NAT1To1IPCandidateType:       CandidateTypeServerReflexive,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{} },
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	done := make(chan struct{})
+	var srflxCount int
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+			return
+		}
+		if c.Type() == CandidateTypeServerReflexive {
+			srflxCount++
+		}
+	}))
+
+	require.NoError(t, agent.GatherCandidates())
+	<-done
+
+	require.Equal(t, 0, srflxCount)
 }
 
 // Verify gatherCandidatesLocal uses advanced mapper for UDP without UDPMux.
