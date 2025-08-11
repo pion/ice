@@ -86,9 +86,6 @@ var (
 	// ErrInvalidNAT1To1IPMapping indicates that the given 1:1 NAT IP mapping is invalid.
 	ErrInvalidNAT1To1IPMapping = errors.New("invalid 1:1 NAT IP mapping")
 
-	// ErrInvalidExternalIPMapping indicates that the given external IP mapping is invalid.
-	ErrInvalidExternalIPMapping = errors.New("invalid external IP mapping")
-
 	// ErrExternalMappedIPNotFound in NAT1To1IPMapping.
 	ErrExternalMappedIPNotFound = errors.New("external mapped IP not found")
 
