@@ -303,7 +303,7 @@ func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclo
 	}
 
 	if agent.extIPMapper == nil {
-		return nil // This may happen when config.NAT1To1IPs/Mappings is an empty array
+		return nil // This may happen when config.NAT1To1IPs/HostUDPAdvertisedAddrsMapper/HostTCPAdvertisedAddrsMapper is empty/nil
 	}
 	if agent.extIPMapper.candidateType == CandidateTypeHost { //nolint:nestif
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
