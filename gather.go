@@ -147,7 +147,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	for _, addr := range localAddrs {
 		for network := range networks {
 			mappedIPs := []netip.Addr{addr}
-			mappedPorts := []int{}
+			mappedPorts := []int{0}
 			if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 				if endpoints, innerErr := a.extIPMapper.findExternalEndpoints(network, addr.AsSlice()); innerErr == nil {
 					if len(endpoints) == 0 {
@@ -156,6 +156,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						continue
 					}
 					mappedIPs = []netip.Addr{}
+					mappedPorts = []int{}
 
 					for _, endpoint := range endpoints {
 						_mappedIP, ok := netip.AddrFromSlice(endpoint.ip)
@@ -173,156 +174,144 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				}
 			}
 
-			address := mappedIPs[0].String()
-			var isLocationTracked bool
-			if a.mDNSMode == MulticastDNSModeQueryAndGather {
-				address = a.mDNSName
-			} else {
-				// Here, we are not doing multicast gathering, so we will need to skip this address so
-				// that we don't accidentally reveal location tracking information. Otherwise, the
-				// case above hides the IP behind an mDNS address.
-				// Use the first mapped IP to determine if the candidate is location tracked
-				isLocationTracked = shouldFilterLocationTrackedIP(mappedIPs[0])
-			}
-			type connAndPort struct {
-				conn net.PacketConn
-				port int
-			}
-			var (
-				conns   []connAndPort
-				tcpType TCPType
-			)
-
-			switch network {
-			case tcp:
-				if a.tcpMux == nil {
-					continue
-				}
-
-				// Handle ICE TCP passive mode
-				var muxConns []net.PacketConn
-				if multi, ok := a.tcpMux.(AllConnsGetter); ok {
-					a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
-					// Note: this is missing zone for IPv6 by just grabbing the IP slice
-					muxConns, err = multi.GetAllConns(a.localUfrag, mappedIPs[0].Is6(), addr.AsSlice())
-					if err != nil {
-						a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
-
-						continue
-					}
-				} else {
-					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
-					// Note: this is missing zone for IPv6 by just grabbing the IP slice
-					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIPs[0].Is6(), addr.AsSlice())
-					if err != nil {
-						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
-
-						continue
-					}
-					muxConns = []net.PacketConn{conn}
-				}
-
-				// Extract the port for each PacketConn we got.
-				for _, conn := range muxConns {
-					if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-						conns = append(conns, connAndPort{conn, tcpConn.Port})
-					} else {
-						a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, addr, a.localUfrag)
-					}
-				}
-				if len(conns) == 0 {
-					// Didn't succeed with any, try the next network.
-					continue
-				}
-				tcpType = TCPTypePassive
-				// Is there a way to verify that the listen address is even
-				// accessible from the current interface.
-			case udp:
-				conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{
-					IP:   addr.AsSlice(),
-					Port: 0,
-					Zone: addr.Zone(),
-				})
-				if err != nil {
-					a.log.Warnf("Failed to listen %s %s", network, addr)
-
-					continue
-				}
-
-				if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-					conns = append(conns, connAndPort{conn, udpConn.Port})
-				} else {
-					a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, addr, a.localUfrag)
-
-					continue
-				}
-			}
-
-			addresses := []string{}
-			for _, ip := range mappedIPs {
-				addresses = append(addresses, ip.String())
-			}
-
-
-			for _, connAndPort := range conns {
-				ports := []int{}
-
-				for _, port := range mappedPorts {
-					if port != 0 {
-						ports = append(ports, port)
-					} else {
-						ports = append(ports, connAndPort.port)
-					}
-				}
-
-				hostConfig := CandidateHostConfig{
-					Network:   network,
-					Address:   address,
-					Addresses: addresses,
-					Port:      connAndPort.port,
-					Ports:     ports,
-					Component: ComponentRTP,
-					TCPType:   tcpType,
-					// we will still process this candidate so that we start up the right
-					// listeners.
-					IsLocationTracked: isLocationTracked,
-				}
-
-				candidateHost, err := NewCandidateHost(&hostConfig)
-				if err != nil {
-					closeConnAndLog(
-						connAndPort.conn,
-						a.log,
-						"failed to create host candidate: %s %s %d: %v",
-						network, mappedIPs[0],
-						connAndPort.port,
-						err,
-					)
-
-					continue
-				}
-
+			for i, mappedIP := range mappedIPs {
+				address := mappedIP.String()
+				var isLocationTracked bool
 				if a.mDNSMode == MulticastDNSModeQueryAndGather {
-					if err = candidateHost.setIPAddr(addr); err != nil {
+					address = a.mDNSName
+				} else {
+					// Here, we are not doing multicast gathering, so we will need to skip this address so
+					// that we don't accidentally reveal location tracking information. Otherwise, the
+					// case above hides the IP behind an mDNS address.
+					// Use the first mapped IP to determine if the candidate is location tracked
+					isLocationTracked = shouldFilterLocationTrackedIP(mappedIP)
+				}
+				type connAndPort struct {
+					conn net.PacketConn
+					port int
+				}
+				var (
+					conns   []connAndPort
+					tcpType TCPType
+				)
+
+				switch network {
+				case tcp:
+					if a.tcpMux == nil {
+						continue
+					}
+
+					// Handle ICE TCP passive mode
+					var muxConns []net.PacketConn
+					if multi, ok := a.tcpMux.(AllConnsGetter); ok {
+						a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
+						// Note: this is missing zone for IPv6 by just grabbing the IP slice
+						muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
+						if err != nil {
+							a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+
+							continue
+						}
+					} else {
+						a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
+						// Note: this is missing zone for IPv6 by just grabbing the IP slice
+						conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
+						if err != nil {
+							a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+
+							continue
+						}
+						muxConns = []net.PacketConn{conn}
+					}
+
+					// Extract the port for each PacketConn we got.
+					for _, conn := range muxConns {
+						if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+							conns = append(conns, connAndPort{conn, tcpConn.Port})
+						} else {
+							a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, addr, a.localUfrag)
+						}
+					}
+					if len(conns) == 0 {
+						// Didn't succeed with any, try the next network.
+						continue
+					}
+					tcpType = TCPTypePassive
+					// Is there a way to verify that the listen address is even
+					// accessible from the current interface.
+				case udp:
+					conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{
+						IP:   addr.AsSlice(),
+						Port: 0,
+						Zone: addr.Zone(),
+					})
+					if err != nil {
+						a.log.Warnf("Failed to listen %s %s", network, addr)
+
+						continue
+					}
+
+					if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+						conns = append(conns, connAndPort{conn, udpConn.Port})
+					} else {
+						a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, addr, a.localUfrag)
+
+						continue
+					}
+				}
+
+				for _, connAndPort := range conns {
+					port := connAndPort.port
+					if mappedPorts[i] != 0 {
+						port = mappedPorts[i]
+					}
+					hostConfig := CandidateHostConfig{
+						Network:   network,
+						Address:   address,
+						Port:      port,
+						Component: ComponentRTP,
+						TCPType:   tcpType,
+						// we will still process this candidate so that we start up the right
+						// listeners.
+						IsLocationTracked: isLocationTracked,
+					}
+
+					candidateHost, err := NewCandidateHost(&hostConfig)
+					if err != nil {
 						closeConnAndLog(
 							connAndPort.conn,
 							a.log,
 							"failed to create host candidate: %s %s %d: %v",
-							network,
-							mappedIPs[0],
-							connAndPort.port,
+							network, mappedIP,
+							port,
 							err,
 						)
 
 						continue
 					}
-				}
 
-				if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
-					if closeErr := candidateHost.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					if a.mDNSMode == MulticastDNSModeQueryAndGather {
+						if err = candidateHost.setIPAddr(addr); err != nil {
+							closeConnAndLog(
+								connAndPort.conn,
+								a.log,
+								"failed to create host candidate: %s %s %d: %v",
+								network,
+								mappedIP,
+								port,
+								err,
+							)
+
+							continue
+						}
 					}
-					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+
+					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
+						if closeErr := candidateHost.close(); closeErr != nil {
+							a.log.Warnf("Failed to close candidate: %v", closeErr)
+						}
+						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+					}
 				}
 			}
 		}
@@ -357,7 +346,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 	}
 
 	localAddresses := a.udpMux.GetListenAddresses()
-	existingConfigs := make(map[CandidateHostConfigSerialized]struct{})
+	existingConfigs := make(map[CandidateHostConfig]struct{})
 
 	for _, addr := range localAddresses {
 		udpAddr, ok := addr.(*net.UDPAddr)
@@ -401,76 +390,64 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			}
 		}
 
-		var address string
-		var isLocationTracked bool
-		if a.mDNSMode == MulticastDNSModeQueryAndGather {
-			address = a.mDNSName
-		} else {
-			address = mappedIPs[0].String()
-			// Here, we are not doing multicast gathering, so we will need to skip this address so
-			// that we don't accidentally reveal location tracking information. Otherwise, the
-			// case above hides the IP behind an mDNS address.
-			isLocationTracked = shouldFilterLocationTracked(mappedIPs[0])
-		}
-
-		mappedIPsStr := []string{}
-		mappedPortsStr := ""
-		for _, ip := range mappedIPs {
-			mappedIPsStr = append(mappedIPsStr, ip.String())
-		}
-		for _, port := range mappedPorts {
-			mappedPortsStr += strconv.Itoa(port) + ","
-		}
-
-		hostConfig := CandidateHostConfigSerialized{
-			Network:           udp,
-			Address:           address,
-			Addresses:         strings.Join(mappedIPsStr, ","),
-			Port:              mappedPorts[0],
-			Ports:             mappedPortsStr,
-			Component:         ComponentRTP,
-			IsLocationTracked: isLocationTracked,
-		}
-
-		// Detect a duplicate candidate before calling addCandidate().
-		// otherwise, addCandidate() detects the duplicate candidate
-		// and close its connection, invalidating all candidates
-		// that share the same connection.
-		if _, ok := existingConfigs[hostConfig]; ok {
-			continue
-		}
-
-		conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
-		if err != nil {
-			return err
-		}
-
-		c, err := NewCandidateHost(&CandidateHostConfig{
-			Network:           udp,
-			Address:           address,
-			Addresses:         mappedIPsStr,
-			Port:              mappedPorts[0],
-			Ports:             mappedPorts,
-			Component:         ComponentRTP,
-			IsLocationTracked: isLocationTracked,
-		})
-		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", mappedIPs[0], mappedPorts[0], err)
-
-			continue
-		}
-
-		if err := a.addCandidate(ctx, c, conn); err != nil {
-			if closeErr := c.close(); closeErr != nil {
-				a.log.Warnf("Failed to close candidate: %v", closeErr)
+		for i, mappedIP := range mappedIPs {
+			address := mappedIP.String()
+			var isLocationTracked bool
+			if a.mDNSMode == MulticastDNSModeQueryAndGather {
+				address = a.mDNSName
+			} else {
+				// Here, we are not doing multicast gathering, so we will need to skip this address so
+				// that we don't accidentally reveal location tracking information. Otherwise, the
+				// case above hides the IP behind an mDNS address.
+				isLocationTracked = shouldFilterLocationTracked(mappedIP)
 			}
 
-			closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", mappedIPs[0], mappedPorts[0], err)
+			hostConfig := CandidateHostConfig{
+				Network:           udp,
+				Address:           address,
+				Port:              mappedPorts[i],
+				Component:         ComponentRTP,
+				IsLocationTracked: isLocationTracked,
+			}
 
-			continue
+			// Detect a duplicate candidate before calling addCandidate().
+			// otherwise, addCandidate() detects the duplicate candidate
+			// and close its connection, invalidating all candidates
+			// that share the same connection.
+			if _, ok := existingConfigs[hostConfig]; ok {
+				continue
+			}
+
+			conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
+			if err != nil {
+				return err
+			}
+
+			c, err := NewCandidateHost(&CandidateHostConfig{
+				Network:           udp,
+				Address:           address,
+				Port:              mappedPorts[i],
+				Component:         ComponentRTP,
+				IsLocationTracked: isLocationTracked,
+			})
+			if err != nil {
+				closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", mappedIP, mappedPorts[i], err)
+
+				continue
+			}
+
+			if err := a.addCandidate(ctx, c, conn); err != nil {
+				if closeErr := c.close(); closeErr != nil {
+					a.log.Warnf("Failed to close candidate: %v", closeErr)
+				}
+
+				closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", mappedIP, mappedPorts[i], err)
+
+				continue
+			}
+
+			existingConfigs[hostConfig] = struct{}{}
 		}
-
-		existingConfigs[hostConfig] = struct{}{}
 	}
 
 	return nil
@@ -526,42 +503,44 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			mappedIP := endpoints[0].ip
-			if shouldFilterLocationTracked(mappedIP) {
-				closeConnAndLog(conn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
+			for _, endpoint := range endpoints {
+				mappedIP := endpoint.ip
+				if shouldFilterLocationTracked(mappedIP) {
+					closeConnAndLog(conn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
 
-				return
-			}
-
-			port := lAddr.Port
-			if endpoints[0].port != 0 {
-				port = endpoints[0].port
-			}
-
-			srflxConfig := CandidateServerReflexiveConfig{
-				Network:   network,
-				Address:   mappedIP.String(),
-				Port:      port,
-				Component: ComponentRTP,
-				RelAddr:   lAddr.IP.String(),
-				RelPort:   lAddr.Port,
-			}
-			c, err := NewCandidateServerReflexive(&srflxConfig)
-			if err != nil {
-				closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
-					network,
-					mappedIP.String(),
-					port,
-					err)
-
-				return
-			}
-
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
-					a.log.Warnf("Failed to close candidate: %v", closeErr)
+					return
 				}
-				a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+
+				port := lAddr.Port
+				if endpoint.port != 0 {
+					port = endpoint.port
+				}
+
+				srflxConfig := CandidateServerReflexiveConfig{
+					Network:   network,
+					Address:   mappedIP.String(),
+					Port:      port,
+					Component: ComponentRTP,
+					RelAddr:   lAddr.IP.String(),
+					RelPort:   lAddr.Port,
+				}
+				c, err := NewCandidateServerReflexive(&srflxConfig)
+				if err != nil {
+					closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
+						network,
+						mappedIP.String(),
+						port,
+						err)
+
+					return
+				}
+
+				if err := a.addCandidate(ctx, c, conn); err != nil {
+					if closeErr := c.close(); closeErr != nil {
+						a.log.Warnf("Failed to close candidate: %v", closeErr)
+					}
+					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+				}
 			}
 		}()
 	}
