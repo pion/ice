@@ -799,6 +799,7 @@ func UnmarshalCandidate(raw string) (Candidate, error) { //nolint:cyclop
 			"",
 			protocol,
 			address,
+			port,
 			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
 			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
 			foundation,
