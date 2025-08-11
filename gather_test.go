@@ -900,8 +900,8 @@ func TestUDPMuxDefaultWithAdvancedMapperUsage(t *testing.T) {
 		CandidateTypes:         []CandidateType{CandidateTypeHost},
 		UDPMux:                 udpMux,
 		NAT1To1IPCandidateType: CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint {
-			return []endpoint{{ip: advIP1, port: advPort1}, {ip: advIP2, port: 0}}
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}}
 		},
 	})
 	require.NoError(t, err)
@@ -945,7 +945,7 @@ func TestUDPMuxDefaultWithAdvancedMapperSkip(t *testing.T) {
 		CandidateTypes:               []CandidateType{CandidateTypeHost},
 		UDPMux:                       udpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -984,7 +984,7 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
 		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
 		NAT1To1IPCandidateType:       CandidateTypeServerReflexive,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advIP1, port: advPort1}, {ip: advIP2, port: 0}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1036,7 +1036,7 @@ func TestSrflxAdvancedMapperSkip(t *testing.T) {
 		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
 		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
 		NAT1To1IPCandidateType:       CandidateTypeServerReflexive,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1074,7 +1074,7 @@ func TestGatherCandidatesLocalUDPAdvancedMapper(t *testing.T) {
 		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
 		IncludeLoopback:              true,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advIP1, port: advPort1}, {ip: advIP2, port: 0}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1122,7 +1122,7 @@ func TestGatherCandidatesLocalTCPAdvancedMapper(t *testing.T) {
 		IncludeLoopback:              true,
 		TCPMux:                       tcpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advIP1, port: advPort1}, {ip: advIP2, port: 0}} },
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1168,7 +1168,7 @@ func TestUDPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 		CandidateTypes:               []CandidateType{CandidateTypeHost},
 		UDPMux:                       udpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: ipA, port: samePort}, {ip: ipB, port: samePort}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ipA, Port: samePort}, {IP: ipB, Port: samePort}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1214,7 +1214,7 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 		CandidateTypes:               []CandidateType{CandidateTypeHost},
 		UDPMux:                       udpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: ip, port: portA}, {ip: ip, port: portB}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ip, Port: portA}, {IP: ip, Port: portB}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1265,7 +1265,7 @@ func TestTCPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 		IncludeLoopback:              true,
 		TCPMux:                       tcpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: ipA, port: samePort}, {ip: ipB, port: samePort}} },
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ipA, Port: samePort}, {IP: ipB, Port: samePort}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1310,7 +1310,7 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 		IncludeLoopback:              true,
 		TCPMux:                       tcpMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: ip, port: portA}, {ip: ip, port: portB}} },
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ip, Port: portA}, {IP: ip, Port: portB}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1375,7 +1375,7 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 		IncludeLoopback:              true,
 		UDPMux:                       bMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advA, port: portA}, {ip: advB, port: portB}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()
@@ -1502,7 +1502,7 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 		IncludeLoopback:              true,
 		UDPMux:                       bMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []endpoint { return []endpoint{{ip: advA, port: portA}, {ip: advB, port: portB}} },
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} },
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()

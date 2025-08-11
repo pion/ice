@@ -158,15 +158,15 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					mappedPorts = []int{}
 
 					for _, endpoint := range endpoints {
-						_mappedIP, ok := netip.AddrFromSlice(endpoint.ip)
+						_mappedIP, ok := netip.AddrFromSlice(endpoint.IP)
 						if !ok {
-							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", endpoint.ip.String())
+							a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", endpoint.IP.String())
 
 							continue
 						}
 						// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
 						mappedIPs = append(mappedIPs, _mappedIP.Unmap())
-						mappedPorts = append(mappedPorts, endpoint.port)
+						mappedPorts = append(mappedPorts, endpoint.Port)
 					}
 				} else {
 					a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", addr.String())
@@ -380,9 +380,9 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			mappedPorts = []int{}
 
 			for _, endpoint := range endpoints {
-				mappedIPs = append(mappedIPs, endpoint.ip)
-				if endpoint.port != 0 {
-					mappedPorts = append(mappedPorts, endpoint.port)
+				mappedIPs = append(mappedIPs, endpoint.IP)
+				if endpoint.Port != 0 {
+					mappedPorts = append(mappedPorts, endpoint.Port)
 				} else {
 					mappedPorts = append(mappedPorts, udpAddr.Port)
 				}
@@ -503,7 +503,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 			}
 
 			for _, endpoint := range endpoints {
-				mappedIP := endpoint.ip
+				mappedIP := endpoint.IP
 				if shouldFilterLocationTracked(mappedIP) {
 					closeConnAndLog(conn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
 
@@ -511,8 +511,8 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				}
 
 				port := lAddr.Port
-				if endpoint.port != 0 {
-					port = endpoint.port
+				if endpoint.Port != 0 {
+					port = endpoint.Port
 				}
 
 				srflxConfig := CandidateServerReflexiveConfig{

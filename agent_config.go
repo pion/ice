@@ -131,8 +131,8 @@ type AgentConfig struct {
 	// candidate gathering.
 	NAT1To1IPs []string
 
-	HostUDPAdvertisedAddrsMapper func(net.IP) []endpoint
-	HostTCPAdvertisedAddrsMapper func(net.IP) []endpoint
+	HostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint
+	HostTCPAdvertisedAddrsMapper func(net.IP) []Endpoint
 
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration

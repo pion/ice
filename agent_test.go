@@ -1314,7 +1314,7 @@ func TestAdvancedMapperUDPConnectFail(t *testing.T) {
 			FailedTimeout:                &failed,
 			KeepaliveInterval:            &KeepaliveInterval,
 			NAT1To1IPCandidateType:       CandidateTypeHost,
-			HostUDPAdvertisedAddrsMapper: func(net.IP) []endpoint { return []endpoint{} },
+			HostUDPAdvertisedAddrsMapper: func(net.IP) []Endpoint { return []Endpoint{} },
 		})
 		require.NoError(t, err)
 
@@ -1420,7 +1420,7 @@ func TestAdvancedMapperTCPConnectFail(t *testing.T) {
 			FailedTimeout:                &failed,
 			KeepaliveInterval:            &KeepaliveInterval,
 			NAT1To1IPCandidateType:       CandidateTypeHost,
-			HostTCPAdvertisedAddrsMapper: func(net.IP) []endpoint { return []endpoint{} },
+			HostTCPAdvertisedAddrsMapper: func(net.IP) []Endpoint { return []Endpoint{} },
 		})
 		require.NoError(t, err)
 
@@ -1519,15 +1519,15 @@ func TestAdvancedMapperUDPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	ip4 := net.ParseIP("198.18.10.4")
 	p1, p2, p3, p4 := 52001, 52002, 52003, 52004
 
-	mkAgent := func(hostUDPAdvertisedAddrsMapper func(net.IP) []endpoint) *Agent {
+	mkAgent := func(hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint) *Agent {
 		a, err := NewAgent(&AgentConfig{
-			CandidateTypes:         []CandidateType{CandidateTypeHost},
-			NetworkTypes:           []NetworkType{NetworkTypeUDP4},
-			IncludeLoopback:        true,
-			DisconnectedTimeout:    &disconnected,
-			FailedTimeout:          &failed,
-			KeepaliveInterval:      &KeepaliveInterval,
-			NAT1To1IPCandidateType: CandidateTypeHost,
+			CandidateTypes:               []CandidateType{CandidateTypeHost},
+			NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
+			IncludeLoopback:              true,
+			DisconnectedTimeout:          &disconnected,
+			FailedTimeout:                &failed,
+			KeepaliveInterval:            &KeepaliveInterval,
+			NAT1To1IPCandidateType:       CandidateTypeHost,
 			HostUDPAdvertisedAddrsMapper: hostUDPAdvertisedAddrsMapper,
 		})
 		require.NoError(t, err)
@@ -1535,11 +1535,11 @@ func TestAdvancedMapperUDPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 		return a
 	}
 
-	aAgent := mkAgent(func(net.IP) []endpoint {
-		return []endpoint{{ip: ip1, port: p1}, {ip: ip2, port: p2}, {ip: ip3, port: p3}}
+	aAgent := mkAgent(func(net.IP) []Endpoint {
+		return []Endpoint{{IP: ip1, Port: p1}, {IP: ip2, Port: p2}, {IP: ip3, Port: p3}}
 	})
-	bAgent := mkAgent(func(net.IP) []endpoint {
-		return []endpoint{{ip: ip4, port: p4}}
+	bAgent := mkAgent(func(net.IP) []Endpoint {
+		return []Endpoint{{IP: ip4, Port: p4}}
 	})
 	defer func() {
 		require.NoError(t, aAgent.Close())
@@ -1647,8 +1647,8 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 			FailedTimeout:          &failed,
 			KeepaliveInterval:      &KeepaliveInterval,
 			NAT1To1IPCandidateType: CandidateTypeHost,
-			HostTCPAdvertisedAddrsMapper: func(net.IP) []endpoint {
-				return []endpoint{{ip: ip1, port: p1}, {ip: ip2, port: p2}, {ip: ip3, port: p3}}
+			HostTCPAdvertisedAddrsMapper: func(net.IP) []Endpoint {
+				return []Endpoint{{IP: ip1, Port: p1}, {IP: ip2, Port: p2}, {IP: ip3, Port: p3}}
 			},
 		})
 		require.NoError(t, err)

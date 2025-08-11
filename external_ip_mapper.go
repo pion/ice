@@ -72,17 +72,17 @@ func (m *ipMapping) findExternalIP(locIP net.IP) (net.IP, error) {
 	return extIP, nil
 }
 
-type endpoint struct {
-	ip   net.IP
-	port int // 0 = use local
+type Endpoint struct {
+	IP   net.IP
+	Port int // 0 = use local
 }
 
 type externalIPMapper struct {
-	ipv4Mapping   ipMapping
-	ipv6Mapping   ipMapping
-	hostUDPAdvertisedAddrsMapper func(net.IP) []endpoint
-	hostTCPAdvertisedAddrsMapper func(net.IP) []endpoint
-	candidateType CandidateType
+	ipv4Mapping                  ipMapping
+	ipv6Mapping                  ipMapping
+	hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint
+	hostTCPAdvertisedAddrsMapper func(net.IP) []Endpoint
+	candidateType                CandidateType
 }
 
 //nolint:gocognit,cyclop
@@ -166,8 +166,7 @@ func (m *externalIPMapper) findExternalIP(localIPStr string) (net.IP, error) {
 	return m.ipv6Mapping.findExternalIP(locIP)
 }
 
-
-func newExternalIPMapperAdvanced(candidateType CandidateType, hostUDPAdvertisedAddrsMapper func(net.IP) []endpoint, hostTCPAdvertisedAddrsMapper func(net.IP) []endpoint) (*externalIPMapper, error) {
+func newExternalIPMapperAdvanced(candidateType CandidateType, hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint, hostTCPAdvertisedAddrsMapper func(net.IP) []Endpoint) (*externalIPMapper, error) {
 	if hostUDPAdvertisedAddrsMapper == nil && hostTCPAdvertisedAddrsMapper == nil {
 		return nil, nil //nolint:nilnil
 	}
@@ -181,30 +180,25 @@ func newExternalIPMapperAdvanced(candidateType CandidateType, hostUDPAdvertisedA
 	mapper := &externalIPMapper{
 		hostUDPAdvertisedAddrsMapper: hostUDPAdvertisedAddrsMapper,
 		hostTCPAdvertisedAddrsMapper: hostTCPAdvertisedAddrsMapper,
-		candidateType: candidateType,
+		candidateType:                candidateType,
 	}
 
 	if hostUDPAdvertisedAddrsMapper == nil {
-		mapper.hostUDPAdvertisedAddrsMapper = func(ip net.IP) []endpoint {
-			return []endpoint{
-				{ip: ip, port: 0},
-			}
+		mapper.hostUDPAdvertisedAddrsMapper = func(ip net.IP) []Endpoint {
+			return []Endpoint{{IP: ip, Port: 0}}
 		}
 	}
 
 	if hostTCPAdvertisedAddrsMapper == nil {
-		mapper.hostTCPAdvertisedAddrsMapper = func(ip net.IP) []endpoint {
-			return []endpoint{
-				{ip: ip, port: 0},
-			}
+		mapper.hostTCPAdvertisedAddrsMapper = func(ip net.IP) []Endpoint {
+			return []Endpoint{{IP: ip, Port: 0}}
 		}
 	}
 
 	return mapper, nil
 }
 
-
-func (m *externalIPMapper) findExternalEndpoints(network string, localIP net.IP) ([]endpoint, error) {
+func (m *externalIPMapper) findExternalEndpoints(network string, localIP net.IP) ([]Endpoint, error) {
 	if m == nil {
 		return nil, ErrExternalMappedIPNotFound
 	}
@@ -221,9 +215,9 @@ func (m *externalIPMapper) findExternalEndpoints(network string, localIP net.IP)
 			return nil, err
 		}
 		if network == udp {
-			return []endpoint{{ip: extIP, port: 0}}, nil
+			return []Endpoint{{IP: extIP, Port: 0}}, nil
 		} else if network == tcp {
-			return []endpoint{{ip: extIP, port: 0}}, nil
+			return []Endpoint{{IP: extIP, Port: 0}}, nil
 		}
 	}
 

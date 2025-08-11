@@ -314,10 +314,10 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		require.Nil(t, mapper)
 
 		// Unsupported candidate types -> error
-		mapper, err = newExternalIPMapperAdvanced(CandidateTypePeerReflexive, nil, func(net.IP) []endpoint { return nil })
+		mapper, err = newExternalIPMapperAdvanced(CandidateTypePeerReflexive, nil, func(net.IP) []Endpoint { return nil })
 		require.Error(t, err)
 		require.Nil(t, mapper)
-		mapper, err = newExternalIPMapperAdvanced(CandidateTypeRelay, func(net.IP) []endpoint { return nil }, nil)
+		mapper, err = newExternalIPMapperAdvanced(CandidateTypeRelay, func(net.IP) []Endpoint { return nil }, nil)
 		require.Error(t, err)
 		require.Nil(t, mapper)
 
@@ -325,7 +325,7 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		udpMappedIP := net.ParseIP("1.2.3.4")
 		udpMappedPort := 12345
 		mapper, err = newExternalIPMapperAdvanced(CandidateTypeUnspecified,
-			func(_ net.IP) []endpoint { return []endpoint{{ip: udpMappedIP, port: udpMappedPort}} },
+			func(_ net.IP) []Endpoint { return []Endpoint{{IP: udpMappedIP, Port: udpMappedPort}} },
 			nil,
 		)
 		require.NoError(t, err)
@@ -335,23 +335,23 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		eps, err := mapper.findExternalEndpoints(udp, net.IP{10, 0, 0, 1})
 		require.NoError(t, err)
 		require.Len(t, eps, 1)
-		require.Equal(t, udpMappedIP.String(), eps[0].ip.String())
-		require.Equal(t, udpMappedPort, eps[0].port)
+		require.Equal(t, udpMappedIP.String(), eps[0].IP.String())
+		require.Equal(t, udpMappedPort, eps[0].Port)
 
 		// For TCP, identity mapping should be used
 		local := net.IP{10, 0, 0, 1}
 		eps, err = mapper.findExternalEndpoints(tcp, local)
 		require.NoError(t, err)
 		require.Len(t, eps, 1)
-		require.Equal(t, local.String(), eps[0].ip.String())
-		require.Equal(t, 0, eps[0].port)
+		require.Equal(t, local.String(), eps[0].IP.String())
+		require.Equal(t, 0, eps[0].Port)
 
 		// Both mappers provided and CandidateTypeServerReflexive
 		tcpMappedIP := net.ParseIP("5.6.7.8")
 		tcpMappedPort := 23456
 		mapper, err = newExternalIPMapperAdvanced(CandidateTypeServerReflexive,
-			func(_ net.IP) []endpoint { return []endpoint{{ip: udpMappedIP, port: udpMappedPort}} },
-			func(_ net.IP) []endpoint { return []endpoint{{ip: tcpMappedIP, port: tcpMappedPort}} },
+			func(_ net.IP) []Endpoint { return []Endpoint{{IP: udpMappedIP, Port: udpMappedPort}} },
+			func(_ net.IP) []Endpoint { return []Endpoint{{IP: tcpMappedIP, Port: tcpMappedPort}} },
 		)
 		require.NoError(t, err)
 		require.NotNil(t, mapper)
@@ -360,14 +360,14 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		eps, err = mapper.findExternalEndpoints(udp, net.IP{192, 168, 0, 10})
 		require.NoError(t, err)
 		require.Len(t, eps, 1)
-		require.Equal(t, udpMappedIP.String(), eps[0].ip.String())
-		require.Equal(t, udpMappedPort, eps[0].port)
+		require.Equal(t, udpMappedIP.String(), eps[0].IP.String())
+		require.Equal(t, udpMappedPort, eps[0].Port)
 
 		eps, err = mapper.findExternalEndpoints(tcp, net.IP{192, 168, 0, 11})
 		require.NoError(t, err)
 		require.Len(t, eps, 1)
-		require.Equal(t, tcpMappedIP.String(), eps[0].ip.String())
-		require.Equal(t, tcpMappedPort, eps[0].port)
+		require.Equal(t, tcpMappedIP.String(), eps[0].IP.String())
+		require.Equal(t, tcpMappedPort, eps[0].Port)
 
 		// Unknown network -> error
 		eps, err = mapper.findExternalEndpoints("sctp", net.IP{1, 1, 1, 1})
