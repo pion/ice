@@ -1070,11 +1070,16 @@ func TestGatherCandidatesLocalUDPAdvancedMapper(t *testing.T) {
 	advIP2 := net.ParseIP("198.18.0.2")
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
-		IncludeLoopback:              true,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeUDP4},
+		IncludeLoopback:        true,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: advIP1, Port: advPort1},
+				{IP: advIP2, Port: 0},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1117,12 +1122,17 @@ func TestGatherCandidatesLocalTCPAdvancedMapper(t *testing.T) {
 	advIP2 := net.ParseIP("198.51.100.11")
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeTCP4},
-		IncludeLoopback:              true,
-		TCPMux:                       tcpMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeTCP4},
+		IncludeLoopback:        true,
+		TCPMux:                 tcpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: advIP1, Port: advPort1},
+				{IP: advIP2, Port: 0},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1164,10 +1174,15 @@ func TestUDPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	ipB := net.ParseIP("198.51.100.51")
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		UDPMux:                       udpMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ipA, Port: samePort}, {IP: ipB, Port: samePort}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		UDPMux:                 udpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: ipA, Port: samePort},
+				{IP: ipB, Port: samePort},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1209,10 +1224,15 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	portB := 47002
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		UDPMux:                       udpMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ip, Port: portA}, {IP: ip, Port: portB}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		UDPMux:                 udpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: ip, Port: portA},
+				{IP: ip, Port: portB},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1257,12 +1277,17 @@ func TestTCPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	ipB := net.ParseIP("203.0.113.51")
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeTCP4},
-		IncludeLoopback:              true,
-		TCPMux:                       tcpMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ipA, Port: samePort}, {IP: ipB, Port: samePort}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeTCP4},
+		IncludeLoopback:        true,
+		TCPMux:                 tcpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: ipA, Port: samePort},
+				{IP: ipB, Port: samePort},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1302,12 +1327,17 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	portB := 48002
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeTCP4},
-		IncludeLoopback:              true,
-		TCPMux:                       tcpMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: ip, Port: portA}, {IP: ip, Port: portB}} },
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeTCP4},
+		IncludeLoopback:        true,
+		TCPMux:                 tcpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: ip, Port: portA},
+				{IP: ip, Port: portB},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1354,7 +1384,11 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 	portA := 49101
 	portB := 49102
 
-	aAgent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}, IncludeLoopback: true})
+	aAgent, err := NewAgent(&AgentConfig{
+		CandidateTypes:  []CandidateType{CandidateTypeHost},
+		NetworkTypes:    []NetworkType{NetworkTypeUDP4},
+		IncludeLoopback: true,
+	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, aAgent.Close()) }()
 

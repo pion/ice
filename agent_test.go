@@ -1412,7 +1412,7 @@ func TestAdvancedMapperTCPConnectFail(t *testing.T) {
 	}
 
 	mkAgent := func(mux TCPMux) *Agent {
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			CandidateTypes:               []CandidateType{CandidateTypeHost},
 			NetworkTypes:                 []NetworkType{NetworkTypeTCP4},
 			IncludeLoopback:              true,
@@ -1425,7 +1425,7 @@ func TestAdvancedMapperTCPConnectFail(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		return a
+		return agent
 	}
 
 	muxA := mkTCPMux()

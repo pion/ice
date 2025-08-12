@@ -147,7 +147,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		for network := range networks {
 			mappedIPs := []netip.Addr{addr}
 			mappedPorts := []int{0}
-			if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+			if a.mDNSMode != MulticastDNSModeQueryAndGather &&
+				a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 				if endpoints, innerErr := a.extIPMapper.findExternalEndpoints(network, addr.AsSlice()); innerErr == nil {
 					if len(endpoints) == 0 {
 						a.log.Infof("Skipping host candidate for %s because of external IP mapping", addr.String())
@@ -362,7 +363,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 		mappedIPs := []net.IP{udpAddr.IP}
 		mappedPorts := []int{udpAddr.Port}
 
-		if a.mDNSMode != MulticastDNSModeQueryAndGather && a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
+		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
+			a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
 			endpoints, err := a.extIPMapper.findExternalEndpoints(udp, udpAddr.IP)
 			if err != nil {
 				a.log.Warnf("External NAT mapping is enabled but no external IP is found for %s", udpAddr.IP.String())
