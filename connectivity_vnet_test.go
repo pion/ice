@@ -45,7 +45,14 @@ func (v *virtualNet) close() {
 	v.wan.Stop()     //nolint:errcheck,gosec
 }
 
-func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint:cyclop
+func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
+	return buildVNetWithCustomLAN0StaticIPs(natType0, natType1, []string{})
+}
+
+func buildVNetWithCustomLAN0StaticIPs(
+	natType0, natType1 *vnet.NATType,
+	lan0StaticIPs []string,
+) (*virtualNet, error) { //nolint:cyclop
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN
@@ -73,6 +80,10 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	lan0, err := vnet.NewRouter(&vnet.RouterConfig{
 		StaticIPs: func() []string {
 			if natType0.Mode == vnet.NATModeNAT1To1 {
+				if len(lan0StaticIPs) > 0 {
+					return lan0StaticIPs
+				}
+
 				return []string{
 					vnetGlobalIPA + "/" + vnetLocalIPA,
 				}
@@ -442,6 +453,234 @@ func TestConnectivityVNet(t *testing.T) {
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
 	})
+}
+
+// Ensures that when a single local socket is advertised as multiple external endpoints (1:N),
+// connectivity checks still succeed. This exercises the case where multiple candidates share
+// the same PacketConn (multiple recv loops on the same underlying socket).
+func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(15 * time.Second).Stop()
+
+	vnet, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+		"27.1.1.1/" + vnetLocalIPA,
+		"27.1.1.2/" + vnetLocalIPA,
+	})
+
+	require.NoError(t, err)
+	defer vnet.close()
+
+	aNotifier, aConnected := onConnected()
+	bNotifier, bConnected := onConnected()
+
+	udpMapper := func(_ net.IP) []Endpoint {
+		return []Endpoint{
+			{IP: net.ParseIP("27.1.1.1"), Port: 0},
+			{IP: net.ParseIP("27.1.1.2"), Port: 0},
+		}
+	}
+
+	aCfg := &AgentConfig{
+		NetworkTypes:                 supportedNetworkTypes(),
+		MulticastDNSMode:             MulticastDNSModeDisabled,
+		NAT1To1IPCandidateType:       CandidateTypeHost,
+		HostUDPAdvertisedAddrsMapper: udpMapper,
+		Net:                          vnet.net0,
+	}
+	aAgent, err := NewAgent(aCfg)
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	defer func() { require.NoError(t, aAgent.Close()) }()
+
+	bCfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              vnet.net1,
+	}
+	bAgent, err := NewAgent(bCfg)
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	defer func() { require.NoError(t, bAgent.Close()) }()
+
+	ca, cb := connectWithVNet(t, aAgent, bAgent)
+	defer closePipe(t, ca, cb)
+
+	<-aConnected
+	<-bConnected
+
+	locals, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	seen := map[string]bool{}
+	for _, c := range locals {
+		if c.Type() == CandidateTypeHost {
+			seen[c.Address()] = true
+		}
+	}
+	require.True(t, seen["27.1.1.1"], "expected host candidate for first external IP")
+	require.True(t, seen["27.1.1.2"], "expected host candidate for second external IP")
+
+	pair, err := aAgent.GetSelectedCandidatePair()
+	require.NoError(t, err)
+	require.NotNil(t, pair)
+	require.Contains(t, []string{"27.1.1.1", "27.1.1.2"}, pair.Local.Address())
+}
+
+func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(15 * time.Second).Stop()
+
+	vnet, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+		"27.1.1.1/" + vnetLocalIPA,
+		"27.1.1.2/" + vnetLocalIPA,
+		"27.1.1.3/" + vnetLocalIPA,
+		"27.1.1.4/" + vnetLocalIPA,
+		"27.1.1.5/" + vnetLocalIPA,
+	})
+	require.NoError(t, err)
+	defer vnet.close()
+
+	pc, err := vnet.net0.ListenPacket("udp4", "192.168.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = pc.Close() }()
+	udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
+	defer func() { _ = udpMux.Close() }()
+
+	aNotifier, aConnected := onConnected()
+	aAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:           []NetworkType{NetworkTypeUDP4},
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		MulticastDNSMode:       MulticastDNSModeDisabled,
+		UDPMux:                 udpMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: net.ParseIP("27.1.1.1"), Port: 0},
+				{IP: net.ParseIP("27.1.1.2"), Port: 0},
+				{IP: net.ParseIP("27.1.1.3"), Port: 0},
+				{IP: net.ParseIP("27.1.1.4"), Port: 0},
+			}
+		},
+		Net: vnet.net0,
+	})
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	defer func() { require.NoError(t, aAgent.Close()) }()
+
+	bNotifier, bConnected := onConnected()
+	bAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              vnet.net1,
+	})
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	defer func() { require.NoError(t, bAgent.Close()) }()
+
+	ca, cb := connectWithVNet(t, aAgent, bAgent)
+	defer closePipe(t, ca, cb)
+	<-aConnected
+	<-bConnected
+
+	locals, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	have := map[string]bool{}
+	for _, c := range locals {
+		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
+			have[c.Address()] = true
+		}
+	}
+	require.True(t, have["27.1.1.1"])
+	require.True(t, have["27.1.1.2"])
+	require.True(t, have["27.1.1.3"])
+	require.True(t, have["27.1.1.4"])
+
+	pair, err := aAgent.GetSelectedCandidatePair()
+	require.NoError(t, err)
+	require.NotNil(t, pair)
+	require.Contains(t, []string{"27.1.1.1", "27.1.1.2", "27.1.1.3", "27.1.1.4"}, pair.Local.Address())
+}
+
+func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(15 * time.Second).Stop()
+
+	l1, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
+	require.NoError(t, err)
+	defer func() { _ = l1.Close() }()
+	l2, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
+	require.NoError(t, err)
+	defer func() { _ = l2.Close() }()
+
+	var portA, portB int
+	if addr, ok := l1.Addr().(*net.TCPAddr); ok {
+		portA = addr.Port
+	} else {
+		require.FailNow(t, "failed to get port from l1")
+	}
+	if addr, ok := l2.Addr().(*net.TCPAddr); ok {
+		portB = addr.Port
+	} else {
+		require.FailNow(t, "failed to get port from l2")
+	}
+
+	mux := NewMultiTCPMuxDefault(
+		NewTCPMuxDefault(TCPMuxParams{Listener: l1, ReadBufferSize: 8}),
+		NewTCPMuxDefault(TCPMuxParams{Listener: l2, ReadBufferSize: 8}),
+	)
+	t.Cleanup(func() { _ = mux.Close() })
+
+	aNotifier, aConnected := onConnected()
+	aAgent, err := NewAgent(&AgentConfig{
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeTCP4},
+		IncludeLoopback:        true,
+		TCPMux:                 mux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
+		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: net.ParseIP("127.0.0.1"), Port: portA},
+				{IP: net.ParseIP("127.0.0.1"), Port: portB},
+			}
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	defer func() { require.NoError(t, aAgent.Close()) }()
+
+	bNotifier, bConnected := onConnected()
+	bAgent, err := NewAgent(&AgentConfig{
+		CandidateTypes:  []CandidateType{CandidateTypeHost},
+		NetworkTypes:    []NetworkType{NetworkTypeTCP4},
+		IncludeLoopback: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	defer func() { require.NoError(t, bAgent.Close()) }()
+
+	ca, cb := connect(t, aAgent, bAgent)
+	defer func() { _ = ca.Close(); _ = cb.Close() }()
+	<-aConnected
+	<-bConnected
+
+	locals, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	have := map[string]map[int]bool{"127.0.0.1": {}}
+	for _, c := range locals {
+		if c.NetworkType().IsTCP() && c.Type() == CandidateTypeHost && c.TCPType() == TCPTypePassive {
+			if _, ok := have[c.Address()]; !ok {
+				have[c.Address()] = map[int]bool{}
+			}
+			have[c.Address()][c.Port()] = true
+		}
+	}
+	require.True(t, have["127.0.0.1"][portA])
+	require.True(t, have["127.0.0.1"][portB])
+
+	pair, err := aAgent.GetSelectedCandidatePair()
+	require.NoError(t, err)
+	require.NotNil(t, pair)
+	require.Equal(t, "127.0.0.1", pair.Local.Address())
+	require.Contains(t, []int{portA, portB}, pair.Local.Port())
 }
 
 // TestDisconnectedToConnected requires that an agent can go to disconnected,
