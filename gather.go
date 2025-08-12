@@ -422,7 +422,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				return err
 			}
 
-			c, err := NewCandidateHost(&CandidateHostConfig{
+			candidateHost, err := NewCandidateHost(&CandidateHostConfig{
 				Network:           udp,
 				Address:           address,
 				Port:              mappedPorts[i],
@@ -435,8 +435,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				continue
 			}
 
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
+			if err := a.addCandidate(ctx, candidateHost, conn); err != nil {
+				if closeErr := candidateHost.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
 

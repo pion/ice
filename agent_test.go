@@ -1383,12 +1383,12 @@ func TestAdvancedMapperUDPConnectFail(t *testing.T) {
 	select {
 	case <-aFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("aAgent did not reach Failed state")
+		require.FailNow(t, "aAgent did not reach Failed state")
 	}
 	select {
 	case <-bFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("bAgent did not reach Failed state")
+		require.FailNow(t, "bAgent did not reach Failed state")
 	}
 }
 
@@ -1407,6 +1407,7 @@ func TestAdvancedMapperTCPConnectFail(t *testing.T) {
 		l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = l.Close() })
+
 		return NewTCPMuxDefault(TCPMuxParams{Listener: l, ReadBufferSize: 8})
 	}
 
@@ -1493,12 +1494,12 @@ func TestAdvancedMapperTCPConnectFail(t *testing.T) {
 	select {
 	case <-aFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("aAgent did not reach Failed state (TCP)")
+		require.FailNow(t, "aAgent did not reach Failed state (TCP)")
 	}
 	select {
 	case <-bFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("bAgent did not reach Failed state (TCP)")
+		require.FailNow(t, "bAgent did not reach Failed state (TCP)")
 	}
 }
 
@@ -1569,17 +1570,14 @@ func TestAdvancedMapperUDPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 		}
 	}))
 
-	// Gather and exchange
 	gatherAndExchangeCandidates(t, aAgent, bAgent)
 	la, err := aAgent.GetLocalCandidates()
 	require.NoError(t, err)
 	require.Equal(t, 3, len(la))
-	bAgent.GetLocalCandidates()
 	lb, err := bAgent.GetLocalCandidates()
 	require.NoError(t, err)
 	require.Equal(t, 1, len(lb))
 
-	// Attempt connect; expect timeouts/errors due to unroutable advertised addresses.
 	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
 	require.NoError(t, err)
 	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
@@ -1600,16 +1598,15 @@ func TestAdvancedMapperUDPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	<-doneAccept
 	require.Error(t, aErr)
 
-	// Observe failed state
 	select {
 	case <-aFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("aAgent did not reach Failed state (UDP advertised unreachable)")
+		require.FailNow(t, "aAgent did not reach Failed state (UDP advertised unreachable)")
 	}
 	select {
 	case <-bFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("bAgent did not reach Failed state (UDP advertised unreachable)")
+		require.FailNow(t, "bAgent did not reach Failed state (UDP advertised unreachable)")
 	}
 }
 
@@ -1624,11 +1621,11 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	failed := time.Second
 	KeepaliveInterval := time.Duration(0)
 
-	// Create TCPMux listeners for both agents
 	mkTCPMux := func() TCPMux {
 		l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = l.Close() })
+
 		return NewTCPMuxDefault(TCPMuxParams{Listener: l, ReadBufferSize: 8})
 	}
 
@@ -1638,7 +1635,7 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	p1, p2, p3 := 53001, 53002, 53003
 
 	mkAgent := func(mux TCPMux) *Agent {
-		a, err := NewAgent(&AgentConfig{
+		agent, err := NewAgent(&AgentConfig{
 			CandidateTypes:         []CandidateType{CandidateTypeHost},
 			NetworkTypes:           []NetworkType{NetworkTypeTCP4},
 			IncludeLoopback:        true,
@@ -1653,7 +1650,7 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 		})
 		require.NoError(t, err)
 
-		return a
+		return agent
 	}
 
 	muxA := mkTCPMux()
@@ -1688,11 +1685,9 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 		}
 	}))
 
-	// Gather and exchange
 	gatherAndExchangeCandidates(t, aAgent, bAgent)
 	la, err := aAgent.GetLocalCandidates()
 	require.NoError(t, err)
-	// Only passive TCP host candidates should be counted (active TCP may be spawned automatically)
 	var tcpCount int
 	for _, c := range la {
 		if c.NetworkType().IsTCP() && c.Type() == CandidateTypeHost && c.TCPType() == TCPTypePassive {
@@ -1711,7 +1706,6 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	}
 	require.Equal(t, 3, tcpCount)
 
-	// Attempt connect; expect timeouts/errors due to unroutable advertised addresses
 	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
 	require.NoError(t, err)
 	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
@@ -1732,16 +1726,15 @@ func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //
 	<-doneAccept
 	require.Error(t, aErr)
 
-	// Observe failed state
 	select {
 	case <-aFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("aAgent did not reach Failed state (TCP advertised unreachable)")
+		require.FailNow(t, "aAgent did not reach Failed state (TCP advertised unreachable)")
 	}
 	select {
 	case <-bFailed:
 	case <-time.After(3 * time.Second):
-		t.Fatal("bAgent did not reach Failed state (TCP advertised unreachable)")
+		require.FailNow(t, "bAgent did not reach Failed state (TCP advertised unreachable)")
 	}
 }
 

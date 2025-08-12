@@ -910,6 +910,7 @@ func TestUDPMuxDefaultWithAdvancedMapperUsage(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		t.Log(c.NetworkType(), c.Priority(), c)
@@ -951,6 +952,7 @@ func TestUDPMuxDefaultWithAdvancedMapperSkip(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
@@ -988,6 +990,7 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeServerReflexive {
@@ -1037,6 +1040,7 @@ func TestSrflxAdvancedMapperSkip(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeServerReflexive {
@@ -1075,6 +1079,7 @@ func TestGatherCandidatesLocalUDPAdvancedMapper(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
@@ -1122,6 +1127,7 @@ func TestGatherCandidatesLocalTCPAdvancedMapper(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsTCP() && c.TCPType() == TCPTypePassive {
@@ -1166,6 +1172,7 @@ func TestUDPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
@@ -1210,6 +1217,7 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
@@ -1259,6 +1267,7 @@ func TestTCPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsTCP() && c.TCPType() == TCPTypePassive {
@@ -1303,6 +1312,7 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
 			close(done)
+
 			return
 		}
 		if c.Type() == CandidateTypeHost && c.NetworkType().IsTCP() && c.TCPType() == TCPTypePassive {
@@ -1325,7 +1335,6 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 // End-to-end: establish loopback pairing with UDPMux + advanced mapper producing multiple candidates.
 // Force selection to each advertised candidate in turn and verify data flows over the connection.
 func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
-	t.Skip("Selection switching between multiple host candidates is environment-dependent; using control-message validation instead")
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
@@ -1400,7 +1409,7 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 			for _, rc := range set {
 				if rc.Equal(target) {
 					if ch, ok := rc.(*CandidateHost); ok {
-						ch.priorityOverride += 5000
+						ch.priorityOverride += 50000
 					}
 				}
 			}
@@ -1469,8 +1478,9 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 		IncludeLoopback:              true,
 		UDPMux:                       bMux,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} },
-	})
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} 
+	},})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()
 

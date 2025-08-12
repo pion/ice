@@ -459,13 +459,13 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(15 * time.Second).Stop()
 
-	v, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+	vnet, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
 		"27.1.1.1/" + vnetLocalIPA,
 		"27.1.1.2/" + vnetLocalIPA,
 	})
 
 	require.NoError(t, err)
-	defer v.close()
+	defer vnet.close()
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
@@ -482,7 +482,7 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 		MulticastDNSMode:             MulticastDNSModeDisabled,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
 		HostUDPAdvertisedAddrsMapper: udpMapper,
-		Net:                          v.net0,
+		Net:                          vnet.net0,
 	}
 	aAgent, err := NewAgent(aCfg)
 	require.NoError(t, err)
@@ -492,7 +492,7 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 	bCfg := &AgentConfig{
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net1,
+		Net:              vnet.net1,
 	}
 	bAgent, err := NewAgent(bCfg)
 	require.NoError(t, err)
@@ -526,7 +526,7 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(15 * time.Second).Stop()
 
-	v, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+	vnet, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
 		"27.1.1.1/" + vnetLocalIPA,
 		"27.1.1.2/" + vnetLocalIPA,
 		"27.1.1.3/" + vnetLocalIPA,
@@ -534,13 +534,13 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 		"27.1.1.5/" + vnetLocalIPA,
 	})
 	require.NoError(t, err)
-	defer v.close()
+	defer vnet.close()
 
-	pc, err := v.net0.ListenPacket("udp4", "192.168.0.1:0")
+	pc, err := vnet.net0.ListenPacket("udp4", "192.168.0.1:0")
 	require.NoError(t, err)
-	defer pc.Close()
+	defer func() { _ = pc.Close() }()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
-	defer udpMux.Close()
+	defer func() { _ = udpMux.Close() }()
 
 	aNotifier, aConnected := onConnected()
 	aAgent, err := NewAgent(&AgentConfig{
@@ -557,21 +557,21 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 				{IP: net.ParseIP("27.1.1.4"), Port: 0},
 			}
 		},
-		Net: v.net0,
+		Net: vnet.net0,
 	})
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-	defer aAgent.Close()
+	defer func() { require.NoError(t, aAgent.Close()) }()
 
 	bNotifier, bConnected := onConnected()
 	bAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
 		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              v.net1,
+		Net:              vnet.net1,
 	})
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
-	defer bAgent.Close()
+	defer func() { require.NoError(t, bAgent.Close()) }()
 
 	ca, cb := connectWithVNet(t, aAgent, bAgent)
 	defer closePipe(t, ca, cb)
@@ -603,13 +603,22 @@ func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 
 	l1, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	defer l1.Close()
+	defer func() { _ = l1.Close() }()
 	l2, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	defer l2.Close()
+	defer func() { _ = l2.Close() }()
 
-	portA := l1.Addr().(*net.TCPAddr).Port
-	portB := l2.Addr().(*net.TCPAddr).Port
+	var portA, portB int
+	if addr, ok := l1.Addr().(*net.TCPAddr); ok {
+		portA = addr.Port
+	} else {
+		require.FailNow(t, "failed to get port from l1")
+	}
+	if addr, ok := l2.Addr().(*net.TCPAddr); ok {
+		portB = addr.Port
+	} else {
+		require.FailNow(t, "failed to get port from l2")
+	}
 
 	mux := NewMultiTCPMuxDefault(
 		NewTCPMuxDefault(TCPMuxParams{Listener: l1, ReadBufferSize: 8}),
@@ -633,17 +642,17 @@ func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-	defer aAgent.Close()
+	defer func() { require.NoError(t, aAgent.Close()) }()
 
 	bNotifier, bConnected := onConnected()
 	bAgent, err := NewAgent(&AgentConfig{
-		CandidateTypes: []CandidateType{CandidateTypeHost},
-		NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+		CandidateTypes:  []CandidateType{CandidateTypeHost},
+		NetworkTypes:    []NetworkType{NetworkTypeTCP4},
 		IncludeLoopback: true,
 	})
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
-	defer bAgent.Close()
+	defer func() { require.NoError(t, bAgent.Close()) }()
 
 	ca, cb := connect(t, aAgent, bAgent)
 	defer func() { _ = ca.Close(); _ = cb.Close() }()

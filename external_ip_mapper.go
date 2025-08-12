@@ -204,9 +204,10 @@ func (m *externalIPMapper) findExternalEndpoints(network string, localIP net.IP)
 	}
 
 	if m.hostUDPAdvertisedAddrsMapper != nil {
-		if network == udp {
+		switch network {
+		case udp:
 			return m.hostUDPAdvertisedAddrsMapper(localIP), nil
-		} else if network == tcp {
+		case tcp:
 			return m.hostTCPAdvertisedAddrsMapper(localIP), nil
 		}
 	} else {
@@ -214,9 +215,10 @@ func (m *externalIPMapper) findExternalEndpoints(network string, localIP net.IP)
 		if err != nil {
 			return nil, err
 		}
-		if network == udp {
+		switch network {
+		case udp:
 			return []Endpoint{{IP: extIP, Port: 0}}, nil
-		} else if network == tcp {
+		case tcp:
 			return []Endpoint{{IP: extIP, Port: 0}}, nil
 		}
 	}
