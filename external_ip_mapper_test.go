@@ -308,12 +308,10 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("newExternalIPMapperAdvanced", func(t *testing.T) {
-		// Both mappers nil -> returns nil mapper
 		mapper, err := newExternalIPMapperAdvanced(CandidateTypeUnspecified, nil, nil)
 		require.NoError(t, err)
 		require.Nil(t, mapper)
 
-		// Unsupported candidate types -> error
 		mapper, err = newExternalIPMapperAdvanced(CandidateTypePeerReflexive, nil, func(net.IP) []Endpoint { return nil })
 		require.Error(t, err)
 		require.Nil(t, mapper)
@@ -321,7 +319,6 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		require.Error(t, err)
 		require.Nil(t, mapper)
 
-		// Only UDP mapper provided -> TCP defaults to identity mapping, CandidateType defaults to Host
 		udpMappedIP := net.ParseIP("1.2.3.4")
 		udpMappedPort := 12345
 		mapper, err = newExternalIPMapperAdvanced(CandidateTypeUnspecified,
@@ -338,7 +335,6 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		require.Equal(t, udpMappedIP.String(), eps[0].IP.String())
 		require.Equal(t, udpMappedPort, eps[0].Port)
 
-		// For TCP, identity mapping should be used
 		local := net.IP{10, 0, 0, 1}
 		eps, err = mapper.findExternalEndpoints(tcp, local)
 		require.NoError(t, err)
@@ -346,7 +342,6 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		require.Equal(t, local.String(), eps[0].IP.String())
 		require.Equal(t, 0, eps[0].Port)
 
-		// Both mappers provided and CandidateTypeServerReflexive
 		tcpMappedIP := net.ParseIP("5.6.7.8")
 		tcpMappedPort := 23456
 		mapper, err = newExternalIPMapperAdvanced(CandidateTypeServerReflexive,
@@ -369,7 +364,6 @@ func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
 		require.Equal(t, tcpMappedIP.String(), eps[0].IP.String())
 		require.Equal(t, tcpMappedPort, eps[0].Port)
 
-		// Unknown network -> error
 		eps, err = mapper.findExternalEndpoints("sctp", net.IP{1, 1, 1, 1})
 		require.Error(t, err)
 		require.Nil(t, eps)

@@ -881,7 +881,6 @@ func TestUDPMuxDefaultWithAdvancedMapperUsage(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	// Create a UDP mux bound to localhost
 	conn, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
@@ -891,7 +890,6 @@ func TestUDPMuxDefaultWithAdvancedMapperUsage(t *testing.T) {
 
 	udpPort := conn.LocalAddr().(*net.UDPAddr).Port //nolint:forcetypeassert
 
-	// Advertise two endpoints: one with explicit port, one with zero (inherit local port)
 	advIP1 := net.ParseIP("192.0.2.1")
 	advPort1 := 45678
 	advIP2 := net.ParseIP("198.51.100.2")
@@ -923,12 +921,10 @@ func TestUDPMuxDefaultWithAdvancedMapperUsage(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both advertised endpoints to be present
 	require.Equal(t, advPort1, got[advIP1.String()])
 	require.Equal(t, udpPort, got[advIP2.String()])
 }
 
-// Verify advanced external IP mapper can suppress host candidates by returning no endpoints.
 func TestUDPMuxDefaultWithAdvancedMapperSkip(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -965,7 +961,6 @@ func TestUDPMuxDefaultWithAdvancedMapperSkip(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// No host candidates should be produced
 	require.Equal(t, 0, hostCount)
 }
 
@@ -978,7 +973,6 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 	advIP1 := net.ParseIP("203.0.113.10")
 	advPort1 := 55001
 	advIP2 := net.ParseIP("203.0.113.11")
-	// advIP2 will inherit local port (endpoint.port == 0)
 
 	agent, err := NewAgent(&AgentConfig{
 		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
@@ -1004,10 +998,8 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect two srflx candidates
 	require.Len(t, srflx, 2)
 
-	// Index by address for assertions
 	m := map[string]Candidate{}
 	for _, c := range srflx {
 		m[c.Address()] = c
@@ -1021,7 +1013,6 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 
 	c2 := m[advIP2.String()]
 	require.NotNil(t, c2)
-	// For endpoint.port == 0, mapped port must equal the local port (RelPort)
 	require.NotNil(t, c2.RelatedAddress())
 	require.Equal(t, c2.RelatedAddress().Port, c2.Port())
 }
@@ -1065,7 +1056,7 @@ func TestGatherCandidatesLocalUDPAdvancedMapper(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	advIP1 := net.ParseIP("198.18.0.1") // TEST-NET-2 range
+	advIP1 := net.ParseIP("198.18.0.1")
 	advPort1 := 40001
 	advIP2 := net.ParseIP("198.18.0.2")
 
@@ -1094,7 +1085,6 @@ func TestGatherCandidatesLocalUDPAdvancedMapper(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both advertised endpoints to be present
 	require.Equal(t, advPort1, got[advIP1.String()])
 	require.NotZero(t, got[advIP2.String()])
 }
@@ -1112,7 +1102,7 @@ func TestGatherCandidatesLocalTCPAdvancedMapper(t *testing.T) {
 	tcpPort := listener.Addr().(*net.TCPAddr).Port //nolint:forcetypeassert
 	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, ReadBufferSize: 8})
 
-	advIP1 := net.ParseIP("198.51.100.10") // TEST-NET-2
+	advIP1 := net.ParseIP("198.51.100.10")
 	advPort1 := 41001
 	advIP2 := net.ParseIP("198.51.100.11")
 
@@ -1142,7 +1132,6 @@ func TestGatherCandidatesLocalTCPAdvancedMapper(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both advertised endpoints to be present
 	require.Equal(t, advPort1, got[advIP1.String()])
 	require.Equal(t, tcpPort, got[advIP2.String()])
 }
@@ -1152,7 +1141,6 @@ func TestUDPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	// UDPMux on random localhost port
 	conn, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
@@ -1188,7 +1176,6 @@ func TestUDPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both IPs present with the same advertised port
 	require.Equal(t, samePort, got[ipA.String()])
 	require.Equal(t, samePort, got[ipB.String()])
 }
@@ -1198,7 +1185,6 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	// UDPMux on random localhost port
 	conn, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
@@ -1220,7 +1206,6 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	defer func() { require.NoError(t, agent.Close()) }()
 
 	done := make(chan struct{})
-	// address -> set of ports
 	got := map[string]map[int]bool{}
 	require.NoError(t, agent.OnCandidate(func(c Candidate) {
 		if c == nil {
@@ -1238,7 +1223,6 @@ func TestUDPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both ports present for the single IP
 	ports := got[ip.String()]
 	require.True(t, ports[portA])
 	require.True(t, ports[portB])
@@ -1285,7 +1269,6 @@ func TestTCPMuxAdvancedMapperSamePortDifferentIPs(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both IPs present with the same advertised port
 	require.Equal(t, samePort, got[ipA.String()])
 	require.Equal(t, samePort, got[ipB.String()])
 }
@@ -1333,7 +1316,6 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-done
 
-	// Expect both ports present for the single IP
 	ports := got[ip.String()]
 	require.True(t, ports[portA])
 	require.True(t, ports[portB])
@@ -1347,7 +1329,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	// UDPMux for side B (the side with multiple advertised endpoints)
 	bConn, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
 	defer func() { _ = bConn.Close() }()
@@ -1359,7 +1340,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 	portA := 49001
 	portB := 49002
 
-	// Agent A: basic
 	aAgent, err := NewAgent(&AgentConfig{
 		CandidateTypes:  []CandidateType{CandidateTypeHost},
 		NetworkTypes:    []NetworkType{NetworkTypeUDP4},
@@ -1368,7 +1348,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, aAgent.Close()) }()
 
-	// Agent B: UDPMux + advanced mapper yielding two candidates sharing the same PacketConn
 	bAgent, err := NewAgent(&AgentConfig{
 		CandidateTypes:               []CandidateType{CandidateTypeHost},
 		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
@@ -1380,11 +1359,9 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()
 
-	// Connect
 	aConn, bConnICE := connect(t, aAgent, bAgent)
 	defer closePipe(t, aConn, bConnICE)
 
-	// Helper to send data and expect receipt
 	sendAndRecv := func() {
 		payload := []byte("hello")
 		_, err := bConnICE.Write(payload)
@@ -1395,7 +1372,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 		require.Equal(t, payload, buf)
 	}
 
-	// Prepare to detect selected remote candidate changes on Agent A
 	selectedCh := make(chan Candidate, 2)
 	require.NoError(t, aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
 		select {
@@ -1404,7 +1380,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 		}
 	}))
 
-	// Map of expected remote candidates (those from Agent B)
 	bcands, err := bAgent.GetLocalCandidates()
 	require.NoError(t, err)
 	var bCandA, bCandB Candidate
@@ -1420,9 +1395,7 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 	require.NotNil(t, bCandA)
 	require.NotNil(t, bCandB)
 
-	// Function to bias selection on A towards a specific remote candidate from B and trigger re-selection
 	forceSelect := func(target Candidate) {
-		// Increase target priority on A's view of remote candidates
 		for _, set := range aAgent.remoteCandidates {
 			for _, rc := range set {
 				if rc.Equal(target) {
@@ -1434,7 +1407,6 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 		}
 		deadline := time.Now().Add(2 * time.Second)
 		for {
-			// Send USE-CANDIDATE from B using the target candidate to A's current remote
 			msg, errB := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(aAgent.localUfrag+":"+aAgent.remoteUfrag),
 				UseCandidate(),
@@ -1446,9 +1418,7 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 			_, errB = target.writeTo(msg.Raw, bAgent.getSelectedPair().Remote)
 			require.NoError(t, errB)
 
-			// Poll for selection to update
 			time.Sleep(100 * time.Millisecond)
-			// Drain any notification
 			select {
 			case sel := <-selectedCh:
 				if sel.Equal(target) {
@@ -1466,10 +1436,8 @@ func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
 		}
 	}
 
-	// Select first candidate and send data
 	forceSelect(bCandA)
 	sendAndRecv()
-	// Select second candidate and send data
 	forceSelect(bCandB)
 	sendAndRecv()
 }
@@ -1480,7 +1448,6 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	// UDPMux for side B
 	bPC, err := net.ListenPacket("udp4", ":0")
 	require.NoError(t, err)
 	defer func() { _ = bPC.Close() }()
@@ -1507,10 +1474,8 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()
 
-	// Connect
 	_, _ = connect(t, aAgent, bAgent)
 
-	// Build a Binding Request for A's credentials
 	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 		stun.NewUsername(aAgent.localUfrag+":"+aAgent.remoteUfrag),
 		UseCandidate(),

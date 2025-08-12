@@ -45,7 +45,11 @@ func (v *virtualNet) close() {
 	v.wan.Stop()     //nolint:errcheck,gosec
 }
 
-func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint:cyclop
+func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
+	return buildVNetWithCustomLAN0StaticIPs(natType0, natType1, []string{})
+}
+
+func buildVNetWithCustomLAN0StaticIPs(natType0, natType1 *vnet.NATType, lan0StaticIPs []string) (*virtualNet, error) { //nolint:cyclop
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN
@@ -73,6 +77,10 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	lan0, err := vnet.NewRouter(&vnet.RouterConfig{
 		StaticIPs: func() []string {
 			if natType0.Mode == vnet.NATModeNAT1To1 {
+				if len(lan0StaticIPs) > 0 {
+					return lan0StaticIPs
+				}
+
 				return []string{
 					vnetGlobalIPA + "/" + vnetLocalIPA,
 				}
@@ -449,48 +457,16 @@ func TestConnectivityVNet(t *testing.T) {
 // the same PacketConn (multiple recv loops on the same underlying socket).
 func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	// Limit runtime in case of deadlocks
 	defer test.TimeOut(15 * time.Second).Stop()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-
-	// Build WAN router
-	wan, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "0.0.0.0/0",
-		LoggerFactory: loggerFactory,
+	v, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+		"27.1.1.1/" + vnetLocalIPA,
+		"27.1.1.2/" + vnetLocalIPA,
 	})
+
 	require.NoError(t, err)
+	defer v.close()
 
-	// LAN 0 behind 1:1 NAT with TWO external IPs mapping to the same local IP
-	// 27.1.1.1/192.168.0.1 and 27.1.1.2/192.168.0.1
-	natTypeLan0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
-	lan0, err := vnet.NewRouter(&vnet.RouterConfig{
-		StaticIPs: []string{
-			"27.1.1.1/192.168.0.1",
-			"27.1.1.2/192.168.0.1",
-		},
-		CIDR:          "192.168.0.1/24",
-		NATType:       natTypeLan0,
-		LoggerFactory: loggerFactory,
-	})
-	require.NoError(t, err)
-
-	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.1"}})
-	require.NoError(t, err)
-	require.NoError(t, lan0.AddNet(net0))
-	require.NoError(t, wan.AddRouter(lan0))
-
-	// LAN 1 without NAT (simple routed network)
-	net1, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.1.1"}})
-	require.NoError(t, err)
-	require.NoError(t, wan.AddNet(net1))
-
-	// Start routers
-	require.NoError(t, wan.Start())
-	defer func() { require.NoError(t, wan.Stop()) }()
-
-	// Agent A (behind LAN 0 NAT) advertises two external endpoints for its single local socket
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
@@ -506,7 +482,7 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 		MulticastDNSMode:             MulticastDNSModeDisabled,
 		NAT1To1IPCandidateType:       CandidateTypeHost,
 		HostUDPAdvertisedAddrsMapper: udpMapper,
-		Net:                          net0,
+		Net:                          v.net0,
 	}
 	aAgent, err := NewAgent(aCfg)
 	require.NoError(t, err)
@@ -516,22 +492,19 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 	bCfg := &AgentConfig{
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net1,
+		Net:              v.net1,
 	}
 	bAgent, err := NewAgent(bCfg)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 	defer func() { require.NoError(t, bAgent.Close()) }()
 
-	// Connect
 	ca, cb := connectWithVNet(t, aAgent, bAgent)
 	defer closePipe(t, ca, cb)
 
-	// Ensure both are connected
 	<-aConnected
 	<-bConnected
 
-	// Validate that A gathered two host candidates for the mapped external IPs
 	locals, err := aAgent.GetLocalCandidates()
 	require.NoError(t, err)
 	seen := map[string]bool{}
@@ -543,7 +516,6 @@ func TestExternalIPMapperOneToManyConnectivity(t *testing.T) {
 	require.True(t, seen["27.1.1.1"], "expected host candidate for first external IP")
 	require.True(t, seen["27.1.1.2"], "expected host candidate for second external IP")
 
-	// Verify selected pair uses one of the external IPs (either is acceptable)
 	pair, err := aAgent.GetSelectedCandidatePair()
 	require.NoError(t, err)
 	require.NotNil(t, pair)
@@ -554,20 +526,22 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(15 * time.Second).Stop()
 
-	// Build vnet with LAN0 behind 1:1 NAT advertising two externals
-	v, err := buildVNet(&vnet.NATType{Mode: vnet.NATModeNAT1To1},
-		&vnet.NATType{ /* other side routed */ })
+	v, err := buildVNetWithCustomLAN0StaticIPs(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{}, []string{
+		"27.1.1.1/" + vnetLocalIPA,
+		"27.1.1.2/" + vnetLocalIPA,
+		"27.1.1.3/" + vnetLocalIPA,
+		"27.1.1.4/" + vnetLocalIPA,
+		"27.1.1.5/" + vnetLocalIPA,
+	})
 	require.NoError(t, err)
 	defer v.close()
 
-	// UDPMux bound on LAN0’s local IP within vnet
 	pc, err := v.net0.ListenPacket("udp4", "192.168.0.1:0")
 	require.NoError(t, err)
 	defer pc.Close()
 	udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
 	defer udpMux.Close()
 
-	// Agent A: UDPMux + advanced mapper returns two externals for same local
 	aNotifier, aConnected := onConnected()
 	aAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:           []NetworkType{NetworkTypeUDP4},
@@ -579,6 +553,8 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 			return []Endpoint{
 				{IP: net.ParseIP("27.1.1.1"), Port: 0},
 				{IP: net.ParseIP("27.1.1.2"), Port: 0},
+				{IP: net.ParseIP("27.1.1.3"), Port: 0},
+				{IP: net.ParseIP("27.1.1.4"), Port: 0},
 			}
 		},
 		Net: v.net0,
@@ -587,7 +563,6 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 	defer aAgent.Close()
 
-	// Agent B: normal agent on a different LAN
 	bNotifier, bConnected := onConnected()
 	bAgent, err := NewAgent(&AgentConfig{
 		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
@@ -613,18 +588,19 @@ func TestExternalIPMapperOneToManyConnectivity_UDPMux(t *testing.T) {
 	}
 	require.True(t, have["27.1.1.1"])
 	require.True(t, have["27.1.1.2"])
+	require.True(t, have["27.1.1.3"])
+	require.True(t, have["27.1.1.4"])
 
 	pair, err := aAgent.GetSelectedCandidatePair()
 	require.NoError(t, err)
 	require.NotNil(t, pair)
-	require.Contains(t, []string{"27.1.1.1", "27.1.1.2"}, pair.Local.Address())
+	require.Contains(t, []string{"27.1.1.1", "27.1.1.2", "27.1.1.3", "27.1.1.4"}, pair.Local.Address())
 }
 
 func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(15 * time.Second).Stop()
 
-	// Two TCP listeners on loopback
 	l1, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
 	defer l1.Close()
@@ -649,7 +625,6 @@ func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 		TCPMux:                 mux,
 		NAT1To1IPCandidateType: CandidateTypeHost,
 		HostTCPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
-			// Advertise the ports we actually listen on
 			return []Endpoint{
 				{IP: net.ParseIP("127.0.0.1"), Port: portA},
 				{IP: net.ParseIP("127.0.0.1"), Port: portB},
@@ -664,20 +639,17 @@ func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 	bAgent, err := NewAgent(&AgentConfig{
 		CandidateTypes: []CandidateType{CandidateTypeHost},
 		NetworkTypes:   []NetworkType{NetworkTypeTCP4},
-		// Active TCP is enabled by default; B will dial A’s passive candidates
 		IncludeLoopback: true,
 	})
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 	defer bAgent.Close()
 
-	// Standard non-vnet connect (loopback)
 	ca, cb := connect(t, aAgent, bAgent)
 	defer func() { _ = ca.Close(); _ = cb.Close() }()
 	<-aConnected
 	<-bConnected
 
-	// Verify both advertised TCP host candidates exist
 	locals, err := aAgent.GetLocalCandidates()
 	require.NoError(t, err)
 	have := map[string]map[int]bool{"127.0.0.1": {}}
@@ -692,7 +664,6 @@ func TestExternalIPMapperOneToManyConnectivity_TCPMux(t *testing.T) {
 	require.True(t, have["127.0.0.1"][portA])
 	require.True(t, have["127.0.0.1"][portB])
 
-	// Selected pair should use one of the two advertised ports
 	pair, err := aAgent.GetSelectedCandidatePair()
 	require.NoError(t, err)
 	require.NotNil(t, pair)
