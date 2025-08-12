@@ -49,7 +49,10 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) {
 	return buildVNetWithCustomLAN0StaticIPs(natType0, natType1, []string{})
 }
 
-func buildVNetWithCustomLAN0StaticIPs(natType0, natType1 *vnet.NATType, lan0StaticIPs []string) (*virtualNet, error) { //nolint:cyclop
+func buildVNetWithCustomLAN0StaticIPs(
+	natType0, natType1 *vnet.NATType,
+	lan0StaticIPs []string,
+) (*virtualNet, error) { //nolint:cyclop
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN

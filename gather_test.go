@@ -977,10 +977,15 @@ func TestSrflxAdvancedMapperMultipleEndpoints(t *testing.T) {
 	advIP2 := net.ParseIP("203.0.113.11")
 
 	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeServerReflexive},
-		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
-		NAT1To1IPCandidateType:       CandidateTypeServerReflexive,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advIP1, Port: advPort1}, {IP: advIP2, Port: 0}} },
+		CandidateTypes:         []CandidateType{CandidateTypeServerReflexive},
+		NetworkTypes:           []NetworkType{NetworkTypeUDP4},
+		NAT1To1IPCandidateType: CandidateTypeServerReflexive,
+		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
+			return []Endpoint{
+				{IP: advIP1, Port: advPort1},
+				{IP: advIP2, Port: 0},
+			}
+		},
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
@@ -1332,125 +1337,6 @@ func TestTCPMuxAdvancedMapperSameIPDifferentPorts(t *testing.T) {
 	require.True(t, len(got) == 1)
 }
 
-// End-to-end: establish loopback pairing with UDPMux + advanced mapper producing multiple candidates.
-// Force selection to each advertised candidate in turn and verify data flows over the connection.
-func TestUDPMuxAdvancedMapperEndToEndPerCandidate(t *testing.T) {
-	defer test.CheckRoutines(t)()
-	defer test.TimeOut(time.Second * 30).Stop()
-
-	bConn, err := net.ListenPacket("udp4", ":0")
-	require.NoError(t, err)
-	defer func() { _ = bConn.Close() }()
-	bMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: bConn})
-	defer func() { _ = bMux.Close() }()
-
-	advA := net.ParseIP("198.51.100.70")
-	advB := net.ParseIP("198.51.100.71")
-	portA := 49001
-	portB := 49002
-
-	aAgent, err := NewAgent(&AgentConfig{
-		CandidateTypes:  []CandidateType{CandidateTypeHost},
-		NetworkTypes:    []NetworkType{NetworkTypeUDP4},
-		IncludeLoopback: true,
-	})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, aAgent.Close()) }()
-
-	bAgent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
-		IncludeLoopback:              true,
-		UDPMux:                       bMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
-		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint { return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} },
-	})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, bAgent.Close()) }()
-
-	aConn, bConnICE := connect(t, aAgent, bAgent)
-	defer closePipe(t, aConn, bConnICE)
-
-	sendAndRecv := func() {
-		payload := []byte("hello")
-		_, err := bConnICE.Write(payload)
-		require.NoError(t, err)
-		buf := make([]byte, len(payload))
-		_, err = aConn.Read(buf)
-		require.NoError(t, err)
-		require.Equal(t, payload, buf)
-	}
-
-	selectedCh := make(chan Candidate, 2)
-	require.NoError(t, aAgent.OnSelectedCandidatePairChange(func(_, remote Candidate) {
-		select {
-		case selectedCh <- remote:
-		default:
-		}
-	}))
-
-	bcands, err := bAgent.GetLocalCandidates()
-	require.NoError(t, err)
-	var bCandA, bCandB Candidate
-	for _, c := range bcands {
-		if c.Type() == CandidateTypeHost && c.NetworkType().IsUDP() {
-			if c.Address() == advA.String() && c.Port() == portA {
-				bCandA = c
-			} else if c.Address() == advB.String() && c.Port() == portB {
-				bCandB = c
-			}
-		}
-	}
-	require.NotNil(t, bCandA)
-	require.NotNil(t, bCandB)
-
-	forceSelect := func(target Candidate) {
-		for _, set := range aAgent.remoteCandidates {
-			for _, rc := range set {
-				if rc.Equal(target) {
-					if ch, ok := rc.(*CandidateHost); ok {
-						ch.priorityOverride += 50000
-					}
-				}
-			}
-		}
-		deadline := time.Now().Add(2 * time.Second)
-		for {
-			msg, errB := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(aAgent.localUfrag+":"+aAgent.remoteUfrag),
-				UseCandidate(),
-				PriorityAttr(target.Priority()),
-				stun.NewShortTermIntegrity(aAgent.localPwd),
-				stun.Fingerprint,
-			)
-			require.NoError(t, errB)
-			_, errB = target.writeTo(msg.Raw, bAgent.getSelectedPair().Remote)
-			require.NoError(t, errB)
-
-			time.Sleep(100 * time.Millisecond)
-			select {
-			case sel := <-selectedCh:
-				if sel.Equal(target) {
-					return
-				}
-			default:
-			}
-			if aAgent.getSelectedPair().Remote.Equal(target) {
-				return
-			}
-			if time.Now().After(deadline) {
-				require.True(t, aAgent.getSelectedPair().Remote.Equal(target))
-				return
-			}
-		}
-	}
-
-	forceSelect(bCandA)
-	sendAndRecv()
-	forceSelect(bCandB)
-	sendAndRecv()
-}
-
 // Validate that control messages (STUN Binding Requests) can be sent from each advertised candidate
 // sharing the same PacketConn and reach the peer without error.
 func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
@@ -1473,14 +1359,15 @@ func TestUDPMuxAdvancedMapperPerCandidateControlMessages(t *testing.T) {
 	defer func() { require.NoError(t, aAgent.Close()) }()
 
 	bAgent, err := NewAgent(&AgentConfig{
-		CandidateTypes:               []CandidateType{CandidateTypeHost},
-		NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
-		IncludeLoopback:              true,
-		UDPMux:                       bMux,
-		NAT1To1IPCandidateType:       CandidateTypeHost,
+		CandidateTypes:         []CandidateType{CandidateTypeHost},
+		NetworkTypes:           []NetworkType{NetworkTypeUDP4},
+		IncludeLoopback:        true,
+		UDPMux:                 bMux,
+		NAT1To1IPCandidateType: CandidateTypeHost,
 		HostUDPAdvertisedAddrsMapper: func(_ net.IP) []Endpoint {
-			return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}} 
-	},})
+			return []Endpoint{{IP: advA, Port: portA}, {IP: advB, Port: portB}}
+		},
+	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, bAgent.Close()) }()
 

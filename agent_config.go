@@ -291,12 +291,18 @@ func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclo
 	var err error
 	// Prefer advanced mappings if provided; otherwise use legacy list
 	if config.HostUDPAdvertisedAddrsMapper != nil || config.HostTCPAdvertisedAddrsMapper != nil {
-		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.HostUDPAdvertisedAddrsMapper, config.HostTCPAdvertisedAddrsMapper)
+		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType,
+			config.HostUDPAdvertisedAddrsMapper,
+			config.HostTCPAdvertisedAddrsMapper,
+		)
 		if err != nil {
 			return err
 		}
 	} else {
-		agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+		agent.extIPMapper, err = newExternalIPMapper(
+			config.NAT1To1IPCandidateType,
+			config.NAT1To1IPs,
+		)
 		if err != nil {
 			return err
 		}

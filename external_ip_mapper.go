@@ -166,7 +166,9 @@ func (m *externalIPMapper) findExternalIP(localIPStr string) (net.IP, error) {
 	return m.ipv6Mapping.findExternalIP(locIP)
 }
 
-func newExternalIPMapperAdvanced(candidateType CandidateType, hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint, hostTCPAdvertisedAddrsMapper func(net.IP) []Endpoint) (*externalIPMapper, error) {
+func newExternalIPMapperAdvanced(candidateType CandidateType, hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint,
+	hostTCPAdvertisedAddrsMapper func(net.IP) []Endpoint,
+) (*externalIPMapper, error) {
 	if hostUDPAdvertisedAddrsMapper == nil && hostTCPAdvertisedAddrsMapper == nil {
 		return nil, nil //nolint:nilnil
 	}
