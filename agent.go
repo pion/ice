@@ -149,10 +149,25 @@ type Agent struct {
 	proxyDialer proxy.Dialer
 
 	enableUseCandidateCheckPriority bool
+
+	// Renomination support
+	enableRenomination       bool
+	nominationValueGenerator func() uint32
+	nominationAttribute      stun.AttrType
 }
 
 // NewAgent creates a new Agent.
-func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit,cyclop
+func NewAgent(config *AgentConfig) (*Agent, error) {
+	return newAgentWithConfig(config)
+}
+
+// NewAgentWithOptions creates a new Agent with options only.
+func NewAgentWithOptions(opts ...AgentOption) (*Agent, error) {
+	return newAgentWithConfig(&AgentConfig{}, opts...)
+}
+
+// newAgentWithConfig is the internal function that creates an agent with config and options.
+func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error) { //nolint:cyclop
 	var err error
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
@@ -225,7 +240,12 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit,cyclop
 		userBindingRequestHandler: config.BindingRequestHandler,
 
 		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
+
+		enableRenomination:       false,
+		nominationValueGenerator: nil,
+		nominationAttribute:      stun.AttrType(0x0030), // Default value
 	}
+
 	agent.connectionStateNotifier = &handlerNotifier{
 		connectionStateFunc: agent.onConnectionStateChange,
 		done:                make(chan struct{}),
@@ -325,6 +345,15 @@ func NewAgent(config *AgentConfig) (*Agent, error) { //nolint:gocognit,cyclop
 		_ = agent.Close()
 
 		return nil, err
+	}
+
+	for _, opt := range opts {
+		if err := opt(agent); err != nil {
+			agent.closeMulticastConn()
+			_ = agent.Close()
+
+			return nil, err
+		}
 	}
 
 	return agent, nil
@@ -1363,4 +1392,66 @@ func (a *Agent) getSelector() pairCandidateSelector {
 	defer a.selectorLock.Unlock()
 
 	return a.selector
+}
+
+// getNominationValue returns a nomination value if generator is available, otherwise 0.
+func (a *Agent) getNominationValue() uint32 {
+	if a.nominationValueGenerator != nil {
+		return a.nominationValueGenerator()
+	}
+
+	return 0
+}
+
+// RenominateCandidate allows the controlling ICE agent to nominate a new candidate pair.
+// This implements the continuous renomination feature from draft-thatcher-ice-renomination-01.
+func (a *Agent) RenominateCandidate(local, remote Candidate) error {
+	if !a.isControlling.Load() {
+		return ErrOnlyControllingAgentCanRenominate
+	}
+
+	if !a.enableRenomination {
+		return ErrRenominationNotEnabled
+	}
+
+	// Find the candidate pair
+	pair := a.findPair(local, remote)
+	if pair == nil {
+		return ErrCandidatePairNotFound
+	}
+
+	// Send nomination with custom attribute
+	return a.sendNominationRequest(pair, a.getNominationValue())
+}
+
+// sendNominationRequest sends a nomination request with custom nomination value.
+func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint32) error {
+	attributes := []stun.Setter{
+		stun.TransactionID,
+		stun.NewUsername(a.remoteUfrag + ":" + a.localUfrag),
+		UseCandidate(),
+		AttrControlling(a.tieBreaker),
+		PriorityAttr(pair.Local.Priority()),
+		stun.NewShortTermIntegrity(a.remotePwd),
+		stun.Fingerprint,
+	}
+
+	// Add nomination attribute if renomination is enabled and value > 0
+	if a.enableRenomination && nominationValue > 0 {
+		attributes = append(attributes, NominationSetter{
+			Value:    nominationValue,
+			AttrType: a.nominationAttribute,
+		})
+		a.log.Tracef("Sending renomination request from %s to %s with nomination value %d",
+			pair.Local, pair.Remote, nominationValue)
+	}
+
+	msg, err := stun.Build(append([]stun.Setter{stun.BindingRequest}, attributes...)...)
+	if err != nil {
+		return fmt.Errorf("failed to build nomination request: %w", err)
+	}
+
+	a.sendBindingRequest(msg, pair.Local, pair.Remote)
+
+	return nil
 }
