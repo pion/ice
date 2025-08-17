@@ -190,7 +190,7 @@ func (t *tcpPacketConn) startReading(conn net.Conn) {
 			t.params.Logger.Warnf("Failed to read streaming packet: %s", err)
 			last := t.removeConn(conn)
 			// Only propagate connection closure errors if no other open connection exists.
-			if last || !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
+			if last || (!errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed)) {
 				t.handleRecv(streamingPacket{nil, conn.RemoteAddr(), err})
 			}
 

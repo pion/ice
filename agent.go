@@ -1094,9 +1094,9 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 	}
 
 	if msg.Type.Method != stun.MethodBinding ||
-		!(msg.Type.Class == stun.ClassSuccessResponse ||
-			msg.Type.Class == stun.ClassRequest ||
-			msg.Type.Class == stun.ClassIndication) {
+		(msg.Type.Class != stun.ClassSuccessResponse &&
+			msg.Type.Class != stun.ClassRequest &&
+			msg.Type.Class != stun.ClassIndication) {
 		a.log.Tracef("Unhandled STUN from %s to %s class(%s) method(%s)", remote, local, msg.Type.Class, msg.Type.Method)
 
 		return
