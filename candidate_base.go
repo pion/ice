@@ -243,7 +243,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
-			if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
 			}
 
@@ -891,10 +891,10 @@ func readCandidateCharToken(raw string, start int, limit int) (string, int, erro
 			return "", 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit)
 		}
 
-		if !(char >= 'A' && char <= 'Z' ||
-			char >= 'a' && char <= 'z' ||
-			char >= '0' && char <= '9' ||
-			char == '+' || char == '/') {
+		if (char < 'A' || char > 'Z') &&
+			(char < 'a' || char > 'z') &&
+			(char < '0' || char > '9') &&
+			char != '+' && char != '/' {
 			return "", 0, fmt.Errorf("invalid ice-char token: %c", char) //nolint: err113 // handled by caller
 		}
 	}
@@ -928,7 +928,7 @@ func readCandidateDigitToken(raw string, start, limit int) (int, int, error) {
 			return 0, 0, fmt.Errorf("token too long: %s expected 1x%d", raw[start:start+i], limit)
 		}
 
-		if !(char >= '0' && char <= '9') {
+		if char < '0' || char > '9' {
 			return 0, 0, fmt.Errorf("invalid digit token: %c", char) //nolint: err113 // handled by caller
 		}
 
@@ -962,9 +962,9 @@ func readCandidateByteString(raw string, start int) (string, int, error) {
 		}
 
 		// 1*(%x01-09/%x0B-0C/%x0E-FF)
-		if !(char >= 0x01 && char <= 0x09 ||
-			char >= 0x0B && char <= 0x0C ||
-			char >= 0x0E && char <= 0xFF) {
+		if (char < 0x01 || char > 0x09) &&
+			(char < 0x0B || char > 0x0C) &&
+			(char < 0x0E || char > 0xFF) {
 			return "", 0, fmt.Errorf("invalid byte-string character: %c", char) //nolint: err113 // handled by caller
 		}
 	}
