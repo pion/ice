@@ -1295,6 +1295,449 @@ func TestGetRemoteCandidates(t *testing.T) {
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 }
 
+// Ensure that when HostUDPAdvertisedAddrsMapper returns no endpoints, agents fail to connect.
+func TestAdvancedMapperUDPConnectFail(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(5 * time.Second).Stop()
+
+	disconnected := time.Second
+	failed := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	mkAgent := func() *Agent {
+		a, err := NewAgent(&AgentConfig{
+			CandidateTypes:               []CandidateType{CandidateTypeHost},
+			NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
+			IncludeLoopback:              true,
+			DisconnectedTimeout:          &disconnected,
+			FailedTimeout:                &failed,
+			KeepaliveInterval:            &KeepaliveInterval,
+			NAT1To1IPCandidateType:       CandidateTypeHost,
+			HostUDPAdvertisedAddrsMapper: func(net.IP) []Endpoint { return []Endpoint{} },
+		})
+		require.NoError(t, err)
+
+		return a
+	}
+
+	aAgent := mkAgent()
+	bAgent := mkAgent()
+	defer func() {
+		require.NoError(t, aAgent.Close())
+		require.NoError(t, bAgent.Close())
+	}()
+
+	aFailed := make(chan struct{})
+	bFailed := make(chan struct{})
+	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-aFailed:
+			default:
+				close(aFailed)
+			}
+		}
+	}))
+	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-bFailed:
+			default:
+				close(bFailed)
+			}
+		}
+	}))
+
+	// Gather (should produce zero candidates) and exchange
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
+	la, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, la, 0)
+	lb, err := bAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, lb, 0)
+
+	// Attempt to connect with timeouts; expect errors
+	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer aCancel()
+	var aErr error
+	doneAccept := make(chan struct{})
+	go func() {
+		_, aErr = aAgent.Accept(aCtx, bUfrag, bPwd)
+		close(doneAccept)
+	}()
+
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	bCtx, bCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer bCancel()
+	_, bErr := bAgent.Dial(bCtx, aUfrag, aPwd)
+	require.Error(t, bErr)
+	<-doneAccept
+	require.Error(t, aErr)
+
+	// Observe failed state
+	select {
+	case <-aFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "aAgent did not reach Failed state")
+	}
+	select {
+	case <-bFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "bAgent did not reach Failed state")
+	}
+}
+
+// Ensure that when HostTCPAdvertisedAddrsMapper returns no endpoints, agents fail to connect over TCP.
+func TestAdvancedMapperTCPConnectFail(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(5 * time.Second).Stop()
+
+	disconnected := time.Second
+	failed := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	// Create TCPMux listeners for both agents
+	mkTCPMux := func() TCPMux {
+		l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = l.Close() })
+
+		return NewTCPMuxDefault(TCPMuxParams{Listener: l, ReadBufferSize: 8})
+	}
+
+	mkAgent := func(mux TCPMux) *Agent {
+		agent, err := NewAgent(&AgentConfig{
+			CandidateTypes:               []CandidateType{CandidateTypeHost},
+			NetworkTypes:                 []NetworkType{NetworkTypeTCP4},
+			IncludeLoopback:              true,
+			TCPMux:                       mux,
+			DisconnectedTimeout:          &disconnected,
+			FailedTimeout:                &failed,
+			KeepaliveInterval:            &KeepaliveInterval,
+			NAT1To1IPCandidateType:       CandidateTypeHost,
+			HostTCPAdvertisedAddrsMapper: func(net.IP) []Endpoint { return []Endpoint{} },
+		})
+		require.NoError(t, err)
+
+		return agent
+	}
+
+	muxA := mkTCPMux()
+	muxB := mkTCPMux()
+	aAgent := mkAgent(muxA)
+	bAgent := mkAgent(muxB)
+	defer func() {
+		require.NoError(t, aAgent.Close())
+		require.NoError(t, bAgent.Close())
+		require.NoError(t, muxA.Close())
+		require.NoError(t, muxB.Close())
+	}()
+
+	aFailed := make(chan struct{})
+	bFailed := make(chan struct{})
+	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-aFailed:
+			default:
+				close(aFailed)
+			}
+		}
+	}))
+	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-bFailed:
+			default:
+				close(bFailed)
+			}
+		}
+	}))
+
+	// Gather (should produce zero candidates) and exchange
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
+	la, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, la, 0)
+	lb, err := bAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, lb, 0)
+
+	// Attempt to connect with timeouts; expect errors
+	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer aCancel()
+	var aErr error
+	doneAccept := make(chan struct{})
+	go func() {
+		_, aErr = aAgent.Accept(aCtx, bUfrag, bPwd)
+		close(doneAccept)
+	}()
+
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	bCtx, bCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer bCancel()
+	_, bErr := bAgent.Dial(bCtx, aUfrag, aPwd)
+	require.Error(t, bErr)
+	<-doneAccept
+	require.Error(t, aErr)
+
+	// Observe failed state
+	select {
+	case <-aFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "aAgent did not reach Failed state (TCP)")
+	}
+	select {
+	case <-bFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "bAgent did not reach Failed state (TCP)")
+	}
+}
+
+// When both agents advertise multiple UDP endpoints that are unroutable, they gather candidates
+// but still fail to connect.
+func TestAdvancedMapperUDPAdvertisedButUnreachableConnectFail(t *testing.T) { //nolint:dupl
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(8 * time.Second).Stop()
+
+	disconnected := time.Second
+	failed := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	ip1 := net.ParseIP("198.18.10.1")
+	ip2 := net.ParseIP("198.18.10.2")
+	ip3 := net.ParseIP("198.18.10.3")
+	ip4 := net.ParseIP("198.18.10.4")
+	p1, p2, p3, p4 := 52001, 52002, 52003, 52004
+
+	mkAgent := func(hostUDPAdvertisedAddrsMapper func(net.IP) []Endpoint) *Agent {
+		a, err := NewAgent(&AgentConfig{
+			CandidateTypes:               []CandidateType{CandidateTypeHost},
+			NetworkTypes:                 []NetworkType{NetworkTypeUDP4},
+			IncludeLoopback:              true,
+			DisconnectedTimeout:          &disconnected,
+			FailedTimeout:                &failed,
+			KeepaliveInterval:            &KeepaliveInterval,
+			NAT1To1IPCandidateType:       CandidateTypeHost,
+			HostUDPAdvertisedAddrsMapper: hostUDPAdvertisedAddrsMapper,
+		})
+		require.NoError(t, err)
+
+		return a
+	}
+
+	aAgent := mkAgent(func(net.IP) []Endpoint {
+		return []Endpoint{{IP: ip1, Port: p1}, {IP: ip2, Port: p2}, {IP: ip3, Port: p3}}
+	})
+	bAgent := mkAgent(func(net.IP) []Endpoint {
+		return []Endpoint{{IP: ip4, Port: p4}}
+	})
+	defer func() {
+		require.NoError(t, aAgent.Close())
+		require.NoError(t, bAgent.Close())
+	}()
+
+	aFailed := make(chan struct{})
+	bFailed := make(chan struct{})
+	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		t.Log("aAgent connection state changed to", c)
+		if c == ConnectionStateFailed {
+			select {
+			case <-aFailed:
+			default:
+				close(aFailed)
+			}
+		}
+	}))
+	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+		t.Log("bAgent connection state changed to", c)
+		if c == ConnectionStateFailed {
+			select {
+			case <-bFailed:
+			default:
+				close(bFailed)
+			}
+		}
+	}))
+
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
+	la, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Equal(t, 3, len(la))
+	lb, err := bAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Equal(t, 1, len(lb))
+
+	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer aCancel()
+	var aErr error
+	doneAccept := make(chan struct{})
+	go func() {
+		_, aErr = aAgent.Accept(aCtx, bUfrag, bPwd)
+		close(doneAccept)
+	}()
+
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	bCtx, bCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer bCancel()
+	_, bErr := bAgent.Dial(bCtx, aUfrag, aPwd)
+	require.Error(t, bErr)
+	<-doneAccept
+	require.Error(t, aErr)
+
+	select {
+	case <-aFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "aAgent did not reach Failed state (UDP advertised unreachable)")
+	}
+	select {
+	case <-bFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "bAgent did not reach Failed state (UDP advertised unreachable)")
+	}
+}
+
+// When both agents advertise multiple TCP endpoints that are unroutable, they gather candidates
+// but still fail to connect.
+func TestAdvancedMapperTCPAdvertisedButUnreachableConnectFail(t *testing.T) { //nolint:dupl
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(8 * time.Second).Stop()
+
+	disconnected := time.Second
+	failed := time.Second
+	KeepaliveInterval := time.Duration(0)
+
+	mkTCPMux := func() TCPMux {
+		l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = l.Close() })
+
+		return NewTCPMuxDefault(TCPMuxParams{Listener: l, ReadBufferSize: 8})
+	}
+
+	ip1 := net.ParseIP("203.0.113.10")
+	ip2 := net.ParseIP("203.0.113.11")
+	ip3 := net.ParseIP("203.0.113.12")
+	p1, p2, p3 := 53001, 53002, 53003
+
+	mkAgent := func(mux TCPMux) *Agent {
+		agent, err := NewAgent(&AgentConfig{
+			CandidateTypes:         []CandidateType{CandidateTypeHost},
+			NetworkTypes:           []NetworkType{NetworkTypeTCP4},
+			IncludeLoopback:        true,
+			TCPMux:                 mux,
+			DisconnectedTimeout:    &disconnected,
+			FailedTimeout:          &failed,
+			KeepaliveInterval:      &KeepaliveInterval,
+			NAT1To1IPCandidateType: CandidateTypeHost,
+			HostTCPAdvertisedAddrsMapper: func(net.IP) []Endpoint {
+				return []Endpoint{{IP: ip1, Port: p1}, {IP: ip2, Port: p2}, {IP: ip3, Port: p3}}
+			},
+		})
+		require.NoError(t, err)
+
+		return agent
+	}
+
+	muxA := mkTCPMux()
+	muxB := mkTCPMux()
+	aAgent := mkAgent(muxA)
+	bAgent := mkAgent(muxB)
+	defer func() {
+		require.NoError(t, aAgent.Close())
+		require.NoError(t, bAgent.Close())
+		require.NoError(t, muxA.Close())
+		require.NoError(t, muxB.Close())
+	}()
+
+	aFailed := make(chan struct{})
+	bFailed := make(chan struct{})
+	require.NoError(t, aAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-aFailed:
+			default:
+				close(aFailed)
+			}
+		}
+	}))
+	require.NoError(t, bAgent.OnConnectionStateChange(func(c ConnectionState) {
+		if c == ConnectionStateFailed {
+			select {
+			case <-bFailed:
+			default:
+				close(bFailed)
+			}
+		}
+	}))
+
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
+	la, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	var tcpCount int
+	for _, c := range la {
+		if c.NetworkType().IsTCP() && c.Type() == CandidateTypeHost && c.TCPType() == TCPTypePassive {
+			tcpCount++
+		}
+	}
+	require.Equal(t, 3, tcpCount)
+
+	lb, err := bAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	tcpCount = 0
+	for _, c := range lb {
+		if c.NetworkType().IsTCP() && c.Type() == CandidateTypeHost && c.TCPType() == TCPTypePassive {
+			tcpCount++
+		}
+	}
+	require.Equal(t, 3, tcpCount)
+
+	bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	aCtx, aCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer aCancel()
+	var aErr error
+	doneAccept := make(chan struct{})
+	go func() {
+		_, aErr = aAgent.Accept(aCtx, bUfrag, bPwd)
+		close(doneAccept)
+	}()
+
+	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	bCtx, bCancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer bCancel()
+	_, bErr := bAgent.Dial(bCtx, aUfrag, aPwd)
+	require.Error(t, bErr)
+	<-doneAccept
+	require.Error(t, aErr)
+
+	select {
+	case <-aFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "aAgent did not reach Failed state (TCP advertised unreachable)")
+	}
+	select {
+	case <-bFailed:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "bAgent did not reach Failed state (TCP advertised unreachable)")
+	}
+}
+
 func TestGetLocalCandidates(t *testing.T) {
 	var config AgentConfig
 
