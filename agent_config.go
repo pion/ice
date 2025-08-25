@@ -131,6 +131,9 @@ type AgentConfig struct {
 	// candidate gathering.
 	NAT1To1IPs []string
 
+	HostUDPAdvertisedAddrsMapper func(net.IP) []endpoint
+	HostTCPAdvertisedAddrsMapper func(net.IP) []endpoint
+
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates
 	HostAcceptanceMinWait *time.Duration
 	// SrflxAcceptanceMinWait specify a minimum wait time before selecting srflx candidates
@@ -286,12 +289,21 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 
 func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
 	var err error
-	agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
-	if err != nil {
-		return err
+	// Prefer advanced mappings if provided; otherwise use legacy list
+	if config.HostUDPAdvertisedAddrsMapper != nil || config.HostTCPAdvertisedAddrsMapper != nil {
+		agent.extIPMapper, err = newExternalIPMapperAdvanced(config.NAT1To1IPCandidateType, config.HostUDPAdvertisedAddrsMapper, config.HostTCPAdvertisedAddrsMapper)
+		if err != nil {
+			return err
+		}
+	} else {
+		agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
+		if err != nil {
+			return err
+		}
 	}
+
 	if agent.extIPMapper == nil {
-		return nil // This may happen when config.NAT1To1IPs is an empty array
+		return nil // This may happen when config.NAT1To1IPs/Mappings is an empty array
 	}
 	if agent.extIPMapper.candidateType == CandidateTypeHost { //nolint:nestif
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
