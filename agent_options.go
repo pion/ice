@@ -67,3 +67,88 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 		return nil
 	}
 }
+
+// WithIncludeLoopback includes loopback addresses in the candidate list.
+// By default, loopback addresses are excluded.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithIncludeLoopback())
+func WithIncludeLoopback() AgentOption {
+	return func(a *Agent) error {
+		a.includeLoopback = true
+
+		return nil
+	}
+}
+
+// WithTCPPriorityOffset sets a number which is subtracted from the default (UDP) candidate type preference
+// for host, srflx and prfx candidate types. It helps to configure relative preference of UDP candidates
+// against TCP ones. Relay candidates for TCP and UDP are always 0 and not affected by this setting.
+// When not set, defaultTCPPriorityOffset (27) is used.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithTCPPriorityOffset(50))
+func WithTCPPriorityOffset(offset uint16) AgentOption {
+	return func(a *Agent) error {
+		a.tcpPriorityOffset = offset
+
+		return nil
+	}
+}
+
+// WithDisableActiveTCP disables Active TCP candidates.
+// When TCP is enabled, Active TCP candidates will be created when a new passive TCP remote candidate is added
+// unless this option is used.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithDisableActiveTCP())
+func WithDisableActiveTCP() AgentOption {
+	return func(a *Agent) error {
+		a.disableActiveTCP = true
+
+		return nil
+	}
+}
+
+// WithBindingRequestHandler sets a handler to allow applications to perform logic on incoming STUN Binding Requests.
+// This was implemented to allow users to:
+//   - Log incoming Binding Requests for debugging
+//   - Implement draft-thatcher-ice-renomination
+//   - Implement custom CandidatePair switching logic
+//
+// Example:
+//
+//	handler := func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool {
+//		log.Printf("Binding request from %s to %s", remote.Address(), local.Address())
+//		return true // Accept the request
+//	}
+//	agent, err := NewAgentWithOptions(WithBindingRequestHandler(handler))
+func WithBindingRequestHandler(
+	handler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool,
+) AgentOption {
+	return func(a *Agent) error {
+		a.userBindingRequestHandler = handler
+
+		return nil
+	}
+}
+
+// WithEnableUseCandidateCheckPriority enables checking for equal or higher priority when
+// switching selected candidate pair if the peer requests USE-CANDIDATE and agent is a lite agent.
+// This is disabled by default, i.e. when peer requests USE-CANDIDATE, the selected pair will be
+// switched to that irrespective of relative priority between current selected pair
+// and priority of the pair being switched to.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithEnableUseCandidateCheckPriority())
+func WithEnableUseCandidateCheckPriority() AgentOption {
+	return func(a *Agent) error {
+		a.enableUseCandidateCheckPriority = true
+
+		return nil
+	}
+}
