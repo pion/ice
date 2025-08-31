@@ -1952,7 +1952,8 @@ func TestRoleConflict(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	runTest := func(doDial bool) {
+	runTest := func(t *testing.T, doDial bool) {
+		t.Helper()
 		cfg := &AgentConfig{
 			NetworkTypes:     supportedNetworkTypes(),
 			MulticastDNSMode: MulticastDNSModeDisabled,
@@ -2004,10 +2005,10 @@ func TestRoleConflict(t *testing.T) {
 	}
 
 	t.Run("Controlling", func(t *testing.T) {
-		runTest(true)
+		runTest(t, true)
 	})
 
 	t.Run("Controlled", func(t *testing.T) {
-		runTest(false)
+		runTest(t, false)
 	})
 }
