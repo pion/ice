@@ -129,7 +129,7 @@ func TestLoopbackCandidate(t *testing.T) {
 	muxWithLo, errlo := NewMultiUDPMuxFromPort(12501, UDPMuxFromPortWithLoopback())
 	require.NoError(t, errlo)
 
-	unspecConn, errconn := net.ListenPacket("udp", ":0")
+	unspecConn, errconn := net.ListenPacket("udp", ":0") // nolint: noctx
 	require.NoError(t, errconn)
 	defer func() {
 		_ = unspecConn.Close()
@@ -233,7 +233,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	defer test.TimeOut(time.Second * 30).Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 	require.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -388,7 +388,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 	t.Run("UDP Relay", func(t *testing.T) {
 		serverPort := randomPort(t)
-		serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort))
+		serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 		require.NoError(t, err)
 
 		runTest(stun.ProtoTypeUDP, stun.SchemeTypeTURN, serverListener, nil, serverPort)
@@ -396,7 +396,7 @@ func TestTURNConcurrency(t *testing.T) {
 
 	t.Run("TCP Relay", func(t *testing.T) {
 		serverPort := randomPort(t)
-		serverListener, err := net.Listen("tcp", localhostIPStr+":"+strconv.Itoa(serverPort))
+		serverListener, err := net.Listen("tcp", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 		require.NoError(t, err)
 
 		runTest(stun.ProtoTypeTCP, stun.SchemeTypeTURN, nil, serverListener, serverPort)
@@ -440,7 +440,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	defer test.TimeOut(time.Second * 8).Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 	require.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -513,7 +513,7 @@ func TestTURNSrflx(t *testing.T) {
 	defer test.TimeOut(time.Second * 30).Stop()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 	require.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{
@@ -651,7 +651,7 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	conn, err := net.ListenPacket("udp4", ":0")
+	conn, err := net.ListenPacket("udp4", ":0") // nolint: noctx
 	require.NoError(t, err)
 	defer func() {
 		_ = conn.Close()

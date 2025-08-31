@@ -29,7 +29,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort))
+	serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
 	require.NoError(t, err)
 
 	server, err := turn.NewServer(turn.ServerConfig{

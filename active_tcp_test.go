@@ -230,7 +230,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
 
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0") // nolint: noctx
 	require.NoError(t, err)
 
 	_, port, err := net.SplitHostPort(tcpListener.Addr().String())

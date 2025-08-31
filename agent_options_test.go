@@ -202,7 +202,7 @@ func TestWithDisableActiveTCP(t *testing.T) {
 func TestWithBindingRequestHandler(t *testing.T) {
 	t.Run("sets binding request handler", func(t *testing.T) {
 		handlerCalled := false
-		handler := func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool {
+		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 			handlerCalled = true
 
 			return true
@@ -232,7 +232,7 @@ func TestWithBindingRequestHandler(t *testing.T) {
 
 	t.Run("works with config", func(t *testing.T) {
 		handlerCalled := false
-		handler := func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool {
+		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 			handlerCalled = true
 
 			return true
@@ -268,7 +268,7 @@ func TestMultipleConfigOptions(t *testing.T) {
 	t.Run("can apply multiple options", func(t *testing.T) {
 		customOffset := uint16(100)
 		handlerCalled := false
-		handler := func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool {
+		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 			handlerCalled = true
 
 			return true

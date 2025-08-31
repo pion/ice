@@ -267,7 +267,7 @@ func onConnected() (func(ConnectionState), chan struct{}) {
 
 func randomPort(tb testing.TB) int {
 	tb.Helper()
-	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	conn, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
 	if err != nil {
 		tb.Fatalf("failed to pickPort: %v", err)
 	}
