@@ -103,9 +103,14 @@ func (c *Conn) Write(packet []byte) (int, error) {
 		}
 	}
 
-	c.bytesSent.Add(uint64(len(packet)))
+	// Write application data via the selected pair and update stats with actual bytes written.
+	n, err := pair.Write(packet)
+	if n > 0 {
+		c.bytesSent.Add(uint64(n))
+		pair.UpdatePacketSent(n)
+	}
 
-	return pair.Write(packet)
+	return n, err
 }
 
 // Close implements the Conn Close method. It is used to close

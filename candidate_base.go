@@ -309,10 +309,18 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
-	if _, err := agent.buf.Write(buf); err != nil {
+	n, err := agent.buf.Write(buf)
+	if err != nil {
 		agent.log.Warnf("Failed to write packet: %s", err)
 
 		return
+	}
+
+	// Add received application bytes to the currently selected candidate pair.
+	if n > 0 {
+		if sp := agent.getSelectedPair(); sp != nil {
+			sp.UpdatePacketReceived(n)
+		}
 	}
 }
 
