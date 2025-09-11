@@ -15,17 +15,17 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 		result := make([]CandidatePairStats, 0, len(a.checklist))
 		for _, cp := range a.checklist {
 			stat := CandidatePairStats{
-				Timestamp:         time.Now(),
-				LocalCandidateID:  cp.Local.ID(),
-				RemoteCandidateID: cp.Remote.ID(),
-				State:             cp.state,
-				Nominated:         cp.nominated,
-				// PacketsSent uint32
-				// PacketsReceived uint32
-				// BytesSent uint64
-				// BytesReceived uint64
-				// LastPacketSentTimestamp time.Time
-				// LastPacketReceivedTimestamp time.Time
+				Timestamp:                     time.Now(),
+				LocalCandidateID:              cp.Local.ID(),
+				RemoteCandidateID:             cp.Remote.ID(),
+				State:                         cp.state,
+				Nominated:                     cp.nominated,
+				PacketsSent:                   cp.PacketsSent(),
+				PacketsReceived:               cp.PacketsReceived(),
+				BytesSent:                     cp.BytesSent(),
+				BytesReceived:                 cp.BytesReceived(),
+				LastPacketSentTimestamp:       cp.LastPacketSentAt(),
+				LastPacketReceivedTimestamp:   cp.LastPacketReceivedAt(),
 				FirstRequestTimestamp:         cp.FirstRequestSentAt(),
 				LastRequestTimestamp:          cp.LastRequestSentAt(),
 				FirstResponseTimestamp:        cp.FirstResponseReceivedAt(),
@@ -73,17 +73,17 @@ func (a *Agent) GetSelectedCandidatePairStats() (CandidatePairStats, bool) {
 
 		isAvailable = true
 		res = CandidatePairStats{
-			Timestamp:         time.Now(),
-			LocalCandidateID:  sp.Local.ID(),
-			RemoteCandidateID: sp.Remote.ID(),
-			State:             sp.state,
-			Nominated:         sp.nominated,
-			// PacketsSent uint32
-			// PacketsReceived uint32
-			// BytesSent uint64
-			// BytesReceived uint64
-			// LastPacketSentTimestamp time.Time
-			// LastPacketReceivedTimestamp time.Time
+			Timestamp:                   time.Now(),
+			LocalCandidateID:            sp.Local.ID(),
+			RemoteCandidateID:           sp.Remote.ID(),
+			State:                       sp.state,
+			Nominated:                   sp.nominated,
+			PacketsSent:                 sp.PacketsSent(),
+			PacketsReceived:             sp.PacketsReceived(),
+			BytesSent:                   sp.BytesSent(),
+			BytesReceived:               sp.BytesReceived(),
+			LastPacketSentTimestamp:     sp.LastPacketSentAt(),
+			LastPacketReceivedTimestamp: sp.LastPacketReceivedAt(),
 			// FirstRequestTimestamp time.Time
 			// LastRequestTimestamp time.Time
 			// LastResponseTimestamp time.Time
