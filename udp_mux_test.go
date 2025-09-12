@@ -107,10 +107,8 @@ func TestUDPMux(t *testing.T) { //nolint:cyclop
 					defer wg.Done()
 					testMuxConnection(t, udpMux, "ufrag2", udp4)
 				}()
-				// Skip IPv6 test on i386
-				if ptrSize != 32 {
-					testMuxConnection(t, udpMux, "ufrag3", udp6)
-				}
+
+				testMuxConnection(t, udpMux, "ufrag3", udp6)
 			} else if ptrSize != 32 || network != udp6 {
 				testMuxConnection(t, udpMux, "ufrag2", network)
 			}

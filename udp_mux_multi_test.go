@@ -63,11 +63,7 @@ func TestMultiUDPMux(t *testing.T) {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
-	// Skip ipv6 test on i386
-	const ptrSize = 32 << (^uintptr(0) >> 63)
-	if ptrSize != 32 {
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
-	}
+	testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
 
 	wg.Wait()
 
@@ -136,11 +132,7 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
 	}()
 
-	// Skip IPv6 test on i386
-	const ptrSize = 32 << (^uintptr(0) >> 63)
-	if ptrSize != 32 {
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
-	}
+	testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
 
 	wg.Wait()
 
