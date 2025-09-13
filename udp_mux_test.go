@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"io"
 	"net"
 	"sync"
 	"testing"
@@ -282,4 +283,231 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 	// Wait until both have gone back to connected
 	<-aConnected
 	<-bConnected
+}
+
+func secondTestMuxedConn(t *testing.T, capBytes int) *udpMuxedConn {
+	t.Helper()
+
+	pool := &sync.Pool{
+		New: func() any {
+			return &bufferHolder{buf: make([]byte, capBytes)}
+		},
+	}
+	params := &udpMuxedConnParams{
+		AddrPool:  pool,
+		LocalAddr: &net.UDPAddr{IP: net.IPv4zero, Port: 0},
+	}
+
+	return newUDPMuxedConn(params)
+}
+
+func TestUDPMuxedConn_ReadFrom(t *testing.T) {
+	conn := secondTestMuxedConn(t, 1500)
+	remote := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 5678}
+	payload := []byte("this is a payload of length 29!")
+
+	require.NoError(t, conn.writePacket(payload, remote))
+
+	// read with too small of a buffer -> expect io.ErrShortBuffer, n=0, rAddr=nil
+	small := make([]byte, 8)
+	n, raddr, err := conn.ReadFrom(small)
+	require.ErrorIs(t, err, io.ErrShortBuffer)
+	require.Equal(t, 0, n)
+	require.Nil(t, raddr)
+
+	// try again with sufficient buffer
+	require.NoError(t, conn.writePacket(payload, remote))
+	dst := make([]byte, len(payload))
+	n, raddr, err = conn.ReadFrom(dst)
+	require.NoError(t, err)
+	require.Equal(t, len(payload), n)
+	require.Equal(t, payload, dst[:n])
+
+	// rAddr should be what was set on the packet.
+	require.NotNil(t, raddr)
+	require.Equal(t, remote.String(), raddr.String())
+}
+
+func TestUDPMuxedConn_ReadFrom_EOFAfterClose(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	// close with empty queue -> immediate EOF branch inside ReadFrom.
+	require.NoError(t, conn.Close())
+
+	buf := make([]byte, 16)
+	n, raddr, err := conn.ReadFrom(buf)
+	require.Equal(t, 0, n)
+	require.Nil(t, raddr)
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestUDPMuxedConn_ReadFrom_WaitingThenClosedEOF(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	errCh := make(chan error, 1)
+	go func() {
+		// empty queue sets state to waiting and block on notify/closedChan.
+		_, _, err := conn.ReadFrom(make([]byte, 16))
+		errCh <- err
+	}()
+
+	// let goroutine enter Waiting state.
+	time.Sleep(10 * time.Millisecond)
+
+	require.NoError(t, conn.Close())
+
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, io.EOF)
+	case <-time.After(1 * time.Second):
+		require.Fail(t, "timeout waiting for ReadFrom to return after Close")
+	}
+}
+
+func TestUDPMuxedConn_WriteTo_ClosedPipe(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+	require.NoError(t, conn.Close())
+
+	n, err := conn.WriteTo([]byte("x"), &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 1234})
+	require.Equal(t, 0, n)
+	require.ErrorIs(t, err, io.ErrClosedPipe)
+}
+
+// non-*net.UDPAddr that still satisfies net.Addr.
+type notUDPAddr struct{}
+
+func (notUDPAddr) Network() string { return "udp" }
+func (notUDPAddr) String() string  { return "not-a-udp-addr" }
+
+func TestUDPMuxedConn_WriteTo_BadAddrType(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	n, err := conn.WriteTo([]byte("x"), notUDPAddr{})
+	require.Equal(t, 0, n)
+	require.ErrorIs(t, err, errFailedToCastUDPAddr)
+}
+
+// uses invalid IP length so newIPPort returns error.
+func TestUDPMuxedConn_WriteTo_newIPPortError(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	invalidIP := net.IP{1} // len=1 -> invalid
+	raddr := &net.UDPAddr{IP: invalidIP, Port: 1234}
+
+	n, err := conn.WriteTo([]byte("x"), raddr)
+	require.Equal(t, 0, n)
+	require.Error(t, err)
+}
+
+func TestUDPMuxedConn_SetDeadlines(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	// While open
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(250*time.Millisecond)))
+	require.NoError(t, conn.SetWriteDeadline(time.Now().Add(250*time.Millisecond)))
+
+	// After close
+	require.NoError(t, conn.Close())
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(250*time.Millisecond)))
+	require.NoError(t, conn.SetWriteDeadline(time.Now().Add(250*time.Millisecond)))
+}
+
+func TestUDPMuxedConn_removeAddress(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	mk := func(ip string, port uint16) ipPort {
+		p, err := newIPPort(net.ParseIP(ip), "", port)
+		require.NoError(t, err)
+
+		return p
+	}
+
+	a1 := mk("1.1.1.1", 1000)
+	a2 := mk("2.2.2.2", 2000)
+	a3 := mk("3.3.3.3", 3000)
+	a4 := mk("9.9.9.9", 9000) // non-existent in lists below
+
+	t.Run("remove-existing-middle", func(t *testing.T) {
+		// true for a1/a3, false for a2
+		conn.addresses = []ipPort{a1, a2, a3}
+		conn.removeAddress(a2)
+		got := conn.getAddresses()
+		require.Equal(t, []ipPort{a1, a3}, got)
+	})
+
+	t.Run("remove-non-existing", func(t *testing.T) {
+		// only true (no matches)
+		conn.addresses = []ipPort{a1, a3}
+		conn.removeAddress(a4)
+		got := conn.getAddresses()
+		require.Equal(t, []ipPort{a1, a3}, got)
+	})
+
+	t.Run("remove-duplicates-all", func(t *testing.T) {
+		// all occurrences are removed (false twice)
+		conn.addresses = []ipPort{a1, a1, a2}
+		conn.removeAddress(a1)
+		got := conn.getAddresses()
+		require.Equal(t, []ipPort{a2}, got)
+	})
+
+	t.Run("remove-from-empty", func(t *testing.T) {
+		// no iters loop, no panic + remain empty
+		conn.addresses = nil
+		conn.removeAddress(a1)
+		got := conn.getAddresses()
+		require.Empty(t, got)
+	})
+}
+
+func TestUDPMuxedConn_writePacket_ShortBuffer(t *testing.T) {
+	conn := secondTestMuxedConn(t, 8) // pool buf cap=8
+	addr := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 9999}
+
+	err := conn.writePacket(make([]byte, 16), addr) // len=16 > cap=8
+	require.ErrorIs(t, err, io.ErrShortBuffer)
+
+	require.Nil(t, conn.bufHead)
+	require.Nil(t, conn.bufTail)
+}
+
+func TestUDPMuxedConn_writePacket_ClosedState(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+	addr := &net.UDPAddr{IP: net.IPv4(5, 6, 7, 8), Port: 1234}
+
+	// closed state before write
+	conn.mu.Lock()
+	conn.state = udpMuxedConnClosed
+	conn.mu.Unlock()
+
+	err := conn.writePacket([]byte{1, 2, 3}, addr) // fits in cap
+	require.ErrorIs(t, err, io.ErrClosedPipe)
+
+	// queue unchanged
+	require.Nil(t, conn.bufHead)
+	require.Nil(t, conn.bufTail)
+}
+
+func TestUDPMuxedConn_writePacket_NotifyDefaultBranch(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+	addr := &net.UDPAddr{IP: net.IPv4(9, 9, 9, 9), Port: 4242}
+
+	// fill notify channel so send would block
+	conn.notify <- struct{}{}
+
+	// set pre-state to waiting so the post-unlock select triggers
+	conn.mu.Lock()
+	conn.state = udpMuxedConnWaiting
+	conn.mu.Unlock()
+
+	// write should take default branch
+	err := conn.writePacket([]byte("hello"), addr)
+	require.NoError(t, err)
+
+	// packet enqueued
+	require.NotNil(t, conn.bufHead)
+	require.NotNil(t, conn.bufTail)
+
+	// channel still full => no send happened (default path executed)
+	require.Equal(t, 1, len(conn.notify))
 }
