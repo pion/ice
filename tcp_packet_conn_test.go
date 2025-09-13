@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,15 +38,29 @@ func TestBufferedConn_Write_ErrorAfterClose(t *testing.T) {
 	require.Equal(t, 0, n)
 }
 
+type hookLogger struct {
+	ch   chan struct{}
+	once sync.Once
+}
+
+func newHookLogger() *hookLogger { return &hookLogger{ch: make(chan struct{})} }
+
+func (l *hookLogger) Trace(msg string)      {}
+func (l *hookLogger) Tracef(string, ...any) {}
+func (l *hookLogger) Debug(msg string)      {}
+func (l *hookLogger) Debugf(string, ...any) {}
+func (l *hookLogger) Info(msg string)       {}
+func (l *hookLogger) Infof(string, ...any)  {}
+func (l *hookLogger) Warn(msg string)       { l.once.Do(func() { close(l.ch) }) }
+func (l *hookLogger) Warnf(string, ...any)  { l.once.Do(func() { close(l.ch) }) }
+func (l *hookLogger) Error(msg string)      {}
+func (l *hookLogger) Errorf(string, ...any) {}
+
 func TestBufferedConn_writeProcess_ReadError(t *testing.T) {
-	defer test.CheckRoutines(t)()
-
-	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 	c1, c2 := net.Pipe()
-	defer func() {
-		_ = c2.Close()
-	}()
+	t.Cleanup(func() { _ = c2.Close() })
 
+	logger := newHookLogger()
 	under := newBufferedConn(c1, 0, logger)
 
 	bc, ok := under.(*bufferedConn)
@@ -53,17 +68,18 @@ func TestBufferedConn_writeProcess_ReadError(t *testing.T) {
 
 	_ = bc.buf.SetReadDeadline(time.Unix(0, 0))
 
-	// wait for goroutine to hit Read -> error path
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-logger.ch:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "timed out waiting for read-error branch")
+	}
 
 	require.NoError(t, bc.Close())
 }
 
 func TestBufferedConn_writeProcess_WriteError(t *testing.T) {
-	defer test.CheckRoutines(t)()
-
-	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 	c1, c2 := net.Pipe()
+	logger := newHookLogger()
 
 	under := newBufferedConn(c1, 0, logger)
 	bc, ok := under.(*bufferedConn)
@@ -71,11 +87,15 @@ func TestBufferedConn_writeProcess_WriteError(t *testing.T) {
 
 	require.NoError(t, c2.Close())
 
-	_, werr := bc.Write([]byte("hello"))
-	require.NoError(t, werr)
+	n, err := bc.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
 
-	// wait for goroutine to hit Read -> error path
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-logger.ch:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "timed out waiting for write-error branch")
+	}
 
 	require.NoError(t, bc.Close())
 }
