@@ -7,11 +7,14 @@
 package ice
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pion/logging"
+	"github.com/pion/transport/v3/stdnet"
 	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/require"
 )
@@ -137,4 +140,269 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	wg.Wait()
 
 	require.NoError(t, udpMuxMulti.Close())
+}
+
+func TestMultiUDPMux_GetConn_NoUDPMuxAvailable(t *testing.T) {
+	conn1, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() {
+		_ = conn1.Close()
+	}()
+
+	conn2, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() {
+		_ = conn2.Close()
+	}()
+
+	mux1 := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn1})
+	mux2 := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn2})
+	multi := NewMultiUDPMuxDefault(mux1, mux2)
+	defer func() {
+		_ = multi.Close()
+	}()
+
+	// tweak the port so it doesn't match.
+	addrs := multi.GetListenAddresses()
+	require.NotEmpty(t, addrs)
+
+	udpAddr, ok := addrs[0].(*net.UDPAddr)
+	require.True(t, ok, "expected *net.UDPAddr")
+
+	// change the port to something different so addr.String() is not in localAddrToMux.
+	missing := &net.UDPAddr{IP: udpAddr.IP, Port: udpAddr.Port + 1, Zone: udpAddr.Zone}
+
+	pc, getErr := multi.GetConn("missing-ufrag", missing)
+	require.Nil(t, pc)
+	require.ErrorIs(t, getErr, errNoUDPMuxAvailable)
+}
+
+type closeErrUDPMux struct {
+	UDPMux
+	ret error
+}
+
+func (w *closeErrUDPMux) Close() error {
+	_ = w.UDPMux.Close() // ensure underlying resources are released
+
+	return w.ret
+}
+
+var (
+	errCloseBoom   = errors.New("close boom")
+	errCloseFirst  = errors.New("first close failed")
+	errCloseSecond = errors.New("second close failed")
+)
+
+func TestMultiUDPMux_Close_PropagatesError(t *testing.T) {
+	udp1, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	udp2, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+
+	mux1 := NewUDPMuxDefault(UDPMuxParams{UDPConn: udp1})
+	mux2real := NewUDPMuxDefault(UDPMuxParams{UDPConn: udp2})
+
+	mux2 := &closeErrUDPMux{UDPMux: mux2real, ret: errCloseBoom}
+
+	multi := NewMultiUDPMuxDefault(mux1, mux2)
+	got := multi.Close()
+
+	require.ErrorIs(t, got, errCloseBoom)
+}
+
+func TestMultiUDPMux_Close_LastErrorWins(t *testing.T) {
+	udpA, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	udpB, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+
+	muxAReal := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpA})
+	muxBReal := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpB})
+
+	muxA := &closeErrUDPMux{UDPMux: muxAReal, ret: errCloseFirst}
+	muxB := &closeErrUDPMux{UDPMux: muxBReal, ret: errCloseSecond}
+
+	multi := NewMultiUDPMuxDefault(muxA, muxB)
+	got := multi.Close()
+
+	require.ErrorIs(t, got, errCloseSecond)
+}
+
+func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
+	t.Run("IPFilter", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		keepLoopbackV4 := func(ip net.IP) bool { return ip.IsLoopback() && ip.To4() != nil }
+		opt := UDPMuxFromPortWithIPFilter(keepLoopbackV4)
+		opt.apply(&p)
+
+		require.NotNil(t, p.ipFilter)
+		require.True(t, p.ipFilter(net.ParseIP("127.0.0.1")))
+		require.False(t, p.ipFilter(net.ParseIP("8.8.8.8")))
+	})
+
+	t.Run("Networks single", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		opt := UDPMuxFromPortWithNetworks(NetworkTypeUDP4)
+		opt.apply(&p)
+
+		require.Len(t, p.networks, 1)
+		require.Equal(t, NetworkTypeUDP4, p.networks[0])
+	})
+
+	t.Run("Networks multiple", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		opt := UDPMuxFromPortWithNetworks(NetworkTypeUDP4, NetworkTypeUDP6)
+		opt.apply(&p)
+
+		require.Len(t, p.networks, 2)
+		require.ElementsMatch(t, []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, p.networks)
+	})
+
+	t.Run("ReadBufferSize", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		opt := UDPMuxFromPortWithReadBufferSize(4096)
+		opt.apply(&p)
+
+		require.Equal(t, 4096, p.readBufferSize)
+	})
+
+	t.Run("WriteBufferSize", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		opt := UDPMuxFromPortWithWriteBufferSize(8192)
+		opt.apply(&p)
+
+		require.Equal(t, 8192, p.writeBufferSize)
+	})
+
+	t.Run("Logger", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
+		opt := UDPMuxFromPortWithLogger(logger)
+		opt.apply(&p)
+
+		require.NotNil(t, p.logger)
+		require.Equal(t, logger, p.logger)
+	})
+
+	t.Run("Net", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		n, err := stdnet.NewNet()
+		require.NoError(t, err)
+
+		opt := UDPMuxFromPortWithNet(n)
+		opt.apply(&p)
+
+		require.NotNil(t, p.net)
+		require.Equal(t, n, p.net)
+	})
+}
+
+func TestNewMultiUDPMuxFromPort_PortInUse_ListenErrorAndCleanup(t *testing.T) {
+	pre, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() {
+		_ = pre.Close()
+	}()
+
+	srvAddr, ok := pre.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok, "pre.LocalAddr is not *net.UDPAddr")
+	port := srvAddr.Port
+
+	multi, buildErr := NewMultiUDPMuxFromPort(
+		port,
+		UDPMuxFromPortWithLoopback(),
+		UDPMuxFromPortWithNetworks(NetworkTypeUDP4),
+	)
+
+	require.Nil(t, multi)
+	require.Error(t, buildErr)
+}
+
+func TestNewMultiUDPMuxFromPort_Success_SetsBuffers(t *testing.T) {
+	multi, err := NewMultiUDPMuxFromPort(
+		0,
+		UDPMuxFromPortWithLoopback(),
+		UDPMuxFromPortWithNetworks(NetworkTypeUDP4),
+		UDPMuxFromPortWithReadBufferSize(4096),
+		UDPMuxFromPortWithWriteBufferSize(8192),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, multi)
+
+	addrs := multi.GetListenAddresses()
+	require.NotEmpty(t, addrs)
+
+	require.NoError(t, multi.Close())
+}
+
+func TestNewMultiUDPMuxFromPort_CleanupClosesAll(t *testing.T) {
+	stdNet, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	_, addrs, err := localInterfaces(stdNet, nil, nil, []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, true)
+	require.NoError(t, err)
+	if len(addrs) < 2 {
+		t.Skip("need at least two local addresses to hit partial-success then failure")
+	}
+
+	second := addrs[1]
+	l2, err := stdNet.ListenUDP("udp", &net.UDPAddr{
+		IP:   second.AsSlice(),
+		Port: 0,
+		Zone: second.Zone(),
+	})
+	require.NoError(t, err)
+	defer func() {
+		_ = l2.Close()
+	}()
+
+	udpAddr2, ok := l2.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok, "LocalAddr is not *net.UDPAddr")
+	picked := udpAddr2.Port
+
+	preBinds := []net.PacketConn{l2}
+	for i := 2; i < len(addrs); i++ {
+		a := addrs[i]
+		l, e := stdNet.ListenUDP("udp", &net.UDPAddr{
+			IP:   a.AsSlice(),
+			Port: picked,
+			Zone: a.Zone(),
+		})
+		if e == nil {
+			preBinds = append(preBinds, l)
+		}
+	}
+	t.Cleanup(func() {
+		for _, c := range preBinds {
+			_ = c.Close()
+		}
+	})
+
+	require.GreaterOrEqual(t, len(preBinds), 1, "need at least one prebound address after the first")
+
+	multi, buildErr := NewMultiUDPMuxFromPort(
+		picked,
+		UDPMuxFromPortWithNet(stdNet),
+		UDPMuxFromPortWithNetworks(NetworkTypeUDP4, NetworkTypeUDP6),
+		UDPMuxFromPortWithLoopback(),
+	)
+	require.Nil(t, multi)
+	require.Error(t, buildErr)
+
+	first := addrs[0]
+	rebind, err := stdNet.ListenUDP("udp", &net.UDPAddr{
+		IP:   first.AsSlice(),
+		Port: picked,
+		Zone: first.Zone(),
+	})
+	require.NoError(t, err, "expected first address/port to be free after cleanup")
+	_ = rebind.Close()
 }
