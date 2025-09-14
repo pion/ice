@@ -7,7 +7,9 @@
 package ice
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync/atomic"
@@ -289,4 +291,123 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	<-isConnected
 	require.NoError(t, tcpListener.Close())
 	require.Equal(t, uint64(0), atomic.LoadUint64(&incomingTCPCount))
+}
+
+func TestNewActiveTCPConn_LocalAddrError_EarlyReturn(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
+
+	// an invalid local address so getTCPAddrOnInterface fails at ResolveTCPAddr.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ra := netip.MustParseAddrPort("127.0.0.1:1")
+
+	a := newActiveTCPConn(ctx, "this_is_not_a_valid_addr", ra, logger)
+
+	require.NotNil(t, a)
+	require.True(t, a.closed.Load(), "should be closed on early return error")
+	la := a.LocalAddr()
+	require.NotNil(t, la)
+}
+
+func TestActiveTCPConn_ReadLoop_BufferWriteError(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0") // nolint: noctx
+	require.NoError(t, err)
+	defer func() { _ = tcpListener.Close() }()
+
+	ra := netip.MustParseAddrPort(tcpListener.Addr().String())
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := newActiveTCPConn(ctx, "127.0.0.1:0", ra, logger)
+	require.NotNil(t, a)
+
+	srvConn, err := tcpListener.Accept()
+	require.NoError(t, err)
+
+	require.NoError(t, a.readBuffer.Close())
+
+	_, err = writeStreamingPacket(srvConn, []byte("ping"))
+	require.NoError(t, err)
+
+	require.NoError(t, a.Close())
+	require.NoError(t, srvConn.Close())
+}
+
+func TestActiveTCPConn_WriteLoop_WriteStreamingError(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0") // nolint: noctx
+	require.NoError(t, err)
+	defer func() { _ = tcpListener.Close() }()
+
+	ra := netip.MustParseAddrPort(tcpListener.Addr().String())
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := newActiveTCPConn(ctx, "127.0.0.1:0", ra, logger)
+	require.NotNil(t, a)
+
+	srvConn, err := tcpListener.Accept()
+	require.NoError(t, err)
+
+	require.NoError(t, srvConn.Close())
+
+	n, err := a.WriteTo([]byte("data"), nil)
+	require.NoError(t, err)
+	require.Equal(t, len("data"), n)
+
+	require.NoError(t, a.Close())
+}
+
+func TestActiveTCPConn_LocalAddr_DefaultWhenUnset(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	invalidLocal := "127.0.0.1:65536"
+	remote := netip.MustParseAddrPort("127.0.0.1:1")
+
+	log := logging.NewDefaultLoggerFactory().NewLogger("ice")
+
+	a := newActiveTCPConn(ctx, invalidLocal, remote, log)
+	require.NotNil(t, a)
+	require.True(t, a.closed.Load(), "expected early-return closed state")
+
+	la := a.LocalAddr()
+	ta, ok := la.(*net.TCPAddr)
+	require.True(t, ok, "LocalAddr() should return *net.TCPAddr")
+	require.Nil(t, ta.IP, "fallback *net.TCPAddr should be zero value (nil IP)")
+	require.Equal(t, 0, ta.Port, "fallback *net.TCPAddr should be zero value (port 0)")
+	require.Equal(t, "", ta.Zone, "fallback *net.TCPAddr should be zero value (empty zone)")
+}
+
+func TestActiveTCPConn_SetDeadlines_ReturnEOF(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	invalidLocal := "127.0.0.1:65536"
+	remote := netip.MustParseAddrPort("127.0.0.1:1")
+	log := logging.NewDefaultLoggerFactory().NewLogger("ice")
+
+	a := newActiveTCPConn(ctx, invalidLocal, remote, log)
+	require.NotNil(t, a)
+	require.True(t, a.closed.Load(), "expected early-return closed state")
+
+	err := a.SetReadDeadline(time.Now())
+	require.ErrorIs(t, err, io.EOF)
+
+	err = a.SetWriteDeadline(time.Now())
+	require.ErrorIs(t, err, io.EOF)
 }

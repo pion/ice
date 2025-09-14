@@ -9,6 +9,7 @@ import (
 
 	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConnectionStateNotifier(t *testing.T) {
@@ -69,4 +70,120 @@ func TestConnectionStateNotifier(t *testing.T) {
 		<-done
 		notifer.Close(true)
 	})
+}
+
+func TestHandlerNotifier_Close_AlreadyClosed(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	notifier := &handlerNotifier{
+		connectionStateFunc: func(ConnectionState) {},
+		candidateFunc:       func(Candidate) {},
+		candidatePairFunc:   func(*CandidatePair) {},
+		done:                make(chan struct{}),
+	}
+
+	// first close
+	notifier.Close(false)
+
+	isClosed := func(ch <-chan struct{}) bool {
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	}
+	assert.True(t, isClosed(notifier.done), "expected h.done to be closed after first Close")
+
+	// second close should hit `case <-h.done` and return immediately
+	// without blocking on the WaitGroup.
+	finished := make(chan struct{}, 1)
+	go func() {
+		notifier.Close(true)
+		close(finished)
+	}()
+
+	assert.Eventually(t, func() bool {
+		select {
+		case <-finished:
+			return true
+		default:
+			return false
+		}
+	}, 250*time.Millisecond, 10*time.Millisecond, "second Close(true) did not return promptly")
+
+	// ensure still closed afterwards
+	assert.True(t, isClosed(notifier.done), "expected h.done to remain closed after second Close")
+
+	// sanity: no enqueues should start after close.
+	require.False(t, notifier.running)
+	require.Zero(t, len(notifier.connectionStates))
+	require.Zero(t, len(notifier.candidates))
+	require.Zero(t, len(notifier.selectedCandidatePairs))
+}
+
+func TestHandlerNotifier_EnqueueConnectionState_AfterClose(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	connCh := make(chan struct{}, 1)
+	notifier := &handlerNotifier{
+		connectionStateFunc: func(ConnectionState) { connCh <- struct{}{} },
+		done:                make(chan struct{}),
+	}
+
+	notifier.Close(false)
+	notifier.EnqueueConnectionState(ConnectionStateConnected)
+
+	assert.Never(t, func() bool {
+		select {
+		case <-connCh:
+			return true
+		default:
+			return false
+		}
+	}, 250*time.Millisecond, 10*time.Millisecond, "connectionStateFunc should not be called after close")
+}
+
+func TestHandlerNotifier_EnqueueCandidate_AfterClose(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	candidateCh := make(chan struct{}, 1)
+	h := &handlerNotifier{
+		candidateFunc: func(Candidate) { candidateCh <- struct{}{} },
+		done:          make(chan struct{}),
+	}
+
+	h.Close(false)
+	h.EnqueueCandidate(nil)
+
+	assert.Never(t, func() bool {
+		select {
+		case <-candidateCh:
+			return true
+		default:
+			return false
+		}
+	}, 250*time.Millisecond, 10*time.Millisecond, "candidateFunc should not be called after close")
+}
+
+func TestHandlerNotifier_EnqueueSelectedCandidatePair_AfterClose(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	pairCh := make(chan struct{}, 1)
+	h := &handlerNotifier{
+		candidatePairFunc: func(*CandidatePair) { pairCh <- struct{}{} },
+		done:              make(chan struct{}),
+	}
+
+	h.Close(false)
+	h.EnqueueSelectedCandidatePair(nil)
+
+	assert.Never(t, func() bool {
+		select {
+		case <-pairCh:
+			return true
+		default:
+			return false
+		}
+	}, 250*time.Millisecond, 10*time.Millisecond, "candidatePairFunc should not be called after close")
 }
