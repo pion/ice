@@ -6,6 +6,7 @@ package ice
 import (
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -198,13 +199,8 @@ func (c *udpMuxedConn) removeAddress(addr ipPort) {
 func (c *udpMuxedConn) containsAddress(addr ipPort) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, a := range c.addresses {
-		if addr == a {
-			return true
-		}
-	}
 
-	return false
+	return slices.Contains(c.addresses, addr)
 }
 
 func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
