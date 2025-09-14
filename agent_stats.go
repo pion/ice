@@ -28,7 +28,7 @@ func (a *Agent) GetCandidatePairsStats() []CandidatePairStats {
 				// LastPacketReceivedTimestamp time.Time
 				FirstRequestTimestamp:         cp.FirstRequestSentAt(),
 				LastRequestTimestamp:          cp.LastRequestSentAt(),
-				FirstResponseTimestamp:        cp.FirstReponseReceivedAt(),
+				FirstResponseTimestamp:        cp.FirstResponseReceivedAt(),
 				LastResponseTimestamp:         cp.LastResponseReceivedAt(),
 				FirstRequestReceivedTimestamp: cp.FirstRequestReceivedAt(),
 				LastRequestReceivedTimestamp:  cp.LastRequestReceivedAt(),
