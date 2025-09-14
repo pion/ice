@@ -5,6 +5,7 @@ package ice
 
 import (
 	"net"
+	"slices"
 	"time"
 
 	"github.com/pion/logging"
@@ -297,26 +298,12 @@ func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclo
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
-		candiHostEnabled := false
-		for _, candiType := range agent.candidateTypes {
-			if candiType == CandidateTypeHost {
-				candiHostEnabled = true
-
-				break
-			}
-		}
+		candiHostEnabled := slices.Contains(agent.candidateTypes, CandidateTypeHost)
 		if !candiHostEnabled {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
 	} else if agent.extIPMapper.candidateType == CandidateTypeServerReflexive {
-		candiSrflxEnabled := false
-		for _, candiType := range agent.candidateTypes {
-			if candiType == CandidateTypeServerReflexive {
-				candiSrflxEnabled = true
-
-				break
-			}
-		}
+		candiSrflxEnabled := slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive)
 		if !candiSrflxEnabled {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
