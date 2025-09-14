@@ -39,12 +39,12 @@ type CandidatePair struct {
 	responsesReceived uint64
 	responsesSent     uint64
 
-	firstRequestSentAt     atomic.Value // time.Time
-	lastRequestSentAt      atomic.Value // time.Time
-	firstReponseReceivedAt atomic.Value // time.Time
-	lastResponseReceivedAt atomic.Value // time.Time
-	firstRequestReceivedAt atomic.Value // time.Time
-	lastRequestReceivedAt  atomic.Value // time.Time
+	firstRequestSentAt      atomic.Value // time.Time
+	lastRequestSentAt       atomic.Value // time.Time
+	firstResponseReceivedAt atomic.Value // time.Time
+	lastResponseReceivedAt  atomic.Value // time.Time
+	firstRequestReceivedAt  atomic.Value // time.Time
+	lastRequestReceivedAt   atomic.Value // time.Time
 }
 
 func (p *CandidatePair) String() string {
@@ -140,7 +140,7 @@ func (p *CandidatePair) UpdateRoundTripTime(rtt time.Duration) {
 	atomic.AddUint64(&p.responsesReceived, 1)
 
 	now := time.Now()
-	p.firstReponseReceivedAt.CompareAndSwap(nil, now)
+	p.firstResponseReceivedAt.CompareAndSwap(nil, now)
 	p.lastResponseReceivedAt.Store(now)
 }
 
@@ -198,9 +198,15 @@ func (p *CandidatePair) LastRequestSentAt() time.Time {
 	return time.Time{}
 }
 
+// Deprecated: use FirstResponseReceivedAt
 // FirstReponseReceivedAt returns the timestamp of the first connectivity response received.
 func (p *CandidatePair) FirstReponseReceivedAt() time.Time {
-	if v, ok := p.firstReponseReceivedAt.Load().(time.Time); ok {
+	return p.FirstResponseReceivedAt()
+}
+
+// FirstResponseReceivedAt returns the timestamp of the first connectivity response received.
+func (p *CandidatePair) FirstResponseReceivedAt() time.Time {
+	if v, ok := p.firstResponseReceivedAt.Load().(time.Time); ok {
 		return v
 	}
 
