@@ -10,12 +10,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/assert"
@@ -157,4 +160,200 @@ func TestBindingRequestHandler(t *testing.T) {
 	require.True(t, fired)
 
 	closePipe(t, controllingConn, controlledConn)
+}
+
+// copied from pion/webrtc's peerconnection_go_test.go.
+type testICELogger struct {
+	lastErrorMessage string
+}
+
+func (t *testICELogger) Trace(string)          {}
+func (t *testICELogger) Tracef(string, ...any) {}
+func (t *testICELogger) Debug(string)          {}
+func (t *testICELogger) Debugf(string, ...any) {}
+func (t *testICELogger) Info(string)           {}
+func (t *testICELogger) Infof(string, ...any)  {}
+func (t *testICELogger) Warn(string)           {}
+func (t *testICELogger) Warnf(string, ...any)  {}
+func (t *testICELogger) Error(msg string)      { t.lastErrorMessage = msg }
+func (t *testICELogger) Errorf(format string, args ...any) {
+	t.lastErrorMessage = fmt.Sprintf(format, args...)
+}
+
+type testICELoggerFactory struct {
+	logger *testICELogger
+}
+
+func (t *testICELoggerFactory) NewLogger(string) logging.LeveledLogger {
+	return t.logger
+}
+
+func TestControllingSelector_IsNominatable_LogsInvalidType(t *testing.T) {
+	testLogger := &testICELogger{}
+	loggerFactory := &testICELoggerFactory{logger: testLogger}
+
+	sel := &controllingSelector{
+		agent: &Agent{},
+		log:   loggerFactory.NewLogger("test"),
+	}
+	sel.Start()
+
+	c := hostCandidate()
+	c.candidateBase.candidateType = CandidateTypeUnspecified
+
+	got := sel.isNominatable(c)
+
+	require.False(t, got)
+	require.Contains(t, testLogger.lastErrorMessage, "Invalid candidate type")
+	require.Contains(t, testLogger.lastErrorMessage, "Unknown candidate type") // from c.Type().String()
+}
+
+func TestControllingSelector_NominatePair_BuildError(t *testing.T) {
+	testLogger := &testICELogger{}
+	loggerFactory := &testICELoggerFactory{logger: testLogger}
+
+	// selector with an Agent with ufrags to make an oversized username
+	// (username = remoteUfrag + ":" + localUfrag) since oversized username causes
+	// stun.NewUsername(...) inside stun.Build to fail.
+	long := strings.Repeat("x", 300) // > 255 each side
+	sel := &controllingSelector{
+		agent: &Agent{
+			remoteUfrag: long,
+			localUfrag:  long,
+			remotePwd:   "pwd", // any non-empty value is fine
+			tieBreaker:  0,
+		},
+		log: loggerFactory.NewLogger("test"),
+	}
+	sel.Start()
+
+	p := newCandidatePair(hostCandidate(), hostCandidate(), true)
+
+	sel.nominatePair(p)
+
+	require.NotEmpty(t, testLogger.lastErrorMessage, "expected error log from nominatePair on Build failure")
+}
+
+type pingNoIOCand struct{ candidateBase }
+
+func newPingNoIOCand() *pingNoIOCand {
+	return &pingNoIOCand{
+		candidateBase: candidateBase{
+			candidateType: CandidateTypeHost,
+			component:     ComponentRTP,
+		},
+	}
+}
+func (d *pingNoIOCand) writeTo(b []byte, _ Candidate) (int, error) { return len(b), nil }
+
+func bareAgentForPing() *Agent {
+	return &Agent{
+		hostAcceptanceMinWait:  time.Hour,
+		srflxAcceptanceMinWait: time.Hour,
+		prflxAcceptanceMinWait: time.Hour,
+		relayAcceptanceMinWait: time.Hour,
+
+		checklist:         []*CandidatePair{},
+		keepaliveInterval: time.Second,
+		checkInterval:     time.Second,
+
+		connectionStateNotifier: &handlerNotifier{
+			done:                make(chan struct{}),
+			connectionStateFunc: func(ConnectionState) {}}, //nolint formatting
+
+		candidateNotifier: &handlerNotifier{
+			done:          make(chan struct{}),
+			candidateFunc: func(Candidate) {}}, //nolint formatting
+
+		selectedCandidatePairNotifier: &handlerNotifier{
+			done:              make(chan struct{}),
+			candidatePairFunc: func(*CandidatePair) {}}, //nolint formatting
+	}
+}
+
+func bigStr() string { return strings.Repeat("x", 40000) }
+
+func TestControllingSelector_PingCandidate_BuildError(t *testing.T) {
+	a := bareAgentForPing()
+	// make Username really big so stun.Build returns an error.
+	a.remoteUfrag = bigStr()
+	a.localUfrag = bigStr()
+	a.remotePwd = "pwd"
+	a.tieBreaker = 1
+
+	testLogger := &testICELogger{}
+	sel := &controllingSelector{agent: a, log: testLogger}
+	sel.Start()
+
+	local := newPingNoIOCand()
+	remote := newPingNoIOCand()
+
+	sel.PingCandidate(local, remote)
+
+	require.NotEmpty(t, testLogger.lastErrorMessage, "expected error to be logged from stun.Build")
+}
+
+func TestControlledSelector_PingCandidate_BuildError(t *testing.T) {
+	a := bareAgentForPing()
+	a.remoteUfrag = bigStr()
+	a.localUfrag = bigStr()
+	a.remotePwd = "pwd"
+	a.tieBreaker = 1
+
+	testLogger := &testICELogger{}
+	sel := &controlledSelector{agent: a, log: testLogger}
+	sel.Start()
+
+	local := newPingNoIOCand()
+	remote := newPingNoIOCand()
+
+	sel.PingCandidate(local, remote)
+
+	require.NotEmpty(t, testLogger.lastErrorMessage, "expected error to be logged from stun.Build")
+}
+
+type warnTestLogger struct {
+	warned bool
+}
+
+func (l *warnTestLogger) Trace(string)          {}
+func (l *warnTestLogger) Tracef(string, ...any) {}
+func (l *warnTestLogger) Debug(string)          {}
+func (l *warnTestLogger) Debugf(string, ...any) {}
+func (l *warnTestLogger) Info(string)           {}
+func (l *warnTestLogger) Infof(string, ...any)  {}
+func (l *warnTestLogger) Warn(string)           { l.warned = true }
+func (l *warnTestLogger) Warnf(string, ...any)  { l.warned = true }
+func (l *warnTestLogger) Error(string)          {}
+func (l *warnTestLogger) Errorf(string, ...any) {}
+
+type dummyNoIOCand struct{ candidateBase }
+
+func newDummyNoIOCand(t CandidateType) *dummyNoIOCand {
+	return &dummyNoIOCand{
+		candidateBase: candidateBase{
+			candidateType: t,
+			component:     ComponentRTP,
+		},
+	}
+}
+func (d *dummyNoIOCand) writeTo(p []byte, _ Candidate) (int, error) { return len(p), nil }
+
+func TestControlledSelector_HandleSuccessResponse_UnknownTxID(t *testing.T) {
+	logger := &warnTestLogger{}
+
+	ag := &Agent{log: logger}
+
+	sel := &controlledSelector{agent: ag, log: logger}
+	sel.Start()
+
+	local := newDummyNoIOCand(CandidateTypeHost)
+	remote := newDummyNoIOCand(CandidateTypeHost)
+
+	var m stun.Message
+	copy(m.TransactionID[:], []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
+
+	sel.HandleSuccessResponse(&m, local, remote, nil)
+
+	require.True(t, logger.warned, "expected Warnf to be called for unknown TransactionID (hitting !ok branch)")
 }

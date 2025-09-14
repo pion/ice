@@ -310,3 +310,49 @@ func TestConnStats(t *testing.T) {
 	require.Equal(t, uint64(10), ca.BytesSent())
 	require.Equal(t, uint64(10), cb.BytesReceived())
 }
+
+func TestAgent_connect_ErrEarly(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	cfg := &AgentConfig{
+		NetworkTypes: supportedNetworkTypes(),
+	}
+	a, err := NewAgent(cfg)
+	require.NoError(t, err)
+
+	require.NoError(t, a.Close())
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// isControlling = true
+	conn, cerr := a.connect(ctx, true, "ufragX", "pwdX")
+	require.Nil(t, conn)
+	require.Error(t, cerr, "expected error from a.loop.Err() short-circuit")
+}
+
+func TestConn_Write_RejectsSTUN(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	}
+	a, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		_ = a.Close()
+	}()
+
+	c := &Conn{agent: a}
+	require.Nil(t, c.agent.getSelectedPair(), "precondition: no selected pair")
+
+	msg := stun.New()
+	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
+	msg.Encode()
+
+	n, werr := c.Write(msg.Raw)
+	require.Zero(t, n)
+	require.ErrorIs(t, werr, errWriteSTUNMessageToIceConn)
+}

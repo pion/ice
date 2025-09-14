@@ -2012,3 +2012,28 @@ func TestRoleConflict(t *testing.T) {
 		runTest(t, false)
 	})
 }
+
+func TestAgentConfig_initWithDefaults_UsesProvidedValues(t *testing.T) {
+	valMaxBindingReq := uint16(0)
+	valSrflxWait := 111 * time.Millisecond
+	valPrflxWait := 222 * time.Millisecond
+	valRelayWait := 3 * time.Second
+	valStunTimeout := 4 * time.Second
+
+	cfg := &AgentConfig{
+		MaxBindingRequests:     &valMaxBindingReq,
+		SrflxAcceptanceMinWait: &valSrflxWait,
+		PrflxAcceptanceMinWait: &valPrflxWait,
+		RelayAcceptanceMinWait: &valRelayWait,
+		STUNGatherTimeout:      &valStunTimeout,
+	}
+
+	var a Agent
+	cfg.initWithDefaults(&a)
+
+	require.Equal(t, valMaxBindingReq, a.maxBindingRequests, "expected override for MaxBindingRequests")
+	require.Equal(t, valSrflxWait, a.srflxAcceptanceMinWait, "expected override for SrflxAcceptanceMinWait")
+	require.Equal(t, valPrflxWait, a.prflxAcceptanceMinWait, "expected override for PrflxAcceptanceMinWait")
+	require.Equal(t, valRelayWait, a.relayAcceptanceMinWait, "expected override for RelayAcceptanceMinWait")
+	require.Equal(t, valStunTimeout, a.stunGatherTimeout, "expected override for STUNGatherTimeout")
+}

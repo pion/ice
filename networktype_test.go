@@ -83,3 +83,53 @@ func TestNetworkTypeIsTCP(t *testing.T) {
 	require.False(t, NetworkTypeTCP4.IsUDP())
 	require.False(t, NetworkTypeTCP6.IsUDP())
 }
+
+func TestNetworkType_String_Default(t *testing.T) {
+	var invalid NetworkType // 0 triggers default branch
+	require.Equal(t, ErrUnknownType.Error(), invalid.String())
+
+	require.Equal(t, "udp4", NetworkTypeUDP4.String())
+	require.Equal(t, "udp6", NetworkTypeUDP6.String())
+	require.Equal(t, "tcp4", NetworkTypeTCP4.String())
+	require.Equal(t, "tcp6", NetworkTypeTCP6.String())
+}
+
+func TestNetworkType_NetworkShort_Default(t *testing.T) {
+	var invalid NetworkType
+	require.Equal(t, ErrUnknownType.Error(), invalid.NetworkShort())
+
+	require.Equal(t, udp, NetworkTypeUDP4.NetworkShort())
+	require.Equal(t, udp, NetworkTypeUDP6.NetworkShort())
+	require.Equal(t, tcp, NetworkTypeTCP4.NetworkShort())
+	require.Equal(t, tcp, NetworkTypeTCP6.NetworkShort())
+}
+
+func TestNetworkType_IPvFlags_Default(t *testing.T) {
+	var invalid NetworkType
+	require.False(t, invalid.IsIPv4())
+	require.False(t, invalid.IsIPv6())
+
+	require.True(t, NetworkTypeUDP4.IsIPv4())
+	require.True(t, NetworkTypeTCP4.IsIPv4())
+	require.False(t, NetworkTypeUDP6.IsIPv4())
+	require.False(t, NetworkTypeTCP6.IsIPv4())
+
+	require.True(t, NetworkTypeUDP6.IsIPv6())
+	require.True(t, NetworkTypeTCP6.IsIPv6())
+	require.False(t, NetworkTypeUDP4.IsIPv6())
+	require.False(t, NetworkTypeTCP4.IsIPv6())
+}
+
+func TestNetworkType_IsReliable(t *testing.T) {
+	// UDP is unreliable
+	require.False(t, NetworkTypeUDP4.IsReliable())
+	require.False(t, NetworkTypeUDP6.IsReliable())
+
+	// TCP is reliable
+	require.True(t, NetworkTypeTCP4.IsReliable())
+	require.True(t, NetworkTypeTCP6.IsReliable())
+
+	// default/unknown falls through to false
+	var invalid NetworkType
+	require.False(t, invalid.IsReliable())
+}

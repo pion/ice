@@ -11,12 +11,14 @@ import (
 )
 
 func TestUseCandidateAttr_AddTo(t *testing.T) {
-	m := new(stun.Message)
-	require.False(t, UseCandidate().IsSet(m))
-	require.NoError(t, m.Build(stun.BindingRequest, UseCandidate()))
+	msg := stun.New()
+	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
+	require.False(t, UseCandidate().IsSet(msg))
 
-	m1 := new(stun.Message)
-	_, err := m1.Write(m.Raw)
-	require.NoError(t, err)
-	require.True(t, UseCandidate().IsSet(m1))
+	require.NoError(t, UseCandidate().AddTo(msg))
+	msg.Encode()
+
+	msg2 := &stun.Message{Raw: append([]byte{}, msg.Raw...)}
+	require.NoError(t, msg2.Decode())
+	require.True(t, UseCandidate().IsSet(msg2))
 }
