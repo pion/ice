@@ -5,6 +5,7 @@ package ice
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/pion/stun/v3"
 )
@@ -148,6 +149,76 @@ func WithBindingRequestHandler(
 func WithEnableUseCandidateCheckPriority() AgentOption {
 	return func(a *Agent) error {
 		a.enableUseCandidateCheckPriority = true
+
+		return nil
+	}
+}
+
+// WithContinualGatheringPolicy sets the continual gathering policy for the agent.
+// When set to GatherContinually, the agent will continuously monitor network interfaces
+// and gather new candidates as they become available.
+// When set to GatherOnce (default), gathering completes after the initial phase.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithContinualGatheringPolicy(GatherContinually))
+func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
+	return func(a *Agent) error {
+		a.continualGatheringPolicy = policy
+
+		return nil
+	}
+}
+
+// WithNetworkMonitorInterval sets the interval at which the agent checks for network interface changes
+// when using GatherContinually policy. This option only has effect when used with
+// WithContinualGatheringPolicy(GatherContinually).
+// Default is 2 seconds if not specified.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(
+//		WithContinualGatheringPolicy(GatherContinually),
+//		WithNetworkMonitorInterval(5 * time.Second),
+//	)
+func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
+	return func(a *Agent) error {
+		if interval <= 0 {
+			return ErrInvalidNetworkMonitorInterval
+		}
+		a.networkMonitorInterval = interval
+
+		return nil
+	}
+}
+
+// WithNetworkTypes sets the enabled network types for candidate gathering.
+// By default, all network types are enabled.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(
+//		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
+//	)
+func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
+	return func(a *Agent) error {
+		a.networkTypes = networkTypes
+
+		return nil
+	}
+}
+
+// WithCandidateTypes sets the enabled candidate types for gathering.
+// By default, host, server reflexive, and relay candidates are enabled.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(
+//		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
+//	)
+func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
+	return func(a *Agent) error {
+		a.candidateTypes = candidateTypes
 
 		return nil
 	}
