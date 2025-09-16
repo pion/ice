@@ -34,6 +34,13 @@ type CandidatePair struct {
 	currentRoundTripTime int64 // in ns
 	totalRoundTripTime   int64 // in ns
 
+	packetsSent          uint32
+	packetsReceived      uint32
+	bytesSent            uint64
+	bytesReceived        uint64
+	lastPacketSentAt     atomic.Value // time.Time
+	lastPacketReceivedAt atomic.Value // time.Time
+
 	requestsReceived  uint64
 	requestsSent      uint64
 	responsesReceived uint64
@@ -178,6 +185,66 @@ func (p *CandidatePair) ResponsesReceived() uint64 {
 // https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-responsessent
 func (p *CandidatePair) ResponsesSent() uint64 {
 	return atomic.LoadUint64(&p.responsesSent)
+}
+
+// PacketsSent returns total application (non-STUN) packets sent on this pair.
+func (p *CandidatePair) PacketsSent() uint32 {
+	return atomic.LoadUint32(&p.packetsSent)
+}
+
+// PacketsReceived returns total application (non-STUN) packets received on this pair.
+func (p *CandidatePair) PacketsReceived() uint32 {
+	return atomic.LoadUint32(&p.packetsReceived)
+}
+
+// BytesSent returns total application bytes sent on this pair.
+func (p *CandidatePair) BytesSent() uint64 {
+	return atomic.LoadUint64(&p.bytesSent)
+}
+
+// BytesReceived returns total application bytes received on this pair.
+func (p *CandidatePair) BytesReceived() uint64 {
+	return atomic.LoadUint64(&p.bytesReceived)
+}
+
+// LastPacketSentAt returns the timestamp of the last application packet sent.
+func (p *CandidatePair) LastPacketSentAt() time.Time {
+	if v, ok := p.lastPacketSentAt.Load().(time.Time); ok {
+		return v
+	}
+
+	return time.Time{}
+}
+
+// LastPacketReceivedAt returns the timestamp of the last application packet received.
+func (p *CandidatePair) LastPacketReceivedAt() time.Time {
+	if v, ok := p.lastPacketReceivedAt.Load().(time.Time); ok {
+		return v
+	}
+
+	return time.Time{}
+}
+
+// UpdatePacketSent increments packet/byte counters and updates timestamp for a sent application packet.
+func (p *CandidatePair) UpdatePacketSent(n int) {
+	if n <= 0 {
+		return
+	}
+
+	atomic.AddUint32(&p.packetsSent, 1)
+	atomic.AddUint64(&p.bytesSent, uint64(n)) // #nosec G115 -- n > 0 validated above
+	p.lastPacketSentAt.Store(time.Now())
+}
+
+// UpdatePacketReceived increments packet/byte counters and updates timestamp for a received application packet.
+func (p *CandidatePair) UpdatePacketReceived(n int) {
+	if n <= 0 {
+		return
+	}
+
+	atomic.AddUint32(&p.packetsReceived, 1)
+	atomic.AddUint64(&p.bytesReceived, uint64(n)) // #nosec G115 -- n > 0 validated above
+	p.lastPacketReceivedAt.Store(time.Now())
 }
 
 // FirstRequestSentAt returns the timestamp of the first connectivity check sent.

@@ -649,6 +649,9 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 		p.UpdateRequestSent()
 		p.UpdateResponseSent()
 		p.UpdateRoundTripTime(time.Second)
+
+		p.UpdatePacketSent(100)
+		p.UpdatePacketReceived(200)
 	}
 
 	p := agent.findPair(hostLocal, prflxRemote)
@@ -684,10 +687,13 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 		require.False(t, cps.LastResponseTimestamp.IsZero())
 		require.False(t, cps.FirstRequestReceivedTimestamp.IsZero())
 		require.False(t, cps.LastRequestReceivedTimestamp.IsZero())
-		require.NotZero(t, cps.RequestsReceived)
-		require.NotZero(t, cps.RequestsSent)
-		require.NotZero(t, cps.ResponsesSent)
-		require.NotZero(t, cps.ResponsesReceived)
+
+		require.Equal(t, uint32(1), cps.PacketsSent)
+		require.Equal(t, uint32(1), cps.PacketsReceived)
+		require.Equal(t, uint64(100), cps.BytesSent)
+		require.Equal(t, uint64(200), cps.BytesReceived)
+		require.False(t, cps.LastPacketSentTimestamp.IsZero())
+		require.False(t, cps.LastPacketReceivedTimestamp.IsZero())
 	}
 
 	require.Equal(t, relayPairStat.RemoteCandidateID, relayRemote.ID())
@@ -738,17 +744,20 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 	require.False(t, ok)
 
 	// add pair and populate some RTT stats
-	p := agent.findPair(hostLocal, srflxRemote)
-	if p == nil {
+	candidatePair := agent.findPair(hostLocal, srflxRemote)
+	if candidatePair == nil {
 		agent.addPair(hostLocal, srflxRemote)
-		p = agent.findPair(hostLocal, srflxRemote)
+		candidatePair = agent.findPair(hostLocal, srflxRemote)
 	}
 	for i := 0; i < 10; i++ {
-		p.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
+		candidatePair.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
 	}
 
+	candidatePair.UpdatePacketSent(150)
+	candidatePair.UpdatePacketReceived(250)
+
 	// set the pair as selected
-	agent.setSelectedPair(p)
+	agent.setSelectedPair(candidatePair)
 
 	stats, ok := agent.GetSelectedCandidatePairStats()
 	require.True(t, ok)
@@ -758,6 +767,13 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 	require.Equal(t, float64(10), stats.CurrentRoundTripTime)
 	require.Equal(t, float64(55), stats.TotalRoundTripTime)
 	require.Equal(t, uint64(10), stats.ResponsesReceived)
+
+	require.Equal(t, uint32(1), stats.PacketsSent)
+	require.Equal(t, uint32(1), stats.PacketsReceived)
+	require.Equal(t, uint64(150), stats.BytesSent)
+	require.Equal(t, uint64(250), stats.BytesReceived)
+	require.False(t, stats.LastPacketSentTimestamp.IsZero())
+	require.False(t, stats.LastPacketReceivedTimestamp.IsZero())
 }
 
 func TestLocalCandidateStats(t *testing.T) { //nolint:cyclop
