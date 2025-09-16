@@ -25,6 +25,7 @@ import (
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v3/test"
 	"github.com/pion/turn/v4"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
 )
@@ -912,4 +913,214 @@ func (m *universalUDPMuxMock) RemoveConnByUfrag(string) {
 
 func (m *universalUDPMuxMock) GetListenAddresses() []net.Addr {
 	return []net.Addr{m.conn.LocalAddr()}
+}
+
+func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
+	// Limit runtime in case of deadlocks
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
+
+	t.Run("GatherOnce completes gathering", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{ //nolint:contextcheck
+			NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+			CandidateTypes: []CandidateType{CandidateTypeHost},
+			LoggerFactory:  loggerFactory,
+		})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// Set handler to collect candidates
+		candidateCh := make(chan Candidate, 10)
+		err = agent.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateCh <- c
+			}
+		})
+		require.NoError(t, err)
+
+		// Start gathering
+		err = agent.GatherCandidates() //nolint:contextcheck
+		require.NoError(t, err)
+
+		// Wait for gathering to complete
+		gatheringComplete := false
+		timeout := time.After(5 * time.Second)
+		for !gatheringComplete {
+			select {
+			case <-candidateCh:
+				// Got a candidate, continue
+			case <-timeout:
+				assert.Fail(t, "Timeout waiting for gathering to complete")
+			case <-time.After(100 * time.Millisecond):
+				// Check if gathering is complete
+				state, gatherErr := agent.GetGatheringState() //nolint:contextcheck
+				require.NoError(t, gatherErr)
+				if state == GatheringStateComplete {
+					gatheringComplete = true
+				}
+			case <-ctx.Done():
+				assert.Fail(t, "Context timeout")
+			}
+		}
+
+		// Verify gathering state is complete
+		state, err := agent.GetGatheringState() //nolint:contextcheck
+		require.NoError(t, err)
+		assert.Equal(t, GatheringStateComplete, state, "GatherOnce should set state to Complete")
+	})
+
+	t.Run("GatherContinually never completes", func(t *testing.T) {
+		monitorInterval := 500 * time.Millisecond
+		agent, err := NewAgentWithOptions( //nolint:contextcheck
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithContinualGatheringPolicy(GatherContinually),
+			WithNetworkMonitorInterval(monitorInterval),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// Set handler to collect candidates
+		candidateCh := make(chan Candidate, 10)
+		err = agent.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateCh <- c
+			}
+		})
+		require.NoError(t, err)
+
+		// Start gathering
+		err = agent.GatherCandidates() //nolint:contextcheck
+		require.NoError(t, err)
+
+		// Wait for initial candidates
+		select {
+		case <-candidateCh:
+			// Got at least one candidate
+		case <-time.After(5 * time.Second):
+			assert.Fail(t, "Timeout waiting for initial candidates")
+		case <-ctx.Done():
+			assert.Fail(t, "Context timeout")
+		}
+
+		// Wait to ensure gathering doesn't complete
+		time.Sleep(1 * time.Second)
+
+		// Verify gathering state is still gathering
+		state, err := agent.GetGatheringState() //nolint:contextcheck
+		require.NoError(t, err)
+		assert.Equal(t, GatheringStateGathering, state, "GatherContinually should keep state as Gathering")
+	})
+
+	t.Run("Network monitoring interval is configurable", func(t *testing.T) {
+		customInterval := 100 * time.Millisecond
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithContinualGatheringPolicy(GatherContinually),
+			WithNetworkMonitorInterval(customInterval),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// Verify the interval was set
+		assert.Equal(t, customInterval, agent.networkMonitorInterval)
+	})
+
+	t.Run("Default network monitoring interval", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithContinualGatheringPolicy(GatherContinually),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// Verify default interval is 2 seconds
+		assert.Equal(t, 2*time.Second, agent.networkMonitorInterval)
+	})
+}
+
+func TestNetworkChangeDetection(t *testing.T) {
+	// Limit runtime in case of deadlocks
+	report := test.CheckRoutines(t)
+	defer report()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
+
+	t.Run("detectNetworkChanges identifies new interfaces", func(t *testing.T) {
+		customInterval := 100 * time.Millisecond
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithContinualGatheringPolicy(GatherContinually),
+			WithNetworkMonitorInterval(customInterval),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// Initialize the last known interfaces
+		_, addrs, err := localInterfaces(
+			agent.net,
+			agent.interfaceFilter,
+			agent.ipFilter,
+			agent.networkTypes,
+			agent.includeLoopback,
+		)
+		require.NoError(t, err)
+
+		for _, addr := range addrs {
+			agent.lastKnownInterfaces[addr.String()] = addr
+		}
+
+		// First check should return false (no changes)
+		hasChanges := agent.detectNetworkChanges()
+		assert.False(t, hasChanges, "Should not detect changes when interfaces haven't changed")
+
+		// Simulate a removed interface by clearing the last known interfaces
+		// and then checking again
+		if len(agent.lastKnownInterfaces) > 0 {
+			// Remove one interface from the map to simulate change
+			for key := range agent.lastKnownInterfaces {
+				delete(agent.lastKnownInterfaces, key)
+
+				break
+			}
+
+			// This should detect a change
+			hasChanges = agent.detectNetworkChanges()
+			assert.True(t, hasChanges, "Should detect changes when interfaces are different")
+		}
+	})
+}
+
+func TestContinualGatheringPolicyString(t *testing.T) {
+	tests := []struct {
+		policy   ContinualGatheringPolicy
+		expected string
+	}{
+		{GatherOnce, "gather_once"},
+		{GatherContinually, "gather_continually"},
+		{ContinualGatheringPolicy(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.policy.String())
+		})
+	}
 }

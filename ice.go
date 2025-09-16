@@ -84,7 +84,27 @@ func (t GatheringState) String() string {
 	}
 }
 
+// ContinualGatheringPolicy defines the behavior for gathering ICE candidates.
+type ContinualGatheringPolicy int
+
 const (
+	GatherOnce ContinualGatheringPolicy = iota
+	GatherContinually
+)
+
+func (c ContinualGatheringPolicy) String() string {
+	switch c {
+	case GatherOnce:
+		return "gather_once"
+	case GatherContinually:
+		return "gather_continually"
+	default:
+		return unknownStr
+	}
+}
+
+const (
+	unknownStr        = "unknown"
 	relayProtocolDTLS = "dtls"
 	relayProtocolTLS  = "tls"
 )

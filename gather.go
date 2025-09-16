@@ -12,12 +12,14 @@ import (
 	"net/netip"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pion/dtls/v3"
 	"github.com/pion/ice/v4/internal/fakenet"
 	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v3/stdnet"
 	"github.com/pion/turn/v4"
 )
 
@@ -72,6 +74,36 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //no
 		return
 	}
 
+	a.gatherCandidatesInternal(ctx)
+
+	switch a.continualGatheringPolicy {
+	case GatherOnce:
+		if err := a.setGatheringState(GatheringStateComplete); err != nil { //nolint:contextcheck
+			a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
+		}
+	case GatherContinually:
+		// Initialize known interfaces before starting monitoring
+		_, addrs, err := localInterfaces(
+			a.net,
+			a.interfaceFilter,
+			a.ipFilter,
+			a.networkTypes,
+			a.includeLoopback,
+		)
+		if err != nil {
+			a.log.Warnf("Failed to get initial interfaces for monitoring: %v", err)
+		} else {
+			for _, addr := range addrs {
+				a.lastKnownInterfaces[addr.String()] = addr
+			}
+			a.log.Infof("Initialized network monitoring with %d IP addresses", len(addrs))
+		}
+		go a.startNetworkMonitoring(ctx)
+	}
+}
+
+// gatherCandidatesInternal performs the actual candidate gathering for all configured types.
+func (a *Agent) gatherCandidatesInternal(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, t := range a.candidateTypes {
 		switch t {
@@ -110,10 +142,6 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //no
 
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
 	wg.Wait()
-
-	if err := a.setGatheringState(GatheringStateComplete); err != nil { //nolint:contextcheck
-		a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
-	}
 }
 
 //nolint:gocognit,gocyclo,cyclop
@@ -891,4 +919,64 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 			}
 		}(*urls[i])
 	}
+}
+
+// startNetworkMonitoring starts a goroutine that periodically checks for network changes
+// and re-gathers candidates when changes are detected. This is only used with GatherContinually policy.
+func (a *Agent) startNetworkMonitoring(ctx context.Context) {
+	ticker := time.NewTicker(a.networkMonitorInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if a.detectNetworkChanges() {
+				a.gatherCandidatesInternal(ctx)
+			}
+		}
+	}
+}
+
+// detectNetworkChanges checks if the network interfaces have changed since the last check.
+func (a *Agent) detectNetworkChanges() bool {
+	// Try to refresh interfaces if using stdnet
+	if stdNet, ok := a.net.(*stdnet.Net); ok {
+		if err := stdNet.UpdateInterfaces(); err != nil {
+			a.log.Warnf("Failed to update interfaces: %v", err)
+		}
+	}
+
+	_, currentAddrs, err := localInterfaces(
+		a.net,
+		a.interfaceFilter,
+		a.ipFilter,
+		a.networkTypes,
+		a.includeLoopback,
+	)
+	if err != nil {
+		a.log.Warnf("Failed to get local interfaces during network monitoring: %v", err)
+
+		return false
+	}
+
+	currentInterfaces := make(map[string]netip.Addr)
+	for _, addr := range currentAddrs {
+		key := addr.String()
+		currentInterfaces[key] = addr
+	}
+
+	hasAdditions := false
+
+	for key, addr := range currentInterfaces {
+		if _, exists := a.lastKnownInterfaces[key]; !exists {
+			a.log.Infof("New IP address detected: %s", addr)
+			hasAdditions = true
+		}
+	}
+
+	a.lastKnownInterfaces = currentInterfaces
+
+	return hasAdditions
 }

@@ -154,6 +154,11 @@ type Agent struct {
 	enableRenomination       bool
 	nominationValueGenerator func() uint32
 	nominationAttribute      stun.AttrType
+
+	// Continual gathering support
+	continualGatheringPolicy ContinualGatheringPolicy
+	networkMonitorInterval   time.Duration
+	lastKnownInterfaces      map[string]netip.Addr // map[iface+ip] for deduplication
 }
 
 // NewAgent creates a new Agent.
@@ -244,6 +249,10 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		enableRenomination:       false,
 		nominationValueGenerator: nil,
 		nominationAttribute:      stun.AttrType(0x0030), // Default value
+
+		continualGatheringPolicy: GatherOnce, // Default to GatherOnce
+		networkMonitorInterval:   2 * time.Second,
+		lastKnownInterfaces:      make(map[string]netip.Addr),
 	}
 
 	agent.connectionStateNotifier = &handlerNotifier{
@@ -888,6 +897,19 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 	}
 
 	return res, nil
+}
+
+// GetGatheringState returns the current gathering state of the Agent.
+func (a *Agent) GetGatheringState() (GatheringState, error) {
+	var state GatheringState
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		state = a.gatheringState
+	})
+	if err != nil {
+		return GatheringStateUnknown, err
+	}
+
+	return state, nil
 }
 
 // GetLocalUserCredentials returns the local user credentials.
