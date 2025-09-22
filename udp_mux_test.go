@@ -402,6 +402,20 @@ func TestUDPMuxedConn_WriteTo_newIPPortError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestUDPMuxedConn_WriteTo_InvalidPort(t *testing.T) {
+	conn := secondTestMuxedConn(t, 64)
+
+	raddr := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: -1}
+	n, err := conn.WriteTo([]byte("x"), raddr)
+	require.Equal(t, 0, n)
+	require.ErrorIs(t, err, ErrPort)
+
+	raddr = &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 0x10000}
+	n, err = conn.WriteTo([]byte("x"), raddr)
+	require.Equal(t, 0, n)
+	require.ErrorIs(t, err, ErrPort)
+}
+
 func TestUDPMuxedConn_SetDeadlines(t *testing.T) {
 	conn := secondTestMuxedConn(t, 64)
 

@@ -103,8 +103,11 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, errFailedToCastUDPAddr
 	}
 
-	//nolint:gosec // TODO add port validation G115
-	ipAndPort, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port))
+	port := netUDPAddr.Port
+	if port < 0 || port > 0xFFFF {
+		return 0, ErrPort
+	}
+	ipAndPort, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(port))
 	if err != nil {
 		return 0, err
 	}
