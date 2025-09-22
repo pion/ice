@@ -131,6 +131,7 @@ func TestActiveTCP(t *testing.T) {
 				LoggerFactory:         loggerFactory,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
 				InterfaceFilter:       problematicNetworkInterfaces,
+				IncludeLoopback:       true,
 			}
 			if testCase.useMDNS {
 				cfg.MulticastDNSMode = MulticastDNSModeQueryAndGather
@@ -145,7 +146,9 @@ func TestActiveTCP(t *testing.T) {
 				LoggerFactory:         loggerFactory,
 				HostAcceptanceMinWait: &hostAcceptanceMinWait,
 				InterfaceFilter:       problematicNetworkInterfaces,
+				IncludeLoopback:       true,
 			})
+
 			req.NoError(err)
 			req.NotNil(activeAgent)
 

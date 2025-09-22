@@ -16,6 +16,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newMuxForAddr creates a UDPMuxDefault with the correct socket family for the given address.
+// This fixes Windows dual-stack issues where IPv6 sockets don't receive IPv4 traffic by default.
+func newMuxForAddr(t *testing.T, addr *net.UDPAddr, loggerFactory logging.LoggerFactory) *UDPMuxDefault {
+	t.Helper()
+	var (
+		network string
+		laddr   *net.UDPAddr
+	)
+
+	switch {
+	case addr.IP == nil || addr.IP.IsUnspecified():
+		network = "udp4"
+		laddr = &net.UDPAddr{IP: net.IPv4zero, Port: addr.Port}
+	case addr.IP.To4() != nil:
+		network = "udp4"
+		laddr = &net.UDPAddr{IP: net.IPv4zero, Port: addr.Port}
+	default:
+		network = "udp6"
+		laddr = &net.UDPAddr{IP: net.IPv6unspecified, Port: addr.Port}
+	}
+
+	pc, err := net.ListenUDP(network, laddr)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pc.Close() })
+
+	return NewUDPMuxDefault(UDPMuxParams{
+		Logger:  loggerFactory.NewLogger("ice"),
+		UDPConn: pc,
+	})
+}
+
 // TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux.
 func TestMuxAgent(t *testing.T) {
 	defer test.CheckRoutines(t)()
@@ -32,14 +63,8 @@ func TestMuxAgent(t *testing.T) {
 	for subTest, addr := range caseAddrs {
 		muxAddr := addr
 		t.Run(subTest, func(t *testing.T) {
-			c, err := net.ListenUDP("udp", muxAddr)
-			require.NoError(t, err)
-
 			loggerFactory := logging.NewDefaultLoggerFactory()
-			udpMux := NewUDPMuxDefault(UDPMuxParams{
-				Logger:  loggerFactory.NewLogger("ice"),
-				UDPConn: c,
-			})
+			udpMux := newMuxForAddr(t, muxAddr, loggerFactory)
 
 			muxedA, err := NewAgent(&AgentConfig{
 				UDPMux:         udpMux,

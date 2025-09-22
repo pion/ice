@@ -162,15 +162,30 @@ func TestMultiUDPMux_GetConn_NoUDPMuxAvailable(t *testing.T) {
 		_ = multi.Close()
 	}()
 
-	// tweak the port so it doesn't match.
+	// Pick a port that is guaranteed not to match any listening address
 	addrs := multi.GetListenAddresses()
 	require.NotEmpty(t, addrs)
 
 	udpAddr, ok := addrs[0].(*net.UDPAddr)
 	require.True(t, ok, "expected *net.UDPAddr")
 
-	// change the port to something different so addr.String() is not in localAddrToMux.
-	missing := &net.UDPAddr{IP: udpAddr.IP, Port: udpAddr.Port + 1, Zone: udpAddr.Zone}
+	// Build a set of in-use ports
+	inUse := make(map[int]struct{}, len(addrs))
+	for _, a := range addrs {
+		if ua, ok := a.(*net.UDPAddr); ok {
+			inUse[ua.Port] = struct{}{}
+		}
+	}
+
+	// Find a nearby port not in use
+	newPort := udpAddr.Port + 1
+	for i := 0; i < 100; i++ {
+		if _, exists := inUse[newPort]; !exists {
+			break
+		}
+		newPort++
+	}
+	missing := &net.UDPAddr{IP: udpAddr.IP, Port: newPort, Zone: udpAddr.Zone}
 
 	pc, getErr := multi.GetConn("missing-ufrag", missing)
 	require.Nil(t, pc)
