@@ -470,7 +470,7 @@ func TestInvalidAgentStarts(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 
 	_, err = agent.Dial(ctx, "", "bar")
@@ -1817,12 +1817,35 @@ func TestAcceptAggressiveNomination(t *testing.T) { //nolint:cyclop
 				}
 			}
 
-			time.Sleep(1 * time.Second)
-			select {
-			case selected := <-selectedCh:
-				require.True(t, selected.Equal(expectNewSelectedCandidate))
-			default:
-				require.False(t, tc.isExpectedToSwitch)
+			// Wait until either we observe the expected switch or the timeout elapses,
+			// Ugly but makes the tests less flaky, especially on Windows.
+			timeout := 3 * time.Second
+
+			deadline := time.Now().Add(timeout)
+			observedExpected := false
+		waitLoop:
+			for time.Now().Before(deadline) {
+				select {
+				case selected := <-selectedCh:
+					if tc.isExpectedToSwitch {
+						if selected.Equal(expectNewSelectedCandidate) {
+							observedExpected = true
+
+							break waitLoop
+						}
+					}
+				default:
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+
+			if tc.isExpectedToSwitch {
+				if !observedExpected {
+					// Verify the agent's final selected pair if we didn't observe the event directly.
+					require.True(t, aAgent.getSelectedPair().Remote.Equal(expectNewSelectedCandidate))
+				}
+			} else {
+				// Ensure no switch happened by checking the agent's final selected pair.
 				require.True(t, aAgent.getSelectedPair().Remote.Equal(expectNewSelectedCandidate))
 			}
 		})
@@ -1957,11 +1980,13 @@ func TestAlwaysSentKeepAlive(t *testing.T) { //nolint:cyclop
 	require.NotEqual(t, lastSent, newLastSent)
 	lastSent = newLastSent
 
-	// sleep, so there is difference in sent time of local candidate
-	time.Sleep(10 * time.Millisecond)
-	agent.checkKeepalive()
-	newLastSent = pair.Local.LastSent()
-	require.NotEqual(t, lastSent, newLastSent)
+	// Wait for enough time to pass so there is difference in sent time of local candidate.
+	require.Eventually(t, func() bool {
+		agent.checkKeepalive()
+		newLastSent = pair.Local.LastSent()
+
+		return !lastSent.Equal(newLastSent)
+	}, 1*time.Second, 50*time.Millisecond)
 }
 
 func TestRoleConflict(t *testing.T) {

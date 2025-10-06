@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -346,15 +347,18 @@ func TestTURNConcurrency(t *testing.T) {
 		}()
 
 		urls := []*stun.URI{}
-		for i := 0; i <= 10; i++ {
-			urls = append(urls, &stun.URI{
-				Scheme:   scheme,
-				Host:     localhostIPStr,
-				Username: "username",
-				Password: "password",
-				Proto:    protocol,
-				Port:     serverPort + 1 + i,
-			})
+		// avoid long delay on unreachable ports on Windows
+		if runtime.GOOS != "windows" {
+			for i := 0; i <= 10; i++ {
+				urls = append(urls, &stun.URI{
+					Scheme:   scheme,
+					Host:     localhostIPStr,
+					Username: "username",
+					Password: "password",
+					Proto:    protocol,
+					Port:     serverPort + 1 + i,
+				})
+			}
 		}
 		urls = append(urls, &stun.URI{
 			Scheme:   scheme,

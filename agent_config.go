@@ -39,6 +39,9 @@ const (
 	// defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate.
 	defaultRelayAcceptanceMinWait = 2000 * time.Millisecond
 
+	// defaultRelayOnlyAcceptanceMinWait is the wait time before nominating with a relay only candidate.
+	defaultRelayOnlyAcceptanceMinWait = time.Duration(0)
+
 	// defaultSTUNGatherTimeout is the wait time for STUN responses.
 	defaultSTUNGatherTimeout = 5 * time.Second
 
@@ -237,7 +240,11 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	}
 
 	if config.RelayAcceptanceMinWait == nil {
-		agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
+		if len(config.CandidateTypes) == 1 && config.CandidateTypes[0] == CandidateTypeRelay {
+			agent.relayAcceptanceMinWait = defaultRelayOnlyAcceptanceMinWait
+		} else {
+			agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
+		}
 	} else {
 		agent.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
@@ -294,7 +301,8 @@ func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclo
 	if agent.extIPMapper == nil {
 		return nil // This may happen when config.NAT1To1IPs is an empty array
 	}
-	if agent.extIPMapper.candidateType == CandidateTypeHost { //nolint:nestif
+	switch agent.extIPMapper.candidateType {
+	case CandidateTypeHost:
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
@@ -302,11 +310,13 @@ func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclo
 		if !candiHostEnabled {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-	} else if agent.extIPMapper.candidateType == CandidateTypeServerReflexive {
+	case CandidateTypeServerReflexive:
 		candiSrflxEnabled := slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive)
 		if !candiSrflxEnabled {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
+	default:
+		return nil
 	}
 
 	return nil
