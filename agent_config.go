@@ -211,6 +211,18 @@ type AgentConfig struct {
 	// switched to that irrespective of relative priority between current selected pair
 	// and priority of the pair being switched to.
 	EnableUseCandidateCheckPriority bool
+
+	// AutomaticRenomination enables automatic renomination of candidate pairs when better pairs
+	// become available after the initial connection. This feature requires both agents to support
+	// renomination (draft-thatcher-ice-renomination-01).
+	// When enabled, the controlling agent will periodically evaluate candidate pairs and renominate
+	// if a significantly better pair is found (e.g., relay -> direct connection).
+	AutomaticRenomination bool
+
+	// RenominationInterval is the minimum time to wait after connection before considering
+	// automatic renomination. This prevents excessive renominations during initial connection setup.
+	// If nil, defaults to 3 seconds (matching libwebrtc behavior).
+	RenominationInterval *time.Duration
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset.
@@ -289,6 +301,10 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 		agent.candidateTypes = defaultCandidateTypes()
 	} else {
 		agent.candidateTypes = config.CandidateTypes
+	}
+
+	if config.RenominationInterval != nil {
+		agent.renominationInterval = *config.RenominationInterval
 	}
 }
 
