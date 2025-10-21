@@ -6,6 +6,7 @@ package ice
 import (
 	"testing"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 	"github.com/stretchr/testify/assert"
 )
@@ -294,5 +295,83 @@ func TestMultipleConfigOptions(t *testing.T) {
 			agent.userBindingRequestHandler(nil, nil, nil, nil)
 			assert.True(t, handlerCalled)
 		}
+	})
+}
+
+func TestWithInterfaceFilter(t *testing.T) {
+	t.Run("sets interface filter", func(t *testing.T) {
+		filter := func(interfaceName string) bool {
+			return interfaceName == "eth0"
+		}
+
+		agent, err := NewAgentWithOptions(WithInterfaceFilter(filter))
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.interfaceFilter)
+		assert.True(t, agent.interfaceFilter("eth0"))
+		assert.False(t, agent.interfaceFilter("wlan0"))
+	})
+
+	t.Run("default is nil", func(t *testing.T) {
+		agent, err := NewAgentWithOptions()
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.Nil(t, agent.interfaceFilter)
+	})
+
+	t.Run("works with config", func(t *testing.T) {
+		filter := func(interfaceName string) bool {
+			return interfaceName == "lo"
+		}
+
+		config := &AgentConfig{
+			NetworkTypes:    []NetworkType{NetworkTypeUDP4},
+			InterfaceFilter: filter,
+		}
+
+		agent, err := NewAgent(config)
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.interfaceFilter)
+		assert.True(t, agent.interfaceFilter("lo"))
+		assert.False(t, agent.interfaceFilter("eth0"))
+	})
+}
+
+func TestWithLoggerFactory(t *testing.T) {
+	t.Run("sets logger factory", func(t *testing.T) {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		loggerFactory.DefaultLogLevel = logging.LogLevelDebug
+
+		agent, err := NewAgentWithOptions(WithLoggerFactory(loggerFactory))
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.log)
+	})
+
+	t.Run("default uses default logger", func(t *testing.T) {
+		agent, err := NewAgentWithOptions()
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.log)
+	})
+
+	t.Run("works with config", func(t *testing.T) {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		config := &AgentConfig{
+			NetworkTypes:  []NetworkType{NetworkTypeUDP4},
+			LoggerFactory: loggerFactory,
+		}
+
+		agent, err := NewAgent(config)
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.log)
 	})
 }
