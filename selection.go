@@ -54,6 +54,14 @@ func (s *controllingSelector) ContactCandidates() {
 		if s.agent.validateSelectedPair() {
 			s.log.Trace("Checking keepalive")
 			s.agent.checkKeepalive()
+
+			// If automatic renomination is enabled, continuously ping all candidate pairs
+			// to keep them tested with fresh RTT measurements for switching decisions
+			if s.agent.automaticRenomination && s.agent.enableRenomination {
+				s.agent.keepAliveCandidatesForRenomination()
+			}
+
+			s.checkForAutomaticRenomination()
 		}
 	case s.nominatedPair != nil:
 		s.nominatePair(s.nominatedPair)
@@ -163,8 +171,20 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 
 	pair.state = CandidatePairStateSucceeded
 	s.log.Tracef("Found valid candidate pair: %s", pair)
-	if pendingRequest.isUseCandidate && s.agent.getSelectedPair() == nil {
-		s.agent.setSelectedPair(pair)
+
+	// Handle nomination/renomination
+	if pendingRequest.isUseCandidate {
+		selectedPair := s.agent.getSelectedPair()
+
+		// If this is a renomination request (has nomination value), always update the selected pair
+		// If it's a standard nomination (no value), only set if no pair is selected yet
+		if pendingRequest.nominationValue != nil {
+			s.log.Infof("Renomination success response received for pair %s (nomination value: %d), switching to this pair",
+				pair, *pendingRequest.nominationValue)
+			s.agent.setSelectedPair(pair)
+		} else if selectedPair == nil {
+			s.agent.setSelectedPair(pair)
+		}
 	}
 
 	pair.UpdateRoundTripTime(rtt)
@@ -185,6 +205,68 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 	}
 
 	s.agent.sendBindingRequest(msg, local, remote)
+}
+
+// checkForAutomaticRenomination evaluates if automatic renomination should occur.
+// This is called periodically when the agent is in connected state and automatic
+// renomination is enabled.
+func (s *controllingSelector) checkForAutomaticRenomination() {
+	if !s.agent.automaticRenomination || !s.agent.enableRenomination {
+		s.log.Tracef("Automatic renomination check skipped: automaticRenomination=%v, enableRenomination=%v",
+			s.agent.automaticRenomination, s.agent.enableRenomination)
+
+		return
+	}
+
+	timeSinceStart := time.Since(s.startTime)
+	if timeSinceStart < s.agent.renominationInterval {
+		s.log.Tracef("Automatic renomination check skipped: not enough time since start (%v < %v)",
+			timeSinceStart, s.agent.renominationInterval)
+
+		return
+	}
+
+	if !s.agent.lastRenominationTime.IsZero() {
+		timeSinceLastRenomination := time.Since(s.agent.lastRenominationTime)
+		if timeSinceLastRenomination < s.agent.renominationInterval {
+			s.log.Tracef("Automatic renomination check skipped: too soon since last renomination (%v < %v)",
+				timeSinceLastRenomination, s.agent.renominationInterval)
+
+			return
+		}
+	}
+
+	currentPair := s.agent.getSelectedPair()
+	if currentPair == nil {
+		s.log.Tracef("Automatic renomination check skipped: no current selected pair")
+
+		return
+	}
+
+	bestPair := s.agent.findBestCandidatePair()
+	if bestPair == nil {
+		s.log.Tracef("Automatic renomination check skipped: no best pair found")
+
+		return
+	}
+
+	s.log.Debugf("Evaluating automatic renomination: current=%s (RTT=%.2fms), best=%s (RTT=%.2fms)",
+		currentPair, currentPair.CurrentRoundTripTime()*1000,
+		bestPair, bestPair.CurrentRoundTripTime()*1000)
+
+	if s.agent.shouldRenominate(currentPair, bestPair) {
+		s.log.Infof("Automatic renomination triggered: switching from %s to %s",
+			currentPair, bestPair)
+
+		// Update last renomination time to prevent rapid renominations
+		s.agent.lastRenominationTime = time.Now()
+
+		if err := s.agent.RenominateCandidate(bestPair.Local, bestPair.Remote); err != nil {
+			s.log.Errorf("Failed to trigger automatic renomination: %v", err)
+		}
+	} else {
+		s.log.Debugf("Automatic renomination not warranted")
+	}
 }
 
 type controlledSelector struct {
@@ -217,6 +299,31 @@ func (s *controlledSelector) shouldAcceptNomination(nominationValue *uint32) boo
 	s.log.Tracef("Rejecting nomination value %d (current is %d)", *nominationValue, *s.lastNomination)
 
 	return false
+}
+
+// shouldSwitchSelectedPair determines if we should switch to a new nominated pair.
+// Returns true if the switch should occur, false otherwise.
+func (s *controlledSelector) shouldSwitchSelectedPair(pair, selectedPair *CandidatePair, nominationValue *uint32) bool {
+	switch {
+	case selectedPair == nil:
+		// No current selection, accept the nomination
+		return true
+	case selectedPair == pair:
+		// Same pair, no change needed
+		return false
+	case nominationValue != nil:
+		// Renomination is in use (nomination value present)
+		// Accept the switch based on nomination value alone, not priority
+		// The shouldAcceptNomination check already validated this is a valid renomination
+		s.log.Debugf("Accepting renomination to pair %s (nomination value: %d)", pair, *nominationValue)
+
+		return true
+	}
+
+	// Standard ICE nomination without renomination - apply priority rules
+	// Only switch if we don't check priority, OR new pair has strictly higher priority
+	return !s.agent.needsToCheckPriorityOnNominated() ||
+		selectedPair.priority() < pair.priority()
 }
 
 func (s *controlledSelector) ContactCandidates() {
@@ -334,13 +441,10 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 			// generated a valid pair (Section 7.2.5.3.2).  The agent sets the
 			// nominated flag value of the valid pair to true.
 			selectedPair := s.agent.getSelectedPair()
-			if selectedPair == nil ||
-				(selectedPair != pair &&
-					(!s.agent.needsToCheckPriorityOnNominated() ||
-						selectedPair.priority() <= pair.priority())) {
+			if s.shouldSwitchSelectedPair(pair, selectedPair, nominationValue) {
 				s.log.Tracef("Accepting nomination for pair %s", pair)
 				s.agent.setSelectedPair(pair)
-			} else if selectedPair != pair {
+			} else {
 				s.log.Tracef("Ignore nominate new pair %s, already nominated pair %s", pair, selectedPair)
 			}
 		} else {
