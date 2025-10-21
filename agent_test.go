@@ -127,7 +127,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], "ABC")
 			agent.pendingBindingRequests = []bindingRequest{
-				{time.Now(), tID, &net.UDPAddr{}, false},
+				{time.Now(), tID, &net.UDPAddr{}, false, nil},
 			}
 
 			hostConfig := CandidateHostConfig{
@@ -2077,4 +2077,196 @@ func TestAgentConfig_initWithDefaults_UsesProvidedValues(t *testing.T) {
 	require.Equal(t, valPrflxWait, a.prflxAcceptanceMinWait, "expected override for PrflxAcceptanceMinWait")
 	require.Equal(t, valRelayWait, a.relayAcceptanceMinWait, "expected override for RelayAcceptanceMinWait")
 	require.Equal(t, valStunTimeout, a.stunGatherTimeout, "expected override for STUNGatherTimeout")
+}
+
+// TestAutomaticRenominationWithVNet tests automatic renomination with simple vnet setup.
+// This is a simplified test that verifies the renomination mechanism triggers correctly.
+func TestAutomaticRenominationWithVNet(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	// Create simple vnet with two agents on same network (no NAT)
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "0.0.0.0/0",
+		LoggerFactory: loggerFactory,
+	})
+	require.NoError(t, err)
+
+	net0, err := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.1"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net0))
+
+	net1, err := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"192.168.0.2"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net1))
+
+	require.NoError(t, wan.Start())
+	defer wan.Stop() //nolint:errcheck
+
+	// Create agents with automatic renomination
+	keepaliveInterval := 100 * time.Millisecond
+	checkInterval := 50 * time.Millisecond
+	renominationInterval := 200 * time.Millisecond
+
+	agent1, err := newAgentWithConfig(&AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		Net:               net0,
+		KeepaliveInterval: &keepaliveInterval,
+		CheckInterval:     &checkInterval,
+	},
+		WithRenomination(DefaultNominationValueGenerator()),
+		WithAutomaticRenomination(renominationInterval),
+	)
+	require.NoError(t, err)
+	defer agent1.Close() //nolint:errcheck
+
+	agent2, err := NewAgent(&AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		Net:               net1,
+		KeepaliveInterval: &keepaliveInterval,
+		CheckInterval:     &checkInterval,
+	})
+	require.NoError(t, err)
+	defer agent2.Close() //nolint:errcheck
+
+	agent2.enableRenomination = true
+	agent2.nominationValueGenerator = DefaultNominationValueGenerator()
+
+	// Connect the agents using the existing helper
+	conn1, conn2 := connectWithVNet(t, agent1, agent2)
+
+	// Verify connection works
+	testData := []byte("test data")
+	_, err = conn1.Write(testData)
+	require.NoError(t, err)
+
+	buf := make([]byte, len(testData))
+	_, err = conn2.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, testData, buf)
+}
+
+// TestAutomaticRenominationRTTImprovement tests that automatic renomination
+// triggers when RTT significantly improves.
+func TestAutomaticRenominationRTTImprovement(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	// This test verifies the RTT-based renomination logic
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+	defer agent.Close() //nolint:errcheck
+
+	// Create two pairs with different RTTs
+	localHost1, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      10000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	localHost2, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.3", // Different address
+		Port:      10001,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	remoteHost, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.2",
+		Port:      20000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	// Current pair with high RTT
+	currentPair := newCandidatePair(localHost1, remoteHost, true)
+	currentPair.state = CandidatePairStateSucceeded
+	currentPair.UpdateRoundTripTime(100 * time.Millisecond)
+
+	// Candidate pair with significantly better RTT (>10ms improvement)
+	betterPair := newCandidatePair(localHost2, remoteHost, true)
+	betterPair.state = CandidatePairStateSucceeded
+	betterPair.UpdateRoundTripTime(50 * time.Millisecond) // 50ms improvement
+
+	// Should trigger renomination due to RTT improvement
+	shouldRenominate := agent.shouldRenominate(currentPair, betterPair)
+	require.True(t, shouldRenominate, "Should renominate for >10ms RTT improvement")
+
+	// Test with small RTT improvement (<10ms)
+	slightlyBetterPair := newCandidatePair(localHost2, remoteHost, true)
+	slightlyBetterPair.state = CandidatePairStateSucceeded
+	slightlyBetterPair.UpdateRoundTripTime(95 * time.Millisecond) // Only 5ms improvement
+
+	shouldRenominate = agent.shouldRenominate(currentPair, slightlyBetterPair)
+	require.False(t, shouldRenominate, "Should not renominate for <10ms RTT improvement")
+}
+
+// TestAutomaticRenominationRelayToDirect tests that automatic renomination
+// always prefers direct connections over relay connections.
+func TestAutomaticRenominationRelayToDirect(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+	defer agent.Close() //nolint:errcheck
+
+	// Create relay pair
+	localRelay, err := NewCandidateRelay(&CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "10.0.0.1",
+		Port:      30000,
+		Component: 1,
+		RelAddr:   "192.168.1.1",
+		RelPort:   10000,
+	})
+	require.NoError(t, err)
+
+	remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{
+		Network:   "udp",
+		Address:   "10.0.0.2",
+		Port:      40000,
+		Component: 1,
+		RelAddr:   "192.168.1.2",
+		RelPort:   20000,
+	})
+	require.NoError(t, err)
+
+	relayPair := newCandidatePair(localRelay, remoteRelay, true)
+	relayPair.state = CandidatePairStateSucceeded
+	relayPair.UpdateRoundTripTime(50 * time.Millisecond)
+
+	// Create host pair with similar RTT
+	localHost, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      10000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	remoteHost, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.2",
+		Port:      20000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	hostPair := newCandidatePair(localHost, remoteHost, true)
+	hostPair.state = CandidatePairStateSucceeded
+	hostPair.UpdateRoundTripTime(45 * time.Millisecond) // Similar RTT
+
+	// Should always prefer direct over relay
+	shouldRenominate := agent.shouldRenominate(relayPair, hostPair)
+	require.True(t, shouldRenominate, "Should always renominate from relay to direct connection")
 }

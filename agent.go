@@ -29,10 +29,11 @@ import (
 )
 
 type bindingRequest struct {
-	timestamp      time.Time
-	transactionID  [stun.TransactionIDSize]byte
-	destination    net.Addr
-	isUseCandidate bool
+	timestamp       time.Time
+	transactionID   [stun.TransactionIDSize]byte
+	destination     net.Addr
+	isUseCandidate  bool
+	nominationValue *uint32 // Tracks nomination value for renomination requests
 }
 
 // Agent represents the ICE agent.
@@ -159,6 +160,11 @@ type Agent struct {
 	continualGatheringPolicy ContinualGatheringPolicy
 	networkMonitorInterval   time.Duration
 	lastKnownInterfaces      map[string]netip.Addr // map[iface+ip] for deduplication
+
+	// Automatic renomination
+	automaticRenomination bool
+	renominationInterval  time.Duration
+	lastRenominationTime  time.Time
 }
 
 // NewAgent creates a new Agent.
@@ -171,27 +177,40 @@ func NewAgentWithOptions(opts ...AgentOption) (*Agent, error) {
 	return newAgentWithConfig(&AgentConfig{}, opts...)
 }
 
+// setupMDNSConfig validates and returns mDNS configuration.
+func setupMDNSConfig(config *AgentConfig) (string, MulticastDNSMode, error) {
+	mDNSName := config.MulticastDNSHostName
+	if mDNSName == "" {
+		var err error
+		if mDNSName, err = generateMulticastDNSName(); err != nil {
+			return "", 0, err
+		}
+	}
+
+	if !strings.HasSuffix(mDNSName, ".local") || len(strings.Split(mDNSName, ".")) != 2 {
+		return "", 0, ErrInvalidMulticastDNSHostName
+	}
+
+	mDNSMode := config.MulticastDNSMode
+	if mDNSMode == 0 {
+		mDNSMode = MulticastDNSModeQueryOnly
+	}
+
+	return mDNSName, mDNSMode, nil
+}
+
 // newAgentWithConfig is the internal function that creates an agent with config and options.
+//
+//nolint:gocognit
 func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error) { //nolint:cyclop
 	var err error
 	if config.PortMax < config.PortMin {
 		return nil, ErrPort
 	}
 
-	mDNSName := config.MulticastDNSHostName
-	if mDNSName == "" {
-		if mDNSName, err = generateMulticastDNSName(); err != nil {
-			return nil, err
-		}
-	}
-
-	if !strings.HasSuffix(mDNSName, ".local") || len(strings.Split(mDNSName, ".")) != 2 {
-		return nil, ErrInvalidMulticastDNSHostName
-	}
-
-	mDNSMode := config.MulticastDNSMode
-	if mDNSMode == 0 {
-		mDNSMode = MulticastDNSModeQueryOnly
+	mDNSName, mDNSMode, err := setupMDNSConfig(config)
+	if err != nil {
+		return nil, err
 	}
 
 	loggerFactory := config.LoggerFactory
@@ -253,6 +272,9 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		continualGatheringPolicy: GatherOnce, // Default to GatherOnce
 		networkMonitorInterval:   2 * time.Second,
 		lastKnownInterfaces:      make(map[string]netip.Addr),
+
+		automaticRenomination: false,
+		renominationInterval:  3 * time.Second, // Default matching libwebrtc
 	}
 
 	agent.connectionStateNotifier = &handlerNotifier{
@@ -534,6 +556,36 @@ func (a *Agent) pingAllCandidates() {
 			a.getSelector().PingCandidate(p.Local, p.Remote)
 			p.bindingRequestCount++
 		}
+	}
+}
+
+// keepAliveCandidatesForRenomination pings all candidate pairs to keep them tested
+// and ready for automatic renomination. Unlike pingAllCandidates, this:
+// - Pings pairs in succeeded state to keep RTT measurements fresh
+// - Ignores maxBindingRequests limit (we want to keep testing alternate paths)
+// - Only pings pairs that are not failed.
+func (a *Agent) keepAliveCandidatesForRenomination() {
+	a.log.Trace("Keep alive candidates for automatic renomination")
+
+	if len(a.checklist) == 0 {
+		return
+	}
+
+	for _, pair := range a.checklist {
+		switch pair.state {
+		case CandidatePairStateFailed:
+			// Skip failed pairs
+			continue
+		case CandidatePairStateWaiting:
+			// Transition waiting pairs to in-progress
+			pair.state = CandidatePairStateInProgress
+		case CandidatePairStateInProgress, CandidatePairStateSucceeded:
+			// Continue pinging in-progress and succeeded pairs
+		}
+
+		// Ping all non-failed pairs (including succeeded ones)
+		// to keep RTT measurements fresh for renomination decisions
+		a.getSelector().PingCandidate(pair.Local, pair.Remote)
 	}
 }
 
@@ -1025,12 +1077,20 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Cand
 func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 	a.log.Tracef("Ping STUN from %s to %s", local, remote)
 
+	// Extract nomination value if present
+	var nominationValue *uint32
+	var nomination NominationAttribute
+	if err := nomination.GetFromWithType(msg, a.nominationAttribute); err == nil {
+		nominationValue = &nomination.Value
+	}
+
 	a.invalidatePendingBindingRequests(time.Now())
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp:      time.Now(),
-		transactionID:  msg.TransactionID,
-		destination:    remote.addr(),
-		isUseCandidate: msg.Contains(stun.AttrUseCandidate),
+		timestamp:       time.Now(),
+		transactionID:   msg.TransactionID,
+		destination:     remote.addr(),
+		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
+		nominationValue: nominationValue,
 	})
 
 	if pair := a.findPair(local, remote); pair != nil {
@@ -1476,4 +1536,147 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 	a.sendBindingRequest(msg, pair.Local, pair.Remote)
 
 	return nil
+}
+
+// evaluateCandidatePairQuality calculates a quality score for a candidate pair.
+// Higher scores indicate better quality. The score considers:
+// - Candidate types (host > srflx > relay)
+// - RTT (lower is better)
+// - Connection stability.
+func (a *Agent) evaluateCandidatePairQuality(pair *CandidatePair) float64 { //nolint:cyclop
+	if pair == nil || pair.state != CandidatePairStateSucceeded {
+		return 0
+	}
+
+	score := float64(0)
+
+	// Type preference scoring (host=100, srflx=50, prflx=30, relay=10)
+	localTypeScore := float64(0)
+	switch pair.Local.Type() {
+	case CandidateTypeHost:
+		localTypeScore = 100
+	case CandidateTypeServerReflexive:
+		localTypeScore = 50
+	case CandidateTypePeerReflexive:
+		localTypeScore = 30
+	case CandidateTypeRelay:
+		localTypeScore = 10
+	case CandidateTypeUnspecified:
+		localTypeScore = 0
+	}
+
+	remoteTypeScore := float64(0)
+	switch pair.Remote.Type() {
+	case CandidateTypeHost:
+		remoteTypeScore = 100
+	case CandidateTypeServerReflexive:
+		remoteTypeScore = 50
+	case CandidateTypePeerReflexive:
+		remoteTypeScore = 30
+	case CandidateTypeRelay:
+		remoteTypeScore = 10
+	case CandidateTypeUnspecified:
+		remoteTypeScore = 0
+	}
+
+	// Combined type score (average of local and remote)
+	score += (localTypeScore + remoteTypeScore) / 2
+
+	// RTT scoring (convert to penalty, lower RTT = higher score)
+	// Use current RTT if available, otherwise assume high latency
+	rtt := pair.CurrentRoundTripTime()
+	if rtt > 0 {
+		// Convert RTT to Duration for cleaner calculation
+		rttDuration := time.Duration(rtt * float64(time.Second))
+		rttMs := float64(rttDuration / time.Millisecond)
+		if rttMs < 1 {
+			rttMs = 1 // Minimum 1ms to avoid log(0)
+		}
+		// Subtract RTT penalty (logarithmic to reduce impact of very high RTTs)
+		score -= math.Log10(rttMs) * 10
+	} else {
+		// No RTT data available, apply moderate penalty
+		score -= 30
+	}
+
+	// Boost score if pair has been stable (received responses recently)
+	if pair.ResponsesReceived() > 0 {
+		lastResponse := pair.LastResponseReceivedAt()
+		if !lastResponse.IsZero() && time.Since(lastResponse) < 5*time.Second {
+			score += 20 // Stability bonus
+		}
+	}
+
+	return score
+}
+
+// shouldRenominate determines if automatic renomination should occur.
+// It compares the current selected pair with a candidate pair and decides
+// if switching would provide significant benefit.
+func (a *Agent) shouldRenominate(current, candidate *CandidatePair) bool { //nolint:cyclop
+	if current == nil || candidate == nil || current.equal(candidate) || candidate.state != CandidatePairStateSucceeded {
+		return false
+	}
+
+	// Type-based switching (always prefer direct over relay)
+	currentIsRelay := current.Local.Type() == CandidateTypeRelay ||
+		current.Remote.Type() == CandidateTypeRelay
+	candidateIsDirect := candidate.Local.Type() == CandidateTypeHost &&
+		candidate.Remote.Type() == CandidateTypeHost
+
+	if currentIsRelay && candidateIsDirect {
+		a.log.Debugf("Should renominate: relay -> direct connection available")
+
+		return true
+	}
+
+	// RTT-based switching (must improve by at least 10ms)
+	currentRTT := current.CurrentRoundTripTime()
+	candidateRTT := candidate.CurrentRoundTripTime()
+
+	// Only compare RTT if both values are valid
+	if currentRTT > 0 && candidateRTT > 0 {
+		currentRTTDuration := time.Duration(currentRTT * float64(time.Second))
+		candidateRTTDuration := time.Duration(candidateRTT * float64(time.Second))
+		rttImprovement := currentRTTDuration - candidateRTTDuration
+
+		if rttImprovement > 10*time.Millisecond {
+			a.log.Debugf("Should renominate: RTT improvement of %v", rttImprovement)
+
+			return true
+		}
+	}
+
+	// Quality score comparison (must improve by at least 15%)
+	currentScore := a.evaluateCandidatePairQuality(current)
+	candidateScore := a.evaluateCandidatePairQuality(candidate)
+
+	if candidateScore > currentScore*1.15 {
+		a.log.Debugf("Should renominate: quality score improved from %.2f to %.2f",
+			currentScore, candidateScore)
+
+		return true
+	}
+
+	return false
+}
+
+// findBestCandidatePair finds the best available candidate pair based on quality assessment.
+func (a *Agent) findBestCandidatePair() *CandidatePair {
+	var best *CandidatePair
+	bestScore := float64(-math.MaxFloat64)
+
+	for _, pair := range a.checklist {
+		if pair.state != CandidatePairStateSucceeded {
+			continue
+		}
+
+		score := a.evaluateCandidatePairQuality(pair)
+		if score > bestScore {
+			bestScore = score
+			best = pair
+		}
+	}
+
+	return best
 }
