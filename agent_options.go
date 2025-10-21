@@ -223,3 +223,31 @@ func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 		return nil
 	}
 }
+
+// WithAutomaticRenomination enables automatic renomination of candidate pairs
+// when better pairs become available after initial connection establishment.
+// This feature requires renomination to be enabled and both agents to support it.
+//
+// When enabled, the controlling agent will periodically evaluate candidate pairs
+// and renominate if a significantly better pair is found (e.g., switching from
+// relay to direct connection, or when RTT improves significantly).
+//
+// The interval parameter specifies the minimum time to wait after connection
+// before considering automatic renomination. If set to 0, it defaults to 3 seconds.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(
+//		WithRenomination(DefaultNominationValueGenerator()),
+//		WithAutomaticRenomination(3*time.Second),
+//	)
+func WithAutomaticRenomination(interval time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.automaticRenomination = true
+		if interval > 0 {
+			a.renominationInterval = interval
+		}
+		// Note: renomination must be enabled separately via WithRenomination
+		return nil
+	}
+}
