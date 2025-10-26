@@ -1217,7 +1217,7 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 
 	if msg.Type.Class == stun.ClassSuccessResponse { //nolint:nestif
 		if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
-			a.log.Warnf("Discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard success response with broken integrity from (%s), %v", remote, err)
 
 			return
 		}
@@ -1238,11 +1238,11 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 		)
 
 		if err := stunx.AssertUsername(msg, a.localUfrag+":"+a.remoteUfrag); err != nil {
-			a.log.Warnf("Discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard request with wrong username from (%s), %v", remote, err)
 
 			return
 		} else if err := stun.MessageIntegrity([]byte(a.localPwd)).Check(msg); err != nil {
-			a.log.Warnf("Discard message from (%s), %v", remote, err)
+			a.log.Warnf("Discard request with broken integrity from (%s), %v", remote, err)
 
 			return
 		}
