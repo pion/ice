@@ -526,13 +526,14 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 	a.selectedPair.Store(pair)
 	a.log.Tracef("Set selected candidate pair: %s", pair)
 
+	// Signal connected: notify any Connect() calls waiting on onConnected
+	a.onConnectedOnce.Do(func() { close(a.onConnected) })
+
+	// Update connection state to Connected and notify state change handlers
 	a.updateConnectionState(ConnectionStateConnected)
 
-	// Notify when the selected pair changes
+	// Notify when the selected candidate pair changes
 	a.selectedCandidatePairNotifier.EnqueueSelectedCandidatePair(pair)
-
-	// Signal connected
-	a.onConnectedOnce.Do(func() { close(a.onConnected) })
 }
 
 func (a *Agent) pingAllCandidates() {
