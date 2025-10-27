@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 )
 
@@ -219,6 +220,73 @@ func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 	return func(a *Agent) error {
 		a.candidateTypes = candidateTypes
+
+		return nil
+	}
+}
+
+// WithAutomaticRenomination enables automatic renomination of candidate pairs
+// when better pairs become available after initial connection establishment.
+// This feature requires renomination to be enabled and both agents to support it.
+//
+// When enabled, the controlling agent will periodically evaluate candidate pairs
+// and renominate if a significantly better pair is found (e.g., switching from
+// relay to direct connection, or when RTT improves significantly).
+//
+// The interval parameter specifies the minimum time to wait after connection
+// before considering automatic renomination. If set to 0, it defaults to 3 seconds.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(
+//		WithRenomination(DefaultNominationValueGenerator()),
+//		WithAutomaticRenomination(3*time.Second),
+//	)
+func WithAutomaticRenomination(interval time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.automaticRenomination = true
+		if interval > 0 {
+			a.renominationInterval = interval
+		}
+		// Note: renomination must be enabled separately via WithRenomination
+		return nil
+	}
+}
+
+// WithInterfaceFilter sets a filter function to whitelist or blacklist network interfaces
+// for ICE candidate gathering.
+//
+// The filter function receives the interface name and should return true to keep the interface,
+// or false to exclude it.
+//
+// Example:
+//
+//	// Only use interfaces starting with "eth"
+//	agent, err := NewAgentWithOptions(
+//		WithInterfaceFilter(func(interfaceName string) bool {
+//			return len(interfaceName) >= 3 && interfaceName[:3] == "eth"
+//		}),
+//	)
+func WithInterfaceFilter(filter func(string) bool) AgentOption {
+	return func(a *Agent) error {
+		a.interfaceFilter = filter
+
+		return nil
+	}
+}
+
+// WithLoggerFactory sets the logger factory for the agent.
+//
+// Example:
+//
+//	import "github.com/pion/logging"
+//
+//	loggerFactory := logging.NewDefaultLoggerFactory()
+//	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
+//	agent, err := NewAgentWithOptions(WithLoggerFactory(loggerFactory))
+func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
+	return func(a *Agent) error {
+		a.log = loggerFactory.NewLogger("ice")
 
 		return nil
 	}
