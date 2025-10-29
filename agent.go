@@ -122,6 +122,9 @@ type Agent struct {
 	// 1:1 D-NAT IP address mapping
 	extIPMapper *externalIPMapper
 
+	// Port mapping for Docker deployments
+	portMapper *portMapper
+
 	// Callback that allows user to implement custom behavior
 	// for STUN Binding Requests
 	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool
@@ -347,6 +350,12 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 	}
 
 	if err = config.initExtIPMapping(agent); err != nil {
+		agent.closeMulticastConn()
+
+		return nil, err
+	}
+
+	if err = config.initPortMapping(agent); err != nil {
 		agent.closeMulticastConn()
 
 		return nil, err

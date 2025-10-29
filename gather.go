@@ -275,10 +275,11 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 
 			for _, connAndPort := range conns {
+				externalPort := a.portMapper.getExternalPort(connAndPort.port, network)
 				hostConfig := CandidateHostConfig{
 					Network:   network,
 					Address:   address,
-					Port:      connAndPort.port,
+					Port:      externalPort,
 					Component: ComponentRTP,
 					TCPType:   tcpType,
 					// we will still process this candidate so that we start up the right
@@ -395,10 +396,11 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			isLocationTracked = shouldFilterLocationTracked(candidateIP)
 		}
 
+		externalPort := a.portMapper.getExternalPort(udpAddr.Port, "udp")
 		hostConfig := CandidateHostConfig{
 			Network:           udp,
 			Address:           address,
-			Port:              udpAddr.Port,
+			Port:              externalPort,
 			Component:         ComponentRTP,
 			IsLocationTracked: isLocationTracked,
 		}
