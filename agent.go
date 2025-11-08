@@ -165,6 +165,9 @@ type Agent struct {
 	automaticRenomination bool
 	renominationInterval  time.Duration
 	lastRenominationTime  time.Time
+
+	// Port mapping support for container
+	mapPort func(candidate Candidate) int
 }
 
 // NewAgent creates a new Agent.
@@ -275,6 +278,8 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 		automaticRenomination: false,
 		renominationInterval:  3 * time.Second, // Default matching libwebrtc
+
+		mapPort: config.MapPortHanlder,
 	}
 
 	agent.connectionStateNotifier = &handlerNotifier{
@@ -879,6 +884,10 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 
 				return
 			}
+		}
+		// Callback for mapPort before candidate starts
+		if a.mapPort != nil {
+			cand.setMappedPort(a.mapPort(cand))
 		}
 
 		a.setCandidateExtensions(cand)

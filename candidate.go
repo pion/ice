@@ -46,6 +46,10 @@ type Candidate interface {
 	Address() string
 	Port() int
 
+	// Port mapping support for containers
+	MappedPort() int
+	setMappedPort(port int)
+
 	Priority() uint32
 
 	// A transport address related to a

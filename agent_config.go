@@ -211,6 +211,9 @@ type AgentConfig struct {
 	// switched to that irrespective of relative priority between current selected pair
 	// and priority of the pair being switched to.
 	EnableUseCandidateCheckPriority bool
+
+	// MapPortHanlder is the handler used to compute mapped port for host candidate.
+	MapPortHanlder func(candidate Candidate) int
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset.
