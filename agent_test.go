@@ -2272,7 +2272,6 @@ func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 }
 
 func TestMapPortHandler(t *testing.T) {
-
 	agent, err := NewAgent(&AgentConfig{
 		MapPortHanlder: func(cand Candidate) int {
 			return cand.Port() + 1000

@@ -425,7 +425,7 @@ func (c *candidateBase) Priority() uint32 {
 }
 
 // Equal is used to compare two candidateBases.
-func (c *candidateBase) Equal(other Candidate) bool {
+func (c *candidateBase) Equal(other Candidate) bool { //nolint:cyclop
 	if c.addr() != other.addr() {
 		if c.addr() == nil || other.addr() == nil {
 			return false

@@ -355,9 +355,11 @@ func mustCandidatePeerReflexiveWithExtensions(
 func mustCandidateHostWithMappedPort(t *testing.T,
 	conf *CandidateHostConfig,
 	mapPort func(cand Candidate) int) Candidate {
+	t.Helper()
 	cand, err := NewCandidateHost(conf)
 	require.NoError(t, err)
 	cand.setMappedPort(mapPort(cand))
+
 	return cand
 }
 
@@ -617,6 +619,7 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 				if cand.Port() != 7686 {
 					return 7687
 				}
+
 				return 7688
 			}),
 			"candidate:3359356140 1 tcp 1671430143 172.28.142.173 7688 typ host",
