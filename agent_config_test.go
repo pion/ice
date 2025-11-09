@@ -70,3 +70,28 @@ func TestAgentConfig_initWithDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultRelayAcceptanceMinWaitForCandidates(t *testing.T) {
+	tests := []struct {
+		name          string
+		candidateType []CandidateType
+		expectedWait  time.Duration
+	}{
+		{
+			name:          "relay only",
+			candidateType: []CandidateType{CandidateTypeRelay},
+			expectedWait:  defaultRelayOnlyAcceptanceMinWait,
+		},
+		{
+			name:          "mixed types",
+			candidateType: []CandidateType{CandidateTypeHost, CandidateTypeRelay},
+			expectedWait:  defaultRelayAcceptanceMinWait,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expectedWait, defaultRelayAcceptanceMinWaitFor(tc.candidateType))
+		})
+	}
+}

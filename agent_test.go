@@ -2054,6 +2054,35 @@ func TestRoleConflict(t *testing.T) {
 	})
 }
 
+func TestDefaultCandidateTypes(t *testing.T) {
+	expected := []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+
+	first := defaultCandidateTypes()
+	require.Equal(t, expected, first)
+
+	first[0] = CandidateTypeRelay
+
+	second := defaultCandidateTypes()
+	require.Equal(t, expected, second)
+}
+
+func TestDefaultRelayAcceptanceMinWaitFor(t *testing.T) {
+	t.Run("relay only defaults to zero wait", func(t *testing.T) {
+		wait := defaultRelayAcceptanceMinWaitFor([]CandidateType{CandidateTypeRelay})
+		require.Equal(t, defaultRelayOnlyAcceptanceMinWait, wait)
+	})
+
+	t.Run("empty candidate types uses general relay wait", func(t *testing.T) {
+		wait := defaultRelayAcceptanceMinWaitFor(nil)
+		require.Equal(t, defaultRelayAcceptanceMinWait, wait)
+	})
+
+	t.Run("mixed candidate types uses general relay wait", func(t *testing.T) {
+		wait := defaultRelayAcceptanceMinWaitFor([]CandidateType{CandidateTypeHost, CandidateTypeRelay})
+		require.Equal(t, defaultRelayAcceptanceMinWait, wait)
+	})
+}
+
 func TestAgentConfig_initWithDefaults_UsesProvidedValues(t *testing.T) {
 	valMaxBindingReq := uint16(0)
 	valSrflxWait := 111 * time.Millisecond
@@ -2113,7 +2142,7 @@ func TestAutomaticRenominationWithVNet(t *testing.T) {
 	checkInterval := 50 * time.Millisecond
 	renominationInterval := 200 * time.Millisecond
 
-	agent1, err := newAgentWithConfig(&AgentConfig{
+	agent1, err := newAgentFromConfig(&AgentConfig{
 		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
 		MulticastDNSMode:  MulticastDNSModeDisabled,
 		Net:               net0,
