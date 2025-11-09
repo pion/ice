@@ -47,7 +47,7 @@ type Candidate interface {
 	Port() int
 
 	// Port mapping support for containers
-	MappedPort() int
+	getMappedPort() int
 	setMappedPort(port int)
 
 	Priority() uint32

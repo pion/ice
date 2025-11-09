@@ -97,7 +97,7 @@ func (c *candidateBase) Port() int {
 	return c.port
 }
 
-func (c *candidateBase) MappedPort() int {
+func (c *candidateBase) getMappedPort() int {
 	return c.mappedPort
 }
 
@@ -439,7 +439,7 @@ func (c *candidateBase) Equal(other Candidate) bool { //nolint:cyclop
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
-		c.MappedPort() == other.MappedPort() &&
+		c.getMappedPort() == other.getMappedPort() &&
 		c.TCPType() == other.TCPType() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }

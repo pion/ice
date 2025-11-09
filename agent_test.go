@@ -2330,7 +2330,7 @@ func TestMapPortHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, candidate := range actualCandidates {
-		require.Equal(t, candidate.Port()+1000, candidate.MappedPort())
+		require.Equal(t, candidate.Port()+1000, candidate.getMappedPort())
 	}
 }
 
