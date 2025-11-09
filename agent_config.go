@@ -5,7 +5,6 @@ package ice
 
 import (
 	"net"
-	"slices"
 	"time"
 
 	"github.com/pion/logging"
@@ -61,6 +60,14 @@ const (
 
 func defaultCandidateTypes() []CandidateType {
 	return []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+}
+
+func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Duration {
+	if len(candidateTypes) == 1 && candidateTypes[0] == CandidateTypeRelay {
+		return defaultRelayOnlyAcceptanceMinWait
+	}
+
+	return defaultRelayAcceptanceMinWait
 }
 
 // AgentConfig collects the arguments to ice.Agent construction into
@@ -240,11 +247,7 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	}
 
 	if config.RelayAcceptanceMinWait == nil {
-		if len(config.CandidateTypes) == 1 && config.CandidateTypes[0] == CandidateTypeRelay {
-			agent.relayAcceptanceMinWait = defaultRelayOnlyAcceptanceMinWait
-		} else {
-			agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWait
-		}
+		agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWaitFor(config.CandidateTypes)
 	} else {
 		agent.relayAcceptanceMinWait = *config.RelayAcceptanceMinWait
 	}
@@ -290,34 +293,4 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	} else {
 		agent.candidateTypes = config.CandidateTypes
 	}
-}
-
-func (config *AgentConfig) initExtIPMapping(agent *Agent) error { //nolint:cyclop
-	var err error
-	agent.extIPMapper, err = newExternalIPMapper(config.NAT1To1IPCandidateType, config.NAT1To1IPs)
-	if err != nil {
-		return err
-	}
-	if agent.extIPMapper == nil {
-		return nil // This may happen when config.NAT1To1IPs is an empty array
-	}
-	switch agent.extIPMapper.candidateType {
-	case CandidateTypeHost:
-		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
-			return ErrMulticastDNSWithNAT1To1IPMapping
-		}
-		candiHostEnabled := slices.Contains(agent.candidateTypes, CandidateTypeHost)
-		if !candiHostEnabled {
-			return ErrIneffectiveNAT1To1IPMappingHost
-		}
-	case CandidateTypeServerReflexive:
-		candiSrflxEnabled := slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive)
-		if !candiSrflxEnabled {
-			return ErrIneffectiveNAT1To1IPMappingSrflx
-		}
-	default:
-		return nil
-	}
-
-	return nil
 }

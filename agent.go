@@ -111,8 +111,10 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls         []*stun.URI
-	networkTypes []NetworkType
+	urls             []*stun.URI
+	networkTypes     []NetworkType
+	natCandidateType CandidateType
+	natIPs           []string
 
 	buf *packetio.Buffer
 
@@ -172,12 +174,126 @@ type Agent struct {
 
 // NewAgent creates a new Agent.
 func NewAgent(config *AgentConfig) (*Agent, error) {
-	return newAgentWithConfig(config)
+	return newAgentFromConfig(config)
 }
 
 // NewAgentWithOptions creates a new Agent with options only.
 func NewAgentWithOptions(opts ...AgentOption) (*Agent, error) {
-	return newAgentWithConfig(&AgentConfig{}, opts...)
+	return newAgentFromConfig(&AgentConfig{}, opts...)
+}
+
+func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error) {
+	if config == nil {
+		config = &AgentConfig{}
+	}
+
+	agent, err := createAgentBase(config)
+	if err != nil {
+		return nil, err
+	}
+
+	agent.localUfrag = config.LocalUfrag
+	agent.localPwd = config.LocalPwd
+	agent.natCandidateType = config.NAT1To1IPCandidateType
+	agent.natIPs = config.NAT1To1IPs
+
+	return newAgentWithConfig(agent, opts...)
+}
+
+func createAgentBase(config *AgentConfig) (*Agent, error) {
+	if config.PortMax < config.PortMin {
+		return nil, ErrPort
+	}
+
+	mDNSName, mDNSMode, err := setupMDNSConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	loggerFactory := config.LoggerFactory
+	if loggerFactory == nil {
+		loggerFactory = logging.NewDefaultLoggerFactory()
+	}
+	log := loggerFactory.NewLogger("ice")
+
+	startedCtx, startedFn := context.WithCancel(context.Background())
+
+	agent := &Agent{
+		tieBreaker:                      globalMathRandomGenerator.Uint64(),
+		lite:                            config.Lite,
+		gatheringState:                  GatheringStateNew,
+		connectionState:                 ConnectionStateNew,
+		localCandidates:                 make(map[NetworkType][]Candidate),
+		remoteCandidates:                make(map[NetworkType][]Candidate),
+		urls:                            config.Urls,
+		networkTypes:                    config.NetworkTypes,
+		onConnected:                     make(chan struct{}),
+		buf:                             packetio.NewBuffer(),
+		startedCh:                       startedCtx.Done(),
+		startedFn:                       startedFn,
+		portMin:                         config.PortMin,
+		portMax:                         config.PortMax,
+		loggerFactory:                   loggerFactory,
+		log:                             log,
+		net:                             config.Net,
+		proxyDialer:                     config.ProxyDialer,
+		tcpMux:                          config.TCPMux,
+		udpMux:                          config.UDPMux,
+		udpMuxSrflx:                     config.UDPMuxSrflx,
+		mDNSMode:                        mDNSMode,
+		mDNSName:                        mDNSName,
+		gatherCandidateCancel:           func() {},
+		forceCandidateContact:           make(chan bool, 1),
+		interfaceFilter:                 config.InterfaceFilter,
+		ipFilter:                        config.IPFilter,
+		insecureSkipVerify:              config.InsecureSkipVerify,
+		includeLoopback:                 config.IncludeLoopback,
+		disableActiveTCP:                config.DisableActiveTCP,
+		userBindingRequestHandler:       config.BindingRequestHandler,
+		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
+		enableRenomination:              false,
+		nominationValueGenerator:        nil,
+		nominationAttribute:             stun.AttrType(0x0030), // Default value
+		continualGatheringPolicy:        GatherOnce,            // Default to GatherOnce
+		networkMonitorInterval:          2 * time.Second,
+		lastKnownInterfaces:             make(map[string]netip.Addr),
+		automaticRenomination:           false,
+		renominationInterval:            3 * time.Second, // Default matching libwebrtc
+	}
+
+	config.initWithDefaults(agent)
+
+	return agent, nil
+}
+
+func applyExternalIPMapping(agent *Agent, candidateType CandidateType, ips []string) error {
+	mapper, err := newExternalIPMapper(candidateType, ips)
+	if err != nil {
+		return err
+	}
+
+	agent.extIPMapper = mapper
+	if agent.extIPMapper == nil {
+		return nil
+	}
+
+	switch agent.extIPMapper.candidateType {
+	case CandidateTypeHost:
+		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
+			return ErrMulticastDNSWithNAT1To1IPMapping
+		}
+		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
+			return ErrIneffectiveNAT1To1IPMappingHost
+		}
+	case CandidateTypeServerReflexive:
+		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
+			return ErrIneffectiveNAT1To1IPMappingSrflx
+		}
+	default:
+		return nil
+	}
+
+	return nil
 }
 
 // setupMDNSConfig validates and returns mDNS configuration.
@@ -202,82 +318,16 @@ func setupMDNSConfig(config *AgentConfig) (string, MulticastDNSMode, error) {
 	return mDNSName, mDNSMode, nil
 }
 
-// newAgentWithConfig is the internal function that creates an agent with config and options.
+// newAgentWithConfig finalizes a pre-configured agent with optional overrides.
 //
-//nolint:gocognit
-func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error) { //nolint:cyclop
+//nolint:gocognit,cyclop
+func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	var err error
-	if config.PortMax < config.PortMin {
-		return nil, ErrPort
-	}
 
-	mDNSName, mDNSMode, err := setupMDNSConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	loggerFactory := config.LoggerFactory
-	if loggerFactory == nil {
-		loggerFactory = logging.NewDefaultLoggerFactory()
-	}
-	log := loggerFactory.NewLogger("ice")
-
-	startedCtx, startedFn := context.WithCancel(context.Background())
-
-	agent := &Agent{
-		tieBreaker:       globalMathRandomGenerator.Uint64(),
-		lite:             config.Lite,
-		gatheringState:   GatheringStateNew,
-		connectionState:  ConnectionStateNew,
-		localCandidates:  make(map[NetworkType][]Candidate),
-		remoteCandidates: make(map[NetworkType][]Candidate),
-		urls:             config.Urls,
-		networkTypes:     config.NetworkTypes,
-		onConnected:      make(chan struct{}),
-		buf:              packetio.NewBuffer(),
-		startedCh:        startedCtx.Done(),
-		startedFn:        startedFn,
-		portMin:          config.PortMin,
-		portMax:          config.PortMax,
-		loggerFactory:    loggerFactory,
-		log:              log,
-		net:              config.Net,
-		proxyDialer:      config.ProxyDialer,
-		tcpMux:           config.TCPMux,
-		udpMux:           config.UDPMux,
-		udpMuxSrflx:      config.UDPMuxSrflx,
-
-		mDNSMode: mDNSMode,
-		mDNSName: mDNSName,
-
-		gatherCandidateCancel: func() {},
-
-		forceCandidateContact: make(chan bool, 1),
-
-		interfaceFilter: config.InterfaceFilter,
-
-		ipFilter: config.IPFilter,
-
-		insecureSkipVerify: config.InsecureSkipVerify,
-
-		includeLoopback: config.IncludeLoopback,
-
-		disableActiveTCP: config.DisableActiveTCP,
-
-		userBindingRequestHandler: config.BindingRequestHandler,
-
-		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
-
-		enableRenomination:       false,
-		nominationValueGenerator: nil,
-		nominationAttribute:      stun.AttrType(0x0030), // Default value
-
-		continualGatheringPolicy: GatherOnce, // Default to GatherOnce
-		networkMonitorInterval:   2 * time.Second,
-		lastKnownInterfaces:      make(map[string]netip.Addr),
-
-		automaticRenomination: false,
-		renominationInterval:  3 * time.Second, // Default matching libwebrtc
+	for _, opt := range opts {
+		if err = opt(agent); err != nil {
+			return nil, err
+		}
 	}
 
 	agent.connectionStateNotifier = &handlerNotifier{
@@ -320,15 +370,13 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		agent.networkTypes,
 		localIfcs,
 		agent.includeLoopback,
-		mDNSMode,
-		mDNSName,
-		log,
-		loggerFactory,
+		agent.mDNSMode,
+		agent.mDNSName,
+		agent.log,
+		agent.loggerFactory,
 	); err != nil {
-		log.Warnf("Failed to initialize mDNS %s: %v", mDNSName, err)
+		agent.log.Warnf("Failed to initialize mDNS %s: %v", agent.mDNSName, err)
 	}
-
-	config.initWithDefaults(agent)
 
 	// Make sure the buffer doesn't grow indefinitely.
 	// NOTE: We actually won't get anywhere close to this limit.
@@ -341,7 +389,7 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		return nil, ErrLiteUsingNonHostCandidates
 	}
 
-	if len(config.Urls) > 0 &&
+	if len(agent.urls) > 0 &&
 		!containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) &&
 		!containsCandidateType(CandidateTypeRelay, agent.candidateTypes) {
 		agent.closeMulticastConn()
@@ -349,7 +397,7 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		return nil, ErrUselessUrlsProvided
 	}
 
-	if err = config.initExtIPMapping(agent); err != nil {
+	if err = applyExternalIPMapping(agent, agent.natCandidateType, agent.natIPs); err != nil {
 		agent.closeMulticastConn()
 
 		return nil, err
@@ -374,20 +422,11 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 	})
 
 	// Restart is also used to initialize the agent for the first time
-	if err := agent.Restart(config.LocalUfrag, config.LocalPwd); err != nil {
+	if err := agent.Restart(agent.localUfrag, agent.localPwd); err != nil {
 		agent.closeMulticastConn()
 		_ = agent.Close()
 
 		return nil, err
-	}
-
-	for _, opt := range opts {
-		if err := opt(agent); err != nil {
-			agent.closeMulticastConn()
-			_ = agent.Close()
-
-			return nil, err
-		}
 	}
 
 	return agent, nil

@@ -4,11 +4,15 @@
 package ice
 
 import (
+	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v3"
+	"golang.org/x/net/proxy"
 )
 
 // AgentOption represents a function that can be used to configure an Agent.
@@ -24,6 +28,234 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 
 	return func() uint32 {
 		return counter.Add(1)
+	}
+}
+
+// WithICELite configures whether the agent operates in lite mode.
+// Lite agents do not perform connectivity checks and only provide host candidates.
+func WithICELite(lite bool) AgentOption {
+	return func(a *Agent) error {
+		a.lite = lite
+
+		return nil
+	}
+}
+
+// WithUrls sets the STUN/TURN server URLs used by the agent.
+func WithUrls(urls []*stun.URI) AgentOption {
+	return func(a *Agent) error {
+		if len(urls) == 0 {
+			a.urls = nil
+
+			return nil
+		}
+
+		cloned := make([]*stun.URI, len(urls))
+		copy(cloned, urls)
+		a.urls = cloned
+
+		return nil
+	}
+}
+
+// WithPortRange sets the UDP port range for host candidates.
+func WithPortRange(portMin, portMax uint16) AgentOption {
+	return func(a *Agent) error {
+		if portMax < portMin {
+			return ErrPort
+		}
+
+		a.portMin = portMin
+		a.portMax = portMax
+
+		return nil
+	}
+}
+
+// WithDisconnectedTimeout sets the duration before the agent transitions to disconnected state.
+// A timeout of 0 disables the transition.
+func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.disconnectedTimeout = timeout
+
+		return nil
+	}
+}
+
+// WithFailedTimeout sets the duration before the agent transitions to failed state after disconnected.
+// A timeout of 0 disables the transition.
+func WithFailedTimeout(timeout time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.failedTimeout = timeout
+
+		return nil
+	}
+}
+
+// WithKeepaliveInterval sets how often ICE keepalive packets are sent.
+// An interval of 0 disables keepalives.
+func WithKeepaliveInterval(interval time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.keepaliveInterval = interval
+
+		return nil
+	}
+}
+
+// WithHostAcceptanceMinWait sets the minimum wait before selecting host candidates.
+func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.hostAcceptanceMinWait = wait
+
+		return nil
+	}
+}
+
+// WithSrflxAcceptanceMinWait sets the minimum wait before selecting srflx candidates.
+func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.srflxAcceptanceMinWait = wait
+
+		return nil
+	}
+}
+
+// WithPrflxAcceptanceMinWait sets the minimum wait before selecting prflx candidates.
+func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.prflxAcceptanceMinWait = wait
+
+		return nil
+	}
+}
+
+// WithRelayAcceptanceMinWait sets the minimum wait before selecting relay candidates.
+func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.relayAcceptanceMinWait = wait
+
+		return nil
+	}
+}
+
+// WithSTUNGatherTimeout sets the STUN gather timeout.
+func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.stunGatherTimeout = timeout
+
+		return nil
+	}
+}
+
+// WithIPFilter sets a filter for IP addresses used during candidate gathering.
+func WithIPFilter(filter func(net.IP) bool) AgentOption {
+	return func(a *Agent) error {
+		a.ipFilter = filter
+
+		return nil
+	}
+}
+
+// WithNet sets the underlying network implementation for the agent.
+func WithNet(net transport.Net) AgentOption {
+	return func(a *Agent) error {
+		a.net = net
+
+		return nil
+	}
+}
+
+// WithMulticastDNSMode configures mDNS behavior for the agent.
+func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
+	return func(a *Agent) error {
+		a.mDNSMode = mode
+
+		return nil
+	}
+}
+
+// WithMulticastDNSHostName sets the mDNS host name used by the agent.
+func WithMulticastDNSHostName(hostName string) AgentOption {
+	return func(a *Agent) error {
+		if !strings.HasSuffix(hostName, ".local") || len(strings.Split(hostName, ".")) != 2 {
+			return ErrInvalidMulticastDNSHostName
+		}
+
+		a.mDNSName = hostName
+
+		return nil
+	}
+}
+
+// WithLocalCredentials sets the local ICE username fragment and password used during Restart.
+// If empty strings are provided, the agent will generate values during Restart.
+func WithLocalCredentials(ufrag, pwd string) AgentOption {
+	return func(a *Agent) error {
+		if ufrag != "" && len([]rune(ufrag))*8 < 24 {
+			return ErrLocalUfragInsufficientBits
+		}
+		if pwd != "" && len([]rune(pwd))*8 < 128 {
+			return ErrLocalPwdInsufficientBits
+		}
+
+		a.localUfrag = ufrag
+		a.localPwd = pwd
+
+		return nil
+	}
+}
+
+// WithTCPMux sets the TCP mux for ICE TCP multiplexing.
+func WithTCPMux(tcpMux TCPMux) AgentOption {
+	return func(a *Agent) error {
+		a.tcpMux = tcpMux
+
+		return nil
+	}
+}
+
+// WithUDPMux sets the UDP mux used for multiplexing host candidates.
+func WithUDPMux(udpMux UDPMux) AgentOption {
+	return func(a *Agent) error {
+		a.udpMux = udpMux
+
+		return nil
+	}
+}
+
+// WithUDPMuxSrflx sets the UDP mux for server reflexive candidates.
+func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
+	return func(a *Agent) error {
+		a.udpMuxSrflx = udpMuxSrflx
+
+		return nil
+	}
+}
+
+// WithProxyDialer sets the proxy dialer used for TURN over TCP/TLS/DTLS connections.
+func WithProxyDialer(dialer proxy.Dialer) AgentOption {
+	return func(a *Agent) error {
+		a.proxyDialer = dialer
+
+		return nil
+	}
+}
+
+// WithMaxBindingRequests sets the maximum number of binding requests before considering a pair failed.
+func WithMaxBindingRequests(limit uint16) AgentOption {
+	return func(a *Agent) error {
+		a.maxBindingRequests = limit
+
+		return nil
+	}
+}
+
+// WithCheckInterval sets how often the agent runs connectivity checks while connecting.
+func WithCheckInterval(interval time.Duration) AgentOption {
+	return func(a *Agent) error {
+		a.checkInterval = interval
+
+		return nil
 	}
 }
 
