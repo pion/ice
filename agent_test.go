@@ -2304,7 +2304,7 @@ func TestMapPortHandler(t *testing.T) {
 	handler := func(cand Candidate) int {
 		return cand.Port() + 1000
 	}
-	agent, err := newAgentFromConfig(&AgentConfig{}, WithMapPortHandler(handler, CandidateTypeHost))
+	agent, err := NewAgentWithOptions(WithMapPortHandler(handler, CandidateTypeHost))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2338,7 +2338,7 @@ func TestMapPortHandlerDifferentCandidateType(t *testing.T) {
 	handler := func(cand Candidate) int {
 		return cand.Port() + 1000
 	}
-	agent, err := newAgentFromConfig(&AgentConfig{}, WithMapPortHandler(handler, CandidateTypePeerReflexive))
+	agent, err := NewAgentWithOptions(WithMapPortHandler(handler, CandidateTypePeerReflexive))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
