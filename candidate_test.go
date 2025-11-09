@@ -352,7 +352,8 @@ func mustCandidatePeerReflexiveWithExtensions(
 	return cand
 }
 
-func mustCandidateHostWithMappedPort(t *testing.T,
+func mustCandidateHostWithMappedPort(
+	t *testing.T,
 	conf *CandidateHostConfig,
 	mapPort func(cand Candidate) int) Candidate {
 	t.Helper()
