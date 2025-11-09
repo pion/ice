@@ -603,9 +603,9 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 				Address:    "172.28.142.173",
 				Port:       7686,
 				Priority:   1671430143,
-				Foundation: "+/3713fhi",
+				Foundation: "3359356140",
 			}, func(cand Candidate) int { return 7687 }),
-			"candidate:3359356140 1 tcp 1671430143 172.28.142.173 7687 typ host",
+			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7687 typ host",
 			false,
 		},
 		{
@@ -614,7 +614,7 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 				Address:    "172.28.142.173",
 				Port:       7686,
 				Priority:   1671430143,
-				Foundation: "+/3713fhi",
+				Foundation: "3359356140",
 			}, func(cand Candidate) int {
 				if cand.Port() != 7686 {
 					return 7687
@@ -622,7 +622,7 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 
 				return 7688
 			}),
-			"candidate:3359356140 1 tcp 1671430143 172.28.142.173 7688 typ host",
+			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7688 typ host",
 			false,
 		},
 		{
@@ -631,23 +631,21 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 				Address:    "172.28.142.173",
 				Port:       7686,
 				Priority:   1671430143,
-				Foundation: "+/3713fhi",
+				Foundation: "3359356140",
 			}, func(cand Candidate) int {
 				return 0
 			}),
-			"candidate:3359356140 1 tcp 1671430143 172.28.142.173 7686 typ host",
+			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7686 typ host",
 			false,
 		},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
-			actualCandidate, err := UnmarshalCandidate(test.marshaled)
-
-			require.NoError(t, err)
+			candidateMarshalOutput := test.candidate.Marshal()
 
 			if strings.HasPrefix(test.marshaled, "candidate:") {
-				require.Equal(t, test.marshaled[len("candidate:"):], actualCandidate.Marshal())
+				require.Equal(t, test.marshaled[len("candidate:"):], candidateMarshalOutput)
 			} else {
-				require.Equal(t, test.marshaled, actualCandidate.Marshal())
+				require.Equal(t, test.marshaled, candidateMarshalOutput)
 			}
 		})
 	}

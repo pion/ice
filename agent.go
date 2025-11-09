@@ -278,8 +278,6 @@ func newAgentWithConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 		automaticRenomination: false,
 		renominationInterval:  3 * time.Second, // Default matching libwebrtc
-
-		mapPort: config.MapPortHanlder,
 	}
 
 	agent.connectionStateNotifier = &handlerNotifier{

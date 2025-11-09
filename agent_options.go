@@ -291,3 +291,17 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 		return nil
 	}
 }
+
+func WithMapPortHandler(handler func(cand Candidate) int, candTyp CandidateType) AgentOption {
+	return func(a *Agent) error {
+		a.mapPort = func(candidate Candidate) int {
+			if candidate.Type() == candTyp {
+				return handler(candidate)
+			}
+
+			return 0
+		}
+
+		return nil
+	}
+}

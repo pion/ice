@@ -2272,11 +2272,10 @@ func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 }
 
 func TestMapPortHandler(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{
-		MapPortHanlder: func(cand Candidate) int {
-			return cand.Port() + 1000
-		},
-	})
+	handler := func(cand Candidate) int {
+		return cand.Port() + 1000
+	}
+	agent, err := newAgentWithConfig(&AgentConfig{}, WithMapPortHandler(handler, CandidateTypeHost))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2303,5 +2302,39 @@ func TestMapPortHandler(t *testing.T) {
 
 	for _, candidate := range actualCandidates {
 		require.Equal(t, candidate.Port()+1000, candidate.MappedPort())
+	}
+}
+
+func TestMapPortHandlerDifferentCandidateType(t *testing.T) {
+	handler := func(cand Candidate) int {
+		return cand.Port() + 1000
+	}
+	agent, err := newAgentWithConfig(&AgentConfig{}, WithMapPortHandler(handler, CandidateTypePeerReflexive))
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	dummyConn := &net.UDPConn{}
+
+	for i := 0; i < 5; i++ {
+		cfg := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      1000 + i,
+			Component: 1,
+		}
+
+		cand, errCand := NewCandidateHost(&cfg)
+		require.NoError(t, errCand)
+		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		require.NoError(t, err)
+	}
+
+	actualCandidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+
+	for i, candidate := range actualCandidates {
+		require.Equal(t, 1000+i, candidate.Port())
 	}
 }
