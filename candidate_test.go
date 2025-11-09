@@ -652,6 +652,7 @@ func TestCandidateMarshalWithMappedPort(t *testing.T) {
 		})
 	}
 }
+
 func TestCandidateWriteTo(t *testing.T) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		IP:   net.IP{127, 0, 0, 1},
