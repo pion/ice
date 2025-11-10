@@ -34,15 +34,15 @@ func getLocalIPAddress(t *testing.T, networkType NetworkType) netip.Addr {
 
 	if networkType.IsIPv6() && runtime.GOOS == "darwin" {
 		for _, addr := range localAddrs {
-			if !addr.IsLinkLocalUnicast() {
-				return addr
+			if !addr.addr.IsLinkLocalUnicast() {
+				return addr.addr
 			}
 		}
 
 		t.Skip("no non-link-local IPv6 address available")
 	}
 
-	return localAddrs[0]
+	return localAddrs[0].addr
 }
 
 func ipv6Available(t *testing.T) bool {
@@ -55,7 +55,7 @@ func ipv6Available(t *testing.T) bool {
 
 	if runtime.GOOS == "darwin" {
 		for _, addr := range localAddrs {
-			if !addr.IsLinkLocalUnicast() {
+			if !addr.addr.IsLinkLocalUnicast() {
 				return true
 			}
 		}

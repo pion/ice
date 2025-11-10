@@ -4,7 +4,9 @@
 package ice
 
 import (
+	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -29,6 +31,301 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 	return func() uint32 {
 		return counter.Add(1)
 	}
+}
+
+// WithAddressRewriteRules appends the provided address rewrite (1:1) rules to the agent's
+// existing configuration. Each `AddressRewriteRule` can limit the mapping to a specific
+// interface (`Iface`), local address (`Local`), CIDR block (`CIDR`), or subset
+// of network types (`Networks`), allowing fine-grained control over which local
+// addresses are replaced with the supplied external IPs.
+// Use `Mode` to control whether a rule replaces the original candidate (default for
+// host) or appends additional candidates (default for other types).
+//
+// Rules are evaluated in the order they are added; for each candidate type +
+// local address, explicit `Local` matches win immediately. Otherwise, the most
+// specific catch-all is chosen (iface+CIDR > iface-only > CIDR-only > global),
+// with declaration order breaking ties at the same specificity. `Iface` (when
+// set) must also match. This lets you layer specificity (e.g., iface+CIDR, then
+// iface-only, then global) while still keeping rule order meaningful.
+// Overlapping rules in the same scope are logged as warnings.
+func WithAddressRewriteRules(rules ...AddressRewriteRule) AgentOption {
+	return func(agent *Agent) error {
+		return appendAddressRewriteRules(agent, rules...)
+	}
+}
+
+func warnOnAddressRewriteConflicts(agent *Agent) {
+	if agent == nil || agent.log == nil {
+		return
+	}
+
+	for _, conflict := range findAddressRewriteRuleConflicts(agent.addressRewriteRules) {
+		scope := conflict.scope
+		scopeSummary := fmt.Sprintf(
+			"candidate=%s iface=%s cidr=%s networks=%s local=%s",
+			scope.candidateType.String(),
+			emptyScopeValue(scope.iface),
+			emptyScopeValue(scope.cidr),
+			emptyScopeValue(scope.networksKey),
+			scope.localKey,
+		)
+
+		message := fmt.Sprintf(
+			"detected overlapping address rewrite rule (%s): existing external IPs [%s], additional external IP %s",
+			scopeSummary,
+			strings.Join(conflict.existingExternalIPs, ", "),
+			conflict.conflictingExternal,
+		)
+
+		agent.log.Warn(message)
+	}
+}
+
+func emptyScopeValue(v string) string {
+	if v == "" {
+		return "*"
+	}
+
+	return v
+}
+
+func appendAddressRewriteRules(agent *Agent, rules ...AddressRewriteRule) error {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	sanitized := make([]AddressRewriteRule, 0, len(rules))
+	for _, rule := range rules {
+		normalized, err := sanitizeAddressRewriteRule(rule)
+		if err != nil {
+			return err
+		}
+
+		sanitized = append(sanitized, normalized)
+	}
+
+	agent.addressRewriteRules = append(agent.addressRewriteRules, sanitized...)
+	warnOnAddressRewriteConflicts(agent)
+
+	return nil
+}
+
+func sanitizeAddressRewriteRule(rule AddressRewriteRule) (AddressRewriteRule, error) {
+	cleaned, err := sanitizeExternalIPs(rule.External)
+	if err != nil {
+		return AddressRewriteRule{}, err
+	}
+
+	normalized := rule
+	normalized.External = cleaned
+	normalized.Local = strings.TrimSpace(rule.Local)
+	if normalized.Local != "" {
+		if _, _, err := validateIPString(normalized.Local); err != nil {
+			return AddressRewriteRule{}, err
+		}
+	}
+	switch normalized.Mode {
+	case addressRewriteModeUnspecified:
+		normalized.Mode = defaultAddressRewriteMode(normalized.AsCandidateType)
+	case AddressRewriteReplace, AddressRewriteAppend:
+	default:
+		return AddressRewriteRule{}, ErrInvalidNAT1To1IPMapping
+	}
+	if len(rule.Networks) > 0 {
+		normalized.Networks = append([]NetworkType(nil), rule.Networks...)
+	}
+
+	return normalized, nil
+}
+
+func defaultAddressRewriteMode(candidateType CandidateType) AddressRewriteMode {
+	if candidateType == CandidateTypeUnspecified || candidateType == CandidateTypeHost {
+		return AddressRewriteReplace
+	}
+
+	return AddressRewriteAppend
+}
+
+func sanitizeExternalIPs(ips []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(ips))
+	sanitized := make([]string, 0, len(ips))
+
+	for _, raw := range ips {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+
+		if strings.Contains(trimmed, "/") {
+			return nil, ErrInvalidNAT1To1IPMapping
+		}
+
+		if _, _, err := validateIPString(trimmed); err != nil {
+			return nil, err
+		}
+
+		seen[trimmed] = struct{}{}
+		sanitized = append(sanitized, trimmed)
+	}
+
+	if len(sanitized) == 0 {
+		return nil, ErrInvalidNAT1To1IPMapping
+	}
+
+	return sanitized, nil
+}
+
+type addressRewriteScopeKey struct {
+	candidateType CandidateType
+	iface         string
+	cidr          string
+	networksKey   string
+	localKey      string
+}
+
+type addressRewriteConflict struct {
+	scope               addressRewriteScopeKey
+	existingExternalIPs []string
+	conflictingExternal string
+}
+
+func findAddressRewriteRuleConflicts(rules []AddressRewriteRule) []addressRewriteConflict {
+	conflicts := make([]addressRewriteConflict, 0)
+	scopeState := make(map[addressRewriteScopeKey]map[string]struct{})
+
+	for _, rule := range rules {
+		candidateType := rule.AsCandidateType
+		if candidateType == CandidateTypeUnspecified {
+			candidateType = CandidateTypeHost
+		}
+
+		networksKey := "*"
+		if len(rule.Networks) > 0 {
+			names := make([]string, len(rule.Networks))
+			for i, network := range rule.Networks {
+				names[i] = network.String()
+			}
+			sort.Strings(names)
+			networksKey = strings.Join(names, ",")
+		}
+
+		externalEntries := enumerateAddressRewriteExternalEntries(rule)
+		for _, entry := range externalEntries {
+			key := addressRewriteScopeKey{
+				candidateType: candidateType,
+				iface:         rule.Iface,
+				cidr:          rule.CIDR,
+				networksKey:   networksKey,
+				localKey:      entry.localScopeKey,
+			}
+
+			existing := scopeState[key]
+			if existing == nil {
+				existing = make(map[string]struct{})
+				scopeState[key] = existing
+			}
+
+			if len(existing) > 0 {
+				if _, ok := existing[entry.externalIP]; !ok {
+					conflicts = append(conflicts, addressRewriteConflict{
+						scope:               key,
+						existingExternalIPs: mapKeys(existing),
+						conflictingExternal: entry.externalIP,
+					})
+				}
+			}
+
+			existing[entry.externalIP] = struct{}{}
+		}
+	}
+
+	return conflicts
+}
+
+type addressRewriteExternalEntry struct {
+	externalIP    string
+	localScopeKey string
+}
+
+func enumerateAddressRewriteExternalEntries(rule AddressRewriteRule) []addressRewriteExternalEntry {
+	if len(rule.External) == 0 {
+		return nil
+	}
+
+	entries := make([]addressRewriteExternalEntry, 0, len(rule.External))
+	localScope := deriveAddressRewriteLocalScopeKey(rule.Local)
+
+	for _, mapping := range rule.External {
+		if mapping == "" {
+			continue
+		}
+
+		external := strings.TrimSpace(mapping)
+		if external == "" {
+			continue
+		}
+
+		scopeKey := localScope
+		if scopeKey == "" {
+			scopeKey = deriveAddressRewriteFamilyScopeKey(external)
+		}
+
+		entries = append(entries, addressRewriteExternalEntry{
+			externalIP:    external,
+			localScopeKey: scopeKey,
+		})
+	}
+
+	return entries
+}
+
+func deriveAddressRewriteLocalScopeKey(local string) string {
+	local = strings.TrimSpace(local)
+	if local == "" {
+		return ""
+	}
+
+	ip, _, err := validateIPString(local)
+	if err != nil {
+		return "family:unknown"
+	}
+
+	if ip.To4() != nil {
+		return "family:ipv4"
+	}
+
+	return "family:ipv6"
+}
+
+func deriveAddressRewriteFamilyScopeKey(ipStr string) string {
+	ip, _, err := validateIPString(ipStr)
+	if err != nil {
+		return "family:unknown"
+	}
+
+	if ip.To4() != nil {
+		return "family:ipv4"
+	}
+
+	return "family:ipv6"
+}
+
+func mapKeys(m map[string]struct{}) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	return keys
 }
 
 // WithICELite configures whether the agent operates in lite mode.

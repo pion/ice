@@ -11,6 +11,11 @@ import (
 	"github.com/pion/transport/v3"
 )
 
+type ifaceAddr struct {
+	addr  netip.Addr
+	iface string
+}
+
 // The conditions of invalidation written below are defined in
 // https://tools.ietf.org/html/rfc8445#section-5.1.1.1
 // It is partial because the link-local check is done later in various gather local
@@ -45,8 +50,8 @@ func localInterfaces(
 	ipFilter func(net.IP) (keep bool),
 	networkTypes []NetworkType,
 	includeLoopback bool,
-) ([]*transport.Interface, []netip.Addr, error) {
-	ipAddrs := []netip.Addr{}
+) ([]*transport.Interface, []ifaceAddr, error) {
+	ipAddrs := []ifaceAddr{}
 	ifaces, err := n.Interfaces()
 	if err != nil {
 		return nil, ipAddrs, err
@@ -108,7 +113,7 @@ func localInterfaces(
 			}
 
 			atLeastOneAddr = true
-			ipAddrs = append(ipAddrs, ipAddr)
+			ipAddrs = append(ipAddrs, ifaceAddr{addr: ipAddr, iface: iface.Name})
 		}
 
 		if atLeastOneAddr {

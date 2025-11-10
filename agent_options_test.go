@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -644,6 +645,886 @@ func TestWithCandidateTypesNAT1To1Validation(t *testing.T) {
 			Net:                    stub,
 		}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 		require.ErrorIs(t, err, ErrIneffectiveNAT1To1IPMappingSrflx)
+	})
+}
+
+func TestWith1To1CandidateIPOptions(t *testing.T) {
+	testCases := []struct {
+		name             string
+		rules            []AddressRewriteRule
+		candidateType    CandidateType
+		expectedFirstIP  string
+		expectedSecondIP string
+		lookupLocalIP    string
+	}{
+		{
+			name: "host candidates",
+			rules: []AddressRewriteRule{
+				{
+					External:        []string{"1.2.3.4"},
+					AsCandidateType: CandidateTypeHost,
+				},
+				{
+					External:        []string{"5.6.7.8"},
+					AsCandidateType: CandidateTypeHost,
+				},
+			},
+			candidateType:    CandidateTypeHost,
+			expectedFirstIP:  "1.2.3.4",
+			expectedSecondIP: "5.6.7.8",
+			lookupLocalIP:    "10.0.0.1",
+		},
+		{
+			name: "srflx candidates",
+			rules: []AddressRewriteRule{
+				{
+					External:        []string{"5.6.7.8"},
+					AsCandidateType: CandidateTypeServerReflexive,
+				},
+				{
+					External:        []string{"9.9.9.9"},
+					AsCandidateType: CandidateTypeServerReflexive,
+				},
+			},
+			candidateType:    CandidateTypeServerReflexive,
+			expectedFirstIP:  "5.6.7.8",
+			expectedSecondIP: "9.9.9.9",
+			lookupLocalIP:    "0.0.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			assertAddressRewriteOption(
+				t,
+				tc.rules,
+				tc.candidateType,
+				tc.expectedFirstIP,
+				tc.expectedSecondIP,
+				tc.lookupLocalIP,
+			)
+		})
+	}
+}
+
+func assertAddressRewriteOption(
+	t *testing.T,
+	rules []AddressRewriteRule,
+	candidateType CandidateType,
+	expectedFirstIP string,
+	expectedSecondIP string,
+	lookupLocalIP string,
+) {
+	t.Helper()
+
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithAddressRewriteRules(rules...),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, len(rules))
+
+	firstRule := agent.addressRewriteRules[0]
+	require.Equal(t, candidateType, firstRule.AsCandidateType)
+	require.Equal(t, []string{expectedFirstIP}, firstRule.External)
+
+	secondRule := agent.addressRewriteRules[1]
+	require.Equal(t, candidateType, secondRule.AsCandidateType)
+	require.Equal(t, []string{expectedSecondIP}, secondRule.External)
+
+	require.NotNil(t, agent.addressRewriteMapper)
+	extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, candidateType, lookupLocalIP)
+	require.Equal(t, expectedFirstIP, extIP.String())
+}
+
+func requireFirstExternalIP(
+	t *testing.T,
+	mapper *addressRewriteMapper,
+	candidateType CandidateType,
+	localIP string,
+) net.IP {
+	t.Helper()
+
+	ips, matched, _, err := mapper.findExternalIPs(candidateType, localIP, "")
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
+}
+
+func requireFirstMappingIP(t *testing.T, mapping *ipMapping, localIP net.IP) net.IP {
+	t.Helper()
+
+	ips := mapping.findExternalIPs(localIP)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
+}
+
+func TestWith1To1RulesOption(t *testing.T) {
+	stub := newStubNet(t)
+	originalRules := []AddressRewriteRule{
+		{
+			External:        []string{"9.9.9.9"},
+			AsCandidateType: CandidateTypeHost,
+		},
+	}
+
+	// With append semantics the option stacks, so call twice and ensure accumulation.
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithAddressRewriteRules(originalRules...),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"4.4.4.4"},
+			AsCandidateType: CandidateTypeServerReflexive,
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 2)
+	require.Equal(t, []string{"9.9.9.9"}, agent.addressRewriteRules[0].External)
+	require.Equal(t, []string{"4.4.4.4"}, agent.addressRewriteRules[1].External)
+
+	// mutate the original rules after option applied, agent copy should remain unchanged.
+	originalRules[0].External[0] = "0.0.0.0"
+	require.Equal(t, "9.9.9.9", agent.addressRewriteRules[0].External[0])
+}
+
+func TestWith1To1RulesEmptyNoop(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"1.2.3.4"},
+			AsCandidateType: CandidateTypeHost,
+		}),
+		WithAddressRewriteRules(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 1)
+	require.Equal(t, []string{"1.2.3.4"}, agent.addressRewriteRules[0].External)
+	require.Equal(t, CandidateTypeHost, agent.addressRewriteRules[0].AsCandidateType)
+	require.NotNil(t, agent.addressRewriteMapper)
+}
+
+func TestWithAddressRewriteRulesWarnOnConflicts(t *testing.T) {
+	stub := newStubNet(t)
+	logger := &recordingLogger{}
+	factory := &recordingLoggerFactory{logger: logger}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithLoggerFactory(factory),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"203.0.113.10"},
+			AsCandidateType: CandidateTypeHost,
+		}),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"198.51.100.50"},
+			AsCandidateType: CandidateTypeHost,
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, logger.warnings, 1)
+	require.Contains(t, logger.warnings[0], "overlapping address rewrite rule")
+	require.Contains(t, logger.warnings[0], "candidate=host")
+	require.Contains(t, logger.warnings[0], "iface=*")
+	require.Contains(t, logger.warnings[0], "networks=*")
+	require.Contains(t, logger.warnings[0], "local=family:ipv4")
+	require.Contains(t, logger.warnings[0], "203.0.113.10")
+	require.Contains(t, logger.warnings[0], "198.51.100.50")
+
+	ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(CandidateTypeHost, "10.0.0.1", "")
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.Equal(t, AddressRewriteReplace, mode)
+	require.NotEmpty(t, ips)
+	require.Equal(t, "203.0.113.10", ips[0].String())
+}
+
+func TestWithAddressRewriteRulesConflictingModesWarningAndPrecedence(t *testing.T) {
+	stub := newStubNet(t)
+	logger := &recordingLogger{}
+	factory := &recordingLoggerFactory{logger: logger}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithLoggerFactory(factory),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"203.0.113.10"},
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteReplace,
+			},
+			AddressRewriteRule{
+				External:        []string{"198.51.100.50"},
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			},
+		),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.NotEmpty(t, logger.warnings)
+	require.Contains(t, logger.warnings[0], "overlapping address rewrite rule")
+
+	ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(CandidateTypeHost, "10.0.0.1", "")
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.NotEmpty(t, ips)
+	require.Equal(t, "203.0.113.10", ips[0].String())
+	require.Equal(t, AddressRewriteReplace, mode)
+}
+
+func TestWithAddressRewriteRulesNoFalsePositiveConflicts(t *testing.T) {
+	stub := newStubNet(t)
+	logger := &recordingLogger{}
+	factory := &recordingLoggerFactory{logger: logger}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithLoggerFactory(factory),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"203.0.113.10"},
+				AsCandidateType: CandidateTypeHost,
+				Networks:        []NetworkType{NetworkTypeUDP4},
+			},
+			AddressRewriteRule{
+				External:        []string{"2001:db8::10"},
+				AsCandidateType: CandidateTypeHost,
+				Networks:        []NetworkType{NetworkTypeUDP6},
+			},
+		),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"198.51.100.10"},
+				AsCandidateType: CandidateTypeServerReflexive,
+			},
+		),
+	)
+	assert.NoError(t, err)
+	if agent != nil {
+		t.Cleanup(func() {
+			assert.NoError(t, agent.Close())
+		})
+	}
+
+	assert.Empty(t, logger.warnings)
+}
+
+func TestLegacyAndNewAddressRewriteOrdering(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := newAgentFromConfig(
+		&AgentConfig{
+			Net:        stub,
+			NAT1To1IPs: []string{"203.0.113.10"},
+		},
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"198.51.100.5"},
+				AsCandidateType: CandidateTypeHost,
+			},
+		),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 2)
+	extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, CandidateTypeHost, "10.0.0.1")
+	require.Equal(t, "203.0.113.10", extIP.String())
+}
+
+func TestLegacyNAT1To1TranslationOrder(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgent(&AgentConfig{
+		Net: stub,
+		NAT1To1IPs: []string{
+			"203.0.113.1/10.0.0.1",
+			"203.0.113.2",
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 2)
+
+	firstRule := agent.addressRewriteRules[0]
+	require.Equal(t, "203.0.113.1", firstRule.External[0])
+	require.Equal(t, "10.0.0.1", firstRule.Local)
+
+	secondRule := agent.addressRewriteRules[1]
+	require.Equal(t, "203.0.113.2", secondRule.External[0])
+	require.Empty(t, secondRule.Local)
+
+	extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, CandidateTypeHost, "10.0.0.2")
+	require.Equal(t, "203.0.113.2", extIP.String())
+}
+
+func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
+	t.Run("host candidate parity", func(t *testing.T) {
+		legacyStub := newStubNet(t)
+		legacyAgent, err := NewAgent(&AgentConfig{
+			Net: legacyStub,
+			NAT1To1IPs: []string{
+				"203.0.113.10",
+				"198.51.100.20/10.0.0.20",
+			},
+		})
+		assert.NoError(t, err)
+		if legacyAgent != nil {
+			t.Cleanup(func() {
+				assert.NoError(t, legacyAgent.Close())
+			})
+		}
+
+		modernStub := newStubNet(t)
+		modernAgent, err := NewAgentWithOptions(
+			WithNet(modernStub),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"203.0.113.10"},
+					AsCandidateType: CandidateTypeHost,
+				},
+			),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"198.51.100.20"},
+					Local:           "10.0.0.20",
+					AsCandidateType: CandidateTypeHost,
+				},
+			),
+		)
+		assert.NoError(t, err)
+		if modernAgent != nil {
+			t.Cleanup(func() {
+				assert.NoError(t, modernAgent.Close())
+			})
+		}
+
+		for _, loc := range []string{"10.0.0.20", "10.0.0.21"} {
+			legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(
+				CandidateTypeHost, loc, "",
+			)
+			assert.NoError(t, legacyErr)
+			assert.True(t, legacyMatched)
+			assert.NotEmpty(t, legacyIPs)
+
+			modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(
+				CandidateTypeHost, loc, "",
+			)
+			assert.NoError(t, modernErr)
+			assert.True(t, modernMatched)
+			assert.NotEmpty(t, modernIPs)
+
+			assert.Equal(t, legacyIPs[0].String(), modernIPs[0].String())
+		}
+	})
+
+	t.Run("srflx candidate parity", func(t *testing.T) {
+		legacyStub := newStubNet(t)
+		legacyAgent, err := NewAgent(&AgentConfig{
+			Net:                    legacyStub,
+			NAT1To1IPs:             []string{"198.51.100.77"},
+			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
+		})
+		assert.NoError(t, err)
+		if legacyAgent != nil {
+			t.Cleanup(func() {
+				assert.NoError(t, legacyAgent.Close())
+			})
+		}
+
+		modernStub := newStubNet(t)
+		modernAgent, err := NewAgentWithOptions(
+			WithNet(modernStub),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"198.51.100.77"},
+					AsCandidateType: CandidateTypeServerReflexive,
+				},
+			),
+		)
+		assert.NoError(t, err)
+		if modernAgent != nil {
+			t.Cleanup(func() {
+				assert.NoError(t, modernAgent.Close())
+			})
+		}
+
+		legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(
+			CandidateTypeServerReflexive,
+			"0.0.0.0",
+			"",
+		)
+		assert.NoError(t, legacyErr)
+		assert.True(t, legacyMatched)
+		assert.NotEmpty(t, legacyIPs)
+
+		modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(
+			CandidateTypeServerReflexive,
+			"0.0.0.0",
+			"",
+		)
+		assert.NoError(t, modernErr)
+		assert.True(t, modernMatched)
+		assert.NotEmpty(t, modernIPs)
+
+		assert.Equal(t, legacyIPs[0].String(), modernIPs[0].String())
+	})
+}
+
+func TestOverlapWarningPerCandidateType(t *testing.T) {
+	stub := newStubNet(t)
+	logger := &recordingLogger{}
+	factory := &recordingLoggerFactory{logger: logger}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithLoggerFactory(factory),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"203.0.113.10"},
+				AsCandidateType: CandidateTypeHost,
+			},
+		),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"198.51.100.10"},
+				AsCandidateType: CandidateTypeServerReflexive,
+			},
+			AddressRewriteRule{
+				External:        []string{"198.51.100.20"},
+				AsCandidateType: CandidateTypeServerReflexive,
+			},
+		),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, logger.warnings, 1)
+	require.Contains(t, logger.warnings[0], "candidate=srflx")
+}
+
+func TestWithNAT1To1IPValidation(t *testing.T) {
+	t.Run("dedupe and trim host IPs", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{" 203.0.113.1 ", "203.0.113.1", "203.0.113.2 "},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		require.Len(t, agent.addressRewriteRules, 1)
+		require.Equal(t, []string{"203.0.113.1", "203.0.113.2"}, agent.addressRewriteRules[0].External)
+	})
+
+	t.Run("reject hostname entry", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"example.com"},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		)
+		require.Nil(t, agent)
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	})
+
+	t.Run("reject slash mapping in address rewrite rules", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"203.0.113.1/10.0.0.1"},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		)
+		require.Nil(t, agent)
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	})
+
+	t.Run("reject invalid rule entry", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"1.2.3.4", "bad-ip"},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		)
+		require.Nil(t, agent)
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	})
+}
+
+func TestWithAddressRewriteRulesIPv6(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"2001:db8::2"},
+			Local:           "2001:db8:1::2",
+			AsCandidateType: CandidateTypeHost,
+			Networks:        []NetworkType{NetworkTypeUDP6},
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 1)
+	require.Equal(t, []NetworkType{NetworkTypeUDP6}, agent.addressRewriteRules[0].Networks)
+	require.NotNil(t, agent.addressRewriteMapper)
+
+	mappings := agent.addressRewriteMapper.rulesByCandidateType[CandidateTypeHost]
+	require.Len(t, mappings, 1)
+	require.True(t, mappings[0].ipv6Mapping.valid)
+	_, ok := mappings[0].ipv6Mapping.ipMap["2001:db8:1::2"]
+	require.True(t, ok)
+	for key := range mappings[0].ipv6Mapping.ipMap {
+		t.Logf("stored ipv6 mapping key: %q", key)
+	}
+	locIP := net.ParseIP("2001:db8:1::2")
+	require.NotNil(t, locIP)
+	t.Logf("parsed ipv6 string: %q", locIP.String())
+	directExt := requireFirstMappingIP(t, &mappings[0].ipv6Mapping, locIP)
+	require.Equal(t, "2001:db8::2", directExt.String())
+
+	mapper, err := newAddressRewriteMapper(agent.addressRewriteRules)
+	require.NoError(t, err)
+	extIP := requireFirstExternalIP(t, mapper, CandidateTypeHost, "2001:db8:1::2")
+	require.Equal(t, "2001:db8::2", extIP.String())
+
+	_, matched, _, err := mapper.findExternalIPs(CandidateTypeHost, "2001:db8:1::3", "")
+	require.NoError(t, err)
+	require.False(t, matched)
+}
+
+func TestAddressRewriteRulesRejectWithMDNSQueryAndGather(t *testing.T) {
+	agent := &Agent{
+		candidateTypes: []CandidateType{CandidateTypeHost},
+		mDNSMode:       MulticastDNSModeQueryAndGather,
+		addressRewriteRules: []AddressRewriteRule{
+			{
+				External:        []string{"203.0.113.200"},
+				AsCandidateType: CandidateTypeHost,
+			},
+		},
+		log: logging.NewDefaultLoggerFactory().NewLogger("test"),
+	}
+
+	err := applyAddressRewriteMapping(agent)
+	assert.ErrorIs(t, err, ErrMulticastDNSWithNAT1To1IPMapping)
+}
+
+func TestAgentAddressRewriteModeIntegration(t *testing.T) {
+	stub := newStubNet(t)
+
+	t.Run("defaults host replace srflx append", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"203.0.113.10"},
+					AsCandidateType: CandidateTypeHost,
+				},
+				AddressRewriteRule{
+					External:        []string{"198.51.100.10"},
+					Local:           "0.0.0.0",
+					AsCandidateType: CandidateTypeServerReflexive,
+				},
+			),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		require.Len(t, agent.addressRewriteRules, 2)
+		assert.Equal(t, AddressRewriteReplace, agent.addressRewriteRules[0].Mode)
+		assert.Equal(t, AddressRewriteAppend, agent.addressRewriteRules[1].Mode)
+	})
+
+	t.Run("host append honored", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"203.0.113.20"},
+					Local:           "10.0.0.5",
+					AsCandidateType: CandidateTypeHost,
+					Mode:            AddressRewriteAppend,
+				},
+			),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		require.Len(t, agent.addressRewriteRules, 1)
+		assert.Equal(t, AddressRewriteAppend, agent.addressRewriteRules[0].Mode)
+	})
+
+	t.Run("srflx replace honored", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithAddressRewriteRules(
+				AddressRewriteRule{
+					External:        []string{"198.51.100.50"},
+					Local:           "0.0.0.0",
+					AsCandidateType: CandidateTypeServerReflexive,
+					Mode:            AddressRewriteReplace,
+				},
+			),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		require.Len(t, agent.addressRewriteRules, 1)
+		assert.Equal(t, AddressRewriteReplace, agent.addressRewriteRules[0].Mode)
+	})
+}
+
+func TestAddressRewriteModeOverrides(t *testing.T) {
+	t.Run("host append preserves local candidate", func(t *testing.T) {
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
+			{
+				External:        []string{"203.0.113.99"},
+				Local:           "10.0.0.99",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			},
+		})
+		assert.NoError(t, err)
+
+		agent := &Agent{
+			addressRewriteMapper: mapper,
+			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
+		}
+
+		local := netip.MustParseAddr("10.0.0.99")
+		mapped, ok := agent.applyHostAddressRewrite(local, []netip.Addr{local}, "")
+		assert.True(t, ok)
+		assert.Equal(t, []netip.Addr{
+			local,
+			netip.MustParseAddr("203.0.113.99"),
+		}, mapped)
+	})
+
+	t.Run("srflx replace overrides default append", func(t *testing.T) {
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
+			{
+				External:        []string{"198.51.100.99"},
+				Local:           "0.0.0.0",
+				AsCandidateType: CandidateTypeServerReflexive,
+				Mode:            AddressRewriteReplace,
+			},
+		})
+		assert.NoError(t, err)
+
+		agent := &Agent{
+			addressRewriteMapper: mapper,
+			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
+		}
+
+		assert.True(t, agent.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive))
+
+		ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(
+			CandidateTypeServerReflexive,
+			"0.0.0.0",
+			"",
+		)
+		assert.NoError(t, err)
+		assert.True(t, matched)
+		assert.Equal(t, AddressRewriteReplace, mode)
+		assert.Equal(t, "198.51.100.99", ips[0].String())
+	})
+}
+
+func TestAddressRewriteMixedFamilyApplication(t *testing.T) {
+	logger := logging.NewDefaultLoggerFactory().NewLogger("test")
+
+	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
+		{
+			External:        []string{"203.0.113.123"},
+			Local:           "2001:db8::123",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteReplace,
+		},
+	})
+	assert.NoError(t, err)
+
+	agent := &Agent{
+		addressRewriteMapper: mapper,
+		log:                  logger,
+	}
+
+	local := netip.MustParseAddr("2001:db8::123")
+	mapped, ok := agent.applyHostAddressRewrite(local, []netip.Addr{local}, "")
+	assert.True(t, ok)
+	assert.Len(t, mapped, 1)
+	assert.Equal(t, netip.MustParseAddr("203.0.113.123"), mapped[0])
+}
+
+type recordingLogger struct {
+	warnings []string
+}
+
+func (l *recordingLogger) Trace(string) {}
+
+func (l *recordingLogger) Tracef(string, ...any) {}
+
+func (l *recordingLogger) Debug(string) {}
+
+func (l *recordingLogger) Debugf(string, ...any) {}
+
+func (l *recordingLogger) Info(string) {}
+
+func (l *recordingLogger) Infof(string, ...any) {}
+
+func (l *recordingLogger) Warn(msg string) {
+	l.warnings = append(l.warnings, msg)
+}
+
+func (l *recordingLogger) Warnf(format string, args ...any) {
+	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
+}
+
+func (l *recordingLogger) Error(string) {}
+
+func (l *recordingLogger) Errorf(string, ...any) {}
+
+type recordingLoggerFactory struct {
+	logger *recordingLogger
+}
+
+func (f *recordingLoggerFactory) NewLogger(string) logging.LeveledLogger {
+	return f.logger
+}
+
+func TestAgentConfigNAT1To1IPs(t *testing.T) {
+	testCases := []struct {
+		name          string
+		config        AgentConfig
+		candidateType CandidateType
+		localIP       string
+		expectedIP    string
+	}{
+		{
+			name: "host candidate default type",
+			config: AgentConfig{
+				NAT1To1IPs: []string{"1.2.3.4"},
+			},
+			candidateType: CandidateTypeHost,
+			localIP:       "10.0.0.1",
+			expectedIP:    "1.2.3.4",
+		},
+		{
+			name: "srflx candidate explicit type",
+			config: AgentConfig{
+				NAT1To1IPs:             []string{"5.6.7.8"},
+				NAT1To1IPCandidateType: CandidateTypeServerReflexive,
+			},
+			candidateType: CandidateTypeServerReflexive,
+			localIP:       "0.0.0.0",
+			expectedIP:    "5.6.7.8",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			stub := newStubNet(t)
+			config := tc.config
+			config.Net = stub
+
+			agent, err := NewAgent(&config)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, agent.Close())
+			})
+
+			require.NotNil(t, agent.addressRewriteMapper)
+			extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, tc.candidateType, tc.localIP)
+			require.Equal(t, tc.expectedIP, extIP.String())
+		})
+	}
+
+	t.Run("deprecated multiple config IPs reject", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		//nolint:godox
+		// TODO: remove once AgentConfig.NAT1To1IPs is deprecated.
+		agent, err := NewAgent(&AgentConfig{
+			Net:        stub,
+			NAT1To1IPs: []string{"1.2.3.4", "5.6.7.8"},
+		})
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+		require.Nil(t, agent)
+	})
+
+	t.Run("legacy config allows slash pair syntax", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgent(&AgentConfig{
+			Net:        stub,
+			NAT1To1IPs: []string{"203.0.113.20/10.0.0.20"},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, CandidateTypeHost, "10.0.0.20")
+		require.Equal(t, "203.0.113.20", extIP.String())
 	})
 }
 

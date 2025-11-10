@@ -25,6 +25,7 @@ import (
 	"github.com/pion/transport/v3/packetio"
 	"github.com/pion/transport/v3/stdnet"
 	"github.com/pion/transport/v3/vnet"
+	"github.com/pion/turn/v4"
 	"golang.org/x/net/proxy"
 )
 
@@ -111,18 +112,17 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls             []*stun.URI
-	networkTypes     []NetworkType
-	natCandidateType CandidateType
-	natIPs           []string
+	urls                []*stun.URI
+	networkTypes        []NetworkType
+	addressRewriteRules []AddressRewriteRule
 
 	buf *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
 
-	// 1:1 D-NAT IP address mapping
-	extIPMapper *externalIPMapper
+	// Address rewrite (1:1) IP mapping
+	addressRewriteMapper *addressRewriteMapper
 
 	// Callback that allows user to implement custom behavior
 	// for STUN Binding Requests
@@ -167,6 +167,8 @@ type Agent struct {
 	automaticRenomination bool
 	renominationInterval  time.Duration
 	lastRenominationTime  time.Time
+
+	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
 }
 
 // NewAgent creates a new Agent.
@@ -191,10 +193,120 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 	agent.localUfrag = config.LocalUfrag
 	agent.localPwd = config.LocalPwd
-	agent.natCandidateType = config.NAT1To1IPCandidateType
-	agent.natIPs = config.NAT1To1IPs
+	if config.NAT1To1IPs != nil {
+		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
+			return nil, err
+		}
+
+		typ := CandidateTypeHost
+		if config.NAT1To1IPCandidateType != CandidateTypeUnspecified {
+			typ = config.NAT1To1IPCandidateType
+		}
+
+		rules, err := legacyNAT1To1Rules(config.NAT1To1IPs, typ)
+		if err != nil {
+			return nil, err
+		}
+		agent.addressRewriteRules = rules
+	}
 
 	return newAgentWithConfig(agent, opts...)
+}
+
+func validateLegacyNAT1To1IPs(ips []string) error {
+	var hasIPv4CatchAll, hasIPv6CatchAll bool
+
+	for _, mapping := range ips {
+		trimmed := strings.TrimSpace(mapping)
+		var err error
+		hasIPv4CatchAll, hasIPv6CatchAll, err = validateLegacyNAT1To1Entry(trimmed, hasIPv4CatchAll, hasIPv6CatchAll)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateLegacyNAT1To1Entry(mapping string, hasIPv4CatchAll, hasIPv6CatchAll bool) (bool, bool, error) {
+	if mapping == "" {
+		return hasIPv4CatchAll, hasIPv6CatchAll, nil
+	}
+
+	parts := strings.Split(mapping, "/")
+	if len(parts) == 0 || len(parts) > 2 {
+		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+	}
+
+	_, isIPv4, err := validateIPString(parts[0])
+	if err != nil {
+		return hasIPv4CatchAll, hasIPv6CatchAll, err
+	}
+
+	if len(parts) == 2 {
+		if _, _, err := validateIPString(strings.TrimSpace(parts[1])); err != nil {
+			return hasIPv4CatchAll, hasIPv6CatchAll, err
+		}
+
+		return hasIPv4CatchAll, hasIPv6CatchAll, nil
+	}
+
+	if isIPv4 {
+		if hasIPv4CatchAll {
+			return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+		}
+
+		return true, hasIPv6CatchAll, nil
+	}
+
+	if hasIPv6CatchAll {
+		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+	}
+
+	return hasIPv4CatchAll, true, nil
+}
+
+func legacyNAT1To1Rules(ips []string, candidateType CandidateType) ([]AddressRewriteRule, error) {
+	var rules []AddressRewriteRule
+
+	for _, mapping := range ips {
+		trimmed := strings.TrimSpace(mapping)
+		if trimmed == "" {
+			continue
+		}
+
+		parts := strings.Split(trimmed, "/")
+		switch len(parts) {
+		case 1:
+			rules = append(rules, AddressRewriteRule{
+				External:        []string{parts[0]},
+				AsCandidateType: candidateType,
+			})
+		case 2:
+			ext := strings.TrimSpace(parts[0])
+			local := strings.TrimSpace(parts[1])
+			if ext == "" || local == "" {
+				return nil, ErrInvalidNAT1To1IPMapping
+			}
+
+			if _, _, err := validateIPString(ext); err != nil {
+				return nil, err
+			}
+			if _, _, err := validateIPString(local); err != nil {
+				return nil, err
+			}
+
+			rules = append(rules, AddressRewriteRule{
+				External:        []string{ext},
+				Local:           local,
+				AsCandidateType: candidateType,
+			})
+		default:
+			return nil, ErrInvalidNAT1To1IPMapping
+		}
+	}
+
+	return rules, nil
 }
 
 func createAgentBase(config *AgentConfig) (*Agent, error) {
@@ -256,6 +368,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		lastKnownInterfaces:             make(map[string]netip.Addr),
 		automaticRenomination:           false,
 		renominationInterval:            3 * time.Second, // Default matching libwebrtc
+		turnClientFactory:               defaultTurnClient,
 	}
 
 	config.initWithDefaults(agent)
@@ -263,31 +376,36 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 	return agent, nil
 }
 
-func applyExternalIPMapping(agent *Agent, candidateType CandidateType, ips []string) error {
-	mapper, err := newExternalIPMapper(candidateType, ips)
+func applyAddressRewriteMapping(agent *Agent) error {
+	mapper, err := newAddressRewriteMapper(agent.addressRewriteRules)
 	if err != nil {
 		return err
 	}
 
-	agent.extIPMapper = mapper
-	if agent.extIPMapper == nil {
+	agent.addressRewriteMapper = mapper
+	if agent.addressRewriteMapper == nil {
 		return nil
 	}
 
-	switch agent.extIPMapper.candidateType {
-	case CandidateTypeHost:
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeHost) {
+		// for mDNS QueryAndGather we never advertise rewritten host IPs to avoid
+		// leaking local addresses, this matches the legacy NAT1:1 behavior.
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
+		// surface misconfiguration when host candidates are disabled but a host
+		// rewrite rule was provided.
 		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-	case CandidateTypeServerReflexive:
+	}
+
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
+		// surface misconfiguration when srflx candidates are disabled but a srflx
+		// rewrite rule was provided.
 		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
-	default:
-		return nil
 	}
 
 	return nil
@@ -394,7 +512,7 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		return nil, ErrUselessUrlsProvided
 	}
 
-	if err = applyExternalIPMapping(agent, agent.natCandidateType, agent.natIPs); err != nil {
+	if err = applyAddressRewriteMapping(agent); err != nil {
 		agent.closeMulticastConn()
 
 		return nil, err
@@ -829,7 +947,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		conn := newActiveTCPConn(
 			a.loop,
-			net.JoinHostPort(localIPs[i].String(), "0"),
+			net.JoinHostPort(localIPs[i].addr.String(), "0"),
 			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
 			a.log,
 		)
@@ -843,7 +961,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		localCandidate, err := NewCandidateHost(&CandidateHostConfig{
 			Network:   remoteCandidate.NetworkType().String(),
-			Address:   localIPs[i].String(),
+			Address:   localIPs[i].addr.String(),
 			Port:      tcpAddr.Port,
 			Component: ComponentRTP,
 			TCPType:   TCPTypeActive,

@@ -70,8 +70,8 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 		require.NoError(t, err)
 
 		for _, addr := range localAddrs {
-			require.False(t, addr.IsLoopback())
-			require.True(t, ipNet.Contains(addr.AsSlice()))
+			require.False(t, addr.addr.IsLoopback())
+			require.True(t, ipNet.Contains(addr.addr.AsSlice()))
 		}
 	})
 
@@ -103,7 +103,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 		require.NotEqual(t, 0, len(localAddrs))
 		require.NoError(t, err)
 
-		ip := localAddrs[0].AsSlice()
+		ip := localAddrs[0].addr.AsSlice()
 
 		conn, err := listenUDPInPortRange(agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err)

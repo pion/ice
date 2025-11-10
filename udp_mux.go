@@ -98,9 +98,9 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault { //nolint:cyclop
 				localAddrsForUnspecified = make([]net.Addr, len(addrs))
 				for i, addr := range addrs {
 					localAddrsForUnspecified[i] = &net.UDPAddr{
-						IP:   addr.AsSlice(),
+						IP:   addr.addr.AsSlice(),
 						Port: udpAddr.Port,
-						Zone: addr.Zone(),
+						Zone: addr.addr.Zone(),
 					}
 				}
 			} else {

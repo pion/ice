@@ -288,6 +288,37 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 	return aConn, bConn
 }
 
+func pipeWithVNetUsingOptions(t *testing.T, opts0, opts1 []AgentOption) (*Conn, *Conn) {
+	t.Helper()
+
+	aNotifier, aConnected := onConnected()
+	bNotifier, bConnected := onConnected()
+
+	aAgent, err := NewAgentWithOptions(opts0...)
+	require.NoError(t, err)
+	if err = aAgent.OnConnectionStateChange(aNotifier); err != nil {
+		require.NoError(t, err)
+	}
+
+	bAgent, err := NewAgentWithOptions(opts1...)
+	require.NoError(t, err)
+	if err = bAgent.OnConnectionStateChange(bNotifier); err != nil {
+		require.NoError(t, err)
+	}
+
+	t.Cleanup(func() {
+		require.NoError(t, aAgent.Close(), "failed to close agent0")
+		require.NoError(t, bAgent.Close(), "failed to close agent1")
+	})
+
+	aConn, bConn := connectWithVNet(t, aAgent, bAgent)
+
+	<-aConnected
+	<-bConnected
+
+	return aConn, bConn
+}
+
 func closePipe(t *testing.T, ca *Conn, cb *Conn) {
 	t.Helper()
 
@@ -442,6 +473,141 @@ func TestConnectivityVNet(t *testing.T) {
 		log.Debug("Closing...")
 		closePipe(t, ca, cb)
 	})
+}
+
+func TestConnectivityVNetWithAddressRewriteRuleOptions(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("host candidate mapping with options", func(t *testing.T) {
+		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+		natType1 := &vnet.NATType{
+			MappingBehavior:   vnet.EndpointAddrPortDependent,
+			FilteringBehavior: vnet.EndpointAddrPortDependent,
+		}
+
+		vnet, err := buildVNet(natType0, natType1)
+		require.NoError(t, err)
+		defer vnet.close()
+
+		agent0Opts := []AgentOption{
+			WithNet(vnet.net0),
+			WithNetworkTypes(supportedNetworkTypes()),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{vnetGlobalIPA},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		}
+		agent1Opts := []AgentOption{
+			WithNet(vnet.net1),
+			WithNetworkTypes(supportedNetworkTypes()),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		}
+
+		ca, cb := pipeWithVNetUsingOptions(t, agent0Opts, agent1Opts)
+		closePipe(t, ca, cb)
+	})
+
+	t.Run("srflx candidate mapping with options", func(t *testing.T) {
+		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+		natType1 := &vnet.NATType{
+			MappingBehavior:   vnet.EndpointAddrPortDependent,
+			FilteringBehavior: vnet.EndpointAddrPortDependent,
+		}
+
+		vnet, err := buildVNet(natType0, natType1)
+		require.NoError(t, err)
+		defer vnet.close()
+
+		agent0Opts := []AgentOption{
+			WithNet(vnet.net0),
+			WithNetworkTypes(supportedNetworkTypes()),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{vnetGlobalIPA},
+				AsCandidateType: CandidateTypeServerReflexive,
+			}),
+		}
+		agent1Opts := []AgentOption{
+			WithNet(vnet.net1),
+			WithNetworkTypes(supportedNetworkTypes()),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		}
+
+		ca, cb := pipeWithVNetUsingOptions(t, agent0Opts, agent1Opts)
+		closePipe(t, ca, cb)
+	})
+}
+
+func TestConnectivityVNetNAT1To1SharedFoundation(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+	natType1 := &vnet.NATType{}
+
+	vnet, err := buildVNet(natType0, natType1)
+	require.NoError(t, err)
+	defer vnet.close()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(vnet.net0),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{vnetGlobalIPA},
+				AsCandidateType: CandidateTypeHost,
+			},
+			AddressRewriteRule{
+				External:        []string{vnetGlobalIPA},
+				AsCandidateType: CandidateTypeServerReflexive,
+			},
+		),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent.GatherCandidates())
+
+	require.Eventually(t, func() bool {
+		state, stateErr := agent.GetGatheringState()
+		require.NoError(t, stateErr)
+
+		return state == GatheringStateComplete
+	}, time.Second, 10*time.Millisecond)
+
+	foundationSeen := make(map[string]struct{})
+	typeCount := make(map[CandidateType]int)
+
+	for _, candidates := range agent.localCandidates {
+		for _, cand := range candidates {
+			if cand.Address() != vnetGlobalIPA {
+				continue
+			}
+
+			if cand.Type() != CandidateTypeHost && cand.Type() != CandidateTypeServerReflexive {
+				continue
+			}
+
+			foundation := cand.Foundation()
+			_, dup := foundationSeen[foundation]
+			require.Falsef(t, dup, "duplicate foundation %s for %s candidate", foundation, cand.Type())
+			foundationSeen[foundation] = struct{}{}
+			typeCount[cand.Type()]++
+		}
+	}
+
+	require.Equal(t, 1, typeCount[CandidateTypeHost], "expected exactly one host candidate for %s", vnetGlobalIPA)
+	require.Equal(
+		t,
+		1,
+		typeCount[CandidateTypeServerReflexive],
+		"expected exactly one srflx candidate for %s",
+		vnetGlobalIPA,
+	)
 }
 
 // TestDisconnectedToConnected requires that an agent can go to disconnected,
