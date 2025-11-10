@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2025 The Pion community <https://pion.ly>
+# SPDX-License-Identifier: MIT
+
+services:
+  nat-demo:
+    build:
+      context: ../..
+      dockerfile: examples/nat-rules/Dockerfile
+    command: ["-scenario", "all"]
+    tty: true
+    environment:
+      NAT_DEMO_BLUE_LOCAL: 10.10.0.20
+      NAT_DEMO_BLUE_PUBLIC: 203.0.113.10
+      NAT_DEMO_GREEN_LOCAL: 10.20.0.20
+      NAT_DEMO_GREEN_PUBLIC: 203.0.113.20
+      NAT_DEMO_GLOBAL_HOST_FALLBACK: 198.51.100.200
+      NAT_DEMO_SERVICE_LOCAL: 10.30.0.20
+      NAT_DEMO_SERVICE_HOST_PUBLIC: 203.0.113.30
+      NAT_DEMO_SCOPED_PUBLIC: 203.0.113.40
+      NAT_DEMO_SCOPED_CIDR: 10.30.0.0/24
+      NAT_DEMO_SRFLX_LOCAL: 0.0.0.0
+      NAT_DEMO_SRFLX_PRIMARY: 198.51.100.50
+      NAT_DEMO_SRFLX_SECONDARY: 198.51.100.60
+    networks:
+      lan_blue:
+        ipv4_address: 10.10.0.20
+      lan_green:
+        ipv4_address: 10.20.0.20
+      lan_service:
+        ipv4_address: 10.30.0.20
+
+networks:
+  lan_blue:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+
+  lan_green:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+
+  lan_service:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
