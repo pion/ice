@@ -7,303 +7,353 @@ import (
 	"net"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestExternalIPMapper(t *testing.T) { //nolint:maintidx
-	t.Run("validateIPString", func(t *testing.T) {
-		var ip net.IP
-		var isIPv4 bool
-		var err error
+func makeRule(candidateType CandidateType, ips ...string) NAT1To1Rule {
+	return NAT1To1Rule{
+		PublicIPs:       ips,
+		AsCandidateType: candidateType,
+	}
+}
 
-		ip, isIPv4, err = validateIPString("1.2.3.4")
-		require.NoError(t, err, "should succeed")
-		require.True(t, isIPv4, "should be true")
-		require.Equal(t, "1.2.3.4", ip.String(), "should be true")
+func TestValidateIPString(t *testing.T) {
+	var ip net.IP
+	var isIPv4 bool
+	var err error
 
-		ip, isIPv4, err = validateIPString("2601:4567::5678")
-		require.NoError(t, err, "should succeed")
-		require.False(t, isIPv4, "should be false")
-		require.Equal(t, "2601:4567::5678", ip.String(), "should be true")
+	ip, isIPv4, err = validateIPString("1.2.3.4")
+	assert.NoError(t, err)
+	assert.True(t, isIPv4)
+	assert.Equal(t, "1.2.3.4", ip.String())
 
-		_, _, err = validateIPString("bad.6.6.6")
-		require.Error(t, err, "should fail")
+	ip, isIPv4, err = validateIPString("2601:4567::5678")
+	assert.NoError(t, err)
+	assert.False(t, isIPv4)
+	assert.Equal(t, "2601:4567::5678", ip.String())
+
+	_, _, err = validateIPString("bad.6.6.6")
+	assert.Error(t, err)
+}
+
+//nolint:nlreturn // test fixtures intentionally inline for clarity.
+func TestNewExternalIPMapper(t *testing.T) {
+	t.Run("nil rules", func(t *testing.T) {
+		mapper, err := newExternalIPMapper(nil)
+		assert.NoError(t, err)
+		assert.Nil(t, mapper)
 	})
 
-	t.Run("newExternalIPMapper", func(t *testing.T) {
-		var mapper *externalIPMapper
-		var err error
-
-		// ips being nil should succeed but mapper will be nil also
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, nil)
-		require.NoError(t, err, "should succeed")
-		require.Nil(t, mapper, "should be nil")
-
-		// ips being empty should succeed but mapper will still be nil
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{})
-		require.NoError(t, err, "should succeed")
-		require.Nil(t, mapper, "should be nil")
-
-		// IPv4 with no explicit local IP, defaults to CandidateTypeHost
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.Equal(t, CandidateTypeHost, mapper.candidateType, "should match")
-		require.NotNil(t, mapper.ipv4Mapping.ipSole)
-		require.Nil(t, mapper.ipv6Mapping.ipSole)
-		require.Equal(t, 0, len(mapper.ipv4Mapping.ipMap), "should match")
-		require.Equal(t, 0, len(mapper.ipv6Mapping.ipMap), "should match")
-
-		// IPv4 with no explicit local IP, using CandidateTypeServerReflexive
-		mapper, err = newExternalIPMapper(CandidateTypeServerReflexive, []string{
-			"1.2.3.4",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.Equal(t, CandidateTypeServerReflexive, mapper.candidateType, "should match")
-		require.NotNil(t, mapper.ipv4Mapping.ipSole)
-		require.Nil(t, mapper.ipv6Mapping.ipSole)
-		require.Equal(t, 0, len(mapper.ipv4Mapping.ipMap), "should match")
-		require.Equal(t, 0, len(mapper.ipv6Mapping.ipMap), "should match")
-
-		// IPv4 with no explicit local IP, defaults to CandidateTypeHost
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"2601:4567::5678",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.Equal(t, CandidateTypeHost, mapper.candidateType, "should match")
-		require.Nil(t, mapper.ipv4Mapping.ipSole)
-		require.NotNil(t, mapper.ipv6Mapping.ipSole)
-		require.Equal(t, 0, len(mapper.ipv4Mapping.ipMap), "should match")
-		require.Equal(t, 0, len(mapper.ipv6Mapping.ipMap), "should match")
-
-		// IPv4 and IPv6 in the mix
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4",
-			"2601:4567::5678",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.Equal(t, CandidateTypeHost, mapper.candidateType, "should match")
-		require.NotNil(t, mapper.ipv4Mapping.ipSole)
-		require.NotNil(t, mapper.ipv6Mapping.ipSole)
-		require.Equal(t, 0, len(mapper.ipv4Mapping.ipMap), "should match")
-		require.Equal(t, 0, len(mapper.ipv6Mapping.ipMap), "should match")
-
-		// Unsupported candidate type - CandidateTypePeerReflexive
-		mapper, err = newExternalIPMapper(CandidateTypePeerReflexive, []string{
-			"1.2.3.4",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Unsupported candidate type - CandidateTypeRelay
-		mapper, err = newExternalIPMapper(CandidateTypePeerReflexive, []string{
-			"1.2.3.4",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Cannot duplicate mapping IPv4 family
-		mapper, err = newExternalIPMapper(CandidateTypeServerReflexive, []string{
-			"1.2.3.4",
-			"5.6.7.8",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Cannot duplicate mapping IPv6 family
-		mapper, err = newExternalIPMapper(CandidateTypeServerReflexive, []string{
-			"2201::1",
-			"2201::0002",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Invalide external IP string
-		mapper, err = newExternalIPMapper(CandidateTypeServerReflexive, []string{
-			"bad.2.3.4",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Invalide local IP string
-		mapper, err = newExternalIPMapper(CandidateTypeServerReflexive, []string{
-			"1.2.3.4/10.0.0.bad",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
+	t.Run("empty rules", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{})
+		assert.NoError(t, err)
+		assert.Nil(t, mapper)
 	})
 
-	t.Run("newExternalIPMapper with explicit local IP", func(t *testing.T) {
-		var mapper *externalIPMapper
-		var err error
+	t.Run("default candidate type", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeUnspecified, "1.2.3.4")})
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
+		assert.True(t, mapper.hasCandidateType(CandidateTypeHost))
 
-		// IPv4 with  explicit local IP, defaults to CandidateTypeHost
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4/10.0.0.1",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.Equal(t, CandidateTypeHost, mapper.candidateType, "should match")
-		require.Nil(t, mapper.ipv4Mapping.ipSole)
-		require.Nil(t, mapper.ipv6Mapping.ipSole)
-		require.Equal(t, 1, len(mapper.ipv4Mapping.ipMap), "should match")
-		require.Equal(t, 0, len(mapper.ipv6Mapping.ipMap), "should match")
-
-		// Cannot assign two ext IPs for one local IPv4
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4/10.0.0.1",
-			"1.2.3.5/10.0.0.1",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Cannot assign two ext IPs for one local IPv6
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"2200::1/fe80::1",
-			"2200::0002/fe80::1",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Cannot mix different IP family in a pair (1)
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"2200::1/10.0.0.1",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Cannot mix different IP family in a pair (2)
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4/fe80::1",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
-
-		// Invalid pair
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4/192.168.0.2/10.0.0.1",
-		})
-		require.Error(t, err, "should fail")
-		require.Nil(t, mapper, "should be nil")
+		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
+		assert.NoError(t, err)
+		assert.Equal(t, "1.2.3.4", extIP.String())
 	})
 
-	t.Run("newExternalIPMapper with implicit and explicit local IP", func(t *testing.T) {
-		// Mixing implicit and explicit local IPs not allowed
-		_, err := newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4",
-			"1.2.3.5/10.0.0.1",
-		})
-		require.Error(t, err, "should fail")
-
-		// Mixing implicit and explicit local IPs not allowed
-		_, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.5/10.0.0.1",
-			"1.2.3.4",
-		})
-		require.Error(t, err, "should fail")
+	t.Run("server reflexive candidate type", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeServerReflexive, "1.2.3.4")})
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
+		assert.True(t, mapper.hasCandidateType(CandidateTypeServerReflexive))
 	})
 
-	t.Run("findExternalIP without explicit local IP", func(t *testing.T) {
-		var mapper *externalIPMapper
-		var err error
-		var extIP net.IP
-
-		// IPv4 with  explicit local IP, defaults to CandidateTypeHost
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4",
-			"2200::1",
-		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
-		require.NotNil(t, mapper.ipv4Mapping.ipSole)
-		require.NotNil(t, mapper.ipv6Mapping.ipSole)
-
-		// Find external IPv4
-		extIP, err = mapper.findExternalIP("10.0.0.1")
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "1.2.3.4", extIP.String(), "should match")
-
-		// Find external IPv6
-		extIP, err = mapper.findExternalIP("fe80::0001") // Use '0001' instead of '1' on purpose
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "2200::1", extIP.String(), "should match")
-
-		// Bad local IP string
-		_, err = mapper.findExternalIP("really.bad")
-		require.Error(t, err, "should fail")
+	t.Run("unsupported candidate type", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypePeerReflexive, "1.2.3.4")})
+		assert.ErrorIs(t, err, ErrUnsupportedNAT1To1IPCandidateType)
+		assert.Nil(t, mapper)
 	})
 
-	t.Run("findExternalIP with explicit local IP", func(t *testing.T) {
-		var mapper *externalIPMapper
-		var err error
-		var extIP net.IP
+	invalidCases := []struct {
+		name         string
+		rule         NAT1To1Rule
+		expectMapper func(t *testing.T, mapper *externalIPMapper)
+	}{
+		{
+			name: "duplicate ipv4 sole",
+			rule: makeRule(CandidateTypeHost, "1.2.3.4", "5.6.7.8"),
+		},
+		{
+			name: "duplicate ipv6 sole",
+			rule: makeRule(CandidateTypeHost, "2201::1", "2201::0002"),
+		},
+		{
+			name: "invalid external ip",
+			rule: makeRule(CandidateTypeHost, "bad.2.3.4"),
+		},
+		{
+			name: "invalid local ip",
+			rule: makeRule(CandidateTypeHost, "1.2.3.4/10.0.0.bad"),
+		},
+		{
+			name: "mixed family pair ipv6 ext ipv4 local",
+			rule: makeRule(CandidateTypeHost, "2200::1/10.0.0.1"),
+		},
+		{
+			name: "mixed family pair ipv4 ext ipv6 local",
+			rule: makeRule(CandidateTypeHost, "1.2.3.4/fe80::1"),
+		},
+		{
+			name: "implicit and explicit mix",
+			rule: makeRule(CandidateTypeHost, "1.2.3.4", "1.2.3.5/10.0.0.1"),
+			expectMapper: func(t *testing.T, mapper *externalIPMapper) {
+				t.Helper()
 
-		// IPv4 with  explicit local IP, defaults to CandidateTypeHost
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4/10.0.0.1",
-			"1.2.3.5/10.0.0.2",
-			"2200::1/fe80::1",
-			"2200::2/fe80::2",
+				assert.NotNil(t, mapper)
+
+				extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
+				assert.NoError(t, err)
+				assert.Equal(t, "1.2.3.5", extIP.String())
+
+				extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
+				assert.NoError(t, err)
+				assert.Equal(t, "1.2.3.4", extIP.String())
+			},
+		},
+		{
+			name: "invalid pair format",
+			rule: makeRule(CandidateTypeHost, "1.2.3.4/192.168.0.2/10.0.0.1"),
+		},
+		{
+			name: "invalid cidr explicit mapping",
+			rule: NAT1To1Rule{
+				PublicIPs:       []string{"1.2.3.4/10.0.0.1"},
+				AsCandidateType: CandidateTypeHost,
+				CIDR:            "192.168.0.0/24",
+			},
+		},
+		{
+			name: "invalid cidr syntax",
+			rule: NAT1To1Rule{
+				PublicIPs:       []string{"1.2.3.4"},
+				AsCandidateType: CandidateTypeHost,
+				CIDR:            "not-a-cidr",
+			},
+		},
+	}
+
+	for _, tc := range invalidCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			mapper, err := newExternalIPMapper([]NAT1To1Rule{tc.rule})
+			if tc.expectMapper != nil {
+				assert.NoError(t, err)
+				tc.expectMapper(t, mapper)
+			} else {
+				assert.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+				assert.Nil(t, mapper)
+			}
 		})
-		require.NoError(t, err, "should succeed")
-		require.NotNil(t, mapper, "should not be nil")
+	}
+}
 
-		// Find external IPv4
-		extIP, err = mapper.findExternalIP("10.0.0.1")
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "1.2.3.4", extIP.String(), "should match")
+func TestFindExternalIPHost(t *testing.T) {
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeHost, "1.2.3.4", "2200::1")})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
 
-		extIP, err = mapper.findExternalIP("10.0.0.2")
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "1.2.3.5", extIP.String(), "should match")
+	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, "1.2.3.4", extIP.String())
 
-		_, err = mapper.findExternalIP("10.0.0.3")
-		require.Error(t, err, "should fail")
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::1")
+	assert.NoError(t, err)
+	assert.Equal(t, "2200::1", extIP.String())
+}
 
-		// Find external IPv6
-		extIP, err = mapper.findExternalIP("fe80::0001") // Use '0001' instead of '1' on purpose
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "2200::1", extIP.String(), "should match")
+func TestFindExternalIPCIDRFilter(t *testing.T) {
+	rule := makeRule(CandidateTypeHost, "1.2.3.4")
+	rule.CIDR = "10.0.0.0/24"
 
-		extIP, err = mapper.findExternalIP("fe80::0002") // Use '0002' instead of '2' on purpose
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "2200::2", extIP.String(), "should match")
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{rule})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
 
-		_, err = mapper.findExternalIP("fe80::3")
-		require.Error(t, err, "should fail")
+	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.10")
+	assert.NoError(t, err)
+	assert.Equal(t, "1.2.3.4", extIP.String())
 
-		// Bad local IP string
-		_, err = mapper.findExternalIP("really.bad")
-		require.Error(t, err, "should fail")
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "192.168.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, "192.168.0.1", extIP.String())
+}
+
+func TestFindExternalIPExplicitMapping(t *testing.T) {
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(
+		CandidateTypeHost,
+		"1.2.3.4/10.0.0.1",
+		"1.2.3.5/10.0.0.2",
+		"2200::1/fe80::1",
+		"2200::2/fe80::2",
+	)})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
+
+	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, "1.2.3.4", extIP.String())
+
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
+	assert.NoError(t, err)
+	assert.Equal(t, "1.2.3.5", extIP.String())
+
+	_, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.3")
+	assert.ErrorIs(t, err, ErrExternalMappedIPNotFound)
+
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::1")
+	assert.NoError(t, err)
+	assert.Equal(t, "2200::1", extIP.String())
+
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::2")
+	assert.NoError(t, err)
+	assert.Equal(t, "2200::2", extIP.String())
+
+	_, err = mapper.findExternalIP(CandidateTypeHost, "fe80::3")
+	assert.ErrorIs(t, err, ErrExternalMappedIPNotFound)
+}
+
+func TestFindExternalIPServerReflexive(t *testing.T) {
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeServerReflexive, "1.2.3.4")})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
+
+	extIP, err := mapper.findExternalIP(CandidateTypeServerReflexive, "0.0.0.0")
+	assert.NoError(t, err)
+	assert.Equal(t, "1.2.3.4", extIP.String())
+}
+
+func TestFindExternalIPFallbackAndErrors(t *testing.T) {
+	t.Run("fallback to local address when candidate type missing", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeServerReflexive, "1.2.3.4")})
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
+
+		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
+		assert.NoError(t, err)
+		assert.Equal(t, "10.0.0.1", extIP.String())
 	})
 
-	t.Run("findExternalIP with empty map", func(t *testing.T) {
-		var mapper *externalIPMapper
-		var err error
+	t.Run("invalid local ip", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeHost, "1.2.3.4")})
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
 
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"1.2.3.4",
+		_, err = mapper.findExternalIP(CandidateTypeHost, "really.bad")
+		assert.Error(t, err)
+	})
+}
+
+func TestExternalIPMapperNetworksFilter(t *testing.T) {
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{
+		{
+			PublicIPs:       []string{"203.0.113.2/10.0.0.2"},
+			AsCandidateType: CandidateTypeHost,
+			Networks:        []NetworkType{NetworkTypeUDP4},
+		},
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
+
+	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
+	assert.NoError(t, err)
+	assert.Equal(t, "203.0.113.2", extIP.String())
+
+	extIP, err = mapper.findExternalIP(CandidateTypeHost, "2001:db8:1::1")
+	assert.NoError(t, err)
+	assert.Equal(t, "2001:db8:1::1", extIP.String())
+
+	mapper, err = newExternalIPMapper([]NAT1To1Rule{
+		{
+			PublicIPs:       []string{"2001:db8::6/2001:db8:2::6"},
+			AsCandidateType: CandidateTypeServerReflexive,
+			Networks:        []NetworkType{NetworkTypeUDP6},
+		},
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, mapper)
+
+	extIP, err = mapper.findExternalIP(CandidateTypeServerReflexive, "2001:db8:2::6")
+	assert.NoError(t, err)
+	assert.Equal(t, "2001:db8::6", extIP.String())
+
+	extIP, err = mapper.findExternalIP(CandidateTypeServerReflexive, "192.0.2.10")
+	assert.NoError(t, err)
+	assert.Equal(t, "192.0.2.10", extIP.String())
+
+	t.Run("mixed family rule respects each address family", func(t *testing.T) {
+		mixedMapper, mixedErr := newExternalIPMapper([]NAT1To1Rule{
+			{
+				PublicIPs: []string{
+					"203.0.113.99",
+					"2001:db8::99/2001:db8:1::99",
+				},
+				AsCandidateType: CandidateTypeHost,
+			},
 		})
-		require.NoError(t, err, "should succeed")
+		assert.NoError(t, mixedErr)
+		assert.NotNil(t, mixedMapper)
 
-		// Attempt to find IPv6 that does not exist in the map
-		extIP, err := mapper.findExternalIP("fe80::1")
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "fe80::1", extIP.String(), "should match")
+		extIP, err := mixedMapper.findExternalIP(CandidateTypeHost, "10.10.10.10")
+		assert.NoError(t, err)
+		assert.Equal(t, "203.0.113.99", extIP.String())
 
-		mapper, err = newExternalIPMapper(CandidateTypeUnspecified, []string{
-			"2200::1",
+		extIP, err = mixedMapper.findExternalIP(CandidateTypeHost, "2001:db8:1::99")
+		assert.NoError(t, err)
+		assert.Equal(t, "2001:db8::99", extIP.String())
+	})
+}
+
+func TestExternalIPMapperRuleOrderAndSpecificity(t *testing.T) {
+	t.Run("earliest matching rule wins", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{
+			{
+				PublicIPs:       []string{"203.0.113.10/10.0.0.5"},
+				AsCandidateType: CandidateTypeHost,
+			},
+			{
+				PublicIPs:       []string{"198.51.100.10/10.0.0.5"},
+				AsCandidateType: CandidateTypeHost,
+			},
 		})
-		require.NoError(t, err, "should succeed")
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
 
-		// Attempt to find IPv4 that does not exist in the map
-		extIP, err = mapper.findExternalIP("10.0.0.1")
-		require.NoError(t, err, "should succeed")
-		require.Equal(t, "10.0.0.1", extIP.String(), "should match")
+		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.5")
+		assert.NoError(t, err)
+		assert.Equal(t, "203.0.113.10", extIP.String())
+	})
+
+	t.Run("specific mapping outranks cidr and catch-all", func(t *testing.T) {
+		mapper, err := newExternalIPMapper([]NAT1To1Rule{
+			{
+				PublicIPs:       []string{"203.0.113.30/10.0.0.5", "203.0.113.40"},
+				AsCandidateType: CandidateTypeHost,
+				CIDR:            "10.0.0.0/24",
+			},
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, mapper)
+
+		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.5")
+		assert.NoError(t, err)
+		assert.Equal(t, "203.0.113.30", extIP.String())
+
+		extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.10")
+		assert.NoError(t, err)
+		assert.Equal(t, "203.0.113.40", extIP.String())
+
+		extIP, err = mapper.findExternalIP(CandidateTypeHost, "192.0.2.20")
+		assert.NoError(t, err)
+		assert.Equal(t, "192.0.2.20", extIP.String())
 	})
 }

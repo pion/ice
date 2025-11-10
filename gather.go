@@ -123,7 +123,7 @@ func (a *Agent) gatherCandidatesInternal(ctx context.Context) {
 				}
 				wg.Done()
 			}()
-			if a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeServerReflexive {
+			if a.extIPMapper != nil && a.extIPMapper.hasCandidateType(CandidateTypeServerReflexive) {
 				wg.Add(1)
 				go func() {
 					a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
@@ -173,8 +173,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 	for _, addr := range localAddrs {
 		mappedIP := addr
 		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
-			a.extIPMapper != nil && a.extIPMapper.candidateType == CandidateTypeHost {
-			if _mappedIP, innerErr := a.extIPMapper.findExternalIP(addr.String()); innerErr == nil {
+			a.extIPMapper != nil && a.extIPMapper.hasCandidateType(CandidateTypeHost) {
+			if _mappedIP, innerErr := a.extIPMapper.findExternalIP(CandidateTypeHost, addr.String()); innerErr == nil {
 				conv, ok := netip.AddrFromSlice(_mappedIP)
 				if !ok {
 					a.log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
@@ -372,8 +372,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 
 		if a.mDNSMode != MulticastDNSModeQueryAndGather &&
 			a.extIPMapper != nil &&
-			a.extIPMapper.candidateType == CandidateTypeHost {
-			mappedIP, err := a.extIPMapper.findExternalIP(candidateIP.String())
+			a.extIPMapper.hasCandidateType(CandidateTypeHost) {
+			mappedIP, err := a.extIPMapper.findExternalIP(CandidateTypeHost, candidateIP.String())
 			if err != nil {
 				a.log.Warnf("1:1 NAT mapping is enabled but no external IP is found for %s", candidateIP.String())
 
@@ -474,7 +474,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			mappedIP, err := a.extIPMapper.findExternalIP(lAddr.IP.String())
+			mappedIP, err := a.extIPMapper.findExternalIP(CandidateTypeServerReflexive, lAddr.IP.String())
 			if err != nil {
 				closeConnAndLog(conn, a.log, "1:1 NAT mapping is enabled but no external IP is found for %s", lAddr.IP.String())
 

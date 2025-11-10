@@ -4,7 +4,9 @@
 package ice
 
 import (
+	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -29,6 +31,300 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 	return func() uint32 {
 		return counter.Add(1)
 	}
+}
+
+// WithNAT1To1HostIPs appends a NAT 1:1 rule that exposes the provided public IP
+// addresses as host candidates.
+func WithNAT1To1HostIPs(ips ...string) AgentOption {
+	return func(agent *Agent) error {
+		if len(ips) == 0 {
+			return nil
+		}
+
+		return appendNAT1To1Rules(agent, NAT1To1Rule{
+			PublicIPs:       ips,
+			AsCandidateType: CandidateTypeHost,
+		})
+	}
+}
+
+// WithNAT1To1SrflxIPs appends a NAT 1:1 rule that exposes the provided public
+// IP addresses as server-reflexive candidates.
+func WithNAT1To1SrflxIPs(ips ...string) AgentOption {
+	return func(agent *Agent) error {
+		if len(ips) == 0 {
+			return nil
+		}
+
+		return appendNAT1To1Rules(agent, NAT1To1Rule{
+			PublicIPs:       ips,
+			AsCandidateType: CandidateTypeServerReflexive,
+		})
+	}
+}
+
+// WithNAT1To1Rules appends the provided NAT 1:1 rules to the agent's existing
+// configuration. Each `NAT1To1Rule` can limit the mapping to a specific
+// interface (`Iface`), CIDR block (`CIDR`), or subset of network types
+// (`Networks`), allowing fine-grained control over which local addresses are
+// replaced with the supplied public IPs. This covers mixed topologies such as
+// NAT64/CLAT environments where IPv6-only hosts need deterministic IPv4
+// representations.
+//
+// Matching precedence is first-determined by rule order (the earliest matching
+// rule wins) and within a rule by explicit local overrides inside
+// `PublicIPs` (e.g. `203.0.113.1/10.0.0.5`) are preferred, then `CIDR` scopes,
+// followed by `Networks`, and finally the per-family catch-all entry.
+func WithNAT1To1Rules(rules ...NAT1To1Rule) AgentOption {
+	return func(agent *Agent) error {
+		return appendNAT1To1Rules(agent, rules...)
+	}
+}
+
+func warnOnNAT1To1Conflicts(agent *Agent) {
+	if agent == nil || agent.log == nil {
+		return
+	}
+
+	for _, conflict := range findNAT1To1RuleConflicts(agent.nat1To1Rules) {
+		scope := conflict.scope
+		scopeSummary := fmt.Sprintf(
+			"candidate=%s iface=%s cidr=%s networks=%s local=%s",
+			scope.candidateType.String(),
+			emptyScopeValue(scope.iface),
+			emptyScopeValue(scope.cidr),
+			emptyScopeValue(scope.networksKey),
+			scope.localKey,
+		)
+
+		message := fmt.Sprintf(
+			"detected overlapping NAT 1:1 rule (%s): existing public IPs [%s], additional public IP %s",
+			scopeSummary,
+			strings.Join(conflict.existingPublicIPs, ", "),
+			conflict.conflictingPublicIP,
+		)
+
+		agent.log.Warn(message)
+	}
+}
+
+func emptyScopeValue(v string) string {
+	if v == "" {
+		return "*"
+	}
+
+	return v
+}
+
+func appendNAT1To1Rules(agent *Agent, rules ...NAT1To1Rule) error {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	sanitized := make([]NAT1To1Rule, 0, len(rules))
+	for _, rule := range rules {
+		normalized, err := sanitizeNAT1To1Rule(rule)
+		if err != nil {
+			return err
+		}
+
+		sanitized = append(sanitized, normalized)
+	}
+
+	agent.nat1To1Rules = append(agent.nat1To1Rules, sanitized...)
+	warnOnNAT1To1Conflicts(agent)
+
+	return nil
+}
+
+func sanitizeNAT1To1Rule(rule NAT1To1Rule) (NAT1To1Rule, error) {
+	cleaned, err := sanitizePublicIPs(rule.PublicIPs)
+	if err != nil {
+		return NAT1To1Rule{}, err
+	}
+
+	normalized := rule
+	normalized.PublicIPs = cleaned
+	if len(rule.Networks) > 0 {
+		normalized.Networks = append([]NetworkType(nil), rule.Networks...)
+	}
+
+	return normalized, nil
+}
+
+func sanitizePublicIPs(ips []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(ips))
+	sanitized := make([]string, 0, len(ips))
+
+	for _, raw := range ips {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+
+		parts := strings.Split(trimmed, "/")
+		if len(parts) == 0 || len(parts) > 2 {
+			return nil, ErrInvalidNAT1To1IPMapping
+		}
+
+		if _, _, err := validateIPString(parts[0]); err != nil {
+			return nil, err
+		}
+
+		if len(parts) == 2 {
+			if _, _, err := validateIPString(parts[1]); err != nil {
+				return nil, err
+			}
+		}
+
+		seen[trimmed] = struct{}{}
+		sanitized = append(sanitized, trimmed)
+	}
+
+	if len(sanitized) == 0 {
+		return nil, ErrInvalidNAT1To1IPMapping
+	}
+
+	return sanitized, nil
+}
+
+type nat1To1ScopeKey struct {
+	candidateType CandidateType
+	iface         string
+	cidr          string
+	networksKey   string
+	localKey      string
+}
+
+type nat1To1Conflict struct {
+	scope               nat1To1ScopeKey
+	existingPublicIPs   []string
+	conflictingPublicIP string
+}
+
+func findNAT1To1RuleConflicts(rules []NAT1To1Rule) []nat1To1Conflict {
+	conflicts := make([]nat1To1Conflict, 0)
+	scopeState := make(map[nat1To1ScopeKey]map[string]struct{})
+
+	for _, rule := range rules {
+		candidateType := rule.AsCandidateType
+		if candidateType == CandidateTypeUnspecified {
+			candidateType = CandidateTypeHost
+		}
+
+		networksKey := "*"
+		if len(rule.Networks) > 0 {
+			names := make([]string, len(rule.Networks))
+			for i, network := range rule.Networks {
+				names[i] = network.String()
+			}
+			sort.Strings(names)
+			networksKey = strings.Join(names, ",")
+		}
+
+		publicIPEntries := enumerateNAT1To1PublicIPEntries(rule.PublicIPs)
+		for _, entry := range publicIPEntries {
+			key := nat1To1ScopeKey{
+				candidateType: candidateType,
+				iface:         rule.Iface,
+				cidr:          rule.CIDR,
+				networksKey:   networksKey,
+				localKey:      entry.localScopeKey,
+			}
+
+			existing := scopeState[key]
+			if existing == nil {
+				existing = make(map[string]struct{})
+				scopeState[key] = existing
+			}
+
+			if len(existing) > 0 {
+				if _, ok := existing[entry.publicIP]; !ok {
+					conflicts = append(conflicts, nat1To1Conflict{
+						scope:               key,
+						existingPublicIPs:   mapKeys(existing),
+						conflictingPublicIP: entry.publicIP,
+					})
+				}
+			}
+
+			existing[entry.publicIP] = struct{}{}
+		}
+	}
+
+	return conflicts
+}
+
+type nat1To1PublicIPEntry struct {
+	publicIP      string
+	localScopeKey string
+}
+
+func enumerateNAT1To1PublicIPEntries(publicIPs []string) []nat1To1PublicIPEntry {
+	if len(publicIPs) == 0 {
+		return nil
+	}
+
+	entries := make([]nat1To1PublicIPEntry, 0, len(publicIPs))
+
+	for _, mapping := range publicIPs {
+		if mapping == "" {
+			continue
+		}
+
+		parts := strings.Split(mapping, "/")
+		publicIP := strings.TrimSpace(parts[0])
+		if publicIP == "" {
+			continue
+		}
+
+		entries = append(entries, nat1To1PublicIPEntry{
+			publicIP:      publicIP,
+			localScopeKey: deriveNAT1To1ScopeKey(publicIP, parts),
+		})
+	}
+
+	return entries
+}
+
+func deriveNAT1To1ScopeKey(publicIP string, parts []string) string {
+	if len(parts) > 1 {
+		local := strings.TrimSpace(parts[1])
+		if local != "" {
+			return "local:" + local
+		}
+
+		return "family:unknown"
+	}
+
+	ip, _, err := validateIPString(publicIP)
+	if err != nil {
+		return "family:unknown"
+	}
+
+	if ip.To4() != nil {
+		return "family:ipv4"
+	}
+
+	return "family:ipv6"
+}
+
+func mapKeys(m map[string]struct{}) []string {
+	if len(m) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	return keys
 }
 
 // WithICELite configures whether the agent operates in lite mode.
