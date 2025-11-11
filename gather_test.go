@@ -275,17 +275,22 @@ func TestSTUNConcurrency(t *testing.T) {
 		_ = listener.Close()
 	}()
 
+	tcpMux := NewTCPMuxDefault(
+		TCPMuxParams{
+			Listener:       listener,
+			Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
+			ReadBufferSize: 8,
+		},
+	)
+	defer func() {
+		_ = tcpMux.Close()
+	}()
+
 	agent, err := NewAgent(&AgentConfig{
 		NetworkTypes:   supportedNetworkTypes(),
 		Urls:           urls,
 		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
-		TCPMux: NewTCPMuxDefault(
-			TCPMuxParams{
-				Listener:       listener,
-				Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
-				ReadBufferSize: 8,
-			},
-		),
+		TCPMux:         tcpMux,
 	})
 	require.NoError(t, err)
 	defer func() {
@@ -770,10 +775,14 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		}()
 
 		expectedPorts = append(expectedPorts, port)
-		tcpMuxInstances = append(tcpMuxInstances, NewTCPMuxDefault(TCPMuxParams{
+		tcpMux := NewTCPMuxDefault(TCPMuxParams{
 			Listener:       listener,
 			ReadBufferSize: 8,
-		}))
+		})
+		defer func() {
+			_ = tcpMux.Close()
+		}()
+		tcpMuxInstances = append(tcpMuxInstances, tcpMux)
 	}
 
 	agent, err := NewAgent(&AgentConfig{

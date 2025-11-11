@@ -207,11 +207,17 @@ func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, aAgent.Close())
+	})
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, bAgent.Close())
+	})
 
 	aConn, bConn := connect(t, aAgent, bAgent)
 
@@ -240,10 +246,16 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, aAgent.Close())
+	})
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, bAgent.Close())
+	})
 
 	aConn, bConn := connect(t, aAgent, bAgent)
 

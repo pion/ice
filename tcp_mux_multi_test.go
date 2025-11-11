@@ -46,6 +46,9 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 					ReadBufferSize:  20,
 					WriteBufferSize: bufSize,
 				})
+				defer func() {
+					_ = tcpMux.Close()
+				}()
 				muxInstances = append(muxInstances, tcpMux)
 				require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 			}
@@ -114,6 +117,9 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 			Logger:         loggerFactory.NewLogger("ice"),
 			ReadBufferSize: 20,
 		})
+		defer func() {
+			_ = tcpMux.Close()
+		}()
 		tcpMuxInstances = append(tcpMuxInstances, tcpMux)
 	}
 	muxMulti := NewMultiTCPMuxDefault(tcpMuxInstances...)
@@ -150,6 +156,9 @@ func TestMultiTCPMux_GetConnByUfrag_FromAnyMux(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux1.Close()
+	}()
 
 	l2, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
@@ -162,6 +171,9 @@ func TestMultiTCPMux_GetConnByUfrag_FromAnyMux(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux2.Close()
+	}()
 
 	multi := NewMultiTCPMuxDefault(mux1, mux2)
 	defer func() { _ = multi.Close() }()
@@ -221,6 +233,9 @@ func TestMultiTCPMux_Close_PropagatesError_FromWrappedMux(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux1.Close()
+	}()
 
 	// second mux: Close() returns injected error
 	l2, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
@@ -230,6 +245,9 @@ func TestMultiTCPMux_Close_PropagatesError_FromWrappedMux(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux2Real.Close()
+	}()
 	mux2 := &closeErrTCPMux{TCPMux: mux2Real, ret: errTCPMuxCloseBoom}
 
 	multi := NewMultiTCPMuxDefault(mux1, mux2)
@@ -249,6 +267,9 @@ func TestMultiTCPMux_Close_LastErrorWins_FromWrappedMuxes(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux1Real.Close()
+	}()
 	mux1 := &closeErrTCPMux{TCPMux: mux1Real, ret: errTCPMuxCloseFirst}
 
 	// second mux: error2 (last error should be returned)
@@ -259,6 +280,9 @@ func TestMultiTCPMux_Close_LastErrorWins_FromWrappedMuxes(t *testing.T) {
 		Logger:         logger,
 		ReadBufferSize: 8,
 	})
+	defer func() {
+		_ = mux2Real.Close()
+	}()
 	mux2 := &closeErrTCPMux{TCPMux: mux2Real, ret: errTCPMuxCloseSecond}
 
 	multi := NewMultiTCPMuxDefault(mux1, mux2)

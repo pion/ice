@@ -147,6 +147,9 @@ func TestTCPMux_FirstPacketTimeout(t *testing.T) {
 		ReadBufferSize:       20,
 		FirstStunBindTimeout: time.Second,
 	})
+	defer func() {
+		_ = tcpMux.Close()
+	}()
 
 	require.NotNil(t, tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 

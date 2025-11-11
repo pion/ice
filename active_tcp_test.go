@@ -160,6 +160,9 @@ func TestActiveTCP(t *testing.T) {
 			passiveAgent, err := NewAgent(cfg)
 			req.NoError(err)
 			req.NotNil(passiveAgent)
+			defer func() {
+				req.NoError(passiveAgent.Close())
+			}()
 
 			activeAgent, err := NewAgent(&AgentConfig{
 				CandidateTypes:        []CandidateType{CandidateTypeHost},
@@ -172,6 +175,9 @@ func TestActiveTCP(t *testing.T) {
 
 			req.NoError(err)
 			req.NotNil(activeAgent)
+			defer func() {
+				req.NoError(activeAgent.Close())
+			}()
 
 			passiveAgentConn, activeAgenConn := connect(t, passiveAgent, activeAgent)
 			req.NotNil(passiveAgentConn)
