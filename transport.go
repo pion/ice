@@ -10,7 +10,22 @@ import (
 	"time"
 
 	"github.com/pion/stun/v4"
+	"github.com/pion/transport/v5/packetio"
 )
+
+type packetAttributeKey uint8
+
+const ecnAttributeKey packetAttributeKey = iota
+
+// ECN is the two-bit Explicit Congestion Notification codepoint in an IP header.
+type ECN uint8
+
+// ECNFromAttributes returns the received packet's ECN codepoint.
+func ECNFromAttributes(attrs packetio.Attributes) (ECN, bool) {
+	ecn, ok := attrs.Get(ecnAttributeKey).(ECN)
+
+	return ecn, ok
+}
 
 // AwaitConnect waits until a pair is selected.
 func (a *Agent) AwaitConnect(ctx context.Context) error {
@@ -110,15 +125,22 @@ func (a *Agent) startConnect(isControlling bool, remoteUfrag, remotePwd string) 
 
 // Read implements the Conn Read method.
 func (c *Conn) Read(p []byte) (int, error) {
-	err := c.agent.loop.Err()
-	if err != nil {
-		return 0, err
-	}
-
-	n, _, err := c.agent.buf.Read(p, nil)
-	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
+	var attrs [1]packetio.Attribute
+	n, _, err := c.ReadWithAttributes(p, attrs[:0])
 
 	return n, err
+}
+
+// ReadWithAttributes reads a packet and replaces attrs with its metadata.
+func (c *Conn) ReadWithAttributes(p []byte, attrs packetio.Attributes) (int, packetio.Attributes, error) {
+	if err := c.agent.loop.Err(); err != nil {
+		return 0, nil, err
+	}
+
+	n, attrs, err := c.agent.buf.Read(p, attrs)
+	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
+
+	return n, attrs, err
 }
 
 // Write implements the Conn Write method.

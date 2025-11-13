@@ -19,7 +19,10 @@ import (
 	"time"
 
 	"github.com/pion/stun/v4"
+	"github.com/pion/transport/v5/packetio"
 )
+
+type packetReader func([]byte, packetio.Attributes) (int, netip.AddrPort, packetio.Attributes, error)
 
 type candidateBase struct {
 	id            string
@@ -286,19 +289,17 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	defer bufferPool.Put(bufPtr)
 	buf := *bufPtr
 
+	readPacket, err := newECNPacketReader(c.conn)
+	if err != nil {
+		agent.log.Debugf("Failed to enable ECN on candidate %s: %v", c, err)
+	}
+	if readPacket == nil {
+		readPacket = c.readPacket
+	}
+	var attrs packetio.Attributes
 	for {
-		var n int
-		var srcAddr netip.AddrPort
-		var err error
-		if c.addrPortConn != nil {
-			n, srcAddr, err = c.addrPortConn.ReadFromAddrPort(buf)
-		} else {
-			var netAddr net.Addr
-			n, netAddr, err = c.conn.ReadFrom(buf)
-			if err == nil {
-				srcAddr = netAddrToAddrPort(netAddr)
-			}
-		}
+		n, srcAddr, packetAttrs, err := readPacket(buf, attrs[:0])
+		attrs = packetAttrs
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
@@ -307,8 +308,23 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 			return
 		}
 
-		c.handleInboundPacket(buf[:n], srcAddr)
+		c.handleInboundPacket(buf[:n], attrs, srcAddr)
 	}
+}
+
+func (c *candidateBase) readPacket(buf []byte, attrs packetio.Attributes) (int, netip.AddrPort, packetio.Attributes, error) {
+	if c.addrPortConn != nil {
+		n, addr, err := c.addrPortConn.ReadFromAddrPort(buf)
+
+		return n, addr, attrs, err
+	}
+
+	n, addr, err := c.conn.ReadFrom(buf)
+	if err != nil {
+		return n, netip.AddrPort{}, attrs, err
+	}
+
+	return n, netAddrToAddrPort(addr), attrs, nil
 }
 
 func (c *candidateBase) validateSTUNTrafficCache(addr netip.AddrPort) bool {
@@ -344,7 +360,7 @@ func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote C
 	})
 }
 
-func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) {
+func (c *candidateBase) handleInboundPacket(buf []byte, attrs packetio.Attributes, srcAddr netip.AddrPort) {
 	agent := c.agent()
 
 	if stun.IsMessage(buf) {
@@ -364,7 +380,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) 
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
-	n, err := agent.buf.Write(buf, nil)
+	n, err := agent.buf.Write(buf, attrs)
 	if err != nil {
 		agent.log.Warnf("Failed to write packet: %s", err)
 
