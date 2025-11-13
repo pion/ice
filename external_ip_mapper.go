@@ -46,49 +46,60 @@ func validateIPString(ipStr string) (net.IP, bool, error) {
 //
 //	for a particular IP family.
 type ipMapping struct {
-	ipSole net.IP            // When non-nil, this is the sole external IP for one local IP assumed
-	ipMap  map[string]net.IP // Local-to-external IP mapping (k: local, v: external)
-	valid  bool              // If not set any external IP, valid is false
+	ipSole []net.IP            // When non-empty, these are the catch-all external IPs for one local IP family
+	ipMap  map[string][]net.IP // Local-to-external IP mapping (k: local, v: external IPs)
+	valid  bool                // If not set any external IP, valid is false
 }
 
-func (m *ipMapping) setSoleIP(ip net.IP) error {
-	if m.ipSole != nil {
-		return ErrInvalidNAT1To1IPMapping
+func newIPMapping() ipMapping {
+	return ipMapping{
+		ipMap: make(map[string][]net.IP),
 	}
-
-	m.ipSole = ip
-	m.valid = true
-
-	return nil
 }
 
-func (m *ipMapping) addIPMapping(locIP, extIP net.IP) error {
+func (m *ipMapping) addSoleIP(ip net.IP) {
+	m.ipSole = append(m.ipSole, ip)
+	m.valid = true
+}
+
+func (m *ipMapping) addIPMapping(locIP, extIP net.IP) {
 	locIPStr := locIP.String()
 
-	// Check if dup of local IP
-	if _, ok := m.ipMap[locIPStr]; ok {
-		return ErrInvalidNAT1To1IPMapping
-	}
-
-	m.ipMap[locIPStr] = extIP
+	m.ipMap[locIPStr] = append(m.ipMap[locIPStr], extIP)
 	m.valid = true
-
-	return nil
 }
 
-func (m *ipMapping) findExternalIP(locIP net.IP) (net.IP, error) {
+func cloneIPs(src []net.IP) []net.IP {
+	if len(src) == 0 {
+		return nil
+	}
+
+	cloned := make([]net.IP, len(src))
+	for i, ip := range src {
+		if ip == nil {
+			continue
+		}
+		copied := make(net.IP, len(ip))
+		copy(copied, ip)
+		cloned[i] = copied
+	}
+
+	return cloned
+}
+
+func (m *ipMapping) findExternalIPs(locIP net.IP) ([]net.IP, error) {
 	if !m.valid {
-		return locIP, nil
+		return nil, nil
 	}
 
 	if m.ipMap != nil {
-		if extIP, ok := m.ipMap[locIP.String()]; ok {
-			return extIP, nil
+		if extIPs, ok := m.ipMap[locIP.String()]; ok && len(extIPs) > 0 {
+			return cloneIPs(extIPs), nil
 		}
 	}
 
-	if m.ipSole != nil {
-		return m.ipSole, nil
+	if len(m.ipSole) > 0 {
+		return cloneIPs(m.ipSole), nil
 	}
 
 	return nil, ErrExternalMappedIPNotFound
@@ -144,8 +155,8 @@ func newExternalIPMapper(rules []NAT1To1Rule) (*externalIPMapper, error) {
 
 		ruleMapping := &natRuleMapping{
 			rule:        rule,
-			ipv4Mapping: ipMapping{ipMap: map[string]net.IP{}},
-			ipv6Mapping: ipMapping{ipMap: map[string]net.IP{}},
+			ipv4Mapping: newIPMapping(),
+			ipv6Mapping: newIPMapping(),
 			allowIPv4:   true,
 			allowIPv6:   true,
 		}
@@ -188,16 +199,12 @@ func newExternalIPMapper(rules []NAT1To1Rule) (*externalIPMapper, error) {
 					if !ruleMapping.allowIPv4 {
 						continue
 					}
-					if err := ruleMapping.ipv4Mapping.setSoleIP(extIP); err != nil {
-						return nil, err
-					}
+					ruleMapping.ipv4Mapping.addSoleIP(extIP)
 				} else {
 					if !ruleMapping.allowIPv6 {
 						continue
 					}
-					if err := ruleMapping.ipv6Mapping.setSoleIP(extIP); err != nil {
-						return nil, err
-					}
+					ruleMapping.ipv6Mapping.addSoleIP(extIP)
 				}
 			} else {
 				locIP, isLocIPv4, err := validateIPString(ipPair[1])
@@ -213,9 +220,7 @@ func newExternalIPMapper(rules []NAT1To1Rule) (*externalIPMapper, error) {
 						continue
 					}
 
-					if err := ruleMapping.ipv4Mapping.addIPMapping(locIP, extIP); err != nil {
-						return nil, err
-					}
+					ruleMapping.ipv4Mapping.addIPMapping(locIP, extIP)
 					if ruleMapping.cidr != nil && !ruleMapping.cidr.Contains(locIP) {
 						return nil, ErrInvalidNAT1To1IPMapping
 					}
@@ -228,9 +233,7 @@ func newExternalIPMapper(rules []NAT1To1Rule) (*externalIPMapper, error) {
 						continue
 					}
 
-					if err := ruleMapping.ipv6Mapping.addIPMapping(locIP, extIP); err != nil {
-						return nil, err
-					}
+					ruleMapping.ipv6Mapping.addIPMapping(locIP, extIP)
 					if ruleMapping.cidr != nil && !ruleMapping.cidr.Contains(locIP) {
 						return nil, ErrInvalidNAT1To1IPMapping
 					}
@@ -265,10 +268,10 @@ func (m *externalIPMapper) hasCandidateType(candidateType CandidateType) bool {
 	return false
 }
 
-func (m *externalIPMapper) findExternalIP(candidateType CandidateType, localIPStr string) (net.IP, error) {
+func (m *externalIPMapper) findExternalIPs(candidateType CandidateType, localIPStr string) ([]net.IP, bool, error) {
 	locIP, isLocIPv4, err := validateIPString(localIPStr)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	rules := m.rulesByCandidateType[candidateType]
@@ -286,21 +289,25 @@ func (m *externalIPMapper) findExternalIP(candidateType CandidateType, localIPSt
 
 		foundMapping = true
 
-		extIP, err := ipMapping.findExternalIP(locIP)
+		extIP, err := ipMapping.findExternalIPs(locIP)
 		if err != nil {
 			if errors.Is(err, ErrExternalMappedIPNotFound) {
 				continue
 			}
 
-			return nil, err
+			return nil, true, err
 		}
 
-		return extIP, nil
+		if len(extIP) == 0 {
+			continue
+		}
+
+		return extIP, true, nil
 	}
 
 	if foundMapping {
-		return nil, ErrExternalMappedIPNotFound
+		return nil, true, ErrExternalMappedIPNotFound
 	}
 
-	return locIP, nil
+	return nil, false, nil
 }

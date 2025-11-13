@@ -191,6 +191,10 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 	agent.localUfrag = config.LocalUfrag
 	agent.localPwd = config.LocalPwd
 	if config.NAT1To1IPs != nil {
+		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
+			return nil, err
+		}
+
 		typ := CandidateTypeHost
 		if config.NAT1To1IPCandidateType != CandidateTypeUnspecified {
 			typ = config.NAT1To1IPCandidateType
@@ -205,6 +209,40 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 	}
 
 	return newAgentWithConfig(agent, opts...)
+}
+
+func validateLegacyNAT1To1IPs(ips []string) error {
+	var hasIPv4CatchAll, hasIPv6CatchAll bool
+
+	for _, mapping := range ips {
+		if mapping == "" {
+			continue
+		}
+
+		parts := strings.Split(strings.TrimSpace(mapping), "/")
+		if len(parts) != 1 {
+			continue
+		}
+
+		_, isIPv4, err := validateIPString(parts[0])
+		if err != nil {
+			return err
+		}
+
+		if isIPv4 {
+			if hasIPv4CatchAll {
+				return ErrInvalidNAT1To1IPMapping
+			}
+			hasIPv4CatchAll = true
+		} else {
+			if hasIPv6CatchAll {
+				return ErrInvalidNAT1To1IPMapping
+			}
+			hasIPv6CatchAll = true
+		}
+	}
+
+	return nil
 }
 
 func createAgentBase(config *AgentConfig) (*Agent, error) {

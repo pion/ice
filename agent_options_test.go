@@ -722,9 +722,34 @@ func assertNAT1To1Option(
 	require.Equal(t, []string{expectedSecondIP}, secondRule.PublicIPs)
 
 	require.NotNil(t, agent.extIPMapper)
-	extIP, err := agent.extIPMapper.findExternalIP(lookupCandidateType, lookupLocalIP)
-	require.NoError(t, err)
+	extIP := requireFirstExternalIP(t, agent.extIPMapper, lookupCandidateType, lookupLocalIP)
 	require.Equal(t, expectedFirstIP, extIP.String())
+}
+
+func requireFirstExternalIP(
+	t *testing.T,
+	mapper *externalIPMapper,
+	candidateType CandidateType,
+	localIP string,
+) net.IP {
+	t.Helper()
+
+	ips, matched, err := mapper.findExternalIPs(candidateType, localIP)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
+}
+
+func requireFirstMappingIP(t *testing.T, mapping *ipMapping, localIP net.IP) net.IP {
+	t.Helper()
+
+	ips, err := mapping.findExternalIPs(localIP)
+	require.NoError(t, err)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
 }
 
 func TestWith1To1RulesOption(t *testing.T) {
@@ -877,17 +902,16 @@ func TestWithNAT1To1RulesIPv6(t *testing.T) {
 	locIP := net.ParseIP("2001:db8:1::2")
 	require.NotNil(t, locIP)
 	t.Logf("parsed ipv6 string: %q", locIP.String())
-	directExt, directErr := mappings[0].ipv6Mapping.findExternalIP(locIP)
-	require.NoError(t, directErr)
+	directExt := requireFirstMappingIP(t, &mappings[0].ipv6Mapping, locIP)
 	require.Equal(t, "2001:db8::2", directExt.String())
 
 	mapper, err := newExternalIPMapper(agent.nat1To1Rules)
 	require.NoError(t, err)
-	extIP, err := mapper.findExternalIP(CandidateTypeHost, "2001:db8:1::2")
-	require.NoError(t, err)
+	extIP := requireFirstExternalIP(t, mapper, CandidateTypeHost, "2001:db8:1::2")
 	require.Equal(t, "2001:db8::2", extIP.String())
 
-	_, err = mapper.findExternalIP(CandidateTypeHost, "2001:db8:1::3")
+	_, matched, err := mapper.findExternalIPs(CandidateTypeHost, "2001:db8:1::3")
+	require.True(t, matched)
 	require.ErrorIs(t, err, ErrExternalMappedIPNotFound)
 }
 
@@ -970,8 +994,7 @@ func TestAgentConfigNAT1To1IPs(t *testing.T) {
 			})
 
 			require.NotNil(t, agent.extIPMapper)
-			extIP, err := agent.extIPMapper.findExternalIP(tc.candidateType, tc.localIP)
-			require.NoError(t, err)
+			extIP := requireFirstExternalIP(t, agent.extIPMapper, tc.candidateType, tc.localIP)
 			require.Equal(t, tc.expectedIP, extIP.String())
 		})
 	}

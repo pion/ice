@@ -17,6 +17,39 @@ func makeRule(candidateType CandidateType, ips ...string) NAT1To1Rule {
 	}
 }
 
+func assertExternalIPStrings(
+	t *testing.T, mapper *externalIPMapper, candidateType CandidateType, localIP string, expected ...string,
+) {
+	t.Helper()
+
+	ips, matched, err := mapper.findExternalIPs(candidateType, localIP)
+	assert.NoError(t, err)
+	assert.True(t, matched)
+	assert.Len(t, ips, len(expected))
+	for i, ip := range ips {
+		assert.Equal(t, expected[i], ip.String())
+	}
+}
+
+func assertExternalIPError(
+	t *testing.T, mapper *externalIPMapper, candidateType CandidateType, localIP string, expected error,
+) {
+	t.Helper()
+
+	_, matched, err := mapper.findExternalIPs(candidateType, localIP)
+	assert.True(t, matched)
+	assert.ErrorIs(t, err, expected)
+}
+
+func assertNoExternalMapping(t *testing.T, mapper *externalIPMapper, candidateType CandidateType, localIP string) {
+	t.Helper()
+
+	ips, matched, err := mapper.findExternalIPs(candidateType, localIP)
+	assert.NoError(t, err)
+	assert.False(t, matched)
+	assert.Nil(t, ips)
+}
+
 func TestValidateIPString(t *testing.T) {
 	var ip net.IP
 	var isIPv4 bool
@@ -56,9 +89,7 @@ func TestNewExternalIPMapper(t *testing.T) {
 		assert.NotNil(t, mapper)
 		assert.True(t, mapper.hasCandidateType(CandidateTypeHost))
 
-		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
-		assert.NoError(t, err)
-		assert.Equal(t, "1.2.3.4", extIP.String())
+		assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.1", "1.2.3.4")
 	})
 
 	t.Run("server reflexive candidate type", func(t *testing.T) {
@@ -79,14 +110,6 @@ func TestNewExternalIPMapper(t *testing.T) {
 		rule         NAT1To1Rule
 		expectMapper func(t *testing.T, mapper *externalIPMapper)
 	}{
-		{
-			name: "duplicate ipv4 sole",
-			rule: makeRule(CandidateTypeHost, "1.2.3.4", "5.6.7.8"),
-		},
-		{
-			name: "duplicate ipv6 sole",
-			rule: makeRule(CandidateTypeHost, "2201::1", "2201::0002"),
-		},
 		{
 			name: "invalid external ip",
 			rule: makeRule(CandidateTypeHost, "bad.2.3.4"),
@@ -111,13 +134,8 @@ func TestNewExternalIPMapper(t *testing.T) {
 
 				assert.NotNil(t, mapper)
 
-				extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
-				assert.NoError(t, err)
-				assert.Equal(t, "1.2.3.5", extIP.String())
-
-				extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
-				assert.NoError(t, err)
-				assert.Equal(t, "1.2.3.4", extIP.String())
+				assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.1", "1.2.3.5")
+				assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.2", "1.2.3.4")
 			},
 		},
 		{
@@ -162,13 +180,21 @@ func TestFindExternalIPHost(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
-	assert.NoError(t, err)
-	assert.Equal(t, "1.2.3.4", extIP.String())
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.1", "1.2.3.4")
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "fe80::1", "2200::1")
+}
 
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::1")
+func TestFindExternalIPMultipleCatchAll(t *testing.T) {
+	mapper, err := newExternalIPMapper([]NAT1To1Rule{makeRule(CandidateTypeHost, "1.2.3.4", "5.6.7.8")})
 	assert.NoError(t, err)
-	assert.Equal(t, "2200::1", extIP.String())
+	assert.NotNil(t, mapper)
+
+	ips, matched, err := mapper.findExternalIPs(CandidateTypeHost, "10.0.0.1")
+	assert.NoError(t, err)
+	assert.True(t, matched)
+	assert.Len(t, ips, 2)
+	assert.Equal(t, "1.2.3.4", ips[0].String())
+	assert.Equal(t, "5.6.7.8", ips[1].String())
 }
 
 func TestFindExternalIPCIDRFilter(t *testing.T) {
@@ -179,13 +205,8 @@ func TestFindExternalIPCIDRFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.10")
-	assert.NoError(t, err)
-	assert.Equal(t, "1.2.3.4", extIP.String())
-
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "192.168.0.1")
-	assert.NoError(t, err)
-	assert.Equal(t, "192.168.0.1", extIP.String())
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.10", "1.2.3.4")
+	assertNoExternalMapping(t, mapper, CandidateTypeHost, "192.168.0.1")
 }
 
 func TestFindExternalIPExplicitMapping(t *testing.T) {
@@ -199,27 +220,12 @@ func TestFindExternalIPExplicitMapping(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
-	assert.NoError(t, err)
-	assert.Equal(t, "1.2.3.4", extIP.String())
-
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
-	assert.NoError(t, err)
-	assert.Equal(t, "1.2.3.5", extIP.String())
-
-	_, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.3")
-	assert.ErrorIs(t, err, ErrExternalMappedIPNotFound)
-
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::1")
-	assert.NoError(t, err)
-	assert.Equal(t, "2200::1", extIP.String())
-
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "fe80::2")
-	assert.NoError(t, err)
-	assert.Equal(t, "2200::2", extIP.String())
-
-	_, err = mapper.findExternalIP(CandidateTypeHost, "fe80::3")
-	assert.ErrorIs(t, err, ErrExternalMappedIPNotFound)
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.1", "1.2.3.4")
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.2", "1.2.3.5")
+	assertExternalIPError(t, mapper, CandidateTypeHost, "10.0.0.3", ErrExternalMappedIPNotFound)
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "fe80::1", "2200::1")
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "fe80::2", "2200::2")
+	assertExternalIPError(t, mapper, CandidateTypeHost, "fe80::3", ErrExternalMappedIPNotFound)
 }
 
 func TestFindExternalIPServerReflexive(t *testing.T) {
@@ -227,9 +233,7 @@ func TestFindExternalIPServerReflexive(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err := mapper.findExternalIP(CandidateTypeServerReflexive, "0.0.0.0")
-	assert.NoError(t, err)
-	assert.Equal(t, "1.2.3.4", extIP.String())
+	assertExternalIPStrings(t, mapper, CandidateTypeServerReflexive, "0.0.0.0", "1.2.3.4")
 }
 
 func TestFindExternalIPFallbackAndErrors(t *testing.T) {
@@ -238,9 +242,7 @@ func TestFindExternalIPFallbackAndErrors(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
 
-		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.1")
-		assert.NoError(t, err)
-		assert.Equal(t, "10.0.0.1", extIP.String())
+		assertNoExternalMapping(t, mapper, CandidateTypeHost, "10.0.0.1")
 	})
 
 	t.Run("invalid local ip", func(t *testing.T) {
@@ -248,7 +250,7 @@ func TestFindExternalIPFallbackAndErrors(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
 
-		_, err = mapper.findExternalIP(CandidateTypeHost, "really.bad")
+		_, _, err = mapper.findExternalIPs(CandidateTypeHost, "really.bad")
 		assert.Error(t, err)
 	})
 }
@@ -264,13 +266,8 @@ func TestExternalIPMapperNetworksFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.2")
-	assert.NoError(t, err)
-	assert.Equal(t, "203.0.113.2", extIP.String())
-
-	extIP, err = mapper.findExternalIP(CandidateTypeHost, "2001:db8:1::1")
-	assert.NoError(t, err)
-	assert.Equal(t, "2001:db8:1::1", extIP.String())
+	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.2", "203.0.113.2")
+	assertNoExternalMapping(t, mapper, CandidateTypeHost, "2001:db8:1::1")
 
 	mapper, err = newExternalIPMapper([]NAT1To1Rule{
 		{
@@ -282,13 +279,8 @@ func TestExternalIPMapperNetworksFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
-	extIP, err = mapper.findExternalIP(CandidateTypeServerReflexive, "2001:db8:2::6")
-	assert.NoError(t, err)
-	assert.Equal(t, "2001:db8::6", extIP.String())
-
-	extIP, err = mapper.findExternalIP(CandidateTypeServerReflexive, "192.0.2.10")
-	assert.NoError(t, err)
-	assert.Equal(t, "192.0.2.10", extIP.String())
+	assertExternalIPStrings(t, mapper, CandidateTypeServerReflexive, "2001:db8:2::6", "2001:db8::6")
+	assertNoExternalMapping(t, mapper, CandidateTypeServerReflexive, "192.0.2.10")
 
 	t.Run("mixed family rule respects each address family", func(t *testing.T) {
 		mixedMapper, mixedErr := newExternalIPMapper([]NAT1To1Rule{
@@ -303,13 +295,8 @@ func TestExternalIPMapperNetworksFilter(t *testing.T) {
 		assert.NoError(t, mixedErr)
 		assert.NotNil(t, mixedMapper)
 
-		extIP, err := mixedMapper.findExternalIP(CandidateTypeHost, "10.10.10.10")
-		assert.NoError(t, err)
-		assert.Equal(t, "203.0.113.99", extIP.String())
-
-		extIP, err = mixedMapper.findExternalIP(CandidateTypeHost, "2001:db8:1::99")
-		assert.NoError(t, err)
-		assert.Equal(t, "2001:db8::99", extIP.String())
+		assertExternalIPStrings(t, mixedMapper, CandidateTypeHost, "10.10.10.10", "203.0.113.99")
+		assertExternalIPStrings(t, mixedMapper, CandidateTypeHost, "2001:db8:1::99", "2001:db8::99")
 	})
 }
 
@@ -328,9 +315,7 @@ func TestExternalIPMapperRuleOrderAndSpecificity(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
 
-		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.5")
-		assert.NoError(t, err)
-		assert.Equal(t, "203.0.113.10", extIP.String())
+		assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.5", "203.0.113.10")
 	})
 
 	t.Run("specific mapping outranks cidr and catch-all", func(t *testing.T) {
@@ -344,16 +329,8 @@ func TestExternalIPMapperRuleOrderAndSpecificity(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
 
-		extIP, err := mapper.findExternalIP(CandidateTypeHost, "10.0.0.5")
-		assert.NoError(t, err)
-		assert.Equal(t, "203.0.113.30", extIP.String())
-
-		extIP, err = mapper.findExternalIP(CandidateTypeHost, "10.0.0.10")
-		assert.NoError(t, err)
-		assert.Equal(t, "203.0.113.40", extIP.String())
-
-		extIP, err = mapper.findExternalIP(CandidateTypeHost, "192.0.2.20")
-		assert.NoError(t, err)
-		assert.Equal(t, "192.0.2.20", extIP.String())
+		assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.5", "203.0.113.30")
+		assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.10", "203.0.113.40")
+		assertNoExternalMapping(t, mapper, CandidateTypeHost, "192.0.2.20")
 	})
 }
