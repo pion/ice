@@ -245,8 +245,9 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 
 	c.enableSocketOptions()
 	oob := make([]byte, 128) // buffer for out of band packet attributes
+	attr := transport.NewPacketAttributesWithLen(transport.MaxAttributesLen)
 	for {
-		n, attr, srcAddr, err := c.readPacketWithAttributes(buf, oob)
+		n, srcAddr, err := c.readPacketWithAttributes(buf, oob, attr)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
@@ -271,8 +272,7 @@ func (c *candidateBase) enableSocketOptions() {
 // Reads a packet including its out of band attributes like ECN
 // if the underlying conn supports it.
 func (c *candidateBase) readPacketWithAttributes(
-	buf []byte, oob []byte) (n int, attr *transport.PacketAttributes, srcAddr net.Addr, err error) {
-	attr = nil
+	buf []byte, oob []byte, attr *transport.PacketAttributes) (n int, srcAddr net.Addr, err error) {
 	var uc *net.UDPConn
 	var ok bool
 
@@ -282,19 +282,18 @@ func (c *candidateBase) readPacketWithAttributes(
 		return
 	}
 
-	return c.doReadPacketWithAttributes(buf, oob, uc)
+	return c.doReadPacketWithAttributes(buf, oob, attr, uc)
 }
 
 // Reads a packet including its out of band attributes like ECN if possible.
 func (c *candidateBase) doReadPacketWithAttributes(
-	buf []byte, oob []byte, uc *net.UDPConn) (n int, attr *transport.PacketAttributes, srcAddr net.Addr, err error) {
+	buf []byte, oob []byte, attr *transport.PacketAttributes, uc *net.UDPConn) (n int, srcAddr net.Addr, err error) {
 	var oobn int
 	var flags int
 	var udpAddr *net.UDPAddr
 	n, oobn, flags, udpAddr, err = uc.ReadMsgUDP(buf, oob)
 	srcAddr = udpAddr
 
-	attr = transport.NewPacketAttributes()
 	if oobn <= 0 {
 		return
 	}
@@ -313,7 +312,7 @@ func (c *candidateBase) doReadPacketWithAttributes(
 			if len(cm.Data) > 0 {
 				tos := cm.Data[0]
 				ecn := tos & 0x03 // ECN is the two least significant bits
-				attr.WithECN(transport.ECN(ecn))
+				attr.Buffer[0] = ecn
 			}
 		}
 		// IPv6 Traffic Class
@@ -321,7 +320,7 @@ func (c *candidateBase) doReadPacketWithAttributes(
 			if len(cm.Data) > 0 {
 				tos := cm.Data[0]
 				ecn := tos & 0x03 // ECN is the two least significant bits
-				attr.WithECN(transport.ECN(ecn))
+				attr.Buffer[0] = ecn
 			}
 		}
 	}
