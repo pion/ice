@@ -10,7 +10,7 @@ require (
 	github.com/pion/randutil v0.1.0
 	github.com/pion/stun/v3 v3.0.1
 	github.com/pion/transport/v3 v3.1.1
-	github.com/pion/turn/v4 v4.1.2
+	github.com/pion/turn/v4 v4.1.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.34.0
 )
