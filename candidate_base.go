@@ -246,6 +246,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	oob := make([]byte, 128) // buffer for out of band packet attributes
 	attr := transport.NewPacketAttributesWithLen(1)
 	for {
+		attr.Reset()
 		n, srcAddr, err := c.readPacketWithAttributes(buf, oob, attr)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
@@ -255,7 +256,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 			return
 		}
 
-		c.handleInboundPacket(buf[:n], attr, srcAddr)
+		c.handleInboundPacket(buf[:n], attr.GetReadPacketAttributes(), srcAddr)
 	}
 }
 
@@ -312,6 +313,7 @@ func (c *candidateBase) doReadPacketWithAttributes(
 				tos := cm.Data[0]
 				ecn := tos & 0x03 // ECN is the two least significant bits
 				attr.Buffer[0] = ecn
+				attr.BytesCopied = 1
 			}
 		}
 		// IPv6 Traffic Class
@@ -320,6 +322,7 @@ func (c *candidateBase) doReadPacketWithAttributes(
 				tos := cm.Data[0]
 				ecn := tos & 0x03 // ECN is the two least significant bits
 				attr.Buffer[0] = ecn
+				attr.BytesCopied = 1
 			}
 		}
 	}
