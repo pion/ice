@@ -235,7 +235,6 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 		return
 	}
 
-	// todo amir: it seems like bufferPool is not needed as this method is the only accessor
 	bufferPoolBuffer := bufferPool.Get()
 	defer bufferPool.Put(bufferPoolBuffer)
 	buf, ok := bufferPoolBuffer.([]byte)
@@ -245,7 +244,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 
 	c.enableSocketOptions()
 	oob := make([]byte, 128) // buffer for out of band packet attributes
-	attr := transport.NewPacketAttributesWithLen(transport.MaxAttributesLen)
+	attr := transport.NewPacketAttributesWithLen(1)
 	for {
 		n, srcAddr, err := c.readPacketWithAttributes(buf, oob, attr)
 		if err != nil {
