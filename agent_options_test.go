@@ -647,6 +647,372 @@ func TestWithCandidateTypesNAT1To1Validation(t *testing.T) {
 	})
 }
 
+func TestWith1To1CandidateIPOptions(t *testing.T) {
+	testCases := []struct {
+		option        func(...string) AgentOption
+		firstIP       string
+		secondIP      string
+		candidateType CandidateType
+		lookupLocalIP string
+	}{
+		{
+			option:        WithNAT1To1HostIPs,
+			firstIP:       "1.2.3.4",
+			secondIP:      "5.6.7.8",
+			candidateType: CandidateTypeHost,
+			lookupLocalIP: "10.0.0.1",
+		},
+		{
+			option:        WithNAT1To1SrflxIPs,
+			firstIP:       "5.6.7.8",
+			secondIP:      "9.9.9.9",
+			candidateType: CandidateTypeServerReflexive,
+			lookupLocalIP: "0.0.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		assertNAT1To1Option(
+			t,
+			tc.option,
+			tc.candidateType,
+			[]string{tc.firstIP},
+			[]string{tc.secondIP},
+			tc.firstIP,
+			tc.secondIP,
+			tc.candidateType,
+			tc.lookupLocalIP,
+		)
+	}
+}
+
+func assertNAT1To1Option(
+	t *testing.T,
+	option func(...string) AgentOption,
+	candidateType CandidateType,
+	firstIPs []string,
+	secondIPs []string,
+	expectedFirstIP string,
+	expectedSecondIP string,
+	lookupCandidateType CandidateType,
+	lookupLocalIP string,
+) {
+	t.Helper()
+
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		option(firstIPs...),
+		option(secondIPs...),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.nat1To1Rules, 2)
+
+	firstRule := agent.nat1To1Rules[0]
+	require.Equal(t, candidateType, firstRule.AsCandidateType)
+	require.Equal(t, []string{expectedFirstIP}, firstRule.PublicIPs)
+
+	secondRule := agent.nat1To1Rules[1]
+	require.Equal(t, candidateType, secondRule.AsCandidateType)
+	require.Equal(t, []string{expectedSecondIP}, secondRule.PublicIPs)
+
+	require.NotNil(t, agent.extIPMapper)
+	extIP := requireFirstExternalIP(t, agent.extIPMapper, lookupCandidateType, lookupLocalIP)
+	require.Equal(t, expectedFirstIP, extIP.String())
+}
+
+func requireFirstExternalIP(
+	t *testing.T,
+	mapper *externalIPMapper,
+	candidateType CandidateType,
+	localIP string,
+) net.IP {
+	t.Helper()
+
+	ips, matched, err := mapper.findExternalIPs(candidateType, localIP)
+	require.NoError(t, err)
+	require.True(t, matched)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
+}
+
+func requireFirstMappingIP(t *testing.T, mapping *ipMapping, localIP net.IP) net.IP {
+	t.Helper()
+
+	ips, err := mapping.findExternalIPs(localIP)
+	require.NoError(t, err)
+	require.NotEmpty(t, ips)
+
+	return ips[0]
+}
+
+func TestWith1To1RulesOption(t *testing.T) {
+	stub := newStubNet(t)
+	originalRules := []NAT1To1Rule{
+		{
+			PublicIPs:       []string{"9.9.9.9"},
+			AsCandidateType: CandidateTypeHost,
+		},
+	}
+
+	// With append semantics the option stacks, so call twice and ensure accumulation.
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithNAT1To1Rules(originalRules...),
+		WithNAT1To1Rules(NAT1To1Rule{
+			PublicIPs:       []string{"4.4.4.4"},
+			AsCandidateType: CandidateTypeServerReflexive,
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.nat1To1Rules, 2)
+	require.Equal(t, []string{"9.9.9.9"}, agent.nat1To1Rules[0].PublicIPs)
+	require.Equal(t, []string{"4.4.4.4"}, agent.nat1To1Rules[1].PublicIPs)
+
+	// mutate the original rules after option applied, agent copy should remain unchanged.
+	originalRules[0].PublicIPs[0] = "0.0.0.0"
+	require.Equal(t, "9.9.9.9", agent.nat1To1Rules[0].PublicIPs[0])
+}
+
+func TestWith1To1RulesEmptyNoop(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithNAT1To1HostIPs("1.2.3.4"),
+		WithNAT1To1Rules(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.nat1To1Rules, 1)
+	require.Equal(t, []string{"1.2.3.4"}, agent.nat1To1Rules[0].PublicIPs)
+	require.NotNil(t, agent.extIPMapper)
+}
+
+func TestWithNAT1To1RulesWarnOnConflicts(t *testing.T) {
+	stub := newStubNet(t)
+	logger := &recordingLogger{}
+	factory := &recordingLoggerFactory{logger: logger}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithLoggerFactory(factory),
+		WithNAT1To1HostIPs("203.0.113.10"),
+		WithNAT1To1HostIPs("198.51.100.50"),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.NotEmpty(t, logger.warnings)
+	require.Contains(t, logger.warnings[0], "overlapping NAT 1:1 rule")
+	require.Contains(t, logger.warnings[0], "candidate=host")
+	require.Contains(t, logger.warnings[0], "iface=*")
+	require.Contains(t, logger.warnings[0], "networks=*")
+	require.Contains(t, logger.warnings[0], "local=family:ipv4")
+	require.Contains(t, logger.warnings[0], "203.0.113.10")
+	require.Contains(t, logger.warnings[0], "198.51.100.50")
+}
+
+func TestWithNAT1To1IPValidation(t *testing.T) {
+	t.Run("dedupe and trim host IPs", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithNAT1To1HostIPs(" 203.0.113.1 ", "203.0.113.1", "2001:db8::1 "),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		require.Len(t, agent.nat1To1Rules, 1)
+		require.Equal(t, []string{"203.0.113.1", "2001:db8::1"}, agent.nat1To1Rules[0].PublicIPs)
+	})
+
+	t.Run("reject hostname entry", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithNAT1To1HostIPs("example.com"),
+		)
+		require.Nil(t, agent)
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	})
+
+	t.Run("reject invalid rule entry", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		agent, err := NewAgentWithOptions(
+			WithNet(stub),
+			WithNAT1To1Rules(NAT1To1Rule{
+				PublicIPs:       []string{"1.2.3.4", "bad-ip"},
+				AsCandidateType: CandidateTypeHost,
+			}),
+		)
+		require.Nil(t, agent)
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	})
+}
+
+func TestWithNAT1To1RulesIPv6(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(stub),
+		WithNAT1To1Rules(NAT1To1Rule{
+			PublicIPs:       []string{"2001:db8::2/2001:db8:1::2"},
+			AsCandidateType: CandidateTypeHost,
+			Networks:        []NetworkType{NetworkTypeUDP6},
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.nat1To1Rules, 1)
+	require.Equal(t, []NetworkType{NetworkTypeUDP6}, agent.nat1To1Rules[0].Networks)
+	require.NotNil(t, agent.extIPMapper)
+
+	mappings := agent.extIPMapper.rulesByCandidateType[CandidateTypeHost]
+	require.Len(t, mappings, 1)
+	require.True(t, mappings[0].ipv6Mapping.valid)
+	_, ok := mappings[0].ipv6Mapping.ipMap["2001:db8:1::2"]
+	require.True(t, ok)
+	for key := range mappings[0].ipv6Mapping.ipMap {
+		t.Logf("stored ipv6 mapping key: %q", key)
+	}
+	locIP := net.ParseIP("2001:db8:1::2")
+	require.NotNil(t, locIP)
+	t.Logf("parsed ipv6 string: %q", locIP.String())
+	directExt := requireFirstMappingIP(t, &mappings[0].ipv6Mapping, locIP)
+	require.Equal(t, "2001:db8::2", directExt.String())
+
+	mapper, err := newExternalIPMapper(agent.nat1To1Rules)
+	require.NoError(t, err)
+	extIP := requireFirstExternalIP(t, mapper, CandidateTypeHost, "2001:db8:1::2")
+	require.Equal(t, "2001:db8::2", extIP.String())
+
+	_, matched, err := mapper.findExternalIPs(CandidateTypeHost, "2001:db8:1::3")
+	require.True(t, matched)
+	require.ErrorIs(t, err, ErrExternalMappedIPNotFound)
+}
+
+type recordingLogger struct {
+	warnings []string
+}
+
+func (l *recordingLogger) Trace(string) {}
+
+func (l *recordingLogger) Tracef(string, ...any) {}
+
+func (l *recordingLogger) Debug(string) {}
+
+func (l *recordingLogger) Debugf(string, ...any) {}
+
+func (l *recordingLogger) Info(string) {}
+
+func (l *recordingLogger) Infof(string, ...any) {}
+
+func (l *recordingLogger) Warn(msg string) {
+	l.warnings = append(l.warnings, msg)
+}
+
+func (l *recordingLogger) Warnf(format string, args ...any) {
+	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
+}
+
+func (l *recordingLogger) Error(string) {}
+
+func (l *recordingLogger) Errorf(string, ...any) {}
+
+type recordingLoggerFactory struct {
+	logger *recordingLogger
+}
+
+func (f *recordingLoggerFactory) NewLogger(string) logging.LeveledLogger {
+	return f.logger
+}
+
+func TestAgentConfigNAT1To1IPs(t *testing.T) {
+	testCases := []struct {
+		name          string
+		config        AgentConfig
+		candidateType CandidateType
+		localIP       string
+		expectedIP    string
+	}{
+		{
+			name: "host candidate default type",
+			config: AgentConfig{
+				NAT1To1IPs: []string{"1.2.3.4"},
+			},
+			candidateType: CandidateTypeHost,
+			localIP:       "10.0.0.1",
+			expectedIP:    "1.2.3.4",
+		},
+		{
+			name: "srflx candidate explicit type",
+			config: AgentConfig{
+				NAT1To1IPs:             []string{"5.6.7.8"},
+				NAT1To1IPCandidateType: CandidateTypeServerReflexive,
+			},
+			candidateType: CandidateTypeServerReflexive,
+			localIP:       "0.0.0.0",
+			expectedIP:    "5.6.7.8",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			stub := newStubNet(t)
+			config := tc.config
+			config.Net = stub
+
+			agent, err := NewAgent(&config)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, agent.Close())
+			})
+
+			require.NotNil(t, agent.extIPMapper)
+			extIP := requireFirstExternalIP(t, agent.extIPMapper, tc.candidateType, tc.localIP)
+			require.Equal(t, tc.expectedIP, extIP.String())
+		})
+	}
+
+	t.Run("deprecated multiple config IPs reject", func(t *testing.T) {
+		stub := newStubNet(t)
+
+		//nolint:godox
+		// TODO: remove once AgentConfig.NAT1To1IPs is deprecated.
+		agent, err := NewAgent(&AgentConfig{
+			Net:        stub,
+			NAT1To1IPs: []string{"1.2.3.4", "5.6.7.8"},
+		})
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+		require.Nil(t, agent)
+	})
+}
+
 var errStubNotImplemented = errors.New("stub not implemented")
 
 type stubTCPMux struct{}

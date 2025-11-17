@@ -111,10 +111,9 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls             []*stun.URI
-	networkTypes     []NetworkType
-	natCandidateType CandidateType
-	natIPs           []string
+	urls         []*stun.URI
+	networkTypes []NetworkType
+	nat1To1Rules []NAT1To1Rule
 
 	buf *packetio.Buffer
 
@@ -191,10 +190,59 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 	agent.localUfrag = config.LocalUfrag
 	agent.localPwd = config.LocalPwd
-	agent.natCandidateType = config.NAT1To1IPCandidateType
-	agent.natIPs = config.NAT1To1IPs
+	if config.NAT1To1IPs != nil {
+		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
+			return nil, err
+		}
+
+		typ := CandidateTypeHost
+		if config.NAT1To1IPCandidateType != CandidateTypeUnspecified {
+			typ = config.NAT1To1IPCandidateType
+		}
+
+		agent.nat1To1Rules = []NAT1To1Rule{
+			{
+				PublicIPs:       config.NAT1To1IPs,
+				AsCandidateType: typ,
+			},
+		}
+	}
 
 	return newAgentWithConfig(agent, opts...)
+}
+
+func validateLegacyNAT1To1IPs(ips []string) error {
+	var hasIPv4CatchAll, hasIPv6CatchAll bool
+
+	for _, mapping := range ips {
+		if mapping == "" {
+			continue
+		}
+
+		parts := strings.Split(strings.TrimSpace(mapping), "/")
+		if len(parts) != 1 {
+			continue
+		}
+
+		_, isIPv4, err := validateIPString(parts[0])
+		if err != nil {
+			return err
+		}
+
+		if isIPv4 {
+			if hasIPv4CatchAll {
+				return ErrInvalidNAT1To1IPMapping
+			}
+			hasIPv4CatchAll = true
+		} else {
+			if hasIPv6CatchAll {
+				return ErrInvalidNAT1To1IPMapping
+			}
+			hasIPv6CatchAll = true
+		}
+	}
+
+	return nil
 }
 
 func createAgentBase(config *AgentConfig) (*Agent, error) {
@@ -263,8 +311,8 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 	return agent, nil
 }
 
-func applyExternalIPMapping(agent *Agent, candidateType CandidateType, ips []string) error {
-	mapper, err := newExternalIPMapper(candidateType, ips)
+func applyExternalIPMapping(agent *Agent) error {
+	mapper, err := newExternalIPMapper(agent.nat1To1Rules)
 	if err != nil {
 		return err
 	}
@@ -274,20 +322,19 @@ func applyExternalIPMapping(agent *Agent, candidateType CandidateType, ips []str
 		return nil
 	}
 
-	switch agent.extIPMapper.candidateType {
-	case CandidateTypeHost:
+	if agent.extIPMapper.hasCandidateType(CandidateTypeHost) {
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
 		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-	case CandidateTypeServerReflexive:
+	}
+
+	if agent.extIPMapper.hasCandidateType(CandidateTypeServerReflexive) {
 		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
-	default:
-		return nil
 	}
 
 	return nil
@@ -394,7 +441,7 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		return nil, ErrUselessUrlsProvided
 	}
 
-	if err = applyExternalIPMapping(agent, agent.natCandidateType, agent.natIPs); err != nil {
+	if err = applyExternalIPMapping(agent); err != nil {
 		agent.closeMulticastConn()
 
 		return nil, err
