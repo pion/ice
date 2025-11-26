@@ -85,6 +85,8 @@ func (l *Loop) Run(ctx context.Context, t func(context.Context)) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-l.done:
+		return ErrClosed
 	case l.tasks <- task{t, done}:
 		<-done
 
