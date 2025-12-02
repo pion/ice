@@ -5,6 +5,8 @@ package ice
 
 import (
 	"net"
+
+	"github.com/pion/logging"
 )
 
 // AllConnsGetter allows multiple fixed TCP ports to be used,
@@ -34,14 +36,14 @@ func NewMultiTCPMuxDefault(muxes ...TCPMux) *MultiTCPMuxDefault {
 // creates the connection if an existing one can't be found. This, unlike
 // GetAllConns, will only return a single PacketConn from the first mux that was
 // passed in to NewMultiTCPMuxDefault.
-func (m *MultiTCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error) {
+func (m *MultiTCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP, logger logging.LeveledLogger) (net.PacketConn, error) {
 	// NOTE: We always use the first element here in order to maintain the
 	// behavior of using an existing connection if one exists.
 	if len(m.muxes) == 0 {
 		return nil, errNoTCPMuxAvailable
 	}
 
-	return m.muxes[0].GetConnByUfrag(ufrag, isIPv6, local)
+	return m.muxes[0].GetConnByUfrag(ufrag, isIPv6, local, logger)
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection
@@ -60,7 +62,7 @@ func (m *MultiTCPMuxDefault) GetAllConns(ufrag string, isIPv6 bool, local net.IP
 	}
 	var conns []net.PacketConn
 	for _, mux := range m.muxes {
-		conn, err := mux.GetConnByUfrag(ufrag, isIPv6, local)
+		conn, err := mux.GetConnByUfrag(ufrag, isIPv6, local, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 		if err != nil {
 			// For now, this implementation is all or none.
 			return nil, err

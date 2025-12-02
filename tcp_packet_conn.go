@@ -85,7 +85,8 @@ func (bc *bufferedConn) Close() error {
 }
 
 type tcpPacketConn struct {
-	params *tcpPacketParams
+	params    *tcpPacketParams
+	startedAt time.Time
 
 	// conns is a map of net.Conns indexed by remote net.Addr.String()
 	conns map[string]net.Conn
@@ -106,6 +107,7 @@ type streamingPacket struct {
 }
 
 type tcpPacketParams struct {
+	FromSTUN      bool
 	ReadBuffer    int
 	Ufrag         string
 	LocalAddr     net.Addr
@@ -116,7 +118,8 @@ type tcpPacketParams struct {
 
 func newTCPPacketConn(params tcpPacketParams) *tcpPacketConn {
 	packet := &tcpPacketConn{
-		params: &params,
+		params:    &params,
+		startedAt: time.Now(),
 
 		conns: map[string]net.Conn{},
 
@@ -352,6 +355,14 @@ func (t *tcpPacketConn) Close() error {
 	}
 
 	return nil
+}
+
+func (t *tcpPacketConn) Age() time.Duration {
+	return time.Since(t.startedAt)
+}
+
+func (t *tcpPacketConn) FromSTUN() bool {
+	return t.params.FromSTUN
 }
 
 func (t *tcpPacketConn) LocalAddr() net.Addr {

@@ -655,7 +655,7 @@ func (m *stubTCPMux) Close() error {
 	return nil
 }
 
-func (m *stubTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
+func (m *stubTCPMux) GetConnByUfrag(string, bool, net.IP, logging.LeveledLogger) (net.PacketConn, error) {
 	return nil, errStubNotImplemented
 }
 

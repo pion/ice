@@ -229,7 +229,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 				} else {
 					a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
 					// Note: this is missing zone for IPv6 by just grabbing the IP slice
-					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
+					conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.Is6(), addr.AsSlice(), a.log)
 					if err != nil {
 						a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
 

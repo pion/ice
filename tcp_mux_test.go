@@ -65,7 +65,7 @@ func TestTCPMux_Recv(t *testing.T) {
 			listenerAddr, ok := listener.Addr().(*net.TCPAddr)
 			require.True(t, ok)
 
-			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listenerAddr.IP)
+			pktConn, err := tcpMux.GetConnByUfrag("myufrag", false, listenerAddr.IP, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 			require.NoError(t, err, "error retrieving muxed connection for ufrag")
 			defer func() {
 				_ = pktConn.Close()
@@ -117,12 +117,12 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
 	require.True(t, ok)
 
-	_, err = tcpMux.GetConnByUfrag("test", false, listenerAddr.IP)
+	_, err = tcpMux.GetConnByUfrag("test", false, listenerAddr.IP, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 	require.NoError(t, err, "error getting conn by ufrag")
 
 	require.NoError(t, tcpMux.Close(), "error closing tcpMux")
 
-	conn, err := tcpMux.GetConnByUfrag("test", false, listenerAddr.IP)
+	conn, err := tcpMux.GetConnByUfrag("test", false, listenerAddr.IP, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 	require.Nil(t, conn, "should receive nil because mux is closed")
 	require.Equal(t, io.ErrClosedPipe, err, "should receive error because mux is closed")
 }
@@ -243,7 +243,7 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 		listenerAddr, ok := listener.Addr().(*net.TCPAddr)
 		require.True(t, ok)
 
-		pktConn, err := tcpMux.GetConnByUfrag("myufrag2", false, listenerAddr.IP)
+		pktConn, err := tcpMux.GetConnByUfrag("myufrag2", false, listenerAddr.IP, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 		require.NoError(t, err, "error retrieving muxed connection for ufrag")
 		defer func() {
 			_ = pktConn.Close()

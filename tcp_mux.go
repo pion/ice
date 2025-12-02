@@ -24,7 +24,7 @@ var ErrGetTransportAddress = errors.New("failed to get local transport address")
 // interface exists to allow mocking in tests.
 type TCPMux interface {
 	io.Closer
-	GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error)
+	GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP, logger logging.LeveledLogger) (net.PacketConn, error)
 	RemoveConnByUfrag(ufrag string)
 }
 
@@ -86,6 +86,8 @@ func NewTCPMuxDefault(params TCPMuxParams) *TCPMuxDefault {
 		connsIPv6: map[string]map[ipAddr]*tcpPacketConn{},
 	}
 
+	go mux.check()
+
 	mux.wg.Add(1)
 	go func() {
 		defer mux.wg.Done()
@@ -121,7 +123,7 @@ func (m *TCPMuxDefault) LocalAddr() net.Addr {
 }
 
 // GetConnByUfrag retrieves an existing or creates a new net.PacketConn.
-func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error) {
+func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP, logger logging.LeveledLogger) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -135,10 +137,10 @@ func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) 
 		return conn, nil
 	}
 
-	return m.createConn(ufrag, isIPv6, local, false)
+	return m.createConn(ufrag, isIPv6, local, false, logger)
 }
 
-func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, fromStun bool) (*tcpPacketConn, error) {
+func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, fromStun bool, logger logging.LeveledLogger) (*tcpPacketConn, error) {
 	addr, ok := m.LocalAddr().(*net.TCPAddr)
 	if !ok {
 		return nil, ErrGetTransportAddress
@@ -153,11 +155,12 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 	}
 
 	conn := newTCPPacketConn(tcpPacketParams{
+		FromSTUN:      fromStun,
 		ReadBuffer:    m.params.ReadBufferSize,
 		WriteBuffer:   m.params.WriteBufferSize,
 		LocalAddr:     &localAddr,
 		Ufrag:         ufrag,
-		Logger:        m.params.Logger,
+		Logger:        logger,
 		AliveDuration: alive,
 	})
 
@@ -294,7 +297,7 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) { //nolint:cyclop
 
 	packetConn, ok := m.getConn(ufrag, isIPv6, localAddr.IP)
 	if !ok {
-		packetConn, err = m.createConn(ufrag, isIPv6, localAddr.IP, true)
+		packetConn, err = m.createConn(ufrag, isIPv6, localAddr.IP, true, m.params.Logger)
 		if err != nil {
 			m.mu.Unlock()
 			m.closeAndLogError(conn)
@@ -430,6 +433,41 @@ func (m *TCPMuxDefault) getConn(ufrag string, isIPv6 bool, local net.IP) (val *t
 	}
 
 	return
+}
+
+func (m *TCPMuxDefault) check() {
+	for {
+		m.mu.Lock()
+		if m.closed {
+			m.mu.Unlock()
+			return
+		}
+
+		for _, conns := range m.connsIPv4 {
+			for _, conn := range conns {
+				age := conn.Age()
+				if age > time.Hour {
+					m.params.Logger.Errorf(
+						"DBG: ufrag: %s, local: %+v: tcpMux check: long conn: %+v, fromSTUN: %v",
+						conn.params.Ufrag,
+						conn.LocalAddr(),
+						age,
+						conn.FromSTUN(),
+					)
+				}
+			}
+		}
+		for _, conns := range m.connsIPv6 {
+			for _, conn := range conns {
+				age := conn.Age()
+				if age > time.Hour {
+					m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux check: long conn: %+v", conn.params.Ufrag, conn.LocalAddr(), age)
+				}
+			}
+		}
+		m.mu.Unlock()
+		time.Sleep(10 * time.Minute)
+	}
 }
 
 const streamingPacketHeaderLen = 2

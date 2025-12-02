@@ -29,7 +29,7 @@ func TestBufferedConn_Write_ErrorAfterClose(t *testing.T) {
 		_ = c2.Close()
 	}()
 
-	bc := newBufferedConn(c1, 0, logger)
+	bc := newBufferedConn(c1, "test", 0, logger)
 
 	require.NoError(t, bc.Close())
 
@@ -61,7 +61,7 @@ func TestBufferedConn_writeProcess_ReadError(t *testing.T) {
 	t.Cleanup(func() { _ = c2.Close() })
 
 	logger := newHookLogger()
-	under := newBufferedConn(c1, 0, logger)
+	under := newBufferedConn(c1, "test", 0, logger)
 
 	bc, ok := under.(*bufferedConn)
 	require.True(t, ok, "expected *bufferedConn")
@@ -81,7 +81,7 @@ func TestBufferedConn_writeProcess_WriteError(t *testing.T) {
 	c1, c2 := net.Pipe()
 	logger := newHookLogger()
 
-	under := newBufferedConn(c1, 0, logger)
+	under := newBufferedConn(c1, "test", 0, logger)
 	bc, ok := under.(*bufferedConn)
 	require.True(t, ok, "expected *bufferedConn")
 

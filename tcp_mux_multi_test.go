@@ -137,7 +137,7 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 func TestMultiTCPMux_GetConnByUfrag_NoMuxes(t *testing.T) {
 	multi := NewMultiTCPMuxDefault() // no muxes
 
-	pc, err := multi.GetConnByUfrag("ufrag", false, net.IP{127, 0, 0, 1})
+	pc, err := multi.GetConnByUfrag("ufrag", false, net.IP{127, 0, 0, 1}, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 	require.Nil(t, pc)
 	require.ErrorIs(t, err, errNoTCPMuxAvailable)
 }
@@ -178,7 +178,7 @@ func TestMultiTCPMux_GetConnByUfrag_FromAnyMux(t *testing.T) {
 	multi := NewMultiTCPMuxDefault(mux1, mux2)
 	defer func() { _ = multi.Close() }()
 
-	pc, err := multi.GetConnByUfrag("myufrag", false, net.IP{127, 0, 0, 1})
+	pc, err := multi.GetConnByUfrag("myufrag", false, net.IP{127, 0, 0, 1}, logging.NewDefaultLoggerFactory().NewLogger("ice"))
 	require.NoError(t, err)
 	require.NotNil(t, pc)
 
