@@ -446,7 +446,7 @@ func (m *TCPMuxDefault) check() {
 		for _, conns := range m.connsIPv4 {
 			for _, conn := range conns {
 				age := conn.Age()
-				if age > time.Hour {
+				if age > time.Hour && !conn.AgeLogged() {
 					m.params.Logger.Errorf(
 						"DBG: ufrag: %s, local: %+v: tcpMux check: long conn: %+v, fromSTUN: %v",
 						conn.params.Ufrag,
@@ -454,14 +454,22 @@ func (m *TCPMuxDefault) check() {
 						age,
 						conn.FromSTUN(),
 					)
+					conn.SetAgeLogged(true)
 				}
 			}
 		}
 		for _, conns := range m.connsIPv6 {
 			for _, conn := range conns {
 				age := conn.Age()
-				if age > time.Hour {
-					m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux check: long conn: %+v", conn.params.Ufrag, conn.LocalAddr(), age)
+				if age > time.Hour && !conn.AgeLogged() {
+					m.params.Logger.Errorf(
+						"DBG: ufrag: %s, local: %+v: tcpMux check: long conn: %+v, fromSTUN: %v",
+						conn.params.Ufrag,
+						conn.LocalAddr(),
+						age,
+						conn.FromSTUN(),
+					)
+					conn.SetAgeLogged(true)
 				}
 			}
 		}

@@ -87,6 +87,7 @@ func (bc *bufferedConn) Close() error {
 type tcpPacketConn struct {
 	params    *tcpPacketParams
 	startedAt time.Time
+	ageLogged atomic.Bool
 
 	// conns is a map of net.Conns indexed by remote net.Addr.String()
 	conns map[string]net.Conn
@@ -359,6 +360,14 @@ func (t *tcpPacketConn) Close() error {
 
 func (t *tcpPacketConn) Age() time.Duration {
 	return time.Since(t.startedAt)
+}
+
+func (t *tcpPacketConn) SetAgeLogged(ageLogged bool) {
+	t.ageLogged.Store(ageLogged)
+}
+
+func (t *tcpPacketConn) AgeLogged() bool {
+	return t.ageLogged.Load()
 }
 
 func (t *tcpPacketConn) FromSTUN() bool {
