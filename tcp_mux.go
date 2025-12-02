@@ -156,6 +156,7 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 		ReadBuffer:    m.params.ReadBufferSize,
 		WriteBuffer:   m.params.WriteBufferSize,
 		LocalAddr:     &localAddr,
+		Ufrag:         ufrag,
 		Logger:        m.params.Logger,
 		AliveDuration: alive,
 	})
@@ -175,12 +176,15 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 	// Note: this is missing zone for IPv6
 	connKey := ipAddr(local.String())
 	conns[connKey] = conn
+	m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux add: new conn", ufrag, conn.LocalAddr()) // REMOVE
 
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		<-conn.CloseChannel()
+		m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: closed", ufrag, conn.LocalAddr()) // REMOVE
 		m.removeConnByUfragAndLocalHost(ufrag, connKey)
+		m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: done", ufrag, conn.LocalAddr()) // REMOVE
 	}()
 
 	return conn, nil
@@ -369,8 +373,11 @@ func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
 
 	// Close the connections outside the critical section to avoid
 	// deadlocking TCP mux if (*tcpPacketConn).Close() blocks.
+	m.params.Logger.Infof("DBG: ufrag: %s: tcpMux RemoveConnByUfrag: closing conns", ufrag) // REMOVE
 	for _, conn := range removedConns {
+		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closing conn", ufrag, conn.LocalAddr()) // REMOVE
 		m.closeAndLogError(conn)
+		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closed conn", ufrag, conn.LocalAddr()) // REMOVE
 	}
 }
 
@@ -401,8 +408,11 @@ func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, localIPAddr 
 
 	// Close the connections outside the critical section to avoid
 	// deadlocking TCP mux if (*tcpPacketConn).Close() blocks.
+	m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conns", ufrag, localIPAddr) // REMOVE
 	for _, conn := range removedConns {
+		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conn, connLocalAddr: %+v", ufrag, conn.LocalAddr()) // REMOVE
 		m.closeAndLogError(conn)
+		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closed conn, connLocalAddr: %+v", ufrag, conn.LocalAddr()) // REMOVE
 	}
 }
 

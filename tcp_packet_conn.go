@@ -18,12 +18,13 @@ import (
 
 type bufferedConn struct {
 	net.Conn
+	ufrag  string
 	buf    *packetio.Buffer
 	logger logging.LeveledLogger
 	closed int32
 }
 
-func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) net.Conn {
+func newBufferedConn(conn net.Conn, ufrag string, bufSize int, logger logging.LeveledLogger) net.Conn {
 	buf := packetio.NewBuffer()
 	if bufSize > 0 {
 		buf.SetLimitSize(bufSize)
@@ -31,6 +32,7 @@ func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) n
 
 	bc := &bufferedConn{
 		Conn:   conn,
+		ufrag:  ufrag,
 		buf:    buf,
 		logger: logger,
 	}
@@ -73,9 +75,13 @@ func (bc *bufferedConn) writeProcess() {
 
 func (bc *bufferedConn) Close() error {
 	atomic.StoreInt32(&bc.closed, 1)
-	_ = bc.buf.Close()
+	bc.logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn bufferedConn: closing buf", bc.ufrag, bc.Conn.LocalAddr()) // REMOVE
+	err := bc.buf.Close()
+	bc.logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn bufferedConn:  closed buf and closing Conn, remote: %+v, err: %+v", bc.ufrag, bc.Conn.LocalAddr(), bc.Conn.RemoteAddr(), err) // REMOVE
 
-	return bc.Conn.Close()
+	err = bc.Conn.Close()
+	bc.logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn bufferedConn: closed Conn, remote: %+v, err: %+v", bc.ufrag, bc.Conn.LocalAddr(), bc.Conn.RemoteAddr(), err) // REMOVE
+	return err
 }
 
 type tcpPacketConn struct {
@@ -101,6 +107,7 @@ type streamingPacket struct {
 
 type tcpPacketParams struct {
 	ReadBuffer    int
+	Ufrag         string
 	LocalAddr     net.Addr
 	Logger        logging.LeveledLogger
 	WriteBuffer   int
@@ -142,6 +149,14 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 		conn.RemoteAddr(),
 		conn.LocalAddr(),
 	)
+	t.params.Logger.Errorf(
+		"DBG: ufrag: %s, local: %+v: tcpPacketConn add: added connection: %s remote %s to local %s",
+		t.params.Ufrag,
+		t.params.LocalAddr,
+		conn.RemoteAddr().Network(),
+		conn.RemoteAddr(),
+		conn.LocalAddr(),
+	) // REMOVE
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -157,7 +172,7 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 	}
 
 	if t.params.WriteBuffer > 0 {
-		conn = newBufferedConn(conn, t.params.WriteBuffer, t.params.Logger)
+		conn = newBufferedConn(conn, t.params.Ufrag, t.params.WriteBuffer, t.params.Logger)
 	}
 	t.conns[conn.RemoteAddr().String()] = conn
 
@@ -171,23 +186,27 @@ func (t *tcpPacketConn) AddConn(conn net.Conn, firstPacketData []byte) error {
 				// cases while closing a connection, which can cause the
 				// packetConn to never finish closing. Bail out early
 				// here to prevent that.
+				t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn readLoop: closed before first packet, remote: %+v", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr()) // REMOVE
 				return
 			case t.recvChan <- streamingPacket{firstPacketData, conn.RemoteAddr(), nil}:
 			}
 		}
 		t.startReading(conn)
+		t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn readLoop: leaving, remote: %+v", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr()) // REMOVE
 	}()
 
 	return nil
 }
 
 func (t *tcpPacketConn) startReading(conn net.Conn) {
+	t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn read: start, remote: %+v", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr()) // REMOVE
 	buf := make([]byte, receiveMTU)
 
 	for {
 		n, err := readStreamingPacket(conn, buf)
 		if err != nil {
 			t.params.Logger.Warnf("Failed to read streaming packet: %s", err)
+			t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn read: read streaming packet error, remote: %+v, err: %+v", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr(), err) // REMOVE
 			last := t.removeConn(conn)
 			// Only propagate connection closure errors if no other open connection exists.
 			if last || (!errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed)) {
@@ -290,6 +309,7 @@ func (t *tcpPacketConn) removeConn(conn net.Conn) bool {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	delete(t.conns, conn.RemoteAddr().String())
+	t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn remove: removed conn, remote: %v, left: %d", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr(), len(t.conns)) // REMOVE
 
 	return len(t.conns) == 0
 }
@@ -297,8 +317,10 @@ func (t *tcpPacketConn) removeConn(conn net.Conn) bool {
 func (t *tcpPacketConn) Close() error {
 	t.mu.Lock()
 
+	t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close: closing", t.params.Ufrag, t.LocalAddr()) // REMOVE
 	var shouldCloseRecvChan bool
 	t.closeOnce.Do(func() {
+		t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close: closing closedChan", t.params.Ufrag, t.LocalAddr()) // REMOVE
 		close(t.closedChan)
 		shouldCloseRecvChan = true
 		if t.aliveTimer != nil {
@@ -315,14 +337,18 @@ func (t *tcpPacketConn) Close() error {
 		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 		delete(t.conns, conn.RemoteAddr().String())
+		t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close:  closed remote addr: %+v", t.params.Ufrag, t.LocalAddr(), conn.RemoteAddr()) // REMOVE
 	}
 
 	t.mu.Unlock()
 
+	t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close: waiting on group", t.params.Ufrag, t.LocalAddr()) // REMOVE
 	t.wg.Wait()
 
+	t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close: closing recv chan, should close recv chan: %v", t.params.Ufrag, t.LocalAddr(), shouldCloseRecvChan) // REMOVE
 	if shouldCloseRecvChan {
 		close(t.recvChan)
+		t.params.Logger.Errorf("DBG: ufrag: %s, local: %+v: tcpPacketConn close: closed recv chan", t.params.Ufrag, t.LocalAddr()) // REMOVE
 	}
 
 	return nil
