@@ -179,15 +179,15 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 	// Note: this is missing zone for IPv6
 	connKey := ipAddr(local.String())
 	conns[connKey] = conn
-	m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux add: new conn", ufrag, conn.LocalAddr()) // REMOVE
+	logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux add: new conn", ufrag, conn.LocalAddr()) // REMOVE
 
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		<-conn.CloseChannel()
-		m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: closed", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: closed", ufrag, conn.LocalAddr()) // REMOVE
 		m.removeConnByUfragAndLocalHost(ufrag, connKey)
-		m.params.Logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: done", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: done", ufrag, conn.LocalAddr()) // REMOVE
 	}()
 
 	return conn, nil
