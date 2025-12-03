@@ -401,6 +401,11 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	}
 
 	agent.loop = taskloop.New(func() {
+		agent.gatherCandidateCancel()
+		if agent.gatherCandidateDone != nil {
+			<-agent.gatherCandidateDone
+		}
+
 		agent.removeUfragFromMux()
 		agent.deleteAllCandidates()
 		agent.startedFn()
@@ -411,11 +416,6 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 
 		agent.closeMulticastConn()
 		agent.updateConnectionState(ConnectionStateClosed)
-
-		agent.gatherCandidateCancel()
-		if agent.gatherCandidateDone != nil {
-			<-agent.gatherCandidateDone
-		}
 	})
 
 	// Restart is also used to initialize the agent for the first time
