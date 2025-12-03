@@ -1038,7 +1038,7 @@ func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) 
 
 func (a *Agent) removeUfragFromMux() {
 	if a.tcpMux != nil {
-		a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+		a.tcpMux.RemoveConnByUfrag(a.localUfrag, a.log)
 	}
 	if a.udpMux != nil {
 		a.udpMux.RemoveConnByUfrag(a.localUfrag)

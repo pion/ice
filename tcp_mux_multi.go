@@ -48,9 +48,9 @@ func (m *MultiTCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net
 
 // RemoveConnByUfrag stops and removes the muxed packet connection
 // from all underlying TCPMux instances.
-func (m *MultiTCPMuxDefault) RemoveConnByUfrag(ufrag string) {
+func (m *MultiTCPMuxDefault) RemoveConnByUfrag(ufrag string, logger logging.LeveledLogger) {
 	for _, mux := range m.muxes {
-		mux.RemoveConnByUfrag(ufrag)
+		mux.RemoveConnByUfrag(ufrag, logger)
 	}
 }
 

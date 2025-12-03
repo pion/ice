@@ -659,7 +659,7 @@ func (m *stubTCPMux) GetConnByUfrag(string, bool, net.IP, logging.LeveledLogger)
 	return nil, errStubNotImplemented
 }
 
-func (m *stubTCPMux) RemoveConnByUfrag(string) {}
+func (m *stubTCPMux) RemoveConnByUfrag(string, logging.LeveledLogger) {}
 
 type stubUDPMux struct{}
 

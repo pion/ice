@@ -25,7 +25,7 @@ var ErrGetTransportAddress = errors.New("failed to get local transport address")
 type TCPMux interface {
 	io.Closer
 	GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP, logger logging.LeveledLogger) (net.PacketConn, error)
-	RemoveConnByUfrag(ufrag string)
+	RemoveConnByUfrag(ufrag string, logger logging.LeveledLogger)
 }
 
 type ipAddr string
@@ -186,7 +186,7 @@ func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, from
 		defer m.wg.Done()
 		<-conn.CloseChannel()
 		logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: closed, fromSTUN: %v", ufrag, conn.LocalAddr(), fromStun) // REMOVE
-		m.removeConnByUfragAndLocalHost(ufrag, connKey)
+		m.removeConnByUfragAndLocalHost(ufrag, connKey, logger)
 		logger.Errorf("DBG: ufrag: %s, local: %+v, tcpMux loop: done, fromSTUN: %v", ufrag, conn.LocalAddr(), fromStun) // REMOVE
 	}()
 
@@ -354,7 +354,7 @@ func (m *TCPMuxDefault) Close() error {
 }
 
 // RemoveConnByUfrag closes and removes a net.PacketConn by Ufrag.
-func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
+func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string, logger logging.LeveledLogger) {
 	removedConns := make([]*tcpPacketConn, 0, 4)
 
 	// Keep lock section small to avoid deadlock with conn lock
@@ -376,15 +376,15 @@ func (m *TCPMuxDefault) RemoveConnByUfrag(ufrag string) {
 
 	// Close the connections outside the critical section to avoid
 	// deadlocking TCP mux if (*tcpPacketConn).Close() blocks.
-	m.params.Logger.Infof("DBG: ufrag: %s: tcpMux RemoveConnByUfrag: closing conns", ufrag) // REMOVE
+	logger.Errorf("DBG: ufrag: %s: tcpMux RemoveConnByUfrag: closing conns", ufrag) // REMOVE
 	for _, conn := range removedConns {
-		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closing conn", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closing conn, fromSTUN: %v", ufrag, conn.LocalAddr(), conn.FromSTUN()) // REMOVE
 		m.closeAndLogError(conn)
-		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closed conn", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux RemoveConnByUfrag: closed conn, fromSTUN: %v", ufrag, conn.LocalAddr(), conn.FromSTUN()) // REMOVE
 	}
 }
 
-func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, localIPAddr ipAddr) {
+func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, localIPAddr ipAddr, logger logging.LeveledLogger) {
 	removedConns := make([]*tcpPacketConn, 0, 4)
 
 	// Keep lock section small to avoid deadlock with conn lock
@@ -411,11 +411,11 @@ func (m *TCPMuxDefault) removeConnByUfragAndLocalHost(ufrag string, localIPAddr 
 
 	// Close the connections outside the critical section to avoid
 	// deadlocking TCP mux if (*tcpPacketConn).Close() blocks.
-	m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conns", ufrag, localIPAddr) // REMOVE
+	logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conns", ufrag, localIPAddr) // REMOVE
 	for _, conn := range removedConns {
-		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conn, connLocalAddr: %+v", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closing conn, connLocalAddr: %+v, fromSTUN: %v", ufrag, conn.LocalAddr(), conn.FromSTUN()) // REMOVE
 		m.closeAndLogError(conn)
-		m.params.Logger.Infof("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closed conn, connLocalAddr: %+v", ufrag, conn.LocalAddr()) // REMOVE
+		logger.Errorf("DBG: ufrag: %s, local: %+v: tcpMux removeConnByUfragAndLocalHost: closed conn, connLocalAddr: %+v, fromSTUN: %v", ufrag, conn.LocalAddr(), conn.FromSTUN()) // REMOVE
 	}
 }
 
