@@ -134,12 +134,18 @@ type AgentConfig struct {
 	// If CandidateTypeServerReflexive, it will insert a srflx candidate (as if it was derived
 	// from a STUN server) with its port number being the one for the actual host candidate.
 	// Other values will result in an error.
+	//
+	// Deprecated: use WithAddressRewriteRules with an explicit host or srflx rule instead.
+	// This field will be removed in a future major release.
 	NAT1To1IPCandidateType CandidateType
 
 	// NAT1To1IPs contains a list of public IP addresses that are to be used as a host
 	// candidate or srflx candidate. This is used typically for servers that are behind
 	// 1:1 D-NAT (e.g. AWS EC2 instances) and to eliminate the need of server reflexive
 	// candidate gathering.
+	//
+	// Deprecated: use WithAddressRewriteRules with an explicit host or srflx rule instead.
+	// This field will be removed in a future major release.
 	NAT1To1IPs []string
 
 	// HostAcceptanceMinWait specify a minimum wait time before selecting host candidates

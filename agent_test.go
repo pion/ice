@@ -928,19 +928,19 @@ func TestRemoteCandidateStats(t *testing.T) { //nolint:cyclop
 func TestInitExtIPMapping(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	// agent.extIPMapper should be nil by default
+	// agent.addressRewriteMapper should be nil by default
 	agent, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
-	require.Nil(t, agent.extIPMapper)
+	require.Nil(t, agent.addressRewriteMapper)
 	require.NoError(t, agent.Close())
 
-	// a.extIPMapper should be nil when NAT1To1IPs is a non-nil empty array
+	// a.addressRewriteMapper should be nil when NAT1To1IPs is a non-nil empty array
 	agent, err = NewAgent(&AgentConfig{
 		NAT1To1IPs:             []string{},
 		NAT1To1IPCandidateType: CandidateTypeHost,
 	})
 	require.NoError(t, err)
-	require.Nil(t, agent.extIPMapper)
+	require.Nil(t, agent.addressRewriteMapper)
 	require.NoError(t, agent.Close())
 
 	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
@@ -970,7 +970,7 @@ func TestInitExtIPMapping(t *testing.T) {
 	})
 	require.ErrorIs(t, ErrMulticastDNSWithNAT1To1IPMapping, err)
 
-	// NewAgent should return if newExternalIPMapper() returns an error.
+	// NewAgent should return if newAddressRewriteMapper() returns an error.
 	_, err = NewAgent(&AgentConfig{
 		NAT1To1IPs:             []string{"bad.2.3.4"}, // Bad IP
 		NAT1To1IPCandidateType: CandidateTypeHost,
