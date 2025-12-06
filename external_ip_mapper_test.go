@@ -291,6 +291,63 @@ func TestAddressRewriteModeDefaultsAndExplicit(t *testing.T) {
 	assert.Len(t, ips, 1)
 }
 
+func TestAddressRewriteModeDefaultsTable(t *testing.T) {
+	tests := []struct {
+		name          string
+		rule          AddressRewriteRule
+		localIP       string
+		expectMode    AddressRewriteMode
+		expectAddress string
+	}{
+		{
+			name:          "host default replace",
+			rule:          makeRule(CandidateTypeHost, "203.0.113.10"),
+			localIP:       "10.0.0.1",
+			expectMode:    AddressRewriteReplace,
+			expectAddress: "203.0.113.10",
+		},
+		{
+			name:          "srflx default append",
+			rule:          makeRule(CandidateTypeServerReflexive, "203.0.113.20"),
+			localIP:       "0.0.0.0",
+			expectMode:    AddressRewriteAppend,
+			expectAddress: "203.0.113.20",
+		},
+		{
+			name:          "relay default append",
+			rule:          makeRule(CandidateTypeRelay, "203.0.113.30"),
+			localIP:       "192.0.2.1",
+			expectMode:    AddressRewriteAppend,
+			expectAddress: "203.0.113.30",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			mapper, err := newAddressRewriteMapper([]AddressRewriteRule{tt.rule})
+			assert.NoError(t, err)
+
+			ips, matched, mode, findErr := mapper.findExternalIPs(tt.rule.AsCandidateType, tt.localIP)
+			assert.NoError(t, findErr)
+			assert.True(t, matched)
+			assert.NotEmpty(t, ips)
+			assert.Equal(t, tt.expectMode, mode)
+			assert.Equal(t, tt.expectAddress, ips[0].String())
+		})
+	}
+}
+
+func TestCloneIPsSkipsNil(t *testing.T) {
+	ipv4 := net.ParseIP("203.0.113.10")
+	ipv6 := net.ParseIP("2001:db8::1")
+
+	cloned := cloneIPs([]net.IP{ipv4, nil, ipv6})
+	assert.Len(t, cloned, 2)
+	assert.Equal(t, "203.0.113.10", cloned[0].String())
+	assert.Equal(t, "2001:db8::1", cloned[1].String())
+}
+
 func TestAddressRewriteModeHostReplaceAndAppend(t *testing.T) {
 	t.Run("replace host mapping removes original", func(t *testing.T) {
 		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{

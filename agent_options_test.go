@@ -853,6 +853,10 @@ func TestWithAddressRewriteRulesWarnOnConflicts(t *testing.T) {
 	require.Contains(t, logger.warnings[0], "local=family:ipv4")
 	require.Contains(t, logger.warnings[0], "203.0.113.10")
 	require.Contains(t, logger.warnings[0], "198.51.100.50")
+
+	_, _, _, err = agent.addressRewriteMapper.findExternalIPs(CandidateTypeHost, "10.0.0.1")
+	require.NoError(t, err)
+	require.Len(t, logger.warnings, 1)
 }
 
 func TestWithAddressRewriteRulesConflictingModesWarningAndPrecedence(t *testing.T) {
@@ -890,6 +894,60 @@ func TestWithAddressRewriteRulesConflictingModesWarningAndPrecedence(t *testing.
 	require.NotEmpty(t, ips)
 	require.Equal(t, "203.0.113.10", ips[0].String())
 	require.Equal(t, AddressRewriteReplace, mode)
+}
+
+func TestLegacyAndNewAddressRewriteOrdering(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := newAgentFromConfig(
+		&AgentConfig{
+			Net:        stub,
+			NAT1To1IPs: []string{"203.0.113.10"},
+		},
+		WithAddressRewriteRules(
+			AddressRewriteRule{
+				External:        []string{"198.51.100.5"},
+				AsCandidateType: CandidateTypeHost,
+			},
+		),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 2)
+	extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, CandidateTypeHost, "10.0.0.1")
+	require.Equal(t, "203.0.113.10", extIP.String())
+}
+
+func TestLegacyNAT1To1TranslationOrder(t *testing.T) {
+	stub := newStubNet(t)
+
+	agent, err := NewAgent(&AgentConfig{
+		Net: stub,
+		NAT1To1IPs: []string{
+			"203.0.113.1/10.0.0.1",
+			"203.0.113.2",
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	require.Len(t, agent.addressRewriteRules, 2)
+
+	firstRule := agent.addressRewriteRules[0]
+	require.Equal(t, "203.0.113.1", firstRule.External[0])
+	require.Equal(t, "10.0.0.1", firstRule.Local)
+
+	secondRule := agent.addressRewriteRules[1]
+	require.Equal(t, "203.0.113.2", secondRule.External[0])
+	require.Empty(t, secondRule.Local)
+
+	extIP := requireFirstExternalIP(t, agent.addressRewriteMapper, CandidateTypeHost, "10.0.0.2")
+	require.Equal(t, "203.0.113.2", extIP.String())
 }
 
 func TestWithNAT1To1IPValidation(t *testing.T) {
