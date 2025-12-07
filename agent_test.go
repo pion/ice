@@ -1573,6 +1573,45 @@ func TestLiteLifecycle(t *testing.T) {
 	bClosed = true
 }
 
+func TestValidateSelectedPairTransitions(t *testing.T) {
+	agent := &Agent{
+		disconnectedTimeout: time.Second,
+		failedTimeout:       time.Second,
+		connectionState:     ConnectionStateConnected,
+		connectionStateNotifier: &handlerNotifier{
+			connectionStateFunc: func(ConnectionState) {},
+			done:                make(chan struct{}),
+		},
+		log: logging.NewDefaultLoggerFactory().NewLogger("test"),
+	}
+
+	local, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "1.1.1.1",
+		Port:      1000,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "2.2.2.2",
+		Port:      2000,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	remote.setLastReceived(time.Now().Add(-3 * time.Second))
+
+	agent.selectedPair.Store(newCandidatePair(local, remote, true))
+
+	require.True(t, agent.validateSelectedPair())
+	require.Equal(t, ConnectionStateDisconnected, agent.connectionState)
+
+	require.True(t, agent.validateSelectedPair())
+	require.Equal(t, ConnectionStateFailed, agent.connectionState)
+}
+
 func TestNilCandidate(t *testing.T) {
 	a, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)

@@ -814,16 +814,32 @@ func (a *Agent) validateSelectedPair() bool {
 		totalTimeToFailure += a.disconnectedTimeout
 	}
 
-	switch {
-	case totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure:
-		a.updateConnectionState(ConnectionStateFailed)
-	case a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout:
-		a.updateConnectionState(ConnectionStateDisconnected)
-	default:
-		a.updateConnectionState(ConnectionStateConnected)
-	}
+	a.updateConnectionState(a.connectionStateForDisconnection(disconnectedTime, totalTimeToFailure))
 
 	return true
+}
+
+func (a *Agent) connectionStateForDisconnection(
+	disconnectedTime time.Duration,
+	totalTimeToFailure time.Duration,
+) ConnectionState {
+	disconnected := a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout
+	failed := totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure
+
+	switch {
+	case failed:
+		if disconnected && a.connectionState != ConnectionStateDisconnected && a.connectionState != ConnectionStateFailed {
+			// If we never reported disconnected but both thresholds are already exceeded,
+			// emit disconnected first so callers can observe both transitions.
+			return ConnectionStateDisconnected
+		}
+
+		return ConnectionStateFailed
+	case disconnected:
+		return ConnectionStateDisconnected
+	default:
+		return ConnectionStateConnected
+	}
 }
 
 // checkKeepalive sends STUN Binding Indications to the selected pair
