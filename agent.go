@@ -1022,6 +1022,10 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 }
 
 func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return a.loop.Run(ctx, func(context.Context) {
 		set := a.localCandidates[cand.NetworkType()]
 		for _, candidate := range set {
