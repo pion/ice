@@ -313,6 +313,18 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						continue
 					}
 
+					// Only advertise TCP candidates for addresses that the mux listener is actually
+					// bound to. When the listener is bound to a specific IP, exposing other interface
+					// addresses would generate unreachable passive candidates and can stall active
+					// TCP connect attempts.
+					if addrProvider, ok := a.tcpMux.(interface{ LocalAddr() net.Addr }); ok {
+						if muxAddr, ok := addrProvider.LocalAddr().(*net.TCPAddr); ok {
+							if ip := muxAddr.IP; ip != nil && !ip.IsUnspecified() && !ip.Equal(addr.AsSlice()) {
+								continue
+							}
+						}
+					}
+
 					// Handle ICE TCP passive mode
 					var muxConns []net.PacketConn
 					if multi, ok := a.tcpMux.(AllConnsGetter); ok {

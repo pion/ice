@@ -875,6 +875,38 @@ type errorPacketConn struct {
 	closed bool
 }
 
+type testTCPPacketConn struct {
+	addr *net.TCPAddr
+}
+
+func (c *testTCPPacketConn) ReadFrom([]byte) (int, net.Addr, error)    { return 0, c.addr, io.EOF }
+func (c *testTCPPacketConn) WriteTo(p []byte, _ net.Addr) (int, error) { return len(p), nil }
+func (c *testTCPPacketConn) Close() error                              { return nil }
+func (c *testTCPPacketConn) LocalAddr() net.Addr                       { return c.addr }
+func (c *testTCPPacketConn) SetDeadline(time.Time) error               { return nil }
+func (c *testTCPPacketConn) SetReadDeadline(time.Time) error           { return nil }
+func (c *testTCPPacketConn) SetWriteDeadline(time.Time) error          { return nil }
+
+type boundTCPMux struct {
+	localAddr net.Addr
+}
+
+func (m *boundTCPMux) Close() error { return nil }
+
+func (m *boundTCPMux) GetConnByUfrag(_ string, _ bool, local net.IP) (net.PacketConn, error) {
+	return &testTCPPacketConn{addr: &net.TCPAddr{IP: local, Port: 12345}}, nil
+}
+
+func (m *boundTCPMux) RemoveConnByUfrag(string) {}
+
+func (m *boundTCPMux) LocalAddr() net.Addr {
+	if m.localAddr != nil {
+		return m.localAddr
+	}
+
+	return &net.TCPAddr{}
+}
+
 func (c *errorPacketConn) ReadFrom(_ []byte) (int, net.Addr, error) {
 	return 0, c.addr, io.EOF
 }
@@ -2229,6 +2261,31 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 		assert.Empty(t, cands)
 		assert.Equal(t, 1, onCloseCalled)
 	})
+}
+
+func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
+	tcpMux := &boundTCPMux{
+		localAddr: &net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 5555},
+	}
+	agent, err := NewAgentWithOptions(
+		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithTCPMux(tcpMux),
+		WithIncludeLoopback(),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4})
+
+	cands, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	assert.Empty(t, cands)
 }
 
 func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
