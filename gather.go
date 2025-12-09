@@ -1006,7 +1006,17 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 				return
 			}
 
+			allocDoneCh := make(chan struct{})
+			go func() {
+				select {
+				case <-ctx.Done():
+					client.Close()
+				case <-allocDoneCh:
+				}
+			}()
+
 			relayConn, err := client.Allocate()
+			close(allocDoneCh)
 			if err != nil {
 				client.Close()
 				closeConnAndLog(locConn, a.log, "failed to allocate on TURN client %s %s", turnServerAddr, err)
