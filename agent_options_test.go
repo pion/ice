@@ -141,13 +141,17 @@ func TestWithUrls(t *testing.T) {
 func TestWithPortRange(t *testing.T) {
 	agent, err := NewAgentWithOptions(WithPortRange(1000, 2000))
 	require.NoError(t, err)
-	defer agent.Close() //nolint:errcheck
 
 	assert.Equal(t, uint16(1000), agent.portMin)
 	assert.Equal(t, uint16(2000), agent.portMax)
 
-	_, err = NewAgentWithOptions(WithPortRange(2000, 1000))
-	assert.ErrorIs(t, err, ErrPort)
+	agent.Close() //nolint:gosec,errcheck
+	agent, err = NewAgentWithOptions(WithPortRange(2000, 0))
+	assert.NoError(t, err)
+	defer agent.Close() //nolint:gosec,errcheck
+
+	assert.Equal(t, uint16(2000), agent.portMin)
+	assert.Equal(t, uint16(0), agent.portMax)
 }
 
 func TestWithTimeoutOptions(t *testing.T) {
