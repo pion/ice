@@ -11,11 +11,13 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v3/test"
 	"github.com/pion/transport/v3/vnet"
+	"github.com/pion/turn/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -393,6 +395,126 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, localIPs, 1)
 	})
+}
+
+func TestGatherRelayWithVNet(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	router, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "10.0.0.0/24",
+		LoggerFactory: loggerFactory,
+	})
+	require.NoError(t, err)
+
+	clientNet, err := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"10.0.0.2"},
+	})
+	require.NoError(t, err)
+
+	serverNet, err := vnet.NewNet(&vnet.NetConfig{
+		StaticIPs: []string{"10.0.0.3"},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, router.AddNet(clientNet))
+	require.NoError(t, router.AddNet(serverNet))
+	require.NoError(t, router.Start())
+	defer func() {
+		require.NoError(t, router.Stop())
+	}()
+
+	turnAddr := &net.UDPAddr{
+		IP:   net.IPv4(10, 0, 0, 3),
+		Port: 3478,
+	}
+	serverConn, err := serverNet.ListenPacket("udp4", turnAddr.String())
+	require.NoError(t, err)
+
+	relayGenerator := &turn.RelayAddressGeneratorStatic{
+		RelayAddress: turnAddr.IP,
+		Address:      turnAddr.IP.String(),
+		Net:          serverNet,
+	}
+
+	const (
+		turnRealm = "pion.ly"
+		turnUser  = "user"
+		turnPass  = "pass"
+	)
+
+	server, err := turn.NewServer(turn.ServerConfig{
+		LoggerFactory: loggerFactory,
+		Realm:         turnRealm,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn:            serverConn,
+				RelayAddressGenerator: relayGenerator,
+			},
+		},
+		AuthHandler: func(username, realm string, srcAddr net.Addr) ([]byte, bool) {
+			if username != turnUser {
+				return nil, false
+			}
+
+			return turn.GenerateAuthKey(username, realm, turnPass), true
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(clientNet),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithUrls([]*stun.URI{
+			{
+				Scheme:   stun.SchemeTypeTURN,
+				Host:     turnAddr.IP.String(),
+				Port:     turnAddr.Port,
+				Username: turnUser,
+				Password: turnPass,
+				Proto:    stun.ProtoTypeUDP,
+			},
+		}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	relayCandidates := make(chan Candidate, 1)
+	done := make(chan struct{})
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+
+			return
+		}
+
+		if c.Type() == CandidateTypeRelay {
+			select {
+			case relayCandidates <- c:
+			default:
+			}
+		}
+	}))
+
+	require.NoError(t, agent.GatherCandidates())
+
+	select {
+	case cand := <-relayCandidates:
+		require.Equal(t, CandidateTypeRelay, cand.Type())
+		require.Equal(t, "10.0.0.3", cand.Address())
+	case <-done:
+		require.Fail(t, "gathering finished without relay candidate")
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "timeout waiting for relay candidate")
+	}
 }
 
 func TestVNetGather_TURNConnectionLeak(t *testing.T) {

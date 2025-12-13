@@ -1100,6 +1100,63 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 	assert.True(t, locConn.closed)
 }
 
+func TestGatherCandidatesRelayUsesTurnNet(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	stubClient := &stubTurnClient{}
+	turnNet := newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 50000})
+
+	agent, err := NewAgentWithOptions(
+		WithNet(turnNet),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithUrls([]*stun.URI{
+			{
+				Scheme:   stun.SchemeTypeTURN,
+				Host:     "example.com",
+				Port:     3478,
+				Username: "username",
+				Password: "password",
+				Proto:    stun.ProtoTypeUDP,
+			},
+		}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.IP{203, 0, 113, 9}, Port: 6000})
+	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+		stubClient.cfgConn = cfg.Conn
+
+		return stubClient, nil
+	}
+
+	candCh := make(chan Candidate, 1)
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c != nil && c.Type() == CandidateTypeRelay {
+			candCh <- c
+		}
+	}))
+
+	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+	select {
+	case cand := <-candCh:
+		relay, ok := cand.(*CandidateRelay)
+		require.True(t, ok)
+		require.Equal(t, turnNet.addr.IP.String(), relay.RelatedAddress().Address)
+
+		addr, ok := stubClient.cfgConn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		require.Equal(t, turnNet.addr.IP.String(), addr.IP.String())
+	case <-time.After(time.Second):
+		assert.Fail(t, "expected relay candidate using turn network")
+	}
+}
+
 func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
