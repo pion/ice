@@ -48,6 +48,19 @@ type candidateBase struct {
 	extensions            []CandidateExtension
 }
 
+// Save a time reference to calculate monotonic time for candidate last sent/received
+var timeRef = time.Now()
+
+// getMonoNanos returns the monotonic nanoseconds of a time t since timeRef
+func getMonoNanos(t time.Time) int64 {
+	return t.Sub(timeRef).Nanoseconds()
+}
+
+// getMonoTime returns a time.Time based on monotonic nanos since timeRef
+func getMonoTime(nanos int64) time.Time {
+	return timeRef.Add(time.Duration(nanos))
+}
+
 // Done implements context.Context.
 func (c *candidateBase) Done() <-chan struct{} {
 	return c.closeCh
@@ -455,28 +468,28 @@ func (c *candidateBase) String() string {
 // this candidate was received.
 func (c *candidateBase) LastReceived() time.Time {
 	if lastReceived := c.lastReceived.Load(); lastReceived != 0 {
-		return time.Unix(0, lastReceived)
+		return getMonoTime(lastReceived)
 	}
 
 	return time.Time{}
 }
 
 func (c *candidateBase) setLastReceived(t time.Time) {
-	c.lastReceived.Store(t.UnixNano())
+	c.lastReceived.Store(getMonoNanos(t))
 }
 
 // LastSent returns a time.Time indicating the last time
 // this candidate was sent.
 func (c *candidateBase) LastSent() time.Time {
 	if lastSent := c.lastSent.Load(); lastSent != 0 {
-		return time.Unix(0, lastSent)
+		return getMonoTime(lastSent)
 	}
 
 	return time.Time{}
 }
 
 func (c *candidateBase) setLastSent(t time.Time) {
-	c.lastSent.Store(t.UnixNano())
+	c.lastSent.Store(getMonoNanos(t))
 }
 
 func (c *candidateBase) seen(outbound bool) {

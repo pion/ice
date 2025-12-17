@@ -185,7 +185,7 @@ func TestCandidateLastSent(t *testing.T) {
 	require.Equal(t, candidate.LastSent(), time.Time{})
 	now := time.Now()
 	candidate.setLastSent(now)
-	require.True(t, candidate.LastSent().Equal(now))
+	require.Equal(t, candidate.LastSent(), now)
 }
 
 func TestCandidateLastReceived(t *testing.T) {
@@ -193,7 +193,7 @@ func TestCandidateLastReceived(t *testing.T) {
 	require.Equal(t, candidate.LastReceived(), time.Time{})
 	now := time.Now()
 	candidate.setLastReceived(now)
-	require.True(t, candidate.LastReceived().Equal(now))
+	require.Equal(t, candidate.LastReceived(), now)
 }
 
 func TestCandidateFoundation(t *testing.T) {
