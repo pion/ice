@@ -48,15 +48,16 @@ type candidateBase struct {
 	extensions            []CandidateExtension
 }
 
-// Save a time reference to calculate monotonic time for candidate last sent/received
+// Save a time reference to calculate monotonic time for candidate last sent/received.
+// nolint: gochecknoglobals
 var timeRef = time.Now()
 
-// getMonoNanos returns the monotonic nanoseconds of a time t since timeRef
+// getMonoNanos returns the monotonic nanoseconds of a time t since timeRef.
 func getMonoNanos(t time.Time) int64 {
 	return t.Sub(timeRef).Nanoseconds()
 }
 
-// getMonoTime returns a time.Time based on monotonic nanos since timeRef
+// getMonoTime returns a time.Time based on monotonic nanos since timeRef.
 func getMonoTime(nanos int64) time.Time {
 	return timeRef.Add(time.Duration(nanos))
 }
