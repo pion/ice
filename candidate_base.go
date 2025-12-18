@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/pion/stun/v3"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 type candidateBase struct {
@@ -35,6 +37,8 @@ type candidateBase struct {
 	lastSent     atomic.Int64
 	lastReceived atomic.Int64
 	conn         net.PacketConn
+	ipv4Conn     *ipv4.PacketConn
+	ipv6Conn     *ipv6.PacketConn
 
 	currAgent *Agent
 	closeCh   chan struct{}
@@ -227,6 +231,12 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
 
+	if c.networkType.IsIPv6() {
+		c.ipv6Conn = ipv6.NewPacketConn(conn)
+	} else {
+		c.ipv4Conn = ipv4.NewPacketConn(conn)
+	}
+
 	go c.recvLoop(initializedCh)
 }
 
@@ -389,6 +399,59 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 	c.seen(true)
 
 	return n, nil
+}
+
+func (c *candidateBase) writeBatchTo(rawPackets [][]byte, dst Candidate) (int, error) {
+	if len(rawPackets) == 0 {
+		return 0, nil
+	}
+
+	dstAddr := dst.addr()
+
+	// Build messages for batch write.
+	messages := make([]ipv4.Message, len(rawPackets))
+	for i, raw := range rawPackets {
+		messages[i] = ipv4.Message{
+			Buffers: [][]byte{raw},
+			Addr:    dstAddr,
+		}
+	}
+
+	// WriteBatch uses sendmmsg on Linux for improved performance.
+	// On other platforms it writes one message at a time, so we loop.
+	totalWritten := 0
+	for totalWritten < len(messages) {
+		var n int
+		var err error
+
+		if c.ipv6Conn != nil {
+			n, err = c.ipv6Conn.WriteBatch(messages[totalWritten:], 0)
+		} else {
+			n, err = c.ipv4Conn.WriteBatch(messages[totalWritten:], 0)
+		}
+
+		if err != nil {
+			// If the connection is closed, we should return the error.
+			if errors.Is(err, io.ErrClosedPipe) {
+				return totalWritten, err
+			}
+			c.agent().log.Infof("Failed to send batch packets: %v", err)
+
+			return totalWritten, nil
+		}
+
+		if n == 0 {
+			break
+		}
+
+		totalWritten += n
+	}
+
+	if totalWritten > 0 {
+		c.seen(true)
+	}
+
+	return totalWritten, nil
 }
 
 // TypePreference returns the type preference for this candidate.
