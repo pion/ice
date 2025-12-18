@@ -20,6 +20,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type deadlineConn struct {
+	readDeadline  time.Time
+	writeDeadline time.Time
+	deadline      time.Time
+	lAddr         net.Addr
+	rAddr         net.Addr
+}
+
+func (d *deadlineConn) Read([]byte) (int, error)  { return 0, io.EOF }
+func (d *deadlineConn) Write([]byte) (int, error) { return 0, io.EOF }
+func (d *deadlineConn) Close() error              { return nil }
+func (d *deadlineConn) LocalAddr() net.Addr       { return d.lAddr }
+func (d *deadlineConn) RemoteAddr() net.Addr      { return d.rAddr }
+func (d *deadlineConn) SetDeadline(t time.Time) error {
+	d.deadline = t
+
+	return nil
+}
+
+func (d *deadlineConn) SetReadDeadline(t time.Time) error {
+	d.readDeadline = t
+
+	return nil
+}
+
+func (d *deadlineConn) SetWriteDeadline(t time.Time) error {
+	d.writeDeadline = t
+
+	return nil
+}
+
 func TestBufferedConn_Write_ErrorAfterClose(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -216,6 +247,7 @@ func TestTCPPacketConn_WriteTo_ErrorBranch_WithProvidedMock(t *testing.T) {
 func TestTCPPacketConn_SetDeadlines(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 	addr := &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 12345}
+	remoteAddr := &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 23456}
 
 	tpc := newTCPPacketConn(tcpPacketParams{
 		ReadBuffer:    8,
@@ -224,8 +256,22 @@ func TestTCPPacketConn_SetDeadlines(t *testing.T) {
 		WriteBuffer:   0,
 		AliveDuration: 0,
 	})
-	require.NoError(t, tpc.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
-	require.NoError(t, tpc.SetWriteDeadline(time.Now().Add(200*time.Millisecond)))
+	observer := &deadlineConn{lAddr: addr, rAddr: remoteAddr}
+	tpc.mu.Lock()
+	tpc.conns[observer.RemoteAddr().String()] = observer
+	tpc.mu.Unlock()
+
+	readDeadline := time.Now().Add(200 * time.Millisecond)
+	writeDeadline := readDeadline.Add(200 * time.Millisecond)
+	combinedDeadline := writeDeadline.Add(200 * time.Millisecond)
+
+	require.NoError(t, tpc.SetReadDeadline(readDeadline))
+	require.NoError(t, tpc.SetWriteDeadline(writeDeadline))
+	require.NoError(t, tpc.SetDeadline(combinedDeadline))
+
+	require.Equal(t, readDeadline, observer.readDeadline)
+	require.Equal(t, writeDeadline, observer.writeDeadline)
+	require.Equal(t, combinedDeadline, observer.deadline)
 
 	require.NoError(t, tpc.Close())
 	require.NoError(t, tpc.SetReadDeadline(time.Now().Add(200*time.Millisecond)))

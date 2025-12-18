@@ -441,3 +441,56 @@ func TestActiveTCPConn_SetDeadlines_ReturnEOF(t *testing.T) {
 	err = a.SetWriteDeadline(time.Now())
 	require.ErrorIs(t, err, io.EOF)
 }
+
+func TestActiveTCPConn_SetDeadlines_WhenConnected(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0") // nolint: noctx
+	if err != nil {
+		t.Skipf("tcp listen not permitted in this environment: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	remote := netip.MustParseAddrPort(ln.Addr().String())
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	active := newActiveTCPConn(ctx, "127.0.0.1:0", remote, logger)
+	require.NotNil(t, active)
+
+	acceptCh := make(chan net.Conn, 1)
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr == nil {
+			acceptCh <- conn
+		}
+	}()
+
+	require.Eventually(t, func() bool {
+		return active.conn.Load() != nil || active.closed.Load()
+	}, 2*time.Second, 10*time.Millisecond)
+
+	connVal := active.conn.Load()
+	if connVal == nil {
+		t.Skip("tcp dial not permitted in this environment")
+	}
+	clientConn, ok := connVal.(net.Conn)
+	require.True(t, ok)
+
+	readDeadline := time.Now().Add(50 * time.Millisecond)
+	writeDeadline := readDeadline.Add(50 * time.Millisecond)
+	allDeadline := writeDeadline.Add(50 * time.Millisecond)
+
+	require.NoError(t, active.SetReadDeadline(readDeadline))
+	require.NoError(t, active.SetWriteDeadline(writeDeadline))
+	require.NoError(t, active.SetDeadline(allDeadline))
+
+	_ = active.Close()
+	_ = clientConn.Close()
+	select {
+	case srvConn := <-acceptCh:
+		_ = srvConn.Close()
+	default:
+	}
+}

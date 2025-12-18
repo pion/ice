@@ -18,6 +18,7 @@ import (
 type activeTCPConn struct {
 	readBuffer, writeBuffer *packetio.Buffer
 	localAddr, remoteAddr   atomic.Value
+	conn                    atomic.Value // stores net.Conn
 	closed                  atomic.Bool
 }
 
@@ -55,6 +56,7 @@ func newActiveTCPConn(
 
 			return
 		}
+		a.conn.Store(conn)
 		a.remoteAddr.Store(conn.RemoteAddr())
 
 		go func() {
@@ -125,6 +127,9 @@ func (a *activeTCPConn) Close() error {
 	a.closed.Store(true)
 	_ = a.readBuffer.Close()
 	_ = a.writeBuffer.Close()
+	if c, ok := a.conn.Load().(net.Conn); ok {
+		_ = c.Close()
+	}
 
 	return nil
 }
@@ -150,9 +155,38 @@ func (a *activeTCPConn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{}
 }
 
-func (a *activeTCPConn) SetDeadline(time.Time) error      { return io.EOF }
-func (a *activeTCPConn) SetReadDeadline(time.Time) error  { return io.EOF }
-func (a *activeTCPConn) SetWriteDeadline(time.Time) error { return io.EOF }
+func (a *activeTCPConn) SetDeadline(t time.Time) error {
+	if a.closed.Load() {
+		return io.EOF
+	}
+	if c, ok := a.conn.Load().(net.Conn); ok {
+		return c.SetDeadline(t)
+	}
+
+	return io.EOF
+}
+
+func (a *activeTCPConn) SetReadDeadline(t time.Time) error {
+	if a.closed.Load() {
+		return io.EOF
+	}
+	if c, ok := a.conn.Load().(net.Conn); ok {
+		return c.SetReadDeadline(t)
+	}
+
+	return io.EOF
+}
+
+func (a *activeTCPConn) SetWriteDeadline(t time.Time) error {
+	if a.closed.Load() {
+		return io.EOF
+	}
+	if c, ok := a.conn.Load().(net.Conn); ok {
+		return c.SetWriteDeadline(t)
+	}
+
+	return io.EOF
+}
 
 func getTCPAddrOnInterface(address string) (*net.TCPAddr, error) {
 	addr, err := net.ResolveTCPAddr("tcp", address)

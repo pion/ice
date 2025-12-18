@@ -332,16 +332,46 @@ func (t *tcpPacketConn) LocalAddr() net.Addr {
 	return t.params.LocalAddr
 }
 
-func (t *tcpPacketConn) SetDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
-func (t *tcpPacketConn) SetReadDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetReadDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetReadDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
-func (t *tcpPacketConn) SetWriteDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetWriteDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetWriteDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
 func (t *tcpPacketConn) CloseChannel() <-chan struct{} {

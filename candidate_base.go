@@ -87,6 +87,16 @@ func (c *candidateBase) Value(any) any {
 	return nil
 }
 
+// setWriteDeadline is used by upper layers to push write deadlines down to the
+// underlying packet connection.
+func (c *candidateBase) setWriteDeadline(t time.Time) error {
+	if c.conn == nil {
+		return nil
+	}
+
+	return c.conn.SetWriteDeadline(t)
+}
+
 // ID returns Candidate ID.
 func (c *candidateBase) ID() string {
 	return c.id
