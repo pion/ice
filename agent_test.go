@@ -32,6 +32,25 @@ func (ba *BadAddr) String() string {
 	return "yyy"
 }
 
+type recordingSelector struct {
+	handledBindingRequest bool
+	handledSuccess        bool
+}
+
+func (r *recordingSelector) Start() {}
+
+func (r *recordingSelector) ContactCandidates() {}
+
+func (r *recordingSelector) PingCandidate(Candidate, Candidate) {}
+
+func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, net.Addr) {
+	r.handledSuccess = true
+}
+
+func (r *recordingSelector) HandleBindingRequest(*stun.Message, Candidate, Candidate) {
+	r.handledBindingRequest = true
+}
+
 func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 
@@ -457,6 +476,162 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 
 		agent.handleInbound(msg, local, remote)
 		require.Len(t, agent.remoteCandidates, 0)
+	})
+}
+
+func TestHandleInboundAdditionalCases(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	newTestAgent := func(t *testing.T) *Agent {
+		t.Helper()
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		)
+		require.NoError(t, err)
+
+		return agent
+	}
+
+	t.Run("Binding indication updates last received", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		remoteConfig := &CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2.1",
+			Port:      4242,
+			Component: 1,
+		}
+		remoteCandidate, err := NewCandidateHost(remoteConfig)
+		require.NoError(t, err)
+		remoteAddr := &net.UDPAddr{IP: net.ParseIP(remoteCandidate.Address()), Port: remoteCandidate.Port()}
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			agent.addRemoteCandidate(remoteCandidate) //nolint:contextcheck
+		}))
+
+		msg, err := stun.Build(stun.NewType(stun.MethodBinding, stun.ClassIndication), stun.TransactionID, stun.Fingerprint)
+		require.NoError(t, err)
+
+		lastReceived := remoteCandidate.LastReceived()
+		agent.handleInbound(msg, local, remoteAddr)
+		require.False(t, remoteCandidate.LastReceived().IsZero())
+		require.NotEqual(t, lastReceived, remoteCandidate.LastReceived())
+	})
+
+	t.Run("Role conflict prevents binding handling", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		local.conn = &fakenet.MockPacketConn{}
+		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		selector := &recordingSelector{}
+		agent.selector = selector
+		agent.isControlling.Store(true)
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			AttrControlling(agent.tieBreaker),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		agent.handleInbound(msg, local, remote)
+
+		require.False(t, selector.handledBindingRequest)
+		require.True(t, agent.isControlling.Load())
+	})
+
+	t.Run("Invalid remote address is discarded", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		agent.handleInbound(msg, local, &BadAddr{})
+		require.Len(t, agent.remoteCandidates, 0)
+	})
+
+	t.Run("Nil local candidate is ignored", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		agent.handleInbound(msg, nil, remote)
+		require.Len(t, agent.remoteCandidates, 0)
+	})
+
+	t.Run("Success response for known transaction marks pair succeeded", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		remoteConfig := &CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2.2",
+			Port:      5555,
+			Component: 1,
+		}
+		remoteCandidate, err := NewCandidateHost(remoteConfig)
+		require.NoError(t, err)
+		remoteAddr := &net.UDPAddr{IP: net.ParseIP(remoteCandidate.Address()), Port: remoteCandidate.Port()}
+		transactionID := stun.NewTransactionID()
+		remotePwd := "remotekey"
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			agent.selector = &controllingSelector{agent: agent, log: agent.log}
+			agent.selector.Start()
+			agent.localCandidates[local.NetworkType()] = append(agent.localCandidates[local.NetworkType()], local)
+			agent.addRemoteCandidate(remoteCandidate) //nolint:contextcheck
+			agent.pendingBindingRequests = []bindingRequest{{
+				timestamp:     time.Now(),
+				transactionID: transactionID,
+				destination:   remoteAddr,
+			}}
+			agent.remotePwd = remotePwd
+		}))
+
+		msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(transactionID),
+			stun.NewShortTermIntegrity(remotePwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		agent.handleInbound(msg, local, remoteAddr)
+
+		pair := agent.findPair(local, remoteCandidate)
+		require.NotNil(t, pair)
+		require.Equal(t, CandidatePairStateSucceeded, pair.state)
+		require.Empty(t, agent.pendingBindingRequests)
 	})
 }
 
