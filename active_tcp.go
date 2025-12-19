@@ -155,37 +155,30 @@ func (a *activeTCPConn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{}
 }
 
-func (a *activeTCPConn) SetDeadline(t time.Time) error {
+// setSpecificDeadline is a helper function for setting deadlines on the underlying connections.
+func (a *activeTCPConn) setSpecificDeadline(t time.Time, set func(net.Conn, time.Time) error) error {
 	if a.closed.Load() {
 		return io.EOF
 	}
-	if c, ok := a.conn.Load().(net.Conn); ok {
-		return c.SetDeadline(t)
+
+	c, ok := a.conn.Load().(net.Conn)
+	if !ok {
+		return io.EOF
 	}
 
-	return io.EOF
+	return set(c, t)
+}
+
+func (a *activeTCPConn) SetDeadline(t time.Time) error {
+	return a.setSpecificDeadline(t, net.Conn.SetDeadline)
 }
 
 func (a *activeTCPConn) SetReadDeadline(t time.Time) error {
-	if a.closed.Load() {
-		return io.EOF
-	}
-	if c, ok := a.conn.Load().(net.Conn); ok {
-		return c.SetReadDeadline(t)
-	}
-
-	return io.EOF
+	return a.setSpecificDeadline(t, net.Conn.SetReadDeadline)
 }
 
 func (a *activeTCPConn) SetWriteDeadline(t time.Time) error {
-	if a.closed.Load() {
-		return io.EOF
-	}
-	if c, ok := a.conn.Load().(net.Conn); ok {
-		return c.SetWriteDeadline(t)
-	}
-
-	return io.EOF
+	return a.setSpecificDeadline(t, net.Conn.SetWriteDeadline)
 }
 
 func getTCPAddrOnInterface(address string) (*net.TCPAddr, error) {
