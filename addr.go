@@ -35,48 +35,39 @@ func parseAddrFromIface(in net.Addr, ifcName string) (netip.Addr, int, NetworkTy
 	return addr, port, nt, nil
 }
 
-func parseAddr(in net.Addr) (netip.Addr, int, NetworkType, error) { //nolint:cyclop
-	switch addr := in.(type) {
+func parseAddr(in net.Addr) (netip.Addr, int, NetworkType, error) {
+	host := func(ip net.IP, zone string) (netip.Addr, int, NetworkType, error) {
+		a, err := ipAddrToNetIP(ip, zone)
+		if err != nil {
+			return netip.Addr{}, 0, 0, err
+		}
+
+		return a, 0, 0, nil
+	}
+
+	sock := func(ip net.IP, zone string, port int, v4, v6 NetworkType) (netip.Addr, int, NetworkType, error) {
+		a, err := ipAddrToNetIP(ip, zone)
+		if err != nil {
+			return netip.Addr{}, 0, 0, err
+		}
+
+		nt := v6
+		if a.Is4() {
+			nt = v4
+		}
+
+		return a, port, nt, nil
+	}
+
+	switch a := in.(type) {
 	case *net.IPNet:
-		ipAddr, err := ipAddrToNetIP(addr.IP, "")
-		if err != nil {
-			return netip.Addr{}, 0, 0, err
-		}
-
-		return ipAddr, 0, 0, nil
+		return host(a.IP, "")
 	case *net.IPAddr:
-		ipAddr, err := ipAddrToNetIP(addr.IP, addr.Zone)
-		if err != nil {
-			return netip.Addr{}, 0, 0, err
-		}
-
-		return ipAddr, 0, 0, nil
+		return host(a.IP, a.Zone)
 	case *net.UDPAddr:
-		ipAddr, err := ipAddrToNetIP(addr.IP, addr.Zone)
-		if err != nil {
-			return netip.Addr{}, 0, 0, err
-		}
-		var nt NetworkType
-		if ipAddr.Is4() {
-			nt = NetworkTypeUDP4
-		} else {
-			nt = NetworkTypeUDP6
-		}
-
-		return ipAddr, addr.Port, nt, nil
+		return sock(a.IP, a.Zone, a.Port, NetworkTypeUDP4, NetworkTypeUDP6)
 	case *net.TCPAddr:
-		ipAddr, err := ipAddrToNetIP(addr.IP, addr.Zone)
-		if err != nil {
-			return netip.Addr{}, 0, 0, err
-		}
-		var nt NetworkType
-		if ipAddr.Is4() {
-			nt = NetworkTypeTCP4
-		} else {
-			nt = NetworkTypeTCP6
-		}
-
-		return ipAddr, addr.Port, nt, nil
+		return sock(a.IP, a.Zone, a.Port, NetworkTypeTCP4, NetworkTypeTCP6)
 	default:
 		return netip.Addr{}, 0, 0, addrParseError{in}
 	}
