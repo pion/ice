@@ -88,9 +88,9 @@ func main() { //nolint
 		panic(err)
 	}
 
-	iceAgent, err = ice.NewAgent(&ice.AgentConfig{
-		NetworkTypes: []ice.NetworkType{ice.NetworkTypeUDP4},
-	})
+	iceAgent, err = ice.NewAgentWithOptions(
+		ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4}),
+	)
 	if err != nil {
 		panic(err)
 	}
