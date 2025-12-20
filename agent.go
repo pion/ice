@@ -172,6 +172,7 @@ type Agent struct {
 }
 
 // NewAgent creates a new Agent.
+//
 // Deprecated: use NewAgentWithOptions instead.
 func NewAgent(config *AgentConfig) (*Agent, error) {
 	return newAgentFromConfig(config)
