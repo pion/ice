@@ -127,8 +127,17 @@ func (p *CandidatePair) priority() uint64 {
 	return (1<<32-1)*localMin(g, d) + 2*localMax(g, d) + cmp(g, d)
 }
 
+// Write sends a single packet on the candidate pair.
+// Returns the number of bytes written.
 func (p *CandidatePair) Write(b []byte) (int, error) {
 	return p.Local.writeTo(b, p.Remote)
+}
+
+// WriteBatch sends multiple packets on the candidate pair.
+// On Linux, this uses sendmmsg for improved performance.
+// Returns the number of packets successfully written.
+func (p *CandidatePair) WriteBatch(packets [][]byte) (int, error) {
+	return p.Local.writeBatchTo(packets, p.Remote)
 }
 
 func (a *Agent) sendSTUN(msg *stun.Message, local, remote Candidate) {
