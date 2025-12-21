@@ -113,17 +113,36 @@ func (a *Agent) GetSelectedCandidatePairStats() (CandidatePairStats, bool) {
 
 // GetLocalCandidatesStats returns a list of local candidates stats.
 func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
+	return a.getCandidatesStats(true)
+}
+
+// GetRemoteCandidatesStats returns a list of remote candidates stats.
+func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
+	return a.getCandidatesStats(false)
+}
+
+// getCandidatesStats returns a list of candidates stats.
+func (a *Agent) getCandidatesStats(isLocal bool) []CandidateStats {
 	var res []CandidateStats
 	err := a.loop.Run(a.loop, func(_ context.Context) {
-		result := make([]CandidateStats, 0, len(a.localCandidates))
-		for networkType, localCandidates := range a.localCandidates {
-			for _, cand := range localCandidates {
+		var candidateMap map[NetworkType][]Candidate
+		if isLocal {
+			candidateMap = a.localCandidates
+		} else {
+			candidateMap = a.remoteCandidates
+		}
+
+		result := make([]CandidateStats, 0, len(candidateMap))
+		for networkType, candidate := range candidateMap {
+			for _, cand := range candidate {
 				relayProtocol := ""
-				if cand.Type() == CandidateTypeRelay {
+
+				if isLocal && cand.Type() == CandidateTypeRelay {
 					if cRelay, ok := cand.(*CandidateRelay); ok {
 						relayProtocol = cRelay.RelayProtocol()
 					}
 				}
+
 				stat := CandidateStats{
 					Timestamp:     time.Now(),
 					ID:            cand.ID(),
@@ -134,39 +153,6 @@ func (a *Agent) GetLocalCandidatesStats() []CandidateStats {
 					Priority:      cand.Priority(),
 					// URL string
 					RelayProtocol: relayProtocol,
-					// Deleted bool
-				}
-				result = append(result, stat)
-			}
-		}
-		res = result
-	})
-	if err != nil {
-		a.log.Errorf("Failed to get candidate pair stats: %v", err)
-
-		return []CandidateStats{}
-	}
-
-	return res
-}
-
-// GetRemoteCandidatesStats returns a list of remote candidates stats.
-func (a *Agent) GetRemoteCandidatesStats() []CandidateStats {
-	var res []CandidateStats
-	err := a.loop.Run(a.loop, func(_ context.Context) {
-		result := make([]CandidateStats, 0, len(a.remoteCandidates))
-		for networkType, remoteCandidates := range a.remoteCandidates {
-			for _, c := range remoteCandidates {
-				stat := CandidateStats{
-					Timestamp:     time.Now(),
-					ID:            c.ID(),
-					NetworkType:   networkType,
-					IP:            c.Address(),
-					Port:          c.Port(),
-					CandidateType: c.Type(),
-					Priority:      c.Priority(),
-					// URL string
-					RelayProtocol: "",
 				}
 				result = append(result, stat)
 			}

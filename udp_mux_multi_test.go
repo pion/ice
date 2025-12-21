@@ -368,7 +368,7 @@ func TestNewMultiUDPMuxFromPort_CleanupClosesAll(t *testing.T) {
 		t.Skip("need at least two local addresses to hit partial-success then failure")
 	}
 
-	second := addrs[1]
+	second := addrs[1].addr
 	l2, err := stdNet.ListenUDP("udp", &net.UDPAddr{
 		IP:   second.AsSlice(),
 		Port: 0,
@@ -385,7 +385,7 @@ func TestNewMultiUDPMuxFromPort_CleanupClosesAll(t *testing.T) {
 
 	preBinds := []net.PacketConn{l2}
 	for i := 2; i < len(addrs); i++ {
-		a := addrs[i]
+		a := addrs[i].addr
 		l, e := stdNet.ListenUDP("udp", &net.UDPAddr{
 			IP:   a.AsSlice(),
 			Port: picked,
@@ -412,7 +412,7 @@ func TestNewMultiUDPMuxFromPort_CleanupClosesAll(t *testing.T) {
 	require.Nil(t, multi)
 	require.Error(t, buildErr)
 
-	first := addrs[0]
+	first := addrs[0].addr
 	rebind, err := stdNet.ListenUDP("udp", &net.UDPAddr{
 		IP:   first.AsSlice(),
 		Port: picked,

@@ -102,9 +102,9 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 	conns := make([]net.PacketConn, 0, len(addrs))
 	for _, addr := range addrs {
 		conn, listenErr := params.net.ListenUDP("udp", &net.UDPAddr{
-			IP:   addr.AsSlice(),
+			IP:   addr.addr.AsSlice(),
 			Port: port,
-			Zone: addr.Zone(),
+			Zone: addr.addr.Zone(),
 		})
 		if listenErr != nil {
 			err = listenErr

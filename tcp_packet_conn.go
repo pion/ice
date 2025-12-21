@@ -284,6 +284,11 @@ func (t *tcpPacketConn) removeConn(conn net.Conn) bool {
 
 	t.closeAndLogError(conn)
 
+	// wait for some time to flush pending writes
+	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	// read deadline as well just in case
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 	delete(t.conns, conn.RemoteAddr().String())
 
 	return len(t.conns) == 0
@@ -303,6 +308,12 @@ func (t *tcpPacketConn) Close() error {
 
 	for _, conn := range t.conns {
 		t.closeAndLogError(conn)
+
+		// wait for some time to flush pending writes
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		// read deadline as well just in case
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 		delete(t.conns, conn.RemoteAddr().String())
 	}
 
@@ -321,16 +332,46 @@ func (t *tcpPacketConn) LocalAddr() net.Addr {
 	return t.params.LocalAddr
 }
 
-func (t *tcpPacketConn) SetDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
-func (t *tcpPacketConn) SetReadDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetReadDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetReadDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
-func (t *tcpPacketConn) SetWriteDeadline(time.Time) error {
-	return nil
+func (t *tcpPacketConn) SetWriteDeadline(d time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var err error
+	for _, conn := range t.conns {
+		if setErr := conn.SetWriteDeadline(d); err == nil && setErr != nil {
+			err = setErr
+		}
+	}
+
+	return err
 }
 
 func (t *tcpPacketConn) CloseChannel() <-chan struct{} {

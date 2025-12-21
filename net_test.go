@@ -180,7 +180,7 @@ func TestLocalInterfaces_SkipLoopbackAddrs_WhenIncludeLoopbackFalse(t *testing.T
 	// report the iface as having addresses in a way that causes it to be included.
 	// assert that all loopback addresses were skipped.
 	for _, a := range addrs {
-		require.False(t, a.IsLoopback(), "loopback addresses must be skipped when includeLoopback=false")
+		require.False(t, a.addr.IsLoopback(), "loopback addresses must be skipped when includeLoopback=false")
 	}
 
 	_ = ifaces // intentionally don't assert on this, see above comment

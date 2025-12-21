@@ -14,10 +14,50 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/ice/v4/internal/taskloop"
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v3/packetio"
 	"github.com/pion/transport/v3/test"
 	"github.com/stretchr/testify/require"
 )
+
+type deadlineCandidate struct {
+	candidateBase
+}
+
+type deadlinePacketConn struct {
+	writeDeadline time.Time
+}
+
+func (d *deadlinePacketConn) ReadFrom([]byte) (n int, addr net.Addr, err error) {
+	return 0, nil, nil
+}
+
+func (d *deadlinePacketConn) WriteTo([]byte, net.Addr) (n int, err error) {
+	return 0, nil
+}
+
+func (d *deadlinePacketConn) Close() error {
+	return nil
+}
+
+func (d *deadlinePacketConn) LocalAddr() net.Addr {
+	return nil
+}
+
+func (d *deadlinePacketConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (d *deadlinePacketConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (d *deadlinePacketConn) SetWriteDeadline(t time.Time) error {
+	d.writeDeadline = t
+
+	return nil
+}
 
 func TestStressDuplex(t *testing.T) {
 	// Check for leaking routines
@@ -100,6 +140,38 @@ func TestReadClosed(t *testing.T) {
 	empty := make([]byte, 10)
 	_, err := ca.Read(empty)
 	require.Error(t, err)
+}
+
+func TestConnDeadlines(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	loop := taskloop.New(func() {})
+	defer loop.Close()
+
+	buf := packetio.NewBuffer()
+	pc := &deadlinePacketConn{}
+	candidate := &deadlineCandidate{}
+	candidate.conn = pc
+
+	agent := &Agent{
+		buf:  buf,
+		loop: loop,
+	}
+	agent.selectedPair.Store(&CandidatePair{Local: candidate})
+
+	conn := &Conn{agent: agent}
+
+	writeDeadline := time.Now().Add(100 * time.Millisecond)
+	require.NoError(t, conn.SetWriteDeadline(writeDeadline))
+	require.WithinDuration(t, writeDeadline, pc.writeDeadline, time.Millisecond)
+
+	readDeadline := time.Now().Add(-1 * time.Millisecond)
+	require.NoError(t, conn.SetDeadline(readDeadline))
+
+	_, err := conn.Read(make([]byte, 1))
+	var netErr interface{ Timeout() bool }
+	require.ErrorAs(t, err, &netErr)
+	require.True(t, netErr.Timeout())
 }
 
 func stressDuplex(t *testing.T) {
@@ -207,11 +279,17 @@ func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, aAgent.Close())
+	})
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, bAgent.Close())
+	})
 
 	aConn, bConn := connect(t, aAgent, bAgent)
 
@@ -240,10 +318,16 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, aAgent.Close())
+	})
 
 	bAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
+	t.Cleanup(func() {
+		require.NoError(t, bAgent.Close())
+	})
 
 	aConn, bConn := connect(t, aAgent, bAgent)
 

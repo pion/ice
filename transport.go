@@ -139,17 +139,33 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return pair.Remote.addr()
 }
 
-// SetDeadline is a stub.
-func (c *Conn) SetDeadline(time.Time) error {
-	return nil
+// SetDeadline sets both read and write deadlines on the underlying ICE connection.
+func (c *Conn) SetDeadline(t time.Time) error {
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+
+	return c.SetWriteDeadline(t)
 }
 
-// SetReadDeadline is a stub.
-func (c *Conn) SetReadDeadline(time.Time) error {
-	return nil
+// SetReadDeadline sets the read deadline on the packet buffer used for application data.
+func (c *Conn) SetReadDeadline(t time.Time) error {
+	return c.agent.buf.SetReadDeadline(t)
 }
 
-// SetWriteDeadline is a stub.
-func (c *Conn) SetWriteDeadline(time.Time) error {
+// SetWriteDeadline sets the write deadline on the currently selected local candidate connection.
+// The deadline applies to the selected candidate pair and will affect all traffic over that pair.
+func (c *Conn) SetWriteDeadline(t time.Time) error {
+	pair := c.agent.getSelectedPair()
+	if pair == nil || pair.Local == nil {
+		return nil
+	}
+
+	if d, ok := pair.Local.(interface {
+		setWriteDeadline(time.Time) error
+	}); ok {
+		return d.setWriteDeadline(t)
+	}
+
 	return nil
 }

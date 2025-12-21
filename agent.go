@@ -25,6 +25,7 @@ import (
 	"github.com/pion/transport/v3/packetio"
 	"github.com/pion/transport/v3/stdnet"
 	"github.com/pion/transport/v3/vnet"
+	"github.com/pion/turn/v4"
 	"golang.org/x/net/proxy"
 )
 
@@ -111,18 +112,17 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls             []*stun.URI
-	networkTypes     []NetworkType
-	natCandidateType CandidateType
-	natIPs           []string
+	urls                []*stun.URI
+	networkTypes        []NetworkType
+	addressRewriteRules []AddressRewriteRule
 
 	buf *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
 
-	// 1:1 D-NAT IP address mapping
-	extIPMapper *externalIPMapper
+	// Address rewrite (1:1) IP mapping
+	addressRewriteMapper *addressRewriteMapper
 
 	// Callback that allows user to implement custom behavior
 	// for STUN Binding Requests
@@ -170,9 +170,12 @@ type Agent struct {
 
 	// Port mapping support for container
 	mapPort func(candidate Candidate) int
+	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
 }
 
 // NewAgent creates a new Agent.
+//
+// Deprecated: use NewAgentWithOptions instead.
 func NewAgent(config *AgentConfig) (*Agent, error) {
 	return newAgentFromConfig(config)
 }
@@ -194,10 +197,120 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 	agent.localUfrag = config.LocalUfrag
 	agent.localPwd = config.LocalPwd
-	agent.natCandidateType = config.NAT1To1IPCandidateType
-	agent.natIPs = config.NAT1To1IPs
+	if config.NAT1To1IPs != nil {
+		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
+			return nil, err
+		}
+
+		typ := CandidateTypeHost
+		if config.NAT1To1IPCandidateType != CandidateTypeUnspecified {
+			typ = config.NAT1To1IPCandidateType
+		}
+
+		rules, err := legacyNAT1To1Rules(config.NAT1To1IPs, typ)
+		if err != nil {
+			return nil, err
+		}
+		agent.addressRewriteRules = rules
+	}
 
 	return newAgentWithConfig(agent, opts...)
+}
+
+func validateLegacyNAT1To1IPs(ips []string) error {
+	var hasIPv4CatchAll, hasIPv6CatchAll bool
+
+	for _, mapping := range ips {
+		trimmed := strings.TrimSpace(mapping)
+		var err error
+		hasIPv4CatchAll, hasIPv6CatchAll, err = validateLegacyNAT1To1Entry(trimmed, hasIPv4CatchAll, hasIPv6CatchAll)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateLegacyNAT1To1Entry(mapping string, hasIPv4CatchAll, hasIPv6CatchAll bool) (bool, bool, error) {
+	if mapping == "" {
+		return hasIPv4CatchAll, hasIPv6CatchAll, nil
+	}
+
+	parts := strings.Split(mapping, "/")
+	if len(parts) == 0 || len(parts) > 2 {
+		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+	}
+
+	_, isIPv4, err := validateIPString(parts[0])
+	if err != nil {
+		return hasIPv4CatchAll, hasIPv6CatchAll, err
+	}
+
+	if len(parts) == 2 {
+		if _, _, err := validateIPString(strings.TrimSpace(parts[1])); err != nil {
+			return hasIPv4CatchAll, hasIPv6CatchAll, err
+		}
+
+		return hasIPv4CatchAll, hasIPv6CatchAll, nil
+	}
+
+	if isIPv4 {
+		if hasIPv4CatchAll {
+			return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+		}
+
+		return true, hasIPv6CatchAll, nil
+	}
+
+	if hasIPv6CatchAll {
+		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
+	}
+
+	return hasIPv4CatchAll, true, nil
+}
+
+func legacyNAT1To1Rules(ips []string, candidateType CandidateType) ([]AddressRewriteRule, error) {
+	var rules []AddressRewriteRule
+
+	for _, mapping := range ips {
+		trimmed := strings.TrimSpace(mapping)
+		if trimmed == "" {
+			continue
+		}
+
+		parts := strings.Split(trimmed, "/")
+		switch len(parts) {
+		case 1:
+			rules = append(rules, AddressRewriteRule{
+				External:        []string{parts[0]},
+				AsCandidateType: candidateType,
+			})
+		case 2:
+			ext := strings.TrimSpace(parts[0])
+			local := strings.TrimSpace(parts[1])
+			if ext == "" || local == "" {
+				return nil, ErrInvalidNAT1To1IPMapping
+			}
+
+			if _, _, err := validateIPString(ext); err != nil {
+				return nil, err
+			}
+			if _, _, err := validateIPString(local); err != nil {
+				return nil, err
+			}
+
+			rules = append(rules, AddressRewriteRule{
+				External:        []string{ext},
+				Local:           local,
+				AsCandidateType: candidateType,
+			})
+		default:
+			return nil, ErrInvalidNAT1To1IPMapping
+		}
+	}
+
+	return rules, nil
 }
 
 func createAgentBase(config *AgentConfig) (*Agent, error) {
@@ -259,6 +372,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		lastKnownInterfaces:             make(map[string]netip.Addr),
 		automaticRenomination:           false,
 		renominationInterval:            3 * time.Second, // Default matching libwebrtc
+		turnClientFactory:               defaultTurnClient,
 	}
 
 	config.initWithDefaults(agent)
@@ -266,31 +380,36 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 	return agent, nil
 }
 
-func applyExternalIPMapping(agent *Agent, candidateType CandidateType, ips []string) error {
-	mapper, err := newExternalIPMapper(candidateType, ips)
+func applyAddressRewriteMapping(agent *Agent) error {
+	mapper, err := newAddressRewriteMapper(agent.addressRewriteRules)
 	if err != nil {
 		return err
 	}
 
-	agent.extIPMapper = mapper
-	if agent.extIPMapper == nil {
+	agent.addressRewriteMapper = mapper
+	if agent.addressRewriteMapper == nil {
 		return nil
 	}
 
-	switch agent.extIPMapper.candidateType {
-	case CandidateTypeHost:
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeHost) {
+		// for mDNS QueryAndGather we never advertise rewritten host IPs to avoid
+		// leaking local addresses, this matches the legacy NAT1:1 behavior.
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithNAT1To1IPMapping
 		}
+		// surface misconfiguration when host candidates are disabled but a host
+		// rewrite rule was provided.
 		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingHost
 		}
-	case CandidateTypeServerReflexive:
+	}
+
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
+		// surface misconfiguration when srflx candidates are disabled but a srflx
+		// rewrite rule was provided.
 		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
 			return ErrIneffectiveNAT1To1IPMappingSrflx
 		}
-	default:
-		return nil
 	}
 
 	return nil
@@ -397,13 +516,18 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		return nil, ErrUselessUrlsProvided
 	}
 
-	if err = applyExternalIPMapping(agent, agent.natCandidateType, agent.natIPs); err != nil {
+	if err = applyAddressRewriteMapping(agent); err != nil {
 		agent.closeMulticastConn()
 
 		return nil, err
 	}
 
 	agent.loop = taskloop.New(func() {
+		agent.gatherCandidateCancel()
+		if agent.gatherCandidateDone != nil {
+			<-agent.gatherCandidateDone
+		}
+
 		agent.removeUfragFromMux()
 		agent.deleteAllCandidates()
 		agent.startedFn()
@@ -414,11 +538,6 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 
 		agent.closeMulticastConn()
 		agent.updateConnectionState(ConnectionStateClosed)
-
-		agent.gatherCandidateCancel()
-		if agent.gatherCandidateDone != nil {
-			<-agent.gatherCandidateDone
-		}
 	})
 
 	// Restart is also used to initialize the agent for the first time
@@ -699,16 +818,32 @@ func (a *Agent) validateSelectedPair() bool {
 		totalTimeToFailure += a.disconnectedTimeout
 	}
 
-	switch {
-	case totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure:
-		a.updateConnectionState(ConnectionStateFailed)
-	case a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout:
-		a.updateConnectionState(ConnectionStateDisconnected)
-	default:
-		a.updateConnectionState(ConnectionStateConnected)
-	}
+	a.updateConnectionState(a.connectionStateForDisconnection(disconnectedTime, totalTimeToFailure))
 
 	return true
+}
+
+func (a *Agent) connectionStateForDisconnection(
+	disconnectedTime time.Duration,
+	totalTimeToFailure time.Duration,
+) ConnectionState {
+	disconnected := a.disconnectedTimeout != 0 && disconnectedTime > a.disconnectedTimeout
+	failed := totalTimeToFailure != 0 && disconnectedTime > totalTimeToFailure
+
+	switch {
+	case failed:
+		if disconnected && a.connectionState != ConnectionStateDisconnected && a.connectionState != ConnectionStateFailed {
+			// If we never reported disconnected but both thresholds are already exceeded,
+			// emit disconnected first so callers can observe both transitions.
+			return ConnectionStateDisconnected
+		}
+
+		return ConnectionStateFailed
+	case disconnected:
+		return ConnectionStateDisconnected
+	default:
+		return ConnectionStateConnected
+	}
 }
 
 // checkKeepalive sends STUN Binding Indications to the selected pair
@@ -832,7 +967,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		conn := newActiveTCPConn(
 			a.loop,
-			net.JoinHostPort(localIPs[i].String(), "0"),
+			net.JoinHostPort(localIPs[i].addr.String(), "0"),
 			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
 			a.log,
 		)
@@ -846,7 +981,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		localCandidate, err := NewCandidateHost(&CandidateHostConfig{
 			Network:   remoteCandidate.NetworkType().String(),
-			Address:   localIPs[i].String(),
+			Address:   localIPs[i].addr.String(),
 			Port:      tcpAddr.Port,
 			Component: ComponentRTP,
 			TCPType:   TCPTypeActive,
@@ -907,6 +1042,10 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 }
 
 func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return a.loop.Run(ctx, func(context.Context) {
 		set := a.localCandidates[cand.NetworkType()]
 		for _, candidate := range set {
@@ -1246,15 +1385,12 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 }
 
 // handleInbound processes STUN traffic from a remote candidate.
-func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) { //nolint:gocognit,cyclop
+func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) {
 	if msg == nil || local == nil {
 		return
 	}
 
-	if msg.Type.Method != stun.MethodBinding ||
-		(msg.Type.Class != stun.ClassSuccessResponse &&
-			msg.Type.Class != stun.ClassRequest &&
-			msg.Type.Class != stun.ClassIndication) {
+	if !canHandleInbound(msg) {
 		a.log.Tracef("Unhandled STUN from %s to %s class(%s) method(%s)", remote, local, msg.Type.Class, msg.Type.Method)
 
 		return
@@ -1262,82 +1398,112 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 
 	remoteCandidate := a.findRemoteCandidate(local.NetworkType(), remote)
 
-	if msg.Type.Class == stun.ClassSuccessResponse { //nolint:nestif
-		if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
-			a.log.Warnf("Discard success response with broken integrity from (%s), %v", remote, err)
-
+	switch msg.Type.Class {
+	case stun.ClassSuccessResponse:
+		if !a.handleInboundResponse(remoteCandidate, local, remote, msg) {
 			return
 		}
-
-		if remoteCandidate == nil {
-			a.log.Warnf("Discard success message from (%s), no such remote", remote)
-
+	case stun.ClassRequest:
+		var ok bool
+		if remoteCandidate, ok = a.handleInboundRequest(remoteCandidate, local, remote, msg); !ok {
 			return
 		}
-
-		a.getSelector().HandleSuccessResponse(msg, local, remoteCandidate, remote)
-	} else if msg.Type.Class == stun.ClassRequest {
-		a.log.Tracef(
-			"Inbound STUN (Request) from %s to %s, useCandidate: %v",
-			remote,
-			local,
-			msg.Contains(stun.AttrUseCandidate),
-		)
-
-		if err := stunx.AssertUsername(msg, a.localUfrag+":"+a.remoteUfrag); err != nil {
-			a.log.Warnf("Discard request with wrong username from (%s), %v", remote, err)
-
-			return
-		} else if err := stun.MessageIntegrity([]byte(a.localPwd)).Check(msg); err != nil {
-			a.log.Warnf("Discard request with broken integrity from (%s), %v", remote, err)
-
-			return
-		}
-
-		if remoteCandidate == nil {
-			ip, port, networkType, err := parseAddr(remote)
-			if err != nil {
-				a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate: %s", err)
-
-				return
-			}
-
-			prflxCandidateConfig := CandidatePeerReflexiveConfig{
-				Network:   networkType.String(),
-				Address:   ip.String(),
-				Port:      port,
-				Component: local.Component(),
-				RelAddr:   "",
-				RelPort:   0,
-			}
-
-			prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
-			if err != nil {
-				a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
-
-				return
-			}
-			remoteCandidate = prflxCandidate
-
-			a.log.Debugf("Adding a new peer-reflexive candidate: %s ", remote)
-			a.addRemoteCandidate(remoteCandidate)
-		}
-
-		// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
-		// keeping to maintain backwards compat
-		remoteTieBreaker := &AttrControl{}
-		if err := remoteTieBreaker.GetFrom(msg); err == nil && remoteTieBreaker.Role == a.role() {
-			a.handleRoleConflict(msg, local, remoteCandidate, remoteTieBreaker)
-
-			return
-		}
-
-		a.getSelector().HandleBindingRequest(msg, local, remoteCandidate)
+	default:
 	}
 
 	if remoteCandidate != nil {
 		remoteCandidate.seen(false)
 	}
+}
+
+func canHandleInbound(msg *stun.Message) bool {
+	return msg.Type.Method == stun.MethodBinding &&
+		(msg.Type.Class == stun.ClassSuccessResponse ||
+			msg.Type.Class == stun.ClassRequest ||
+			msg.Type.Class == stun.ClassIndication)
+}
+
+func (a *Agent) handleInboundResponse(
+	remoteCandidate, local Candidate, remote net.Addr, msg *stun.Message,
+) bool {
+	if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
+		a.log.Warnf("Discard success response with broken integrity from (%s), %v", remote, err)
+
+		return false
+	}
+
+	if remoteCandidate == nil {
+		a.log.Warnf("Discard success message from (%s), no such remote", remote)
+
+		return false
+	}
+
+	a.getSelector().HandleSuccessResponse(msg, local, remoteCandidate, remote)
+
+	return true
+}
+
+func (a *Agent) handleInboundRequest(
+	remoteCandidate, local Candidate, remote net.Addr, msg *stun.Message,
+) (remoteCand Candidate, ok bool) {
+	a.log.Tracef(
+		"Inbound STUN (Request) from %s to %s, useCandidate: %v",
+		remote,
+		local,
+		msg.Contains(stun.AttrUseCandidate),
+	)
+
+	if err := stunx.AssertUsername(msg, a.localUfrag+":"+a.remoteUfrag); err != nil {
+		a.log.Warnf("Discard request with wrong username from (%s), %v", remote, err)
+
+		return nil, false
+	} else if err := stun.MessageIntegrity([]byte(a.localPwd)).Check(msg); err != nil {
+		a.log.Warnf("Discard request with broken integrity from (%s), %v", remote, err)
+
+		return nil, false
+	}
+
+	if remoteCandidate == nil {
+		ip, port, networkType, err := parseAddr(remote)
+		if err != nil {
+			a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate: %s", err)
+
+			return nil, false
+		}
+
+		prflxCandidateConfig := CandidatePeerReflexiveConfig{
+			Network:   networkType.String(),
+			Address:   ip.String(),
+			Port:      port,
+			Component: local.Component(),
+			RelAddr:   "",
+			RelPort:   0,
+		}
+
+		prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
+		if err != nil {
+			a.log.Errorf("Failed to create new remote prflx candidate (%s)", err)
+
+			return nil, false
+		}
+		remoteCandidate = prflxCandidate
+
+		a.log.Debugf("Adding a new peer-reflexive candidate: %s ", remote)
+		a.addRemoteCandidate(remoteCandidate)
+	}
+
+	// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
+	// keeping to maintain backwards compat
+	remoteTieBreaker := &AttrControl{}
+	if err := remoteTieBreaker.GetFrom(msg); err == nil && remoteTieBreaker.Role == a.role() {
+		a.handleRoleConflict(msg, local, remoteCandidate, remoteTieBreaker)
+
+		return nil, false
+	}
+
+	a.getSelector().HandleBindingRequest(msg, local, remoteCandidate)
+
+	return remoteCandidate, true
 }
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,
