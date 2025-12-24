@@ -170,6 +170,7 @@ type Agent struct {
 
 	// Port mapping support for container
 	mapPort func(candidate Candidate) int
+
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
 }
 
