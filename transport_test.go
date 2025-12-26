@@ -401,18 +401,21 @@ func TestAgent_connect_ErrEarly(t *testing.T) {
 	cfg := &AgentConfig{
 		NetworkTypes: supportedNetworkTypes(),
 	}
-	a, err := NewAgent(cfg)
+	agent, err := NewAgent(cfg)
 	require.NoError(t, err)
 
-	require.NoError(t, a.Close())
+	require.NoError(t, agent.Close())
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	// isControlling = true
-	conn, cerr := a.connect(ctx, true, "ufragX", "pwdX")
+	conn, cerr := agent.startConnect(true, "ufragX", "pwdX")
 	require.Nil(t, conn)
 	require.Error(t, cerr, "expected error from a.loop.Err() short-circuit")
+
+	err2 := agent.AwaitConnect(ctx)
+	require.Error(t, err2, "the agent is closed")
 }
 
 func TestConn_Write_RejectsSTUN(t *testing.T) {
