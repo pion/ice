@@ -105,7 +105,9 @@ type Agent struct {
 	remotePwd        string
 	remoteCandidates map[NetworkType][]Candidate
 
-	checklist []*CandidatePair
+	checklist  []*CandidatePair
+	nextPairID uint64
+	pairsByID  map[uint64]*CandidatePair
 
 	selectorLock sync.RWMutex
 	selector     pairCandidateSelector
@@ -336,6 +338,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		connectionState:                 ConnectionStateNew,
 		localCandidates:                 make(map[NetworkType][]Candidate),
 		remoteCandidates:                make(map[NetworkType][]Candidate),
+		pairsByID:                       make(map[uint64]*CandidatePair),
 		urls:                            config.Urls,
 		networkTypes:                    config.NetworkTypes,
 		onConnected:                     make(chan struct{}),
@@ -661,6 +664,7 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 		if newState == ConnectionStateFailed {
 			a.removeUfragFromMux()
 			a.checklist = make([]*CandidatePair, 0)
+			a.pairsByID = make(map[uint64]*CandidatePair)
 			a.pendingBindingRequests = make([]bindingRequest, 0)
 			a.setSelectedPair(nil)
 			a.deleteAllCandidates()
@@ -784,8 +788,11 @@ func (a *Agent) getBestValidCandidatePair() *CandidatePair {
 }
 
 func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
+	a.nextPairID++
 	p := newCandidatePair(local, remote, a.isControlling.Load())
+	p.id = a.nextPairID
 	a.checklist = append(a.checklist, p)
+	a.pairsByID[p.id] = p
 
 	return p
 }
@@ -1611,6 +1618,7 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		a.remotePwd = ""
 		a.gatheringState = GatheringStateNew
 		a.checklist = make([]*CandidatePair, 0)
+		a.pairsByID = make(map[uint64]*CandidatePair)
 		a.pendingBindingRequests = make([]bindingRequest, 0)
 		a.setSelectedPair(nil)
 		a.deleteAllCandidates()

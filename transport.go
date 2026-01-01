@@ -113,6 +113,75 @@ func (c *Conn) Write(packet []byte) (int, error) {
 	return n, err
 }
 
+// GetCandidatePairsInfo returns snapshot information for all candidate pairs.
+// Use the returned ID with WriteToPair() to write to a specific pair.
+func (c *Conn) GetCandidatePairsInfo() []CandidatePairInfo {
+	var pairs []CandidatePairInfo
+
+	err := c.agent.loop.Run(c.agent.loop, func(_ context.Context) {
+		pairs = make([]CandidatePairInfo, 0, len(c.agent.checklist))
+		for _, cp := range c.agent.checklist {
+			pairs = append(pairs, CandidatePairInfo{
+				ID:                   cp.id,
+				LocalCandidateType:   cp.Local.Type(),
+				RemoteCandidateType:  cp.Remote.Type(),
+				State:                cp.state,
+				Nominated:            cp.nominated,
+				CurrentRoundTripTime: time.Duration(atomic.LoadInt64(&cp.currentRoundTripTime)),
+				RenominationQuality:  c.agent.evaluateCandidatePairQuality(cp),
+			})
+		}
+	})
+	if err != nil {
+		return nil
+	}
+
+	return pairs
+}
+
+// WriteToPair writes packet to a specific candidate pair identified by its ID.
+// Returns ErrCandidatePairNotFound if the pair ID is not found.
+// Returns ErrCandidatePairNotSucceeded if the pair is not in Succeeded state.
+// This is useful for sending packets over alternate paths
+// even if they are not nominated.
+func (c *Conn) WriteToPair(pairID uint64, packet []byte) (int, error) {
+	if err := c.agent.loop.Err(); err != nil {
+		return 0, err
+	}
+
+	if stun.IsMessage(packet) {
+		return 0, errWriteSTUNMessageToIceConn
+	}
+
+	var pair *CandidatePair
+	var lookupErr error
+
+	if err := c.agent.loop.Run(c.agent.loop, func(_ context.Context) {
+		pair = c.agent.pairsByID[pairID]
+		if pair == nil {
+			lookupErr = ErrCandidatePairNotFound
+
+			return
+		}
+		if pair.state != CandidatePairStateSucceeded {
+			lookupErr = ErrCandidatePairNotSucceeded
+		}
+	}); err != nil {
+		return 0, err
+	}
+
+	if lookupErr != nil {
+		return 0, lookupErr
+	}
+
+	n, err := pair.Write(packet)
+	if n > 0 {
+		pair.UpdatePacketSent(n)
+	}
+
+	return n, err
+}
+
 // Close implements the Conn Close method. It is used to close
 // the connection. Any calls to Read and Write will be unblocked and return an error.
 func (c *Conn) Close() error {
