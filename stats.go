@@ -140,6 +140,33 @@ type CandidatePairStats struct {
 	ConsentExpiredTimestamp time.Time
 }
 
+// CandidatePairInfo is a snapshot of a candidate pair's state.
+// Use the ID with Conn.WriteToPair() to write to this specific pair.
+type CandidatePairInfo struct {
+	// ID is the unique identifier for this candidate pair.
+	// Use this with Conn.WriteToPair() to write to this pair.
+	ID uint64
+
+	// LocalCandidateType is the type of the local candidate (host, srflx, prflx, relay).
+	LocalCandidateType CandidateType
+
+	// RemoteCandidateType is the type of the remote candidate (host, srflx, prflx, relay).
+	RemoteCandidateType CandidateType
+
+	// State is the current state of the candidate pair.
+	State CandidatePairState
+
+	// Nominated indicates whether this pair has been nominated.
+	Nominated bool
+
+	// CurrentRoundTripTime is the latest RTT measurement.
+	CurrentRoundTripTime time.Duration
+
+	// RenominationQuality is a score indicating the pair's quality (higher is better).
+	// Considers candidate types (host > srflx > relay), measured RTT, and stability.
+	RenominationQuality float64
+}
+
 // CandidateStats contains ICE candidate statistics related to the ICETransport objects.
 type CandidateStats struct {
 	// Timestamp is the timestamp associated with this object.
