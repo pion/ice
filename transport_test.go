@@ -410,7 +410,7 @@ func TestAgent_connect_ErrEarly(t *testing.T) {
 	defer cancel()
 
 	// isControlling = true
-	conn, cerr := a.connect(ctx, true, "ufragX", "pwdX")
+	conn, cerr := a.startConnect(ctx, true, "ufragX", "pwdX")
 	require.Nil(t, conn)
 	require.Error(t, cerr, "expected error from a.loop.Err() short-circuit")
 }
