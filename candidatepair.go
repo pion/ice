@@ -22,6 +22,7 @@ func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair 
 
 // CandidatePair is a combination of a local and remote candidate.
 type CandidatePair struct {
+	id                       uint64
 	iceRoleControlling       bool
 	Remote                   Candidate
 	Local                    Candidate
@@ -326,4 +327,9 @@ func (p *CandidatePair) UpdateRequestReceived() {
 	now := time.Now()
 	p.firstRequestReceivedAt.CompareAndSwap(nil, now)
 	p.lastRequestReceivedAt.Store(now)
+}
+
+// ID returns the unique identifier for this candidate pair.
+func (p *CandidatePair) ID() uint64 {
+	return p.id
 }

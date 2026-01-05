@@ -157,6 +157,9 @@ var (
 	// ErrCandidatePairNotFound indicates that candidate pair was not found.
 	ErrCandidatePairNotFound = errors.New("candidate pair not found")
 
+	// ErrCandidatePairNotSucceeded indicates that candidate pair is not in succeeded state.
+	ErrCandidatePairNotSucceeded = errors.New("candidate pair not in succeeded state")
+
 	// ErrInvalidNominationAttribute indicates an invalid nomination attribute type was provided.
 	ErrInvalidNominationAttribute = errors.New("invalid nomination attribute type")
 

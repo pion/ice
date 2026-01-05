@@ -440,3 +440,194 @@ func TestConn_Write_RejectsSTUN(t *testing.T) {
 	require.Zero(t, n)
 	require.ErrorIs(t, werr, errWriteSTUNMessageToIceConn)
 }
+
+func TestConn_GetCandidatePairsInfo(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	ca, cb := pipe(t, nil)
+	defer closePipe(t, ca, cb)
+
+	// Get pairs from conn A
+	pairs := ca.GetCandidatePairsInfo()
+	require.NotEmpty(t, pairs, "should have candidate pairs after connection")
+
+	// Verify at least one pair is in Succeeded state
+	hasSucceeded := false
+	for _, info := range pairs {
+		if info.State == CandidatePairStateSucceeded {
+			hasSucceeded = true
+
+			break
+		}
+	}
+	require.True(t, hasSucceeded, "should have at least one succeeded pair")
+
+	// Verify at least one pair is nominated
+	hasNominated := false
+	for _, info := range pairs {
+		if info.Nominated {
+			hasNominated = true
+
+			break
+		}
+	}
+	require.True(t, hasNominated, "should have at least one nominated pair")
+
+	// Verify IDs are set
+	for _, info := range pairs {
+		require.NotZero(t, info.ID, "pair should have a non-zero ID")
+	}
+}
+
+func TestConn_WriteToPair_InvalidID(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	}
+	agent, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		_ = agent.Close()
+	}()
+
+	conn := &Conn{agent: agent}
+
+	// Try to write to a non-existent pair ID
+	n, werr := conn.WriteToPair(99999, []byte("test"))
+	require.Zero(t, n)
+	require.ErrorIs(t, werr, ErrCandidatePairNotFound)
+}
+
+func TestConn_WriteToPair_NotSucceeded(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	}
+	agent, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		_ = agent.Close()
+	}()
+
+	conn := &Conn{agent: agent}
+
+	// Create a pair in Waiting state (default) and add to agent's map
+	local, lerr := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      1234,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, lerr)
+
+	remote, rerr := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.2",
+		Port:      5678,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, rerr)
+
+	// Add pair via agent.loop.Run to ensure thread safety
+	var pairID uint64
+	require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+		pair := agent.addPair(local, remote)
+		pairID = pair.id
+		// pair.state is CandidatePairStateWaiting by default
+	}))
+
+	n, werr := conn.WriteToPair(pairID, []byte("test"))
+	require.Zero(t, n)
+	require.ErrorIs(t, werr, ErrCandidatePairNotSucceeded)
+}
+
+func TestConn_WriteToPair_RejectsSTUN(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	}
+	agent, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		_ = agent.Close()
+	}()
+
+	conn := &Conn{agent: agent}
+
+	// Create a pair in Succeeded state and add to agent's map
+	local, lerr := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.1",
+		Port:      1234,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, lerr)
+
+	remote, rerr := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.1.2",
+		Port:      5678,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, rerr)
+
+	// Add pair via agent.loop.Run to ensure thread safety
+	var pairID uint64
+	require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+		pair := agent.addPair(local, remote)
+		pair.state = CandidatePairStateSucceeded
+		pairID = pair.id
+	}))
+
+	msg := stun.New()
+	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
+	msg.Encode()
+
+	n, werr := conn.WriteToPair(pairID, msg.Raw)
+	require.Zero(t, n)
+	require.ErrorIs(t, werr, errWriteSTUNMessageToIceConn)
+}
+
+func TestConn_WriteToPair_Success(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	ca, cb := pipe(t, nil)
+	defer closePipe(t, ca, cb)
+
+	// Get a succeeded pair from conn A
+	pairs := ca.GetCandidatePairsInfo()
+	require.NotEmpty(t, pairs)
+
+	var succeededPairID uint64
+	for _, info := range pairs {
+		if info.State == CandidatePairStateSucceeded {
+			succeededPairID = info.ID
+
+			break
+		}
+	}
+	require.NotZero(t, succeededPairID, "should have at least one succeeded pair")
+
+	// Write using WriteToPair
+	testData := []byte("test data via WriteToPair")
+	n, err := ca.WriteToPair(succeededPairID, testData)
+	require.NoError(t, err)
+	require.Equal(t, len(testData), n)
+
+	// Read on the other side
+	buf := make([]byte, 100)
+	n, err = cb.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, testData, buf[:n])
+}

@@ -175,3 +175,14 @@ func TestCandidatePair_TimeGetters_DefaultZero(t *testing.T) {
 	require.True(t, p.FirstRequestReceivedAt().IsZero(), "FirstRequestReceivedAt should be zero by default")
 	require.True(t, p.LastRequestReceivedAt().IsZero(), "LastRequestReceivedAt should be zero by default")
 }
+
+func TestCandidatePair_ID(t *testing.T) {
+	pair := newCandidatePair(hostCandidate(), srflxCandidate(), true)
+
+	// Default ID should be 0
+	require.Equal(t, uint64(0), pair.ID())
+
+	// Set ID
+	pair.id = 42
+	require.Equal(t, uint64(42), pair.ID())
+}
