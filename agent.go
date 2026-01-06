@@ -1574,6 +1574,14 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 	})
 }
 
+// UpdateURLs updates the STUN/TURN server URLs used for gathering.
+// The new URLs will take effect on the next call to GatherCandidates.
+func (a *Agent) UpdateURLs(urls []*stun.URI) error {
+	return a.loop.Run(a.loop, func(_ context.Context) {
+		a.urls = urls
+	})
+}
+
 // Restart restarts the ICE Agent with the provided ufrag/pwd
 // If no ufrag/pwd is provided the Agent will generate one itself
 //

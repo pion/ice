@@ -2513,3 +2513,29 @@ func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 	shouldRenominate := agent.shouldRenominate(relayPair, hostPair)
 	require.True(t, shouldRenominate, "Should always renominate from relay to direct connection")
 }
+
+func TestAgentUpdateURLs(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("URLs can be updated on a running agent", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
+
+		newURLs := []*stun.URI{
+			{Scheme: SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP},
+		}
+
+		require.NoError(t, a.UpdateURLs(newURLs))
+	})
+
+	t.Run("UpdateURLs on closed agent fails", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		require.NoError(t, a.Close())
+
+		require.Equal(t, ErrClosed, a.UpdateURLs([]*stun.URI{}))
+	})
+}
