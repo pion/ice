@@ -260,6 +260,7 @@ func bareAgentForPing() *Agent {
 		relayAcceptanceMinWait: time.Hour,
 
 		checklist:         []*CandidatePair{},
+		pairsByID:         make(map[uint64]*CandidatePair),
 		keepaliveInterval: time.Second,
 		checkInterval:     time.Second,
 
