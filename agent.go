@@ -41,6 +41,10 @@ type bindingRequest struct {
 type Agent struct {
 	loop *taskloop.Loop
 
+	// constructed is set to true after the agent is fully initialized.
+	// Options can check this flag to reject updates that are only valid during construction.
+	constructed bool
+
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
 	onCandidateHdlr                   atomic.Value // func(Candidate)
@@ -548,6 +552,8 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 
 		return nil, err
 	}
+
+	agent.constructed = true
 
 	return agent, nil
 }
@@ -1574,12 +1580,26 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 	})
 }
 
-// UpdateURLs updates the STUN/TURN server URLs used for gathering.
-// The new URLs will take effect on the next call to GatherCandidates.
-func (a *Agent) UpdateURLs(urls []*stun.URI) error {
-	return a.loop.Run(a.loop, func(_ context.Context) {
-		a.urls = urls
+// UpdateOptions applies the given options to the agent at runtime.
+// Only a subset of options can be updated after agent creation:
+//   - WithUrls: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
+//
+// Returns an error if the agent is closed or if an unsupported option is provided.
+func (a *Agent) UpdateOptions(opts ...AgentOption) error {
+	var optErr error
+
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		for _, opt := range opts {
+			if optErr = opt(a); optErr != nil {
+				return
+			}
+		}
 	})
+	if err != nil {
+		return err
+	}
+
+	return optErr
 }
 
 // Restart restarts the ICE Agent with the provided ufrag/pwd
