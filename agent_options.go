@@ -51,7 +51,7 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 func WithAddressRewriteRules(rules ...AddressRewriteRule) AgentOption {
 	return func(agent *Agent) error {
 		if agent.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		return appendAddressRewriteRules(agent, rules...)
@@ -337,7 +337,7 @@ func mapKeys(m map[string]struct{}) []string {
 func WithICELite(lite bool) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.lite = lite
@@ -367,7 +367,7 @@ func WithUrls(urls []*stun.URI) AgentOption {
 func WithPortRange(portMin, portMax uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.portMin = portMin
@@ -382,7 +382,7 @@ func WithPortRange(portMin, portMax uint16) AgentOption {
 func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.disconnectedTimeout = timeout
@@ -396,7 +396,7 @@ func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
 func WithFailedTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.failedTimeout = timeout
@@ -410,7 +410,7 @@ func WithFailedTimeout(timeout time.Duration) AgentOption {
 func WithKeepaliveInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.keepaliveInterval = interval
@@ -423,7 +423,7 @@ func WithKeepaliveInterval(interval time.Duration) AgentOption {
 func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.hostAcceptanceMinWait = wait
@@ -436,7 +436,7 @@ func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
 func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.srflxAcceptanceMinWait = wait
@@ -449,7 +449,7 @@ func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.prflxAcceptanceMinWait = wait
@@ -462,7 +462,7 @@ func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.relayAcceptanceMinWait = wait
@@ -475,7 +475,7 @@ func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
 func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.stunGatherTimeout = timeout
@@ -488,7 +488,7 @@ func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
 func WithIPFilter(filter func(net.IP) bool) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.ipFilter = filter
@@ -501,7 +501,7 @@ func WithIPFilter(filter func(net.IP) bool) AgentOption {
 func WithNet(net transport.Net) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.net = net
@@ -514,7 +514,7 @@ func WithNet(net transport.Net) AgentOption {
 func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.mDNSMode = mode
@@ -527,7 +527,7 @@ func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
 func WithMulticastDNSHostName(hostName string) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		if !strings.HasSuffix(hostName, ".local") || len(strings.Split(hostName, ".")) != 2 {
@@ -545,7 +545,7 @@ func WithMulticastDNSHostName(hostName string) AgentOption {
 func WithLocalCredentials(ufrag, pwd string) AgentOption {
 	return func(a *Agent) error { //nolint:varnamelen
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		if ufrag != "" && len([]rune(ufrag))*8 < 24 {
@@ -566,7 +566,7 @@ func WithLocalCredentials(ufrag, pwd string) AgentOption {
 func WithTCPMux(tcpMux TCPMux) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.tcpMux = tcpMux
@@ -579,7 +579,7 @@ func WithTCPMux(tcpMux TCPMux) AgentOption {
 func WithUDPMux(udpMux UDPMux) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.udpMux = udpMux
@@ -592,7 +592,7 @@ func WithUDPMux(udpMux UDPMux) AgentOption {
 func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.udpMuxSrflx = udpMuxSrflx
@@ -605,7 +605,7 @@ func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
 func WithProxyDialer(dialer proxy.Dialer) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.proxyDialer = dialer
@@ -618,7 +618,7 @@ func WithProxyDialer(dialer proxy.Dialer) AgentOption {
 func WithMaxBindingRequests(limit uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.maxBindingRequests = limit
@@ -631,7 +631,7 @@ func WithMaxBindingRequests(limit uint16) AgentOption {
 func WithCheckInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.checkInterval = interval
@@ -654,7 +654,7 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 func WithRenomination(generator NominationValueGenerator) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		if generator == nil {
@@ -677,7 +677,7 @@ func WithRenomination(generator NominationValueGenerator) AgentOption {
 func WithNominationAttribute(attrType uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		// Basic validation: ensure it's not the reserved 0x0000
@@ -700,7 +700,7 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 func WithIncludeLoopback() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.includeLoopback = true
@@ -720,7 +720,7 @@ func WithIncludeLoopback() AgentOption {
 func WithTCPPriorityOffset(offset uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.tcpPriorityOffset = offset
@@ -739,7 +739,7 @@ func WithTCPPriorityOffset(offset uint16) AgentOption {
 func WithDisableActiveTCP() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.disableActiveTCP = true
@@ -766,7 +766,7 @@ func WithBindingRequestHandler(
 ) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.userBindingRequestHandler = handler
@@ -787,7 +787,7 @@ func WithBindingRequestHandler(
 func WithEnableUseCandidateCheckPriority() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.enableUseCandidateCheckPriority = true
@@ -807,7 +807,7 @@ func WithEnableUseCandidateCheckPriority() AgentOption {
 func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.continualGatheringPolicy = policy
@@ -830,7 +830,7 @@ func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		if interval <= 0 {
@@ -853,7 +853,7 @@ func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.networkTypes = networkTypes
@@ -873,7 +873,7 @@ func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.candidateTypes = candidateTypes
@@ -902,7 +902,7 @@ func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 func WithAutomaticRenomination(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.automaticRenomination = true
@@ -931,7 +931,7 @@ func WithAutomaticRenomination(interval time.Duration) AgentOption {
 func WithInterfaceFilter(filter func(string) bool) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.interfaceFilter = filter
@@ -952,7 +952,7 @@ func WithInterfaceFilter(filter func(string) bool) AgentOption {
 func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
-			return ErrRunningAgentOptionNotUpdatable
+			return ErrAgentOptionNotUpdatable
 		}
 
 		a.log = loggerFactory.NewLogger("ice")

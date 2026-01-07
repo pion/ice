@@ -2589,7 +2589,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 
 		for name, opt := range nonUpdatableOptions {
 			err := agent.UpdateOptions(opt)
-			require.ErrorIs(t, err, ErrRunningAgentOptionNotUpdatable, "option %s should not be updatable", name)
+			require.ErrorIs(t, err, ErrAgentOptionNotUpdatable, "option %s should not be updatable", name)
 		}
 	})
 }
