@@ -200,6 +200,7 @@ func gatherAndExchangeCandidates(t *testing.T, aAgent, bAgent *Agent) {
 	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
+			require.NoError(t, aAgent.OnCandidate(func(c Candidate) {}))
 		}
 	}))
 	require.NoError(t, aAgent.GatherCandidates())
@@ -207,6 +208,7 @@ func gatherAndExchangeCandidates(t *testing.T, aAgent, bAgent *Agent) {
 	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
+			require.NoError(t, bAgent.OnCandidate(func(c Candidate) {}))
 		}
 	}))
 	require.NoError(t, bAgent.GatherCandidates())

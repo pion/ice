@@ -2593,3 +2593,24 @@ func TestAgentUpdateOptions(t *testing.T) {
 		}
 	})
 }
+
+// TestGatheringCompleteOnClose tests that when the Agent is Closed
+// the gathering state is marked complete and a `nil` candidate is sent.
+func TestGatheringCompleteOnClose(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+
+	nilCandidateBroadcast := false
+	err = agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			nilCandidateBroadcast = true
+		}
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, agent.Close())
+
+	require.True(t, nilCandidateBroadcast, "Expected to see final empty candidate")
+}

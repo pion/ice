@@ -1214,6 +1214,12 @@ func (a *Agent) GracefulClose() error {
 }
 
 func (a *Agent) close(graceful bool) error {
+	// Ensure that we mark gathering as complete
+	err := a.setGatheringState(GatheringStateComplete)
+	if err != nil {
+		a.log.Warnf("Failed to setGatheringState to complete while closing: %v", err)
+	}
+
 	// the loop is safe to wait on no matter what
 	a.loop.Close()
 
