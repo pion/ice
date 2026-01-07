@@ -2513,3 +2513,83 @@ func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 	shouldRenominate := agent.shouldRenominate(relayPair, hostPair)
 	require.True(t, shouldRenominate, "Should always renominate from relay to direct connection")
 }
+
+func TestAgentUpdateOptions(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("URLs can be updated on a running agent", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, a.Close())
+		}()
+
+		newURLs := []*stun.URI{
+			{Scheme: SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP},
+		}
+
+		require.NoError(t, a.UpdateOptions(WithUrls(newURLs)))
+	})
+
+	t.Run("UpdateOptions on closed agent fails", func(t *testing.T) {
+		a, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		require.NoError(t, a.Close())
+
+		require.Equal(t, ErrClosed, a.UpdateOptions(WithUrls([]*stun.URI{})))
+	})
+
+	t.Run("Non-updatable options are rejected", func(t *testing.T) { //nolint:varnamelen
+		agent, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		// All options except WithUrls should be rejected on a running agent.
+		// When adding new options, add them here if they are not runtime-updatable.
+		nonUpdatableOptions := map[string]AgentOption{
+			"WithAddressRewriteRules":             WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}}),
+			"WithICELite":                         WithICELite(true),
+			"WithPortRange":                       WithPortRange(5000, 6000),
+			"WithDisconnectedTimeout":             WithDisconnectedTimeout(time.Second),
+			"WithFailedTimeout":                   WithFailedTimeout(time.Second),
+			"WithKeepaliveInterval":               WithKeepaliveInterval(time.Second),
+			"WithHostAcceptanceMinWait":           WithHostAcceptanceMinWait(time.Second),
+			"WithSrflxAcceptanceMinWait":          WithSrflxAcceptanceMinWait(time.Second),
+			"WithPrflxAcceptanceMinWait":          WithPrflxAcceptanceMinWait(time.Second),
+			"WithRelayAcceptanceMinWait":          WithRelayAcceptanceMinWait(time.Second),
+			"WithSTUNGatherTimeout":               WithSTUNGatherTimeout(time.Second),
+			"WithIPFilter":                        WithIPFilter(func(net.IP) bool { return true }),
+			"WithNet":                             WithNet(nil),
+			"WithMulticastDNSMode":                WithMulticastDNSMode(MulticastDNSModeDisabled),
+			"WithMulticastDNSHostName":            WithMulticastDNSHostName("test.local"),
+			"WithLocalCredentials":                WithLocalCredentials("", ""),
+			"WithTCPMux":                          WithTCPMux(nil),
+			"WithUDPMux":                          WithUDPMux(nil),
+			"WithUDPMuxSrflx":                     WithUDPMuxSrflx(nil),
+			"WithProxyDialer":                     WithProxyDialer(nil),
+			"WithMaxBindingRequests":              WithMaxBindingRequests(10),
+			"WithCheckInterval":                   WithCheckInterval(time.Second),
+			"WithRenomination":                    WithRenomination(DefaultNominationValueGenerator()),
+			"WithNominationAttribute":             WithNominationAttribute(0x0030),
+			"WithIncludeLoopback":                 WithIncludeLoopback(),
+			"WithTCPPriorityOffset":               WithTCPPriorityOffset(10),
+			"WithDisableActiveTCP":                WithDisableActiveTCP(),
+			"WithBindingRequestHandler":           WithBindingRequestHandler(nil),
+			"WithEnableUseCandidateCheckPriority": WithEnableUseCandidateCheckPriority(),
+			"WithContinualGatheringPolicy":        WithContinualGatheringPolicy(GatherOnce),
+			"WithNetworkMonitorInterval":          WithNetworkMonitorInterval(time.Second),
+			"WithNetworkTypes":                    WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			"WithCandidateTypes":                  WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			"WithAutomaticRenomination":           WithAutomaticRenomination(time.Second),
+			"WithInterfaceFilter":                 WithInterfaceFilter(func(string) bool { return true }),
+			"WithLoggerFactory":                   WithLoggerFactory(nil),
+		}
+
+		for name, opt := range nonUpdatableOptions {
+			err := agent.UpdateOptions(opt)
+			require.ErrorIs(t, err, ErrAgentOptionNotUpdatable, "option %s should not be updatable", name)
+		}
+	})
+}
