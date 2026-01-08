@@ -16,8 +16,8 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
-	"github.com/pion/transport/v3/test"
-	"github.com/pion/transport/v3/vnet"
+	"github.com/pion/transport/v4/test"
+	"github.com/pion/transport/v4/vnet"
 	"github.com/pion/turn/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +58,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	}
 
 	wanNet, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIP: vnetSTUNServerIP, // Will be assigned to eth0
+		StaticIPs: []string{vnetSTUNServerIP}, // Will be assigned to eth0
 	})
 	if err != nil {
 		return nil, err

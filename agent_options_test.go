@@ -14,7 +14,7 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
-	"github.com/pion/transport/v3"
+	"github.com/pion/transport/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
@@ -1675,5 +1675,9 @@ func (n *stubNet) InterfaceByName(name string) (*transport.Interface, error) {
 }
 
 func (n *stubNet) CreateDialer(dialer *net.Dialer) transport.Dialer {
+	return nil
+}
+
+func (n *stubNet) CreateListenConfig(listenerConfig *net.ListenConfig) transport.ListenConfig {
 	return nil
 }
