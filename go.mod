@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/pion/dtls/v3 v3.0.9
+	github.com/pion/dtls/v3 v3.0.10
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.1.0
 	github.com/pion/randutil v0.1.0
@@ -18,6 +18,7 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
