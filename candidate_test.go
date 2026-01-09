@@ -12,6 +12,8 @@ import (
 
 	"github.com/pion/logging"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 const localhostIPStr = "127.0.0.1"
@@ -618,6 +620,99 @@ func TestCandidateWriteTo(t *testing.T) {
 
 	_, err = c1.writeTo([]byte("test"), c2)
 	require.Error(t, err, "writing to closed conn")
+}
+
+func TestCandidateWriteBatchTo(t *testing.T) {
+	testCases := []struct {
+		name        string
+		network     string
+		ip          net.IP
+		networkType NetworkType
+		setupConn   func(*candidateBase, *net.UDPConn)
+	}{
+		{
+			name:        "UDP_IPv4",
+			network:     "udp4",
+			ip:          net.IP{127, 0, 0, 1},
+			networkType: NetworkTypeUDP4,
+			setupConn: func(c *candidateBase, conn *net.UDPConn) {
+				c.ipv4Conn = ipv4.NewPacketConn(conn)
+			},
+		},
+		{
+			name:        "UDP_IPv6",
+			network:     "udp6",
+			ip:          net.IPv6loopback,
+			networkType: NetworkTypeUDP6,
+			setupConn: func(c *candidateBase, conn *net.UDPConn) {
+				c.ipv6Conn = ipv6.NewPacketConn(conn)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			receiverConn, err := net.ListenUDP(tc.network, &net.UDPAddr{IP: tc.ip, Port: 0})
+			if err != nil {
+				t.Skipf("%s not available on this system", tc.name)
+			}
+			defer func() { _ = receiverConn.Close() }()
+
+			senderConn, err := net.ListenUDP(tc.network, &net.UDPAddr{IP: tc.ip, Port: 0})
+			require.NoError(t, err, "error creating test UDP sender")
+			defer func() { _ = senderConn.Close() }()
+
+			loggerFactory := logging.NewDefaultLoggerFactory()
+
+			c1 := &candidateBase{
+				conn:        senderConn,
+				networkType: tc.networkType,
+				currAgent: &Agent{
+					log: loggerFactory.NewLogger("agent"),
+				},
+			}
+			tc.setupConn(c1, senderConn)
+
+			c2 := &candidateBase{
+				resolvedAddr: receiverConn.LocalAddr(),
+			}
+
+			// Test with empty batch.
+			n, err := c1.writeBatchTo([][]byte{}, c2)
+			require.NoError(t, err, "writing empty batch should not error")
+			require.Equal(t, 0, n, "writing empty batch should return 0")
+
+			// Test with single packet.
+			n, err = c1.writeBatchTo([][]byte{[]byte("test1")}, c2)
+			require.NoError(t, err, "writing single packet batch")
+			require.Equal(t, 1, n, "should have written 1 message")
+
+			// Read the packet on receiver side.
+			buf := make([]byte, 1024)
+			require.NoError(t, receiverConn.SetReadDeadline(time.Now().Add(time.Second)))
+			nr, _, err := receiverConn.ReadFromUDP(buf)
+			require.NoError(t, err, "reading packet")
+			require.Equal(t, "test1", string(buf[:nr]))
+
+			// Test with multiple packets.
+			packets := [][]byte{
+				[]byte("packet1"),
+				[]byte("packet2"),
+				[]byte("packet3"),
+			}
+			n, err = c1.writeBatchTo(packets, c2)
+			require.NoError(t, err, "writing multiple packets batch")
+			require.Equal(t, len(packets), n, "should have written all messages")
+
+			// Read all packets.
+			for i := 0; i < len(packets); i++ {
+				require.NoError(t, receiverConn.SetReadDeadline(time.Now().Add(time.Second)))
+				nr, _, err = receiverConn.ReadFromUDP(buf)
+				require.NoError(t, err, "reading packet %d", i)
+				require.Equal(t, string(packets[i]), string(buf[:nr]))
+			}
+		})
+	}
 }
 
 func TestMarshalUnmarshalCandidateWithZoneID(t *testing.T) {
