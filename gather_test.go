@@ -1459,7 +1459,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 	var cand Candidate
 	select {
@@ -1521,7 +1521,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 	listenAddrs := netCapture.listenAddresses()
 	require.NotEmpty(t, listenAddrs)
@@ -1577,7 +1577,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 						return client, nil
 					}
 					require.NoError(t, agent.OnCandidate(func(Candidate) {}))
-					agent.gatherCandidatesRelay(context.Background(), agent.urls)
+					agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 					require.True(t, client.allocateCalled, "TURN transport must remain independent of candidate family")
 					candidates, err := agent.GetLocalCandidates()
 					require.NoError(t, err)
@@ -1639,7 +1639,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 			}
 		}))
 
-		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+		agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 		select {
 		case <-candidateCh:
@@ -1684,7 +1684,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 	select {
 	case <-candidateCh:
@@ -1848,7 +1848,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 	select {
 	case relay := <-relayCandidateCh:
@@ -1895,7 +1895,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 		return nil, errors.New("stop after capturing config") //nolint:err113 // test
 	}
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.gatherGeneration)
 
 	var config *turn.ClientConfig
 	select {
@@ -1953,7 +1953,7 @@ func TestGatherCandidatesSrflxMappedPortRangeError(t *testing.T) {
 
 	agent.portMin = 9000
 	agent.portMax = 8000
-	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 	localCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -1968,7 +1968,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background())
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration)
 		require.ErrorIs(t, err, errUDPMuxDisabled)
 	})
 
@@ -1989,7 +1989,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background())
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration)
 		require.NoError(t, err)
 
 		candidates, err := agent.GetLocalCandidates()
@@ -2030,7 +2030,9 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxUDPMux(
+		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration,
+	)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2073,7 +2075,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflx(context.Background(), agent.urls, []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflx(context.Background(), agent.urls, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 	listenIPs := netCapture.listenCallIPs()
 	require.NotEmpty(t, listenIPs)
@@ -2117,7 +2119,7 @@ func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 			Host:   "127.0.0.1",
 			Port:   3478,
 		},
-	}, []NetworkType{NetworkTypeUDP4})
+	}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2791,7 +2793,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
 			closed := 0
-			agent.addRelayCandidates(t.Context(), relayEndpoint{
+			agent.addRelayCandidates(t.Context(), agent.gatherGeneration, relayEndpoint{
 				network: udp, address: net.ParseIP("2001:db8::1"), port: 3478,
 				relAddr: "198.51.100.77", relPort: 50000, conn: newStubPacketConn(nil),
 				onClose: func() error {
@@ -2840,7 +2842,7 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 
 	ctx := context.Background()
 
-	agent.addRelayCandidates(ctx, relayEndpoint{
+	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{
 		network: NetworkTypeUDP4.String(),
 		address: net.IPv4(10, 0, 0, 1),
 		port:    3478,
@@ -2852,7 +2854,7 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, cands, 0)
 
-	agent.addRelayCandidates(ctx, relayEndpoint{
+	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{
 		network: NetworkTypeUDP4.String(),
 		address: nil,
 		port:    3478,
@@ -2893,7 +2895,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.addRelayCandidates(context.Background(), relayEndpoint{
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
 			network: NetworkTypeUDP4.String(),
 			address: net.IPv4(10, 0, 0, 2),
 			port:    3478,
@@ -2932,7 +2934,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.addRelayCandidates(context.Background(), relayEndpoint{
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
 			network: NetworkTypeUDP4.String(),
 			address: net.IPv4(10, 0, 0, 3),
 			port:    3478,
@@ -2977,7 +2979,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 			},
 		}
 
-		agent.addRelayCandidates(context.Background(), ep)
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, ep)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3005,7 +3007,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // force addCandidate to fail
 
-		agent.addRelayCandidates(ctx, relayEndpoint{
+		agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{
 			network: NetworkTypeUDP4.String(),
 			address: net.IPv4(10, 0, 0, 5),
 			port:    3478,
@@ -3044,7 +3046,7 @@ func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 	})
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4})
+	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration)
 
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -3069,7 +3071,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		})
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration))
 
 		assert.True(t, mux.conn.closed)
 		cands, err := agent.GetLocalCandidates()
@@ -3095,7 +3097,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		agent.includeLoopback = true
 		agent.mDNSName = "invalid-mdns" // no .local suffix -> NewCandidateHost parse fails
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3121,7 +3123,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 		agent.loop.Close()
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 		agent.loop.Run(agent.loop, func(context.Context) { //nolint:errcheck,gosec
 			assert.Empty(t, agent.localCandidates[NetworkTypeUDP4])
@@ -3155,7 +3157,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3184,7 +3186,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			})
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration))
 
 			cands, err := agent.GetLocalCandidates()
 			require.NoError(t, err)
@@ -3947,7 +3949,7 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			require.NoError(t, agent.Close())
 		})
 
-		agent.addRelayCandidates(context.Background(), relayEndpoint{
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
 			network:  NetworkTypeUDP4.String(),
 			address:  net.ParseIP("192.0.2.10"),
 			port:     5000,
@@ -3981,7 +3983,7 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			require.NoError(t, agent.Close())
 		})
 
-		agent.addRelayCandidates(context.Background(), relayEndpoint{
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
 			network:  NetworkTypeUDP4.String(),
 			address:  net.ParseIP("192.0.2.20"),
 			port:     6000,
@@ -4241,7 +4243,7 @@ func TestGatherCandidatesSrflxMappedMissingExternalIPs(t *testing.T) {
 		},
 	}
 
-	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
 	localCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)

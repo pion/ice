@@ -133,8 +133,10 @@ func (a *Agent) GatherCandidates() error {
 		a.gatherCandidateCancel = cancel
 		done := make(chan struct{})
 		a.gatherCandidateDone = done
+		generation := a.gatherGeneration
+		a.gatheringState = GatheringStateGathering
 
-		go a.gatherCandidates(ctx, done)
+		go a.gatherCandidates(ctx, done, generation)
 	}); runErr != nil {
 		return runErr
 	}
@@ -142,24 +144,17 @@ func (a *Agent) GatherCandidates() error {
 	return gatherErr
 }
 
-func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //nolint:cyclop
+func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}, generation uint64) { //nolint:cyclop
 	defer close(done)
-	applied, err := a.setGatheringState(ctx, GatheringStateGathering)
-	if err != nil {
-		a.log.Warnf("Failed to set gatheringState to GatheringStateGathering: %v", err)
-
-		return
-	}
-	// The cycle was canceled before it started, so skip its gathering.
-	if !applied {
+	if ctx.Err() != nil {
 		return
 	}
 
-	a.gatherCandidatesInternal(ctx)
+	a.gatherCandidatesInternal(ctx, generation)
 
 	switch a.continualGatheringPolicy {
 	case GatherOnce:
-		if _, err := a.setGatheringState(ctx, GatheringStateComplete); err != nil {
+		if err := a.completeGathering(generation); err != nil { //nolint:contextcheck
 			a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
 		}
 	case GatherContinually:
@@ -264,22 +259,22 @@ func (a *Agent) applyHostRewriteForUDPMux(candidateIPs []net.IP, udpAddr *net.UD
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
-func (a *Agent) gatherCandidatesInternal(ctx context.Context) {
+func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64) {
 	var wg sync.WaitGroup
 	for _, t := range a.candidateTypes {
 		switch t {
 		case CandidateTypeHost:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesLocal(ctx, a.networkTypes)
+				a.gatherCandidatesLocal(ctx, a.networkTypes, generation)
 				wg.Done()
 			}()
 		case CandidateTypeServerReflexive:
-			a.gatherServerReflexiveCandidates(ctx, &wg)
+			a.gatherServerReflexiveCandidates(ctx, &wg, generation)
 		case CandidateTypeRelay:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesRelay(ctx, a.urls)
+				a.gatherCandidatesRelay(ctx, a.urls, generation)
 				wg.Done()
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
@@ -290,15 +285,15 @@ func (a *Agent) gatherCandidatesInternal(ctx context.Context) {
 	wg.Wait()
 }
 
-func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.WaitGroup) {
+func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.WaitGroup, generation uint64) {
 	replaceSrflx := a.addressRewriteMapper != nil && a.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive)
 	if !replaceSrflx {
 		wg.Add(1)
 		go func() {
 			if a.udpMuxSrflx != nil {
-				a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes)
+				a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes, generation)
 			} else {
-				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes)
+				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes, generation)
 			}
 			wg.Done()
 		}()
@@ -306,14 +301,14 @@ func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.Wa
 	if a.addressRewriteMapper != nil && a.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
 		wg.Add(1)
 		go func() {
-			a.gatherCandidatesSrflxMapped(ctx, a.networkTypes)
+			a.gatherCandidatesSrflxMapped(ctx, a.networkTypes, generation)
 			wg.Done()
 		}()
 	}
 }
 
 //nolint:gocognit,gocyclo,cyclop,maintidx
-func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType, generation uint64) {
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
 		if networkType.IsTCP() {
@@ -325,7 +320,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 	// When UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
-		if err := a.gatherCandidatesLocalUDPMux(ctx); err != nil {
+		if err := a.gatherCandidatesLocalUDPMux(ctx, generation); err != nil {
 			a.log.Warnf("Failed to create host candidate for UDPMux: %s", err)
 		}
 		delete(networks, udp)
@@ -485,16 +480,9 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						continue
 					}
 
-					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
-						if closeErr := candidateHost.close(); closeErr != nil {
-							a.log.Warnf("Failed to close candidate: %v", closeErr)
-						}
-						closeConnAndLog(
-							connAndPort.conn,
-							a.log,
-							"Failed to append to localCandidates and run onCandidateHdlr: %v",
-							err,
-						)
+					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn, generation); err != nil {
+						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+						a.cleanupCandidate(candidateHost, connAndPort.conn, "failed")
 					}
 				}
 			}
@@ -524,7 +512,7 @@ func shouldFilterLocationTracked(candidateIP net.IP) bool {
 	return shouldFilterLocationTrackedIP(addr)
 }
 
-func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolint:gocognit,cyclop
+func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context, generation uint64) error { //nolint:gocognit,cyclop
 	if a.udpMux == nil {
 		return errUDPMuxDisabled
 	}
@@ -594,12 +582,9 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				continue
 			}
 
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
-					a.log.Warnf("Failed to close candidate: %v", closeErr)
-				}
-
-				closeConnAndLog(conn, a.log, "failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+			if err := a.addCandidate(ctx, c, conn, generation); err != nil {
+				a.log.Warnf("failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
+				a.cleanupCandidate(c, conn, "failed")
 
 				continue
 			}
@@ -611,7 +596,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 	return nil
 }
 
-func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []NetworkType) { //nolint:gocognit,cyclop
+//nolint:gocognit,cyclop
+func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []NetworkType, generation uint64) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -698,7 +684,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					RelAddr:   currentAddr.IP.String(),
 					RelPort:   currentAddr.Port,
 				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
+				candidate, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
 					closeConnAndLog(currentConn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
 						network,
@@ -709,17 +695,9 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					continue
 				}
 
-				if err := a.addCandidate(ctx, c, currentConn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
-						a.log.Warnf("Failed to close candidate: %v", closeErr)
-					}
+				if err := a.addCandidate(ctx, candidate, currentConn, generation); err != nil {
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
-					closeConnAndLog(
-						currentConn,
-						a.log,
-						"closing srflx conn after addCandidate failure: %v",
-						err,
-					)
+					a.cleanupCandidate(candidate, currentConn, "failed")
 				}
 			}
 		}()
@@ -727,7 +705,12 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 }
 
 //nolint:gocognit,cyclop
-func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflxUDPMux(
+	ctx context.Context,
+	urls []*stun.URI,
+	networkTypes []NetworkType,
+	generation uint64,
+) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -798,16 +781,9 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 						return
 					}
 
-					if err := a.addCandidate(ctx, c, conn); err != nil {
-						if closeErr := c.close(); closeErr != nil {
-							a.log.Warnf("Failed to close candidate: %v", closeErr)
-						}
-						closeConnAndLog(
-							conn,
-							a.log,
-							"Failed to append srflx mux candidate to localCandidates: %v",
-							err,
-						)
+					if err := a.addCandidate(ctx, c, conn, generation); err != nil {
+						a.log.Warnf("Failed to append srflx mux candidate to localCandidates: %v", err)
+						a.cleanupCandidate(c, conn, "failed")
 					}
 				}(*urls[i], networkType.String(), udpAddr)
 			}
@@ -837,7 +813,9 @@ func getXORMappedAddr(
 }
 
 //nolint:cyclop,gocognit
-func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, networkTypes []NetworkType) {
+func (a *Agent) gatherCandidatesSrflx(
+	ctx context.Context, urls []*stun.URI, networkTypes []NetworkType, generation uint64,
+) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -929,11 +907,9 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 			return
 		}
 
-		if err := a.addCandidate(ctx, c, conn); err != nil {
-			if closeErr := c.close(); closeErr != nil {
-				a.log.Warnf("Failed to close candidate: %v", closeErr)
-			}
+		if err := a.addCandidate(ctx, c, conn, generation); err != nil {
 			a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+			a.cleanupCandidate(c, conn, "failed")
 		}
 	}
 
@@ -974,7 +950,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 }
 
 //nolint:maintidx,gocognit,gocyclo,cyclop
-func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, generation uint64) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	_, ifaces, _ := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, a.networkTypes, a.includeLoopback)
@@ -1244,7 +1220,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 
 					// Relay allocations currently produce UDP relay endpoints regardless of
 					// whether the TURN control connection uses UDP/TCP/TLS/DTLS.
-					a.addRelayCandidates(ctx, relayEndpoint{
+					a.addRelayCandidates(ctx, generation, relayEndpoint{
 						network:  udp,
 						address:  rAddr.IP,
 						port:     rAddr.Port,
@@ -1361,7 +1337,9 @@ func findIfaceForIP(ifaces []ifaceAddr, ip net.IP) string {
 	return ""
 }
 
-func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip net.IP, onClose func() error) error {
+func (a *Agent) createRelayCandidate(
+	ctx context.Context, ep relayEndpoint, ip net.IP, generation uint64, onClose func() error,
+) error {
 	relayConfig := CandidateRelayConfig{
 		Network:       ep.network,
 		Component:     ComponentRTP,
@@ -1379,7 +1357,7 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 		return err
 	}
 
-	if err := a.addCandidate(ctx, candidate, ep.conn); err != nil {
+	if err := a.addCandidate(ctx, candidate, ep.conn, generation); err != nil {
 		if closeErr := candidate.close(); closeErr != nil {
 			a.log.Warnf("Failed to close candidate: %v", closeErr)
 		}
@@ -1391,7 +1369,7 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 	return nil
 }
 
-func (a *Agent) addRelayCandidates(ctx context.Context, ep relayEndpoint) { //nolint:cyclop
+func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep relayEndpoint) { //nolint:cyclop
 	if ep.conn == nil || ep.address == nil {
 		return
 	}
@@ -1430,7 +1408,7 @@ func (a *Agent) addRelayCandidates(ctx context.Context, ep relayEndpoint) { //no
 			onClose = nil
 		}
 
-		if err := a.createRelayCandidate(ctx, ep, ip, onClose); err != nil {
+		if err := a.createRelayCandidate(ctx, ep, ip, generation, onClose); err != nil {
 			if idx == 0 {
 				if ep.closeConn != nil {
 					ep.closeConn()
@@ -1458,7 +1436,17 @@ func (a *Agent) startNetworkMonitoring(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if a.detectNetworkChanges() {
-				a.gatherCandidatesInternal(ctx)
+				var generation uint64
+				err := a.loop.Run(ctx, func(_ context.Context) {
+					a.gatherGeneration++
+					generation = a.gatherGeneration
+				})
+				if err != nil {
+					a.log.Warnf("failed to bump gathering generation on network change: %v", err)
+
+					return
+				}
+				a.gatherCandidatesInternal(ctx, generation)
 			}
 		}
 	}
