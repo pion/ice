@@ -1385,9 +1385,7 @@ func TestAgentRestart(t *testing.T) {
 
 	t.Run("Restart Both Sides", func(t *testing.T) {
 		// Get all addresses of candidates concatenated
-		generateCandidateAddressStrings := func(candidates []Candidate, err error) (out string) {
-			require.NoError(t, err)
-
+		generateCandidateAddressStrings := func(candidates []Candidate) (out string) {
 			for _, c := range candidates {
 				out += c.Address() + ":"
 				out += strconv.Itoa(c.Port())
@@ -1396,14 +1394,31 @@ func TestAgentRestart(t *testing.T) {
 			return
 		}
 
+		candidateHasGeneration := func(generation uint64, candidate Candidate) {
+			genString := strconv.FormatUint(generation, 10)
+			ext, ok := candidate.GetExtension("generation")
+
+			require.True(t, ok)
+			require.Equal(t, genString, ext.Value)
+		}
+
 		// Store the original candidates, confirm that after we reconnect we have new pairs
 		connA, connB := pipe(t, &AgentConfig{
 			DisconnectedTimeout: &oneSecond,
 			FailedTimeout:       &oneSecond,
 		})
 		defer closePipe(t, connA, connB)
-		connAFirstCandidates := generateCandidateAddressStrings(connA.agent.GetLocalCandidates())
-		connBFirstCandidates := generateCandidateAddressStrings(connB.agent.GetLocalCandidates())
+
+		aFirstGeneration := connA.agent.gatherGeneration
+		bFirstGeneration := connB.agent.gatherGeneration
+
+		connAFirstCandidates, err := connA.agent.GetLocalCandidates()
+		require.NoError(t, err)
+		connBFirstCandidates, err := connB.agent.GetLocalCandidates()
+		require.NoError(t, err)
+
+		candidateHasGeneration(aFirstGeneration, connAFirstCandidates[0])
+		candidateHasGeneration(bFirstGeneration, connBFirstCandidates[0])
 
 		aNotifier, aConnected := onConnected()
 		require.NoError(t, connA.agent.OnConnectionStateChange(aNotifier))
@@ -1414,6 +1429,10 @@ func TestAgentRestart(t *testing.T) {
 		// Restart and Re-Signal
 		require.NoError(t, connA.agent.Restart("", ""))
 		require.NoError(t, connB.agent.Restart("", ""))
+
+		// Generation should change after Restart call
+		require.NotEqual(t, aFirstGeneration, connA.agent.gatherGeneration)
+		require.NotEqual(t, bFirstGeneration, connB.agent.gatherGeneration)
 
 		// Exchange Candidates and Credentials
 		ufrag, pwd, err := connB.agent.GetLocalUserCredentials()
@@ -1430,9 +1449,21 @@ func TestAgentRestart(t *testing.T) {
 		<-aConnected
 		<-bConnected
 
+		connASecondCandidates, err := connA.agent.GetLocalCandidates()
+		require.NoError(t, err)
+		connBSecondCandidates, err := connB.agent.GetLocalCandidates()
+		require.NoError(t, err)
+
+		candidateHasGeneration(connA.agent.gatherGeneration, connASecondCandidates[0])
+		candidateHasGeneration(connB.agent.gatherGeneration, connASecondCandidates[0])
+
 		// Assert that we have new candidates each time
-		require.NotEqual(t, connAFirstCandidates, generateCandidateAddressStrings(connA.agent.GetLocalCandidates()))
-		require.NotEqual(t, connBFirstCandidates, generateCandidateAddressStrings(connB.agent.GetLocalCandidates()))
+		aFirstCandidatesString := generateCandidateAddressStrings(connAFirstCandidates)
+		aSecondCandidatesString := generateCandidateAddressStrings(connASecondCandidates)
+		bFirstCandidatesString := generateCandidateAddressStrings(connBFirstCandidates)
+		bSecondCandidatesString := generateCandidateAddressStrings(connBSecondCandidates)
+		require.NotEqual(t, aFirstCandidatesString, aSecondCandidatesString)
+		require.NotEqual(t, bFirstCandidatesString, bSecondCandidatesString)
 	})
 }
 
@@ -1511,7 +1542,7 @@ func TestGetLocalCandidates(t *testing.T) {
 
 		expectedCandidates = append(expectedCandidates, cand)
 
-		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		err = agent.addCandidate(context.Background(), cand, dummyConn, agent.gatherGeneration)
 		require.NoError(t, err)
 	}
 
@@ -2151,7 +2182,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 		cand, errCand := NewCandidateHost(&cfg)
 		require.NoError(t, errCand)
 
-		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		err = agent.addCandidate(context.Background(), cand, dummyConn, agent.gatherGeneration)
 		require.NoError(t, err)
 	}
 
@@ -2164,6 +2195,46 @@ func TestSetCandidatesUfrag(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, agent.localUfrag, ext.Value)
 	}
+}
+
+func TestAddingCandidatesFromOtherGenerations(t *testing.T) {
+	var config AgentConfig
+
+	agent, err := NewAgent(&config)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	agent.gatherGeneration = 3
+
+	dummyConn := &net.UDPConn{}
+
+	for i := 0; i < 5; i++ {
+		cfg := CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.168.0.2",
+			Port:      1000 + i,
+			Component: 1,
+		}
+
+		cand, errCand := NewCandidateHost(&cfg)
+		require.NoError(t, errCand)
+
+		err = agent.addCandidate(context.Background(), cand, dummyConn, uint64(i)) // nolint:gosec
+		require.NoError(t, err)
+	}
+
+	actualCandidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Equal(t, 1, len(actualCandidates), "Only the candidate with a matching generation should be added")
+
+	ext, ok := actualCandidates[0].GetExtension("generation")
+	require.True(t, ok)
+
+	generation, err := strconv.ParseUint(ext.Value, 10, 64)
+	require.NoError(t, err)
+	require.Equal(t, agent.gatherGeneration, generation)
 }
 
 func TestAlwaysSentKeepAlive(t *testing.T) { //nolint:cyclop
