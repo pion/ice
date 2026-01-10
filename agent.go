@@ -21,10 +21,10 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/mdns/v2"
 	"github.com/pion/stun/v3"
-	"github.com/pion/transport/v3"
-	"github.com/pion/transport/v3/packetio"
-	"github.com/pion/transport/v3/stdnet"
-	"github.com/pion/transport/v3/vnet"
+	"github.com/pion/transport/v4"
+	"github.com/pion/transport/v4/packetio"
+	"github.com/pion/transport/v4/stdnet"
+	"github.com/pion/transport/v4/vnet"
 	"github.com/pion/turn/v4"
 	"golang.org/x/net/proxy"
 )
@@ -40,6 +40,10 @@ type bindingRequest struct {
 // Agent represents the ICE agent.
 type Agent struct {
 	loop *taskloop.Loop
+
+	// constructed is set to true after the agent is fully initialized.
+	// Options can check this flag to reject updates that are only valid during construction.
+	constructed bool
 
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
@@ -551,6 +555,8 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 
 		return nil, err
 	}
+
+	agent.constructed = true
 
 	return agent, nil
 }
@@ -1575,6 +1581,28 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 		a.remoteUfrag = remoteUfrag
 		a.remotePwd = remotePwd
 	})
+}
+
+// UpdateOptions applies the given options to the agent at runtime.
+// Only a subset of options can be updated after agent creation:
+//   - WithUrls: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
+//
+// Returns an error if the agent is closed or if an unsupported option is provided.
+func (a *Agent) UpdateOptions(opts ...AgentOption) error {
+	var optErr error
+
+	err := a.loop.Run(a.loop, func(_ context.Context) {
+		for _, opt := range opts {
+			if optErr = opt(a); optErr != nil {
+				return
+			}
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	return optErr
 }
 
 // Restart restarts the ICE Agent with the provided ufrag/pwd

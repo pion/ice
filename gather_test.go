@@ -30,9 +30,9 @@ import (
 	"github.com/pion/ice/v4/internal/taskloop"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
-	transport "github.com/pion/transport/v3"
-	"github.com/pion/transport/v3/test"
-	"github.com/pion/transport/v3/vnet"
+	transport "github.com/pion/transport/v4"
+	"github.com/pion/transport/v4/test"
+	"github.com/pion/transport/v4/vnet"
 	"github.com/pion/turn/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -772,6 +772,10 @@ func (n *relayGatherNet) CreateDialer(*net.Dialer) transport.Dialer {
 	return nil
 }
 
+func (n *relayGatherNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
+	return nil
+}
+
 type hostGatherNet struct {
 	addr *net.UDPAddr
 }
@@ -867,6 +871,10 @@ func (n *hostGatherNet) InterfaceByName(name string) (*transport.Interface, erro
 }
 
 func (n *hostGatherNet) CreateDialer(*net.Dialer) transport.Dialer {
+	return nil
+}
+
+func (n *hostGatherNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
 	return nil
 }
 
@@ -1001,6 +1009,8 @@ func (n *errorTurnNet) InterfaceByName(name string) (*transport.Interface, error
 }
 
 func (n *errorTurnNet) CreateDialer(*net.Dialer) transport.Dialer { return nil }
+
+func (n *errorTurnNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig { return nil }
 
 type stubTurnClient struct {
 	listenCalled   bool
