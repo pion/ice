@@ -3618,3 +3618,80 @@ func (m *mockUniversalUDPMux) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr
 func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
 	return m.mockUDPMux.GetConn(ufrag+url, addr)
 }
+
+func TestMapPort(t *testing.T) {
+	mux, err := NewMultiUDPMuxFromPort(12500)
+	require.NoError(t, err)
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
+	skipOnPermission(t, err, "listening for TURN server")
+	require.NoError(t, err)
+	defer func() {
+		_ = listener.Close()
+	}()
+	relayPort := uint16(40000)
+	server, err := turn.NewServer(turn.ServerConfig{
+		Realm:       "pion.ly",
+		AuthHandler: optimisticAuthHandler,
+		PacketConnConfigs: []turn.PacketConnConfig{
+			{
+				PacketConn: listener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorPortRange{
+					RelayAddress: net.ParseIP("127.0.0.1"),
+					MinPort:      relayPort,
+					MaxPort:      relayPort,
+					MaxRetries:   1,
+					Address:      "127.0.0.1",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, server.Close())
+	}()
+
+	serverPort := listener.LocalAddr().(*net.UDPAddr).Port //nolint:forcetypeassert
+	turnURL := &stun.URI{
+		Scheme:   stun.SchemeTypeTURN,
+		Host:     "127.0.0.1",
+		Port:     serverPort,
+		Username: "username",
+		Password: "password",
+		Proto:    stun.ProtoTypeUDP,
+	}
+	agent, err := NewAgentWithOptions(
+		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeRelay}),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
+		WithUDPMux(mux),
+		WithUrls([]*stun.URI{turnURL}),
+		WithMapPortHandler(func(cand Candidate) int {
+			return 50000
+		}, CandidateTypeHost))
+	require.NoError(t, err)
+
+	gathered := make(chan (struct{}))
+
+	var cands []Candidate
+	var mu sync.Mutex
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(gathered)
+
+			return
+		}
+		mu.Lock()
+		cands = append(cands, c)
+		mu.Unlock()
+	}))
+
+	require.NoError(t, agent.GatherCandidates())
+
+	<-gathered
+	for _, cand := range cands {
+		if cand.Type() == CandidateTypeHost {
+			require.Equal(t, 50000, cand.Port())
+		} else {
+			require.Equal(t, int(relayPort), cand.Port())
+		}
+	}
+}

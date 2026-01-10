@@ -1069,10 +1069,6 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 				return
 			}
 		}
-		// Callback for mapPort before candidate starts
-		if a.mapPort != nil {
-			cand.setMappedPort(a.mapPort(cand))
-		}
 
 		a.setCandidateExtensions(cand)
 		cand.start(a, candidateConn, a.startedCh)

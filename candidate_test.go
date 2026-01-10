@@ -352,19 +352,6 @@ func mustCandidatePeerReflexiveWithExtensions(
 	return cand
 }
 
-func mustCandidateHostWithMappedPort(
-	t *testing.T,
-	conf *CandidateHostConfig,
-	mapPort func(cand Candidate) int,
-) Candidate {
-	t.Helper()
-	cand, err := NewCandidateHost(conf)
-	require.NoError(t, err)
-	cand.setMappedPort(mapPort(cand))
-
-	return cand
-}
-
 func TestCandidateMarshal(t *testing.T) {
 	for idx, test := range []struct {
 		candidate   Candidate
@@ -588,66 +575,6 @@ func TestCandidateMarshal(t *testing.T) {
 				require.Equal(t, test.marshaled[len("candidate:"):], actualCandidate.Marshal())
 			} else {
 				require.Equal(t, test.marshaled, actualCandidate.Marshal())
-			}
-		})
-	}
-}
-
-func TestCandidateMarshalWithMappedPort(t *testing.T) {
-	for idx, test := range []struct {
-		candidate   Candidate
-		marshaled   string
-		expectError bool
-	}{
-		{
-			mustCandidateHostWithMappedPort(t, &CandidateHostConfig{
-				Network:    NetworkTypeTCP4.String(),
-				Address:    "172.28.142.173",
-				Port:       7686,
-				Priority:   1671430143,
-				Foundation: "3359356140",
-			}, func(cand Candidate) int { return 7687 }),
-			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7687 typ host",
-			false,
-		},
-		{
-			mustCandidateHostWithMappedPort(t, &CandidateHostConfig{
-				Network:    NetworkTypeTCP4.String(),
-				Address:    "172.28.142.173",
-				Port:       7686,
-				Priority:   1671430143,
-				Foundation: "3359356140",
-			}, func(cand Candidate) int {
-				if cand.Port() != 7686 {
-					return 7687
-				}
-
-				return 7688
-			}),
-			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7688 typ host",
-			false,
-		},
-		{
-			mustCandidateHostWithMappedPort(t, &CandidateHostConfig{
-				Network:    NetworkTypeTCP4.String(),
-				Address:    "172.28.142.173",
-				Port:       7686,
-				Priority:   1671430143,
-				Foundation: "3359356140",
-			}, func(cand Candidate) int {
-				return 0
-			}),
-			"candidate:3359356140 0 tcp 1671430143 172.28.142.173 7686 typ host",
-			false,
-		},
-	} {
-		t.Run(strconv.Itoa(idx), func(t *testing.T) {
-			candidateMarshalOutput := test.candidate.Marshal()
-
-			if strings.HasPrefix(test.marshaled, "candidate:") {
-				require.Equal(t, test.marshaled[len("candidate:"):], candidateMarshalOutput)
-			} else {
-				require.Equal(t, test.marshaled, candidateMarshalOutput)
 			}
 		})
 	}

@@ -27,7 +27,6 @@ type candidateBase struct {
 	component      uint16
 	address        string
 	port           int
-	mappedPort     int
 	relatedAddress *CandidateRelatedAddress
 	tcpType        TCPType
 
@@ -119,14 +118,6 @@ func (c *candidateBase) Address() string {
 // Port returns Candidate Port.
 func (c *candidateBase) Port() int {
 	return c.port
-}
-
-func (c *candidateBase) getMappedPort() int {
-	return c.mappedPort
-}
-
-func (c *candidateBase) setMappedPort(port int) {
-	c.mappedPort = port
 }
 
 // Type returns candidate type.
@@ -463,7 +454,6 @@ func (c *candidateBase) Equal(other Candidate) bool { //nolint:cyclop
 		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
-		c.getMappedPort() == other.getMappedPort() &&
 		c.TCPType() == other.TCPType() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
@@ -555,10 +545,6 @@ func (c *candidateBase) Marshal() string {
 	if val == " " {
 		val = ""
 	}
-	port := c.Port()
-	if c.mappedPort != 0 {
-		port = c.mappedPort
-	}
 
 	val = fmt.Sprintf("%s %d %s %d %s %d typ %s",
 		val,
@@ -566,7 +552,7 @@ func (c *candidateBase) Marshal() string {
 		c.NetworkType().NetworkShort(),
 		c.Priority(),
 		removeZoneIDFromAddress(c.Address()),
-		port,
+		c.Port(),
 		c.Type())
 
 	if r := c.RelatedAddress(); r != nil && r.Address != "" && r.Port != 0 {
