@@ -3630,8 +3630,6 @@ func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.A
 }
 
 func TestMapPort(t *testing.T) {
-	mux, err := NewMultiUDPMuxFromPort(12500)
-	require.NoError(t, err)
 	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
 	skipOnPermission(t, err, "listening for TURN server")
 	require.NoError(t, err)
@@ -3672,11 +3670,14 @@ func TestMapPort(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeRelay}),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
-		WithUDPMux(mux),
 		WithUrls([]*stun.URI{turnURL}),
 		WithMapPortHandler(func(cand Candidate) int {
 			return 50000
 		}, CandidateTypeHost))
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
 	require.NoError(t, err)
 
 	gathered := make(chan (struct{}))
