@@ -414,10 +414,11 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 						continue
 					}
-
-					mappedPort := a.mapPort(candidateHost)
-					if mappedPort != 0 {
-						candidateHost.port = mappedPort
+					if a.mapPort != nil {
+						mappedPort := a.mapPort(candidateHost)
+						if mappedPort != 0 {
+							candidateHost.port = mappedPort
+						}
 					}
 
 					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
@@ -518,10 +519,11 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 			}
 
 			cand, err := NewCandidateHost(&hostConfig)
-
-			mappedPort := a.mapPort(cand)
-			if mappedPort != 0 {
-				cand.port = mappedPort
+			if a.mapPort != nil {
+				mappedPort := a.mapPort(cand)
+				if mappedPort != 0 {
+					cand.port = mappedPort
+				}
 			}
 
 			if err != nil {
@@ -644,10 +646,11 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 
 					continue
 				}
-
-				mappedPort := a.mapPort(cand)
-				if mappedPort != 0 {
-					cand.port = mappedPort
+				if a.mapPort != nil {
+					mappedPort := a.mapPort(cand)
+					if mappedPort != 0 {
+						cand.port = mappedPort
+					}
 				}
 
 				if err := a.addCandidate(ctx, cand, currentConn); err != nil {
@@ -734,10 +737,11 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 
 						return
 					}
-
-					mappedPort := a.mapPort(cand)
-					if mappedPort != 0 {
-						cand.port = mappedPort
+					if a.mapPort != nil {
+						mappedPort := a.mapPort(cand)
+						if mappedPort != 0 {
+							cand.port = mappedPort
+						}
 					}
 
 					if err := a.addCandidate(ctx, cand, conn); err != nil {
@@ -832,10 +836,11 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 
 					return
 				}
-
-				mappedPort := a.mapPort(cand)
-				if mappedPort != 0 {
-					cand.port = mappedPort
+				if a.mapPort != nil {
+					mappedPort := a.mapPort(cand)
+					if mappedPort != 0 {
+						cand.port = mappedPort
+					}
 				}
 
 				if err := a.addCandidate(ctx, cand, conn); err != nil {
@@ -1184,10 +1189,11 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 
 		return err
 	}
-
-	mappedPort := a.mapPort(candidate)
-	if mappedPort != 0 {
-		candidate.port = mappedPort
+	if a.mapPort != nil {
+		mappedPort := a.mapPort(candidate)
+		if mappedPort != 0 {
+			candidate.port = mappedPort
+		}
 	}
 
 	if err := a.addCandidate(ctx, candidate, ep.conn); err != nil {
