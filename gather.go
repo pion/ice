@@ -414,6 +414,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 						continue
 					}
+					if a.mapPort != nil {
+						mappedPort := a.mapPort(candidateHost)
+						if mappedPort != 0 {
+							candidateHost.port = mappedPort
+						}
+					}
 
 					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
 						if closeErr := candidateHost.close(); closeErr != nil {
@@ -512,15 +518,22 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				return err
 			}
 
-			c, err := NewCandidateHost(&hostConfig)
+			cand, err := NewCandidateHost(&hostConfig)
+			if a.mapPort != nil {
+				mappedPort := a.mapPort(cand)
+				if mappedPort != 0 {
+					cand.port = mappedPort
+				}
+			}
+
 			if err != nil {
 				closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
 
 				continue
 			}
 
-			if err := a.addCandidate(ctx, c, conn); err != nil {
-				if closeErr := c.close(); closeErr != nil {
+			if err := a.addCandidate(ctx, cand, conn); err != nil {
+				if closeErr := cand.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
 
@@ -623,7 +636,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					RelAddr:   currentAddr.IP.String(),
 					RelPort:   currentAddr.Port,
 				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
+				cand, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
 					closeConnAndLog(currentConn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
 						network,
@@ -633,9 +646,15 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 
 					continue
 				}
+				if a.mapPort != nil {
+					mappedPort := a.mapPort(cand)
+					if mappedPort != 0 {
+						cand.port = mappedPort
+					}
+				}
 
-				if err := a.addCandidate(ctx, c, currentConn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
+				if err := a.addCandidate(ctx, cand, currentConn); err != nil {
+					if closeErr := cand.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -712,15 +731,21 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 						RelAddr:   localAddr.IP.String(),
 						RelPort:   localAddr.Port,
 					}
-					c, err := NewCandidateServerReflexive(&srflxConfig)
+					cand, err := NewCandidateServerReflexive(&srflxConfig)
 					if err != nil {
 						closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
 
 						return
 					}
+					if a.mapPort != nil {
+						mappedPort := a.mapPort(cand)
+						if mappedPort != 0 {
+							cand.port = mappedPort
+						}
+					}
 
-					if err := a.addCandidate(ctx, c, conn); err != nil {
-						if closeErr := c.close(); closeErr != nil {
+					if err := a.addCandidate(ctx, cand, conn); err != nil {
+						if closeErr := cand.close(); closeErr != nil {
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
 						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -805,15 +830,21 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 					RelAddr:   lAddr.IP.String(),
 					RelPort:   lAddr.Port,
 				}
-				c, err := NewCandidateServerReflexive(&srflxConfig)
+				cand, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
 					closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
 
 					return
 				}
+				if a.mapPort != nil {
+					mappedPort := a.mapPort(cand)
+					if mappedPort != 0 {
+						cand.port = mappedPort
+					}
+				}
 
-				if err := a.addCandidate(ctx, c, conn); err != nil {
-					if closeErr := c.close(); closeErr != nil {
+				if err := a.addCandidate(ctx, cand, conn); err != nil {
+					if closeErr := cand.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -1157,6 +1188,12 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 		a.log.Warnf("failed to create relay candidate: %s %d: %v", ip, ep.port, err)
 
 		return err
+	}
+	if a.mapPort != nil {
+		mappedPort := a.mapPort(candidate)
+		if mappedPort != 0 {
+			candidate.port = mappedPort
+		}
 	}
 
 	if err := a.addCandidate(ctx, candidate, ep.conn); err != nil {
