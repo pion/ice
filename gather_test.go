@@ -3629,7 +3629,7 @@ func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.A
 	return m.mockUDPMux.GetConn(ufrag+url, addr)
 }
 
-func TestMapPort(t *testing.T) {
+func TestMapPortRelay(t *testing.T) {
 	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
 	skipOnPermission(t, err, "listening for TURN server")
 	require.NoError(t, err)
@@ -3698,11 +3698,191 @@ func TestMapPort(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 
 	<-gathered
+	var (
+		sawHost  bool
+		sawRelay bool
+	)
 	for _, cand := range cands {
-		if cand.Type() == CandidateTypeHost {
+		switch cand.Type() {
+		case CandidateTypeHost:
+			sawHost = true
 			require.Equal(t, 50000, cand.Port())
-		} else {
+		case CandidateTypeRelay:
+			sawRelay = true
 			require.Equal(t, int(relayPort), cand.Port())
+		default:
+			require.Failf(t, "Unexpected candidate type", "got %v", cand.Type())
 		}
 	}
+
+	require.True(t, sawHost)
+	require.True(t, sawRelay)
+}
+
+func TestMapPortSflx(t *testing.T) {
+	stunURI := &stun.URI{
+		Scheme: stun.SchemeTypeSTUN,
+		Host:   "127.0.0.1",
+		Port:   3478,
+	}
+	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49000}
+	srflxAddr := &stun.XORMappedAddress{
+		IP:   net.IP{203, 0, 113, 5},
+		Port: 50000,
+	}
+
+	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
+
+	agent, err := NewAgentWithOptions(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+		WithUDPMuxSrflx(udpMuxSrflx),
+		WithMapPortHandler(func(cand Candidate) int {
+			return 50001
+		}, CandidateTypeServerReflexive),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4})
+
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+
+	srflx, ok := candidates[0].(*CandidateServerReflexive)
+	require.True(t, ok, "expected server reflexive candidate")
+	require.Equal(t, srflxAddr.IP.String(), srflx.Address())
+	require.Equal(t, 50001, srflx.Port())
+	require.NotNil(t, srflx.RelatedAddress())
+	require.Equal(t, relatedAddr.IP.String(), srflx.RelatedAddress().Address)
+	require.Equal(t, relatedAddr.Port, srflx.RelatedAddress().Port)
+	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected mux to be asked for one connection")
+}
+
+func TestRewriteAndMapPort(t *testing.T) { //nolint:cyclop
+	t.Run("replace host via UDPMux", func(t *testing.T) {
+		mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 1234}})
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithUDPMux(mux),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"203.0.113.1"},
+				Local:           "10.0.0.1",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteReplace,
+			}),
+			WithMapPortHandler(func(c Candidate) int {
+				if c.Port() == 1234 {
+					return 4321
+				} else {
+					return 12345
+				}
+			}, CandidateTypeHost),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		var (
+			mu        sync.Mutex
+			addresses []Candidate
+			done      = make(chan struct{})
+		)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c == nil {
+				close(done)
+
+				return
+			}
+			mu.Lock()
+			addresses = append(addresses, c)
+			mu.Unlock()
+		}))
+
+		require.NoError(t, agent.GatherCandidates())
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			require.FailNow(t, "gather did not complete")
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, addresses, 1)
+		assert.Equal(t, "203.0.113.1", addresses[0].Address())
+		assert.Equal(t, 4321, addresses[0].Port())
+		assert.Equal(t, CandidateTypeHost, addresses[0].Type())
+	})
+
+	t.Run("append host via UDPMux", func(t *testing.T) {
+		mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 1234}})
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithUDPMux(mux),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"203.0.113.2"},
+				Local:           "10.0.0.1",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			}),
+			WithMapPortHandler(func(c Candidate) int {
+				if c.Port() == 1234 {
+					return 4321
+				} else {
+					return 12345
+				}
+			}, CandidateTypeHost),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		var (
+			mu        sync.Mutex
+			addresses []Candidate
+			done      = make(chan struct{})
+		)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c == nil {
+				close(done)
+
+				return
+			}
+			mu.Lock()
+			addresses = append(addresses, c)
+			mu.Unlock()
+		}))
+
+		require.NoError(t, agent.GatherCandidates())
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			require.FailNow(t, "gather did not complete")
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, addresses, 2)
+		seenAddrs := []string{addresses[0].Address(), addresses[1].Address()}
+		assert.ElementsMatch(t, []string{"10.0.0.1", "203.0.113.2"}, seenAddrs)
+		for _, cand := range addresses {
+			assert.Equal(t, CandidateTypeHost, cand.Type())
+			assert.Equal(t, 4321, cand.Port())
+		}
+	})
 }
