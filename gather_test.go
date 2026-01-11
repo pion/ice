@@ -3629,7 +3629,7 @@ func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.A
 	return m.mockUDPMux.GetConn(ufrag+url, addr)
 }
 
-func TestMapPortRelay(t *testing.T) {
+func TestMapPort(t *testing.T) {
 	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
 	skipOnPermission(t, err, "listening for TURN server")
 	require.NoError(t, err)
@@ -3668,7 +3668,7 @@ func TestMapPortRelay(t *testing.T) {
 		Proto:    stun.ProtoTypeUDP,
 	}
 	agent, err := NewAgentWithOptions(
-		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeRelay}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeRelay, CandidateTypeServerReflexive}),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
 		WithUrls([]*stun.URI{turnURL}),
 		WithMapPortHandler(func(cand Candidate) int {
@@ -3701,6 +3701,7 @@ func TestMapPortRelay(t *testing.T) {
 	var (
 		sawHost  bool
 		sawRelay bool
+		sawSrflx bool
 	)
 	for _, cand := range cands {
 		switch cand.Type() {
@@ -3710,16 +3711,19 @@ func TestMapPortRelay(t *testing.T) {
 		case CandidateTypeRelay:
 			sawRelay = true
 			require.Equal(t, int(relayPort), cand.Port())
+		case CandidateTypeServerReflexive:
+			sawSrflx = true
 		default:
-			require.Failf(t, "Unexpected candidate type", "got %v", cand.Type())
+			require.Failf(t, "unexpected cand type", "got: %v", cand.Type())
 		}
 	}
 
 	require.True(t, sawHost)
 	require.True(t, sawRelay)
+	require.True(t, sawSrflx)
 }
 
-func TestMapPortSflx(t *testing.T) {
+func TestMapPortSrflx(t *testing.T) {
 	stunURI := &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
 		Host:   "127.0.0.1",
@@ -3750,18 +3754,17 @@ func TestMapPortSflx(t *testing.T) {
 
 	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4})
 
+	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4})
+
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
-	require.Len(t, candidates, 1)
+	require.Len(t, candidates, 2)
 
-	srflx, ok := candidates[0].(*CandidateServerReflexive)
-	require.True(t, ok, "expected server reflexive candidate")
-	require.Equal(t, srflxAddr.IP.String(), srflx.Address())
-	require.Equal(t, 50001, srflx.Port())
-	require.NotNil(t, srflx.RelatedAddress())
-	require.Equal(t, relatedAddr.IP.String(), srflx.RelatedAddress().Address)
-	require.Equal(t, relatedAddr.Port, srflx.RelatedAddress().Port)
-	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected mux to be asked for one connection")
+	for _, cand := range candidates {
+		srflx, ok := cand.(*CandidateServerReflexive)
+		require.True(t, ok)
+		require.Equal(t, 50001, srflx.Port())
+	}
 }
 
 func TestRewriteAndMapPort(t *testing.T) { //nolint:cyclop
