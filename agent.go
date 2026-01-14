@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -58,8 +59,10 @@ type Agent struct {
 	tieBreaker uint64
 	lite       bool
 
-	connectionState ConnectionState
-	gatheringState  GatheringState
+	connectionState  ConnectionState
+	gatheringState   GatheringState
+	gatherGeneration uint64
+	gatherEndSent    bool
 
 	mDNSMode MulticastDNSMode
 	mDNSName string
@@ -1052,28 +1055,39 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 	a.requestConnectivityCheck()
 }
 
-func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn, gen uint64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
+	cleanupCandidate := func(reason string) {
+		if err := cand.close(); err != nil {
+			a.log.Warnf("Failed to close %s candidate: %v", reason, err)
+		}
+		if err := candidateConn.Close(); err != nil {
+			a.log.Warnf("Failed to close %s candidate connection: %v", reason, err)
+		}
+	}
+
 	return a.loop.Run(ctx, func(context.Context) {
+		if a.gatherGeneration != gen {
+			a.log.Debugf("Ignoring candidate from different gather generation (a: %d c: %d)", a.gatherGeneration, gen)
+			cleanupCandidate("old")
+
+			return
+		}
+
 		set := a.localCandidates[cand.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(cand) {
 				a.log.Debugf("Ignore duplicate candidate: %s", cand)
-				if err := cand.close(); err != nil {
-					a.log.Warnf("Failed to close duplicate candidate: %v", err)
-				}
-				if err := candidateConn.Close(); err != nil {
-					a.log.Warnf("Failed to close duplicate candidate connection: %v", err)
-				}
+				cleanupCandidate("duplicate")
 
 				return
 			}
 		}
 
-		a.setCandidateExtensions(cand)
+		a.setCandidateExtensions(cand, gen)
 		cand.start(a, candidateConn, a.startedCh)
 
 		set = append(set, cand)
@@ -1093,13 +1107,21 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 	})
 }
 
-func (a *Agent) setCandidateExtensions(cand Candidate) {
+func (a *Agent) setCandidateExtensions(cand Candidate, candidateGeneration uint64) {
 	err := cand.AddExtension(CandidateExtension{
 		Key:   "ufrag",
 		Value: a.localUfrag,
 	})
 	if err != nil {
 		a.log.Errorf("Failed to add ufrag extension to candidate: %v", err)
+	}
+
+	err = cand.AddExtension(CandidateExtension{
+		Key:   "generation",
+		Value: strconv.FormatUint(candidateGeneration, 10),
+	})
+	if err != nil {
+		a.log.Errorf("Failed to add generation extension to candidate: %v", err)
 	}
 }
 
@@ -1637,6 +1659,10 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		if a.gatheringState == GatheringStateGathering {
 			a.gatherCandidateCancel()
 		}
+		if a.gatheringState != GatheringStateNew {
+			a.setGatheringStateLocked(GatheringStateComplete, a.gatherGeneration)
+		}
+		a.bumpGatheringGenerationLocked()
 
 		// Clear all agent needed to take back to fresh state
 		a.removeUfragFromMux()
@@ -1644,7 +1670,6 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		a.localPwd = pwd
 		a.remoteUfrag = ""
 		a.remotePwd = ""
-		a.gatheringState = GatheringStateNew
 		a.checklist = make([]*CandidatePair, 0)
 		a.pairsByID = make(map[uint64]*CandidatePair)
 		a.pendingBindingRequests = make([]bindingRequest, 0)
@@ -1664,14 +1689,10 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	return err
 }
 
-func (a *Agent) setGatheringState(newState GatheringState) error {
+func (a *Agent) setGatheringState(newState GatheringState, generation uint64) error {
 	done := make(chan struct{})
 	if err := a.loop.Run(a.loop, func(context.Context) {
-		if a.gatheringState != newState && newState == GatheringStateComplete {
-			a.candidateNotifier.EnqueueCandidate(nil)
-		}
-
-		a.gatheringState = newState
+		a.setGatheringStateLocked(newState, generation)
 		close(done)
 	}); err != nil {
 		return err
@@ -1680,6 +1701,30 @@ func (a *Agent) setGatheringState(newState GatheringState) error {
 	<-done
 
 	return nil
+}
+
+func (a *Agent) setGatheringStateLocked(newState GatheringState, generation uint64) {
+	if generation != a.gatherGeneration {
+		return
+	}
+
+	prevState := a.gatheringState
+	if prevState == newState {
+		return
+	}
+
+	if newState == GatheringStateComplete && !a.gatherEndSent {
+		a.candidateNotifier.EnqueueCandidate(nil)
+		a.gatherEndSent = true
+	}
+
+	a.gatheringState = newState
+}
+
+func (a *Agent) bumpGatheringGenerationLocked() {
+	a.gatherGeneration++
+	a.gatherEndSent = false
+	a.gatheringState = GatheringStateNew
 }
 
 func (a *Agent) needsToCheckPriorityOnNominated() bool {
