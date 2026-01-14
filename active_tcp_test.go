@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v3/stdnet"
-	"github.com/pion/transport/v3/test"
+	"github.com/pion/transport/v4/stdnet"
+	"github.com/pion/transport/v4/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,8 +69,6 @@ func ipv6Available(t *testing.T) bool {
 func TestActiveTCP(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	defer test.TimeOut(time.Second * 5).Stop()
-
 	const listenPort = 7686
 	type testCase struct {
 		name                    string
@@ -118,6 +116,8 @@ func TestActiveTCP(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			defer test.TimeOut(5 * time.Second).Stop()
+
 			req := require.New(t)
 
 			listener, err := net.ListenTCP("tcp", &net.TCPAddr{
