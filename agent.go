@@ -25,7 +25,7 @@ import (
 	"github.com/pion/transport/v4/packetio"
 	"github.com/pion/transport/v4/stdnet"
 	"github.com/pion/transport/v4/vnet"
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"golang.org/x/net/proxy"
 )
 
