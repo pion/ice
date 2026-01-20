@@ -172,6 +172,17 @@ func TestCandidatePriority(t *testing.T) {
 					candidateType: CandidateTypeRelay,
 					component:     ComponentRTP,
 				},
+				relayProtocol: "udp",
+			},
+			WantPriority: 16777215,
+		},
+		{
+			Candidate: &CandidateRelay{
+				candidateBase: candidateBase{
+					candidateType: CandidateTypeRelay,
+					component:     ComponentRTP,
+				},
+				relayProtocol: "tcp",
 			},
 			WantPriority: 16777215,
 		},
