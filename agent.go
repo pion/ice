@@ -1106,6 +1106,45 @@ func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
 	return remoteIP
 }
 
+// replaceRedundantPeerReflexiveCandidates removes any peer-reflexive candidates
+// from the given set that have the same transport address as cand.
+// It also updates any candidate pairs and local candidate caches that
+// referenced the removed peer-reflexive candidates to reference cand instead.
+// It is implemented according to RFC 8838 §11.4.
+// It returns the updated set of candidates.
+func (a *Agent) replaceRedundantPeerReflexiveCandidates(set []Candidate, cand Candidate) []Candidate {
+	if cand.Type() != CandidateTypePeerReflexive {
+		var replacedPrflx []Candidate
+
+		for i := 0; i < len(set); i++ {
+			existing := set[i]
+			if existing.Type() == CandidateTypePeerReflexive && existing.transportAddressEqual(cand) {
+				replacedPrflx = append(replacedPrflx, existing)
+				set = append(set[:i], set[i+1:]...)
+				i--
+			}
+		}
+
+		for _, oldRemote := range replacedPrflx {
+			for _, pair := range a.checklist {
+				if pair.Remote == oldRemote {
+					oldPriority := pair.priority()
+					pair.Remote = cand
+					pair.setPriorityOverride(oldPriority)
+				}
+			}
+
+			for _, locals := range a.localCandidates {
+				for _, local := range locals {
+					local.replaceRemoteCandidateCacheValues(oldRemote, cand)
+				}
+			}
+		}
+	}
+
+	return set
+}
+
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run).
 // Returns true when the candidate is accepted (including duplicates).
 func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
@@ -1127,6 +1166,11 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 		}
 	}
 
+	// RFC 8838 §11.4: If a trickled candidate is redundant with an existing
+	// peer-reflexive candidate (same transport address), prefer the signaled
+	// candidate and replace the peer-reflexive one.
+	set = a.replaceRedundantPeerReflexiveCandidates(set, cand)
+
 	acceptRemotePassiveTCPCandidate := false
 	// Assert that TCP4 or TCP6 is a enabled NetworkType locally
 	if !a.disableActiveTCP && cand.TCPType() == TCPTypePassive {
@@ -1147,7 +1191,9 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 	if cand.TCPType() != TCPTypePassive {
 		if localCandidates, ok := a.localCandidates[cand.NetworkType()]; ok {
 			for _, localCandidate := range localCandidates {
-				a.addPair(localCandidate, cand)
+				if a.findPair(localCandidate, cand) == nil {
+					a.addPair(localCandidate, cand)
+				}
 			}
 		}
 	}
@@ -1611,6 +1657,14 @@ func (a *Agent) handleInboundRequest(
 			Component: local.Component(),
 			RelAddr:   "",
 			RelPort:   0,
+		}
+
+		// A peer-reflexive candidate SHOULD take its priority from the PRIORITY
+		// attribute in the Binding Request that discovered it.
+		var prio PriorityAttr
+		err = prio.GetFrom(msg)
+		if err == nil {
+			prflxCandidateConfig.Priority = uint32(prio)
 		}
 
 		prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)

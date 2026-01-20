@@ -301,6 +301,14 @@ func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net
 	c.remoteCandidateCaches[toAddrPort(srcAddr)] = candidate
 }
 
+func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate) {
+	for k, v := range c.remoteCandidateCaches {
+		if v == oldRemote {
+			c.remoteCandidateCaches[k] = newRemote
+		}
+	}
+}
+
 func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
 	agent := c.agent()
 
@@ -445,8 +453,9 @@ func (c *candidateBase) Priority() uint32 {
 		(1<<0)*uint32(256-c.Component())
 }
 
-// Equal is used to compare two candidateBases.
-func (c *candidateBase) Equal(other Candidate) bool {
+// transportAddressEqual checks if the transport address (IP, Port, NetworkType, TCPType) is equal to another
+// candidate.
+func (c *candidateBase) transportAddressEqual(other Candidate) bool {
 	if c.addr() != other.addr() {
 		if c.addr() == nil || other.addr() == nil {
 			return false
@@ -457,10 +466,15 @@ func (c *candidateBase) Equal(other Candidate) bool {
 	}
 
 	return c.NetworkType() == other.NetworkType() &&
-		c.Type() == other.Type() &&
 		c.Address() == other.Address() &&
 		c.Port() == other.Port() &&
-		c.TCPType() == other.TCPType() &&
+		c.TCPType() == other.TCPType()
+}
+
+// Equal is used to compare two candidateBases.
+func (c *candidateBase) Equal(other Candidate) bool {
+	return c.transportAddressEqual(other) &&
+		c.Type() == other.Type() &&
 		c.RelatedAddress().Equal(other.RelatedAddress())
 }
 
