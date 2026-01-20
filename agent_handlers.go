@@ -48,8 +48,10 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 
 type handlerNotifier struct {
 	sync.Mutex
-	running   bool
-	notifiers sync.WaitGroup
+	runningConnectionStates bool
+	runningCandidates       bool
+	runningCandidatePairs   bool
+	notifiers               sync.WaitGroup
 
 	connectionStates    []ConnectionState
 	connectionStateFunc func(ConnectionState)
@@ -99,7 +101,7 @@ func (h *handlerNotifier) EnqueueConnectionState(state ConnectionState) {
 		for {
 			h.Lock()
 			if len(h.connectionStates) == 0 {
-				h.running = false
+				h.runningConnectionStates = false
 				h.Unlock()
 
 				return
@@ -112,8 +114,8 @@ func (h *handlerNotifier) EnqueueConnectionState(state ConnectionState) {
 	}
 
 	h.connectionStates = append(h.connectionStates, state)
-	if !h.running {
-		h.running = true
+	if !h.runningConnectionStates {
+		h.runningConnectionStates = true
 		h.notifiers.Add(1)
 		go notify()
 	}
@@ -134,7 +136,7 @@ func (h *handlerNotifier) EnqueueCandidate(cand Candidate) {
 		for {
 			h.Lock()
 			if len(h.candidates) == 0 {
-				h.running = false
+				h.runningCandidates = false
 				h.Unlock()
 
 				return
@@ -147,8 +149,8 @@ func (h *handlerNotifier) EnqueueCandidate(cand Candidate) {
 	}
 
 	h.candidates = append(h.candidates, cand)
-	if !h.running {
-		h.running = true
+	if !h.runningCandidates {
+		h.runningCandidates = true
 		h.notifiers.Add(1)
 		go notify()
 	}
@@ -169,7 +171,7 @@ func (h *handlerNotifier) EnqueueSelectedCandidatePair(pair *CandidatePair) {
 		for {
 			h.Lock()
 			if len(h.selectedCandidatePairs) == 0 {
-				h.running = false
+				h.runningCandidatePairs = false
 				h.Unlock()
 
 				return
@@ -182,8 +184,8 @@ func (h *handlerNotifier) EnqueueSelectedCandidatePair(pair *CandidatePair) {
 	}
 
 	h.selectedCandidatePairs = append(h.selectedCandidatePairs, pair)
-	if !h.running {
-		h.running = true
+	if !h.runningCandidatePairs {
+		h.runningCandidatePairs = true
 		h.notifiers.Add(1)
 		go notify()
 	}

@@ -954,6 +954,43 @@ func (a *Agent) requestConnectivityCheck() {
 	}
 }
 
+func sameTransportAddress(a, b Candidate) bool {
+	if a == nil || b == nil {
+		return false
+	}
+
+	addrA := removeZoneIDFromAddress(a.Address())
+	addrB := removeZoneIDFromAddress(b.Address())
+
+	return a.NetworkType() == b.NetworkType() &&
+		a.Component() == b.Component() &&
+		addrA == addrB &&
+		a.Port() == b.Port() &&
+		a.TCPType() == b.TCPType()
+}
+
+func replaceRemoteCandidateCacheValues(local Candidate, oldRemote, newRemote Candidate) {
+	var caches map[AddrPort]Candidate
+	switch c := local.(type) {
+	case *CandidateHost:
+		caches = c.remoteCandidateCaches
+	case *CandidateServerReflexive:
+		caches = c.remoteCandidateCaches
+	case *CandidateRelay:
+		caches = c.remoteCandidateCaches
+	case *CandidatePeerReflexive:
+		caches = c.remoteCandidateCaches
+	default:
+		return
+	}
+
+	for k, v := range caches {
+		if v == oldRemote {
+			caches[k] = newRemote
+		}
+	}
+}
+
 func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 	_, localIPs, err := localInterfaces(
 		a.net,
@@ -1014,6 +1051,45 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 	}
 }
 
+// replaceRedundantPeerReflexiveCandidates removes any peer-reflexive candidates
+// from the given set that have the same transport address as cand.
+// It also updates any candidate pairs and local candidate caches that
+// referenced the removed peer-reflexive candidates to reference cand instead.
+// It is implemented according to RFC 8838 §11.4.
+// It returns the updated set of candidates.
+func (a *Agent) replaceRedundantPeerReflexiveCandidates(set []Candidate, cand Candidate) []Candidate {
+	if cand.Type() != CandidateTypePeerReflexive {
+		var replacedPrflx []Candidate
+
+		for i := 0; i < len(set); i++ {
+			existing := set[i]
+			if existing.Type() == CandidateTypePeerReflexive && sameTransportAddress(existing, cand) {
+				replacedPrflx = append(replacedPrflx, existing)
+				set = append(set[:i], set[i+1:]...)
+				i--
+			}
+		}
+
+		for _, oldRemote := range replacedPrflx {
+			for _, pair := range a.checklist {
+				if pair.Remote == oldRemote {
+					oldPriority := pair.priority()
+					pair.Remote = cand
+					pair.setPriorityOverride(oldPriority)
+				}
+			}
+
+			for _, locals := range a.localCandidates {
+				for _, local := range locals {
+					replaceRemoteCandidateCacheValues(local, oldRemote, cand)
+				}
+			}
+		}
+	}
+
+	return set
+}
+
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run).
 func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 	set := a.remoteCandidates[cand.NetworkType()]
@@ -1023,6 +1099,11 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 			return
 		}
 	}
+
+	// RFC 8838 §11.4: If a trickled candidate is redundant with an existing
+	// peer-reflexive candidate (same transport address), prefer the signaled
+	// candidate and replace the peer-reflexive one.
+	set = a.replaceRedundantPeerReflexiveCandidates(set, cand)
 
 	acceptRemotePassiveTCPCandidate := false
 	// Assert that TCP4 or TCP6 is a enabled NetworkType locally
@@ -1044,7 +1125,9 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 	if cand.TCPType() != TCPTypePassive {
 		if localCandidates, ok := a.localCandidates[cand.NetworkType()]; ok {
 			for _, localCandidate := range localCandidates {
-				a.addPair(localCandidate, cand)
+				if a.findPair(localCandidate, cand) == nil {
+					a.addPair(localCandidate, cand)
+				}
 			}
 		}
 	}
@@ -1485,6 +1568,14 @@ func (a *Agent) handleInboundRequest(
 			Component: local.Component(),
 			RelAddr:   "",
 			RelPort:   0,
+		}
+
+		// A peer-reflexive candidate SHOULD take its priority from the PRIORITY
+		// attribute in the Binding Request that discovered it.
+		var prio PriorityAttr
+		err = prio.GetFrom(msg)
+		if err == nil {
+			prflxCandidateConfig.Priority = uint32(prio)
 		}
 
 		prflxCandidate, err := NewCandidatePeerReflexive(&prflxCandidateConfig)
