@@ -416,7 +416,7 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 	}
 	pair.UpdateRequestReceived()
 
-	if message.Contains(stun.AttrUseCandidate) { //nolint:nestif
+	if message.Contains(stun.AttrUseCandidate) || message.Contains(s.agent.nominationAttribute) { //nolint:nestif
 		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 
 		// Check for renomination attribute
