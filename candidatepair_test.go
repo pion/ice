@@ -39,8 +39,9 @@ func srflxCandidate() *CandidateServerReflexive {
 func relayCandidate() *CandidateRelay {
 	return &CandidateRelay{
 		candidateBase: candidateBase{
-			candidateType: CandidateTypeRelay,
-			component:     ComponentRTP,
+			candidateType:        CandidateTypeRelay,
+			component:            ComponentRTP,
+			relayLocalPreference: relayProtocolPreference(udp),
 		},
 	}
 }
@@ -104,7 +105,7 @@ func TestCandidatePairPriority(t *testing.T) {
 				relayCandidate(),
 				true,
 			),
-			WantPriority: 72057593987596288,
+			WantPriority: 3298501328128,
 		},
 		{
 			Pair: newCandidatePair(
@@ -112,7 +113,7 @@ func TestCandidatePairPriority(t *testing.T) {
 				relayCandidate(),
 				false,
 			),
-			WantPriority: 72057593987596287,
+			WantPriority: 3298501328127,
 		},
 	} {
 		require.Equal(t, test.Pair.priority(), test.WantPriority)

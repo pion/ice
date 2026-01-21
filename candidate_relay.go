@@ -10,6 +10,7 @@ import (
 
 const (
 	// These preference values come from libwebrtc
+	//nolint:lll
 	// https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/p2p/base/turn_port.cc;l=96?q=turn_port.cc
 	preferenceRelayTLS  = 0
 	preferenceRelayTCP  = 1
