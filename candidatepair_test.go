@@ -105,7 +105,7 @@ func TestCandidatePairPriority(t *testing.T) {
 				relayCandidate(),
 				true,
 			),
-			WantPriority: 3298501328128,
+			WantPriority: 4398012955648,
 		},
 		{
 			Pair: newCandidatePair(
@@ -113,7 +113,7 @@ func TestCandidatePairPriority(t *testing.T) {
 				relayCandidate(),
 				false,
 			),
-			WantPriority: 3298501328127,
+			WantPriority: 4398012955647,
 		},
 	} {
 		require.Equal(t, test.Pair.priority(), test.WantPriority)

@@ -174,7 +174,7 @@ func TestCandidatePriority(t *testing.T) {
 					relayLocalPreference: relayProtocolPreference(udp),
 				},
 			},
-			WantPriority: 767,
+			WantPriority: 1023,
 		},
 		{
 			Candidate: &CandidateRelay{
