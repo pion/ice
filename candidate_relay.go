@@ -14,8 +14,8 @@ const (
 	// https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/p2p/base/turn_port.cc;l=96?q=turn_port.cc
 	preferenceRelayTLS  = 0
 	preferenceRelayTCP  = 1
-	preferenceRelayUDP  = 2
-	preferenceRelayDTLS = 3
+	preferenceRelayDTLS = 2
+	preferenceRelayUDP  = 3
 )
 
 // CandidateRelay ...
