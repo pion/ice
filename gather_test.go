@@ -3672,8 +3672,13 @@ func TestMapPort(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
 		WithUrls([]*stun.URI{turnURL}),
 		WithMapPortHandler(func(cand Candidate) int {
+			if cand.Type() != CandidateTypeHost {
+				return cand.Port()
+			}
+
 			return 50000
-		}, CandidateTypeHost))
+		}),
+	)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -3742,8 +3747,12 @@ func TestMapPortSrflx(t *testing.T) {
 		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
 		WithUDPMuxSrflx(udpMuxSrflx),
 		WithMapPortHandler(func(cand Candidate) int {
+			if cand.Type() != CandidateTypeServerReflexive {
+				return cand.Port()
+			}
+
 			return 50001
-		}, CandidateTypeServerReflexive),
+		}),
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -3784,12 +3793,15 @@ func TestRewriteAndMapPort(t *testing.T) { //nolint:cyclop
 				Mode:            AddressRewriteReplace,
 			}),
 			WithMapPortHandler(func(c Candidate) int {
+				if c.Type() != CandidateTypeHost {
+					return c.Port()
+				}
 				if c.Port() == 1234 {
 					return 4321
 				} else {
 					return 12345
 				}
-			}, CandidateTypeHost),
+			}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -3843,12 +3855,15 @@ func TestRewriteAndMapPort(t *testing.T) { //nolint:cyclop
 				Mode:            AddressRewriteAppend,
 			}),
 			WithMapPortHandler(func(c Candidate) int {
+				if c.Type() != CandidateTypeHost {
+					return c.Port()
+				}
 				if c.Port() == 1234 {
 					return 4321
 				} else {
 					return 12345
 				}
-			}, CandidateTypeHost),
+			}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
