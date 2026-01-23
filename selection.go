@@ -159,10 +159,11 @@ func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local,
 	}
 }
 
-func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
-	ok, pendingRequest, rtt := s.agent.handleInboundBindingSuccess(m.TransactionID)
+func (s *controllingSelector) HandleSuccessResponse(message *stun.Message, local, remote Candidate,
+	remoteAddr net.Addr) {
+	ok, pendingRequest, rtt := s.agent.handleInboundBindingSuccess(message.TransactionID)
 	if !ok {
-		s.log.Warnf("Discard success response from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
+		s.log.Warnf("Discard success response from (%s), unknown TransactionID 0x%x", remote, message.TransactionID)
 
 		return
 	}
@@ -182,7 +183,7 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 	}
 
 	// TODO: get the implicit ack from the pendingRequest.
-	reportPiggybacking(s.agent, m, remote)
+	reportPiggybacking(s.agent, message, remote)
 
 	s.log.Tracef("Inbound STUN (SuccessResponse) from %s to %s", remote, local)
 	pair := s.agent.findPair(local, remote)
@@ -236,7 +237,6 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 		stun.Fingerprint)
 
 	msg, err := stun.Build(attributes...)
-
 	if err != nil {
 		s.log.Error(err.Error())
 
