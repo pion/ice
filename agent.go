@@ -64,6 +64,7 @@ type piggybackingController struct {
 	packetsIndex int
 	acks         []uint32
 	dtlsCallback func(packet []byte, rAddr net.Addr)
+	newFlight    bool
 }
 
 // Agent represents the ICE agent.
@@ -1631,7 +1632,7 @@ func (a *Agent) SetDtlsCallback(cb func(packet []byte, rAddr net.Addr)) {
 
 // Piggyback stores a packet to be picked in a round-robin fashion.
 // Returns `true` if packet is to be consumed.
-func (a *Agent) Piggyback(packet []byte) bool {
+func (a *Agent) Piggyback(packet []byte, end bool) bool {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
 	if a.piggyback.state == PiggybackingStateOff {
@@ -1641,6 +1642,12 @@ func (a *Agent) Piggyback(packet []byte) bool {
 	}
 
 	if packet != nil {
+		// If we receive a packet after the end of a flight we need
+		// to clear the outgoing list.
+		if a.piggyback.newFlight {
+			a.piggyback.packets = []packetWithCrc{}
+		}
+		a.piggyback.newFlight = end
 		crc := crc32.ChecksumIEEE(packet)
 		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{packet, crc})
 	} else {
@@ -1650,7 +1657,7 @@ func (a *Agent) Piggyback(packet []byte) bool {
 	return true // a.connectionState == ConnectionStateConnected
 }
 
-// GetPiggybackData returns a packet from the stored list in a round-robin fashion and a list of acks.
+// GetPiggybackDataAndAcks returns a packet from the stored list in a round-robin fashion and a list of acks.
 func (a *Agent) GetPiggybackDataAndAcks() ([]byte, []uint32) {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
@@ -1668,14 +1675,16 @@ func (a *Agent) GetPiggybackDataAndAcks() ([]byte, []uint32) {
 	// Return a copy to prevent external modification of the internal buffer
 	result := make([]byte, len(packet.data))
 	copy(result, packet.data)
+
 	return result, a.piggyback.acks
 }
 
-func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr) {
+func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr) { //nolint:cyclop
 	a.piggyback.mu.Lock()
 
 	if a.piggyback.state == PiggybackingStateComplete || a.piggyback.state == PiggybackingStateOff {
 		a.piggyback.mu.Unlock()
+
 		return
 	}
 	if packet == nil && acks == nil && a.piggyback.state == PiggybackingStateTentative {
@@ -1684,6 +1693,7 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 		a.piggyback.dtlsCallback = nil
 		a.piggyback.state = PiggybackingStateOff
 		a.piggyback.mu.Unlock()
+
 		return
 	}
 	if packet == nil && acks == nil && a.piggyback.acks != nil {
@@ -1692,6 +1702,7 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 		a.piggyback.acks = nil
 		a.piggyback.state = PiggybackingStateComplete
 		a.piggyback.mu.Unlock()
+
 		return
 	}
 	if a.piggyback.state == PiggybackingStateTentative {
@@ -1706,6 +1717,7 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 					return true // This packet is acknowledged, so remove it.
 				}
 			}
+
 			return false // This packet is not acknowledged, so keep it.
 		})
 		removed := beforeLen - len(a.piggyback.packets)
@@ -1748,6 +1760,7 @@ func (a *Agent) ReportDtlsPacket(packet []byte) {
 
 	if a.piggyback.state == PiggybackingStateComplete || a.piggyback.state == PiggybackingStateOff {
 		a.piggyback.mu.Unlock()
+
 		return
 	}
 	crc := crc32.ChecksumIEEE(packet)
