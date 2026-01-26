@@ -438,6 +438,14 @@ func TestCandidateMarshal(t *testing.T) {
 			}),
 			"1380287402 1 udp 2130706431 e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local 60542 typ host", false,
 		},
+		{
+			mustCandidateHost(t, &CandidateHostConfig{
+				Network: NetworkTypeUDP4.String(),
+				Address: "redacted-ip.invalid",
+				Port:    60542,
+			}),
+			"1380287402 1 udp 2130706431 redacted-ip.invalid 60542 typ host", false,
+		},
 		// Missing Foundation
 		{
 			mustCandidateHost(t, &CandidateHostConfig{
