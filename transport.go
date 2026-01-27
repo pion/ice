@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v3"
 )
 
 // Dial connects to the remote agent, acting as the controlling ice agent.
@@ -74,6 +75,19 @@ func (c *Conn) Read(p []byte) (int, error) {
 	}
 
 	n, err := c.agent.buf.Read(p)
+	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
+
+	return n, err
+}
+
+// ReadWithAttributes implements the Conn ReadWithAttributes method.
+func (c *Conn) ReadWithAttributes(b []byte, attr *transport.PacketAttributes) (n int, err error) {
+	err = c.agent.loop.Err()
+	if err != nil {
+		return 0, err
+	}
+
+	n, err = c.agent.buf.ReadWithAttributes(b, attr)
 	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
 
 	return n, err
