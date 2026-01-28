@@ -169,11 +169,22 @@ func TestCandidatePriority(t *testing.T) {
 		{
 			Candidate: &CandidateRelay{
 				candidateBase: candidateBase{
-					candidateType: CandidateTypeRelay,
-					component:     ComponentRTP,
+					candidateType:        CandidateTypeRelay,
+					component:            ComponentRTP,
+					relayLocalPreference: relayProtocolPreference(udp),
 				},
 			},
-			WantPriority: 16777215,
+			WantPriority: 1023,
+		},
+		{
+			Candidate: &CandidateRelay{
+				candidateBase: candidateBase{
+					candidateType:        CandidateTypeRelay,
+					component:            ComponentRTP,
+					relayLocalPreference: relayProtocolPreference(tcp),
+				},
+			},
+			WantPriority: 511,
 		},
 	} {
 		require.Equal(t, test.Candidate.Priority(), test.WantPriority)

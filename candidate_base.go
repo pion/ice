@@ -43,6 +43,8 @@ type candidateBase struct {
 	foundationOverride string
 	priorityOverride   uint32
 
+	relayLocalPreference uint16
+
 	remoteCandidateCaches map[AddrPort]Candidate
 	isLocationTracked     bool
 	extensions            []CandidateExtension
@@ -141,6 +143,10 @@ func (c *candidateBase) SetComponent(component uint16) {
 
 // LocalPreference returns the local preference for this candidate.
 func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
+	if c.candidateType == CandidateTypeRelay {
+		return c.relayLocalPreference
+	}
+
 	if c.NetworkType().IsTCP() {
 		// RFC 6544, section 4.2
 		//
