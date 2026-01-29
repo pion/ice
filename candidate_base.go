@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+// SPDX-FileCopyrightText: 2026 The Pion community <https://pion.ly>
 // SPDX-License-Identifier: MIT
 
 package ice
@@ -42,6 +42,8 @@ type candidateBase struct {
 
 	foundationOverride string
 	priorityOverride   uint32
+
+	relayLocalPreference uint16
 
 	remoteCandidateCaches map[AddrPort]Candidate
 	isLocationTracked     bool
@@ -141,6 +143,10 @@ func (c *candidateBase) SetComponent(component uint16) {
 
 // LocalPreference returns the local preference for this candidate.
 func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
+	if c.candidateType == CandidateTypeRelay {
+		return c.relayLocalPreference
+	}
+
 	if c.NetworkType().IsTCP() {
 		// RFC 6544, section 4.2
 		//
