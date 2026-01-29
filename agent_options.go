@@ -960,3 +960,13 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 		return nil
 	}
 }
+
+func WithMapPortHandler(handler func(cand Candidate) int) AgentOption {
+	return func(a *Agent) error {
+		a.mapPort = func(candidate Candidate) int {
+			return handler(candidate)
+		}
+
+		return nil
+	}
+}
