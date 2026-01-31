@@ -34,13 +34,13 @@ func (s *controllingSelector) Start() {
 func (s *controllingSelector) isNominatable(c Candidate) bool {
 	switch {
 	case c.Type() == CandidateTypeHost:
-		return time.Since(s.startTime).Nanoseconds() > s.agent.hostAcceptanceMinWait.Nanoseconds()
+		return time.Since(s.startTime).Nanoseconds() >= s.agent.hostAcceptanceMinWait.Nanoseconds()
 	case c.Type() == CandidateTypeServerReflexive:
-		return time.Since(s.startTime).Nanoseconds() > s.agent.srflxAcceptanceMinWait.Nanoseconds()
+		return time.Since(s.startTime).Nanoseconds() >= s.agent.srflxAcceptanceMinWait.Nanoseconds()
 	case c.Type() == CandidateTypePeerReflexive:
-		return time.Since(s.startTime).Nanoseconds() > s.agent.prflxAcceptanceMinWait.Nanoseconds()
+		return time.Since(s.startTime).Nanoseconds() >= s.agent.prflxAcceptanceMinWait.Nanoseconds()
 	case c.Type() == CandidateTypeRelay:
-		return time.Since(s.startTime).Nanoseconds() > s.agent.relayAcceptanceMinWait.Nanoseconds()
+		return time.Since(s.startTime).Nanoseconds() >= s.agent.relayAcceptanceMinWait.Nanoseconds()
 	}
 
 	s.log.Errorf("Invalid candidate type: %s", c.Type())

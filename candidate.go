@@ -82,6 +82,10 @@ type Candidate interface {
 
 	Marshal() string
 
+	// transportAddressEqual checks if the transport address (IP, Port, NetworkType, TCPType) is equal to another
+	// candidate.
+	transportAddressEqual(other Candidate) bool
+
 	addr() net.Addr
 	filterForLocationTracking() bool
 	agent() *Agent
@@ -92,4 +96,6 @@ type Candidate interface {
 	seen(outbound bool)
 	start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{})
 	writeTo(raw []byte, dst Candidate) (int, error)
+
+	replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate)
 }

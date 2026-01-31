@@ -116,7 +116,9 @@ func TestHandlerNotifier_Close_AlreadyClosed(t *testing.T) {
 	assert.True(t, isClosed(notifier.done), "expected h.done to remain closed after second Close")
 
 	// sanity: no enqueues should start after close.
-	require.False(t, notifier.running)
+	require.False(t, notifier.runningConnectionStates)
+	require.False(t, notifier.runningCandidates)
+	require.False(t, notifier.runningCandidatePairs)
 	require.Zero(t, len(notifier.connectionStates))
 	require.Zero(t, len(notifier.candidates))
 	require.Zero(t, len(notifier.selectedCandidatePairs))

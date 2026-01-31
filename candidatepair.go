@@ -26,6 +26,8 @@ type CandidatePair struct {
 	iceRoleControlling       bool
 	Remote                   Candidate
 	Local                    Candidate
+	priorityOverride         uint64
+	hasPriorityOverride      bool
 	bindingRequestCount      uint16
 	state                    CandidatePairState
 	nominated                bool
@@ -84,12 +86,21 @@ func (p *CandidatePair) equal(other *CandidatePair) bool {
 	return p.Local.Equal(other.Local) && p.Remote.Equal(other.Remote)
 }
 
+func (p *CandidatePair) setPriorityOverride(prio uint64) {
+	p.priorityOverride = prio
+	p.hasPriorityOverride = true
+}
+
 // RFC 5245 - 5.7.2.  Computing Pair Priority and Ordering Pairs
 // Let G be the priority for the candidate provided by the controlling
 // agent.  Let D be the priority for the candidate provided by the
 // controlled agent.
 // pair priority = 2^32*MIN(G,D) + 2*MAX(G,D) + (G>D?1:0).
 func (p *CandidatePair) priority() uint64 {
+	if p.hasPriorityOverride {
+		return p.priorityOverride
+	}
+
 	var g, d uint32 //nolint:varnamelen // clearer to use g and d here
 	if p.iceRoleControlling {
 		g = p.Local.Priority()
