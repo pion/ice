@@ -956,7 +956,60 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 
 // TestRenominationAcceptance verifies that the controlled agent correctly
 // accepts renomination based on nomination values, not just priority.
-func TestRenominationAcceptance(t *testing.T) {
+func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
+	t.Run("Accepts nomination attribute without use-candidate", func(t *testing.T) {
+		agent := bareAgentForPing()
+		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+		agent.remoteUfrag = selectionTestRemoteUfrag
+		agent.localUfrag = selectionTestLocalUfrag
+		agent.remotePwd = selectionTestPassword
+		agent.tieBreaker = 1
+		agent.isControlling.Store(false) // Controlled agent
+		agent.nominationAttribute = stun.AttrType(0x0030)
+		agent.onConnected = make(chan struct{})
+		agent.setSelector()
+
+		selector, ok := agent.getSelector().(*controlledSelector)
+		require.True(t, ok, "expected controlledSelector")
+
+		local1 := newPingNoIOCand()
+		local1.candidateBase.networkType = NetworkTypeUDP4
+		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+
+		local2 := newPingNoIOCand()
+		local2.candidateBase.networkType = NetworkTypeUDP4
+		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+
+		remote := newPingNoIOCand()
+		remote.candidateBase.networkType = NetworkTypeUDP4
+		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+
+		pair1 := agent.addPair(local1, remote)
+		pair1.state = CandidatePairStateSucceeded
+		pair2 := agent.addPair(local2, remote)
+		pair2.state = CandidatePairStateSucceeded
+
+		agent.setSelectedPair(pair1)
+		assert.Equal(t, pair1, agent.getSelectedPair())
+
+		msg, err := stun.Build(stun.BindingRequest,
+			stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			NominationSetter{
+				Value:    100,
+				AttrType: agent.nominationAttribute,
+			},
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		selector.HandleBindingRequest(msg, local2, remote)
+
+		assert.Equal(t, pair2, agent.getSelectedPair(),
+			"Should switch pairs when nomination attribute is present without USE-CANDIDATE")
+	})
+
 	t.Run("Accepts renomination with nomination value regardless of priority", func(t *testing.T) {
 		// Create a controlled agent
 		agent := bareAgentForPing()
