@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/netip"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,7 +31,7 @@ func getLocalIPAddress(t *testing.T, networkType NetworkType) netip.Addr {
 	require.NoError(t, err)
 	require.NotEmpty(t, localAddrs)
 
-	if networkType.IsIPv6() && runtime.GOOS == "darwin" {
+	if networkType.IsIPv6() {
 		for _, addr := range localAddrs {
 			if !addr.addr.IsLinkLocalUnicast() {
 				return addr.addr
@@ -53,17 +52,13 @@ func ipv6Available(t *testing.T) bool {
 	_, localAddrs, err := localInterfaces(net, problematicNetworkInterfaces, nil, []NetworkType{NetworkTypeTCP6}, false)
 	require.NoError(t, err)
 
-	if runtime.GOOS == "darwin" {
-		for _, addr := range localAddrs {
-			if !addr.addr.IsLinkLocalUnicast() {
-				return true
-			}
+	for _, addr := range localAddrs {
+		if !addr.addr.IsLinkLocalUnicast() {
+			return true
 		}
-
-		return false
 	}
 
-	return len(localAddrs) > 0
+	return false
 }
 
 func TestActiveTCP(t *testing.T) {
