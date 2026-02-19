@@ -2593,3 +2593,15 @@ func TestAgentUpdateOptions(t *testing.T) {
 		}
 	})
 }
+
+func TestMDNSQueryTimeout(t *testing.T) {
+	t.Run("falls back to default when unset", func(t *testing.T) {
+		agent := &Agent{}
+		require.Equal(t, defaultSTUNGatherTimeout, agent.mDNSQueryTimeout())
+	})
+
+	t.Run("uses configured stun gather timeout when set", func(t *testing.T) {
+		agent := &Agent{stunGatherTimeout: 3 * time.Second}
+		require.Equal(t, 3*time.Second, agent.mDNSQueryTimeout())
+	})
+}

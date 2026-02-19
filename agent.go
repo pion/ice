@@ -924,7 +924,10 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 		return
 	}
 
-	_, src, err := a.mDNSConn.QueryAddr(cand.context(), cand.Address())
+	ctx, cancel := context.WithTimeout(a.loop, a.mDNSQueryTimeout())
+	defer cancel()
+
+	_, src, err := a.mDNSConn.QueryAddr(ctx, cand.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
 
@@ -945,6 +948,14 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 
 		return
 	}
+}
+
+func (a *Agent) mDNSQueryTimeout() time.Duration {
+	if a.stunGatherTimeout > 0 {
+		return a.stunGatherTimeout
+	}
+
+	return defaultSTUNGatherTimeout
 }
 
 func (a *Agent) requestConnectivityCheck() {
