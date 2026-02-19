@@ -9,6 +9,7 @@ package ice
 import (
 	"context"
 	"net"
+	"net/netip"
 	"strconv"
 	"sync"
 	"testing"
@@ -2594,6 +2595,40 @@ func TestAgentUpdateOptions(t *testing.T) {
 	})
 }
 
+func TestRemoteDialIPForLocalInterface(t *testing.T) {
+	t.Run("adds local zone for zone-less link-local IPv6", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, netip.MustParseAddr("fe80::1234%eth0"), got)
+	})
+
+	t.Run("keeps existing remote zone", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234%eth9")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+
+	t.Run("does not modify global IPv6", func(t *testing.T) {
+		remote := netip.MustParseAddr("2001:db8::1234")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+
+	t.Run("does not modify zone-less link-local when local has no zone", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234")
+		local := netip.MustParseAddr("2001:db8::1")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+}
+
 func TestMDNSQueryTimeout(t *testing.T) {
 	t.Run("falls back to default when unset", func(t *testing.T) {
 		agent := &Agent{}
@@ -2603,5 +2638,43 @@ func TestMDNSQueryTimeout(t *testing.T) {
 	t.Run("uses configured stun gather timeout when set", func(t *testing.T) {
 		agent := &Agent{stunGatherTimeout: 3 * time.Second}
 		require.Equal(t, 3*time.Second, agent.mDNSQueryTimeout())
+	})
+}
+
+type localAddrTCPMux struct {
+	addr net.Addr
+}
+
+func (m *localAddrTCPMux) Close() error { return nil }
+
+func (m *localAddrTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *localAddrTCPMux) RemoveConnByUfrag(string) {}
+
+func (m *localAddrTCPMux) LocalAddr() net.Addr { return m.addr }
+
+func TestMDNSLocalAddressFromTCPMux(t *testing.T) {
+	t.Run("nil for mixed network types", func(t *testing.T) {
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: net.ParseIP("2001:db8::1")}}
+		require.Nil(t, mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6, NetworkTypeUDP6}))
+	})
+
+	t.Run("nil for link-local IPv6 listener", func(t *testing.T) {
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: net.ParseIP("fe80::1"), Zone: "eth0"}}
+		require.Nil(t, mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6}))
+	})
+
+	t.Run("uses listener IP for TCP-only global IPv6", func(t *testing.T) {
+		want := net.ParseIP("2001:db8::1")
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: want, Zone: "wg0"}}
+
+		got := mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6})
+		require.Equal(t, want.To16(), got)
+	})
+
+	t.Run("nil for TCP mux without LocalAddr", func(t *testing.T) {
+		require.Nil(t, mDNSLocalAddressFromTCPMux(&stubTCPMux{}, []NetworkType{NetworkTypeTCP4}))
 	})
 }

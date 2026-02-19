@@ -487,6 +487,8 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		return nil, fmt.Errorf("error getting local interfaces: %w", err)
 	}
 
+	mDNSLocalAddress := mDNSLocalAddressFromTCPMux(agent.tcpMux, agent.networkTypes)
+
 	// Opportunistic mDNS: If we can't open the connection, that's ok: we
 	// can continue without it.
 	if agent.mDNSConn, agent.mDNSMode, err = createMulticastDNS(
@@ -494,6 +496,7 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		agent.networkTypes,
 		localIfcs,
 		agent.includeLoopback,
+		mDNSLocalAddress,
 		agent.mDNSMode,
 		agent.mDNSName,
 		agent.log,
@@ -556,6 +559,67 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	agent.constructed = true
 
 	return agent, nil
+}
+
+func mDNSLocalAddressFromTCPMux(tcpMux TCPMux, networkTypes []NetworkType) net.IP {
+	if tcpMux == nil || !allNetworkTypesTCP(networkTypes) {
+		return nil
+	}
+
+	tcpAddr, ok := localTCPAddrFromMux(tcpMux)
+	if !ok {
+		return nil
+	}
+
+	localAddr, ok := mDNSLocalAddressFromIP(tcpAddr.IP)
+	if !ok {
+		return nil
+	}
+
+	return localAddr
+}
+
+func allNetworkTypesTCP(networkTypes []NetworkType) bool {
+	if len(networkTypes) == 0 {
+		return false
+	}
+
+	for _, networkType := range networkTypes {
+		if !networkType.IsTCP() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func localTCPAddrFromMux(tcpMux TCPMux) (*net.TCPAddr, bool) {
+	addrProvider, ok := tcpMux.(interface{ LocalAddr() net.Addr })
+	if !ok {
+		return nil, false
+	}
+
+	tcpAddr, ok := addrProvider.LocalAddr().(*net.TCPAddr)
+	if !ok || tcpAddr.IP == nil || tcpAddr.IP.IsUnspecified() {
+		return nil, false
+	}
+
+	return tcpAddr, true
+}
+
+func mDNSLocalAddressFromIP(ip net.IP) (net.IP, bool) {
+	parsed, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return nil, false
+	}
+
+	parsed = parsed.Unmap()
+	if parsed.Is6() && (parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast()) {
+		// mdns.Config.LocalAddress has no zone support for link-local IPv6.
+		return nil, false
+	}
+
+	return parsed.AsSlice(), true
 }
 
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
@@ -987,10 +1051,12 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			continue
 		}
 
+		dialIP := remoteDialIPForLocalInterface(ip, localIPs[i].addr)
+
 		conn := newActiveTCPConn(
 			a.loop,
 			net.JoinHostPort(localIPs[i].addr.String(), "0"),
-			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
+			netip.AddrPortFrom(dialIP, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
 			a.log,
 		)
 
@@ -1023,6 +1089,18 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 
 		a.addPair(localCandidate, remoteCandidate)
 	}
+}
+
+func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
+	if remoteIP.Is6() &&
+		remoteIP.Zone() == "" &&
+		(remoteIP.IsLinkLocalUnicast() || remoteIP.IsLinkLocalMulticast()) {
+		if zone := localIP.Zone(); zone != "" {
+			return remoteIP.WithZone(zone)
+		}
+	}
+
+	return remoteIP
 }
 
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run).
