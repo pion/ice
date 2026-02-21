@@ -557,3 +557,50 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 
 	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL})
 }
+
+func TestVNetGather_TURNAllocationAbort(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	// configure unreachable TURN server
+	turnServerURL := &stun.URI{
+		Scheme:   stun.SchemeTypeTURN,
+		Host:     vnetSTUNServerIP,
+		Port:     vnetSTUNServerPort,
+		Username: "user",
+		Password: "pass",
+		Proto:    stun.ProtoTypeUDP,
+	}
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+	router, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "10.0.0.0/24",
+		LoggerFactory: loggerFactory,
+	})
+	require.NoError(t, err)
+
+	nw, err := vnet.NewNet(&vnet.NetConfig{})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(nw))
+
+	cfg0 := &AgentConfig{
+		Urls: []*stun.URI{
+			turnServerURL,
+		},
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              nw,
+	}
+	aAgent, err := NewAgent(cfg0)
+	require.NoError(t, err, "should succeed")
+	defer func() {
+		require.NoError(t, aAgent.Close())
+	}()
+
+	// if not canceled, gatherCandidatesRelay() will block for ~7.8s
+	defer test.TimeOut(time.Second * 1).Stop()
+
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancelFunc()
+
+	aAgent.gatherCandidatesRelay(ctx, []*stun.URI{turnServerURL})
+}
