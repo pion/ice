@@ -520,6 +520,49 @@ func TestConn_WriteToPair_InvalidID(t *testing.T) {
 	require.ErrorIs(t, werr, ErrCandidatePairNotFound)
 }
 
+func TestConnWritesRejectExpiredConsent(t *testing.T) {
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+	packets := &mockPacketConnWithCapture{}
+	var fresh, explicit, fallback *CandidatePair
+	require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) {
+		local := newHostLocal(t)
+		local.conn = packets
+		fresh = agent.addPair(local, newPrflxRemote(t))
+		explicit = agent.addPair(local, newHostRemote(t))
+		fallback = agent.addPair(local, newRelayRemote(t))
+		for _, pair := range []*CandidatePair{fresh, explicit, fallback} {
+			pair.state = CandidatePairStateSucceeded
+			pair.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+		}
+		fresh.UpdateRoundTripTime(time.Millisecond)
+		fallback.setPriorityOverride(1 << 63) // Prefer this expired pair unless consent is checked.
+		agent.setSelectedPair(fresh)
+	}))
+	conn := &Conn{agent: agent}
+	payload := []byte("test")
+	fresh.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+	n, err := conn.Write(payload)
+	require.ErrorIs(t, err, ErrNoCandidatePairs)
+	require.Zero(t, n)
+	fresh.UpdateRoundTripTime(time.Millisecond)
+	n, err = conn.WriteToPair(explicit.id, payload)
+	require.ErrorIs(t, err, ErrCandidatePairNotSucceeded)
+	require.Zero(t, n)
+	require.Empty(t, packets.sentPackets)
+	require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) { agent.setSelectedPair(nil) }))
+	n, err = conn.Write(payload)
+	require.NoError(t, err)
+	require.Equal(t, len(payload), n)
+	require.Equal(t, []net.Addr{fresh.Remote.addr()}, packets.sentAddrs)
+	fresh.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+	n, err = conn.Write(payload)
+	require.ErrorIs(t, err, ErrNoCandidatePairs)
+	require.Zero(t, n)
+	require.Len(t, packets.sentPackets, 1)
+}
+
 func TestConn_WriteToPair_NotSucceeded(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
@@ -630,8 +673,8 @@ func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
 	defer test.TimeOut(30 * time.Second).Stop()
 
 	// AllocsPerRun counts allocations process-wide, so the agents are given
-	// one candidate each and no keepalives: a single pair leaves nothing
-	// checking alongside the data path once it is connected.
+	// one candidate each and no extra keepalives. Measure between periodic
+	// consent checks, which still run every two seconds.
 	noKeepalive := time.Duration(0)
 	ca, cb := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	defer closePipe(t, ca, cb)
@@ -737,7 +780,9 @@ func TestConnWriteDoesNotAllocateOverStandardPacketConn(t *testing.T) {
 	local, remote := newCandidate(19000), newCandidate(19001)
 	local.conn = &discardPacketConn{}
 
-	agent.selectedPair.Store(newCandidatePair(local, remote, false))
+	pair := newCandidatePair(local, remote, false)
+	pair.consentStartedAt = time.Now()
+	agent.selectedPair.Store(pair)
 
 	conn := &Conn{agent: agent}
 	packet := make([]byte, 1200)
