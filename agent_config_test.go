@@ -23,6 +23,7 @@ func TestAgentConfig_initWithDefaults(t *testing.T) {
 			func(t *testing.T, result *Agent) {
 				t.Helper()
 				assert.Equal(t, result.relayAcceptanceMinWait, defaultRelayAcceptanceMinWait)
+				assert.Equal(t, result.consentFreshnessTimeout, defaultConsentFreshnessTimeout)
 			},
 		},
 		{
@@ -55,6 +56,18 @@ func TestAgentConfig_initWithDefaults(t *testing.T) {
 			func(t *testing.T, result *Agent) {
 				t.Helper()
 				assert.Equal(t, result.relayAcceptanceMinWait, relayAcceptanceMinWait)
+			},
+		},
+		{
+			"consent freshness timeout can be disabled",
+			func() *AgentConfig {
+				zero := time.Duration(0)
+
+				return &AgentConfig{ConsentFreshnessTimeout: &zero}
+			}(),
+			func(t *testing.T, result *Agent) {
+				t.Helper()
+				assert.Equal(t, time.Duration(0), result.consentFreshnessTimeout)
 			},
 		},
 	}

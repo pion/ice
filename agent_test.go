@@ -48,6 +48,12 @@ func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Cand
 	r.handledSuccess = true
 }
 
+func (r *recordingSelector) handleSuccessResponse(*stun.Message, Candidate, Candidate, net.Addr) bool {
+	r.handledSuccess = true
+
+	return true
+}
+
 func (r *recordingSelector) HandleBindingRequest(*stun.Message, Candidate, Candidate) {
 	r.handledBindingRequest = true
 }
@@ -632,6 +638,57 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		pair := agent.findPair(local, remoteCandidate)
 		require.NotNil(t, pair)
 		require.Equal(t, CandidatePairStateSucceeded, pair.state)
+		require.Empty(t, agent.pendingBindingRequests)
+	})
+
+	t.Run("Authenticated 403 error response revokes consent", func(t *testing.T) {
+		agent := newTestAgent(t)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		remoteConfig := &CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2.3",
+			Port:      6666,
+			Component: 1,
+		}
+		remoteCandidate, err := NewCandidateHost(remoteConfig)
+		require.NoError(t, err)
+		remoteAddr := &net.UDPAddr{IP: net.ParseIP(remoteCandidate.Address()), Port: remoteCandidate.Port()}
+		transactionID := stun.NewTransactionID()
+		remotePwd := "remotekey403"
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			agent.selector = &controllingSelector{agent: agent, log: agent.log}
+			agent.selector.Start()
+			agent.localCandidates[local.NetworkType()] = append(agent.localCandidates[local.NetworkType()], local)
+			agent.addRemoteCandidate(remoteCandidate) //nolint:contextcheck
+			pair := agent.findPair(local, remoteCandidate)
+			require.NotNil(t, pair)
+			agent.setSelectedPair(pair)
+			agent.pendingBindingRequests = []bindingRequest{ // request awaiting response
+				{
+					timestamp:     time.Now(),
+					transactionID: transactionID,
+					destination:   remoteAddr,
+				},
+			}
+			agent.remotePwd = remotePwd
+		}))
+
+		msg, err := stun.Build(stun.BindingError, stun.NewTransactionIDSetter(transactionID),
+			stun.ErrorCodeAttribute{Code: stun.CodeForbidden, Reason: []byte("Forbidden")},
+			stun.NewShortTermIntegrity(remotePwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		agent.handleInbound(msg, local, remoteAddr)
+
+		require.Equal(t, ConnectionStateFailed, agent.connectionState)
+		require.Nil(t, agent.getSelectedPair())
 		require.Empty(t, agent.pendingBindingRequests)
 	})
 }
@@ -1751,9 +1808,10 @@ func TestLiteLifecycle(t *testing.T) {
 
 func TestValidateSelectedPairTransitions(t *testing.T) {
 	agent := &Agent{
-		disconnectedTimeout: time.Second,
-		failedTimeout:       time.Second,
-		connectionState:     ConnectionStateConnected,
+		disconnectedTimeout:     time.Second,
+		failedTimeout:           time.Second,
+		consentFreshnessTimeout: defaultConsentFreshnessTimeout,
+		connectionState:         ConnectionStateConnected,
 		connectionStateNotifier: &handlerNotifier{
 			connectionStateFunc: func(ConnectionState) {},
 			done:                make(chan struct{}),
@@ -1785,6 +1843,43 @@ func TestValidateSelectedPairTransitions(t *testing.T) {
 	require.Equal(t, ConnectionStateDisconnected, agent.connectionState)
 
 	require.True(t, agent.validateSelectedPair())
+	require.Equal(t, ConnectionStateFailed, agent.connectionState)
+}
+
+func TestValidateSelectedPairConsentExpired(t *testing.T) {
+	agent := &Agent{
+		disconnectedTimeout:     time.Second,
+		failedTimeout:           time.Second,
+		consentFreshnessTimeout: 30 * time.Second,
+		connectionState:         ConnectionStateConnected,
+		connectionStateNotifier: &handlerNotifier{
+			connectionStateFunc: func(ConnectionState) {},
+			done:                make(chan struct{}),
+		},
+		log: logging.NewDefaultLoggerFactory().NewLogger("test"),
+	}
+
+	local, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "1.1.1.1",
+		Port:      1000,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "2.2.2.2",
+		Port:      2000,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	remote.setLastReceived(time.Now())
+
+	agent.selectedPair.Store(newCandidatePair(local, remote, true))
+	agent.lastConsentAt = time.Now().Add(-31 * time.Second)
+
+	require.False(t, agent.validateSelectedPair())
 	require.Equal(t, ConnectionStateFailed, agent.connectionState)
 }
 
@@ -2550,42 +2645,44 @@ func TestAgentUpdateOptions(t *testing.T) {
 		// All options except WithUrls should be rejected on a running agent.
 		// When adding new options, add them here if they are not runtime-updatable.
 		nonUpdatableOptions := map[string]AgentOption{
-			"WithAddressRewriteRules":             WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}}),
-			"WithICELite":                         WithICELite(true),
-			"WithPortRange":                       WithPortRange(5000, 6000),
-			"WithDisconnectedTimeout":             WithDisconnectedTimeout(time.Second),
-			"WithFailedTimeout":                   WithFailedTimeout(time.Second),
-			"WithKeepaliveInterval":               WithKeepaliveInterval(time.Second),
-			"WithHostAcceptanceMinWait":           WithHostAcceptanceMinWait(time.Second),
-			"WithSrflxAcceptanceMinWait":          WithSrflxAcceptanceMinWait(time.Second),
-			"WithPrflxAcceptanceMinWait":          WithPrflxAcceptanceMinWait(time.Second),
-			"WithRelayAcceptanceMinWait":          WithRelayAcceptanceMinWait(time.Second),
-			"WithSTUNGatherTimeout":               WithSTUNGatherTimeout(time.Second),
-			"WithIPFilter":                        WithIPFilter(func(net.IP) bool { return true }),
-			"WithNet":                             WithNet(nil),
-			"WithMulticastDNSMode":                WithMulticastDNSMode(MulticastDNSModeDisabled),
-			"WithMulticastDNSHostName":            WithMulticastDNSHostName("test.local"),
-			"WithLocalCredentials":                WithLocalCredentials("", ""),
-			"WithTCPMux":                          WithTCPMux(nil),
-			"WithUDPMux":                          WithUDPMux(nil),
-			"WithUDPMuxSrflx":                     WithUDPMuxSrflx(nil),
-			"WithProxyDialer":                     WithProxyDialer(nil),
-			"WithMaxBindingRequests":              WithMaxBindingRequests(10),
-			"WithCheckInterval":                   WithCheckInterval(time.Second),
-			"WithRenomination":                    WithRenomination(DefaultNominationValueGenerator()),
-			"WithNominationAttribute":             WithNominationAttribute(0x0030),
-			"WithIncludeLoopback":                 WithIncludeLoopback(),
-			"WithTCPPriorityOffset":               WithTCPPriorityOffset(10),
-			"WithDisableActiveTCP":                WithDisableActiveTCP(),
-			"WithBindingRequestHandler":           WithBindingRequestHandler(nil),
-			"WithEnableUseCandidateCheckPriority": WithEnableUseCandidateCheckPriority(),
-			"WithContinualGatheringPolicy":        WithContinualGatheringPolicy(GatherOnce),
-			"WithNetworkMonitorInterval":          WithNetworkMonitorInterval(time.Second),
-			"WithNetworkTypes":                    WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			"WithCandidateTypes":                  WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			"WithAutomaticRenomination":           WithAutomaticRenomination(time.Second),
-			"WithInterfaceFilter":                 WithInterfaceFilter(func(string) bool { return true }),
-			"WithLoggerFactory":                   WithLoggerFactory(nil),
+			"WithAddressRewriteRules":                WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}}),
+			"WithICELite":                            WithICELite(true),
+			"WithPortRange":                          WithPortRange(5000, 6000),
+			"WithDisconnectedTimeout":                WithDisconnectedTimeout(time.Second),
+			"WithFailedTimeout":                      WithFailedTimeout(time.Second),
+			"WithKeepaliveInterval":                  WithKeepaliveInterval(time.Second),
+			"WithConsentFreshnessTimeout":            WithConsentFreshnessTimeout(time.Second),
+			"WithHostAcceptanceMinWait":              WithHostAcceptanceMinWait(time.Second),
+			"WithSrflxAcceptanceMinWait":             WithSrflxAcceptanceMinWait(time.Second),
+			"WithPrflxAcceptanceMinWait":             WithPrflxAcceptanceMinWait(time.Second),
+			"WithRelayAcceptanceMinWait":             WithRelayAcceptanceMinWait(time.Second),
+			"WithSTUNGatherTimeout":                  WithSTUNGatherTimeout(time.Second),
+			"WithIPFilter":                           WithIPFilter(func(net.IP) bool { return true }),
+			"WithNet":                                WithNet(nil),
+			"WithMulticastDNSMode":                   WithMulticastDNSMode(MulticastDNSModeDisabled),
+			"WithMulticastDNSHostName":               WithMulticastDNSHostName("test.local"),
+			"WithLocalCredentials":                   WithLocalCredentials("", ""),
+			"WithTCPMux":                             WithTCPMux(nil),
+			"WithUDPMux":                             WithUDPMux(nil),
+			"WithUDPMuxSrflx":                        WithUDPMuxSrflx(nil),
+			"WithProxyDialer":                        WithProxyDialer(nil),
+			"WithMaxBindingRequests":                 WithMaxBindingRequests(10),
+			"WithCheckInterval":                      WithCheckInterval(time.Second),
+			"WithRenomination":                       WithRenomination(DefaultNominationValueGenerator()),
+			"WithNominationAttribute":                WithNominationAttribute(0x0030),
+			"WithIncludeLoopback":                    WithIncludeLoopback(),
+			"WithTCPPriorityOffset":                  WithTCPPriorityOffset(10),
+			"WithDisableActiveTCP":                   WithDisableActiveTCP(),
+			"WithBindingRequestHandler":              WithBindingRequestHandler(nil),
+			"WithBindingRequestErrorResponseHandler": WithBindingRequestErrorResponseHandler(nil),
+			"WithEnableUseCandidateCheckPriority":    WithEnableUseCandidateCheckPriority(),
+			"WithContinualGatheringPolicy":           WithContinualGatheringPolicy(GatherOnce),
+			"WithNetworkMonitorInterval":             WithNetworkMonitorInterval(time.Second),
+			"WithNetworkTypes":                       WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			"WithCandidateTypes":                     WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			"WithAutomaticRenomination":              WithAutomaticRenomination(time.Second),
+			"WithInterfaceFilter":                    WithInterfaceFilter(func(string) bool { return true }),
+			"WithLoggerFactory":                      WithLoggerFactory(nil),
 		}
 
 		for name, opt := range nonUpdatableOptions {

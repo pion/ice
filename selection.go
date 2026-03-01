@@ -15,8 +15,12 @@ type pairCandidateSelector interface {
 	Start()
 	ContactCandidates()
 	PingCandidate(local, remote Candidate)
+	// Deprecated: use handleSuccessResponse instead, which returns a boolean indicating if the response was
+	// successfully handled
 	HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr)
 	HandleBindingRequest(m *stun.Message, local, remote Candidate)
+
+	handleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) bool
 }
 
 type controllingSelector struct {
@@ -103,17 +107,32 @@ func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 }
 
 func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) { //nolint:cyclop
-	s.agent.sendBindingSuccess(message, local, remote)
-
 	pair := s.agent.findPair(local, remote)
+	if pair != nil {
+		pair.UpdateRequestReceived()
+	}
 
+	if s.agent.userBindingReqErrorRespHandler != nil {
+		bindingErrorResponse := s.agent.userBindingReqErrorRespHandler(message, local, remote, pair)
+		if bindingErrorResponse != nil {
+			s.agent.sendBindingError(message, local, remote, *bindingErrorResponse)
+
+			return
+		}
+	}
+
+	newPairAdded := false
 	if pair == nil {
 		pair = s.agent.addPair(local, remote)
+		newPairAdded = true
 		pair.UpdateRequestReceived()
+	}
 
+	s.agent.sendBindingSuccess(message, local, remote)
+
+	if newPairAdded {
 		return
 	}
-	pair.UpdateRequestReceived()
 
 	if pair.state == CandidatePairStateSucceeded && s.nominatedPair == nil && s.agent.getSelectedPair() == nil {
 		bestPair := s.agent.getBestAvailableCandidatePair()
@@ -138,11 +157,17 @@ func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local,
 }
 
 func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
-	ok, pendingRequest, rtt := s.agent.handleInboundBindingSuccess(m.TransactionID)
+	s.handleSuccessResponse(m, local, remote, remoteAddr)
+}
+
+func (s *controllingSelector) handleSuccessResponse(
+	m *stun.Message, local, remote Candidate, remoteAddr net.Addr,
+) bool {
+	ok, pendingRequest, rtt := s.agent.consumePendingBindingRequest(m.TransactionID, remoteAddr)
 	if !ok {
 		s.log.Warnf("Discard success response from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
 
-		return
+		return false
 	}
 
 	transactionAddr := pendingRequest.destination
@@ -156,7 +181,7 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 			remote,
 		)
 
-		return
+		return false
 	}
 
 	s.log.Tracef("Inbound STUN (SuccessResponse) from %s to %s", remote, local)
@@ -166,7 +191,7 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 		// This shouldn't happen
 		s.log.Error("Success response from invalid candidate pair")
 
-		return
+		return false
 	}
 
 	pair.state = CandidatePairStateSucceeded
@@ -188,6 +213,8 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 	}
 
 	pair.UpdateRoundTripTime(rtt)
+
+	return true
 }
 
 func (s *controllingSelector) PingCandidate(local, remote Candidate) {
@@ -355,6 +382,10 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 }
 
 func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+	s.handleSuccessResponse(m, local, remote, remoteAddr)
+}
+
+func (s *controlledSelector) handleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) bool {
 	//nolint:godox
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
@@ -363,11 +394,11 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 	// request with an appropriate error code response (e.g., 400)
 	// [RFC5389].
 
-	ok, pendingRequest, rtt := s.agent.handleInboundBindingSuccess(m.TransactionID)
+	ok, pendingRequest, rtt := s.agent.consumePendingBindingRequest(m.TransactionID, remoteAddr)
 	if !ok {
 		s.log.Warnf("Discard message from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
 
-		return
+		return false
 	}
 
 	transactionAddr := pendingRequest.destination
@@ -381,7 +412,7 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 			remote,
 		)
 
-		return
+		return false
 	}
 
 	s.log.Tracef("Inbound STUN (SuccessResponse) from %s to %s", remote, local)
@@ -391,7 +422,7 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 		// This shouldn't happen
 		s.log.Error("Success response from invalid candidate pair")
 
-		return
+		return false
 	}
 
 	pair.state = CandidatePairStateSucceeded
@@ -407,14 +438,29 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 	}
 
 	pair.UpdateRoundTripTime(rtt)
+
+	return true
 }
 
 func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) { //nolint:cyclop
 	pair := s.agent.findPair(local, remote)
+	if pair != nil {
+		pair.UpdateRequestReceived()
+	}
+
+	if s.agent.userBindingReqErrorRespHandler != nil {
+		bindingErrorResponse := s.agent.userBindingReqErrorRespHandler(message, local, remote, pair)
+		if bindingErrorResponse != nil {
+			s.agent.sendBindingError(message, local, remote, *bindingErrorResponse)
+
+			return
+		}
+	}
+
 	if pair == nil {
 		pair = s.agent.addPair(local, remote)
+		pair.UpdateRequestReceived()
 	}
-	pair.UpdateRequestReceived()
 
 	if message.Contains(stun.AttrUseCandidate) || message.Contains(s.agent.nominationAttribute) { //nolint:nestif
 		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5

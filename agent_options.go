@@ -960,3 +960,40 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 		return nil
 	}
 }
+
+// WithConsentFreshnessTimeout sets how long consent remains valid without an authenticated, non-error
+// STUN Binding response.
+// A timeout of 0 disables consent freshness expiry.
+func WithConsentFreshnessTimeout(timeout time.Duration) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.consentFreshnessTimeout = timeout
+
+		return nil
+	}
+}
+
+// WithBindingRequestErrorResponseHandler sets a handler to return an optional STUN Binding Error response
+// for inbound STUN Binding Requests.
+// It can be used to implement consent revocation by returning a Binding Error 403 (Forbidden) response
+// when the agent receives a binding request for an existing candidate pair.
+// Returning nil continues normal success handling.
+// Returning a non-nil response sends the configured ERROR-CODE and any additional attributes included
+// in ExtraAttributes.
+// Note: pair is nil when the binding request will create a new pair.
+func WithBindingRequestErrorResponseHandler(
+	handler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) *BindingRequestErrorResponse,
+) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.userBindingReqErrorRespHandler = handler
+
+		return nil
+	}
+}

@@ -175,6 +175,17 @@ type Agent struct {
 	lastRenominationTime  time.Time
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
+
+	// How long consent remains valid without an authenticated non-error STUN Binding response.
+	consentFreshnessTimeout time.Duration
+
+	// Timestamp of the last consent refresh for the selected candidate pair.
+	lastConsentAt time.Time
+
+	// Callback that allows user to send an error response for inbound STUN Binding Requests before success is emitted.
+	// Returning nil continues normal success handling.
+	userBindingReqErrorRespHandler func(
+		m *stun.Message, local, remote Candidate, pair *CandidatePair) *BindingRequestErrorResponse
 }
 
 // NewAgent creates a new Agent.
@@ -378,6 +389,8 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		automaticRenomination:           false,
 		renominationInterval:            3 * time.Second, // Default matching libwebrtc
 		turnClientFactory:               defaultTurnClient,
+		userBindingReqErrorRespHandler:  config.BindingRequestErrorResponseHandler,
+		consentFreshnessTimeout:         defaultConsentFreshnessTimeout,
 	}
 
 	config.initWithDefaults(agent)
@@ -750,6 +763,7 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 	if pair == nil {
 		var nilPair *CandidatePair
 		a.selectedPair.Store(nilPair)
+		a.lastConsentAt = time.Time{}
 		a.log.Tracef("Unset selected candidate pair")
 
 		return
@@ -757,6 +771,7 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 
 	pair.nominated = true
 	a.selectedPair.Store(pair)
+	a.lastConsentAt = time.Now()
 	a.log.Tracef("Set selected candidate pair: %s", pair)
 
 	// Signal connected: notify any Connect() calls waiting on onConnected
@@ -767,6 +782,15 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 
 	// Notify when the selected candidate pair changes
 	a.selectedCandidatePairNotifier.EnqueueSelectedCandidatePair(pair)
+}
+
+// consentExpired checks if the consent freshness has expired for the selected candidate pair.
+func (a *Agent) consentExpired(now time.Time) bool {
+	if a.consentFreshnessTimeout <= 0 || a.lastConsentAt.IsZero() {
+		return false
+	}
+
+	return now.Sub(a.lastConsentAt) > a.consentFreshnessTimeout
 }
 
 func (a *Agent) pingAllCandidates() {
@@ -882,6 +906,14 @@ func (a *Agent) findPair(local, remote Candidate) *CandidatePair {
 func (a *Agent) validateSelectedPair() bool {
 	selectedPair := a.getSelectedPair()
 	if selectedPair == nil {
+		return false
+	}
+
+	now := time.Now()
+	if a.consentExpired(now) {
+		a.log.Warnf("Consent expired for selected pair after %v without valid response", a.consentFreshnessTimeout)
+		a.updateConnectionState(ConnectionStateFailed)
+
 		return false
 	}
 
@@ -1412,6 +1444,28 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	}
 }
 
+func (a *Agent) sendBindingError(
+	m *stun.Message, local, remote Candidate, bindingErrorResponse BindingRequestErrorResponse,
+) {
+	setters := make([]stun.Setter, 0, len(bindingErrorResponse.ExtraAttributes)+5)
+	setters = append(setters, m, stun.BindingError)
+	setters = append(setters, bindingErrorResponse.ErrorCodeAttribute)
+	setters = append(setters, bindingErrorResponse.ExtraAttributes...)
+	setters = append(setters,
+		stun.NewShortTermIntegrity(a.localPwd),
+		stun.Fingerprint,
+	)
+
+	if out, err := stun.Build(setters...); err != nil {
+		a.log.Warnf("Failed to send binding error response from: %s to: %s error: %s", local, remote, err)
+	} else {
+		if pair := a.findPair(local, remote); pair != nil {
+			pair.UpdateResponseSent()
+		}
+		a.sendSTUN(out, local, remote)
+	}
+}
+
 // Removes pending binding requests that are over maxBindingRequestTimeout old
 //
 // Let HTO be the transaction timeout, which SHOULD be 2*RTT if
@@ -1433,12 +1487,19 @@ func (a *Agent) invalidatePendingBindingRequests(filterTime time.Time) {
 	}
 }
 
-// Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
-// If the bindingRequest was valid remove it from our pending cache.
-func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bool, *bindingRequest, time.Duration) {
+// consumePendingBindingRequest validates that the passed TransactionID and remote address match a pending binding
+// request. If a match is found, the binding request is removed from the pending cache and returned along with how
+// long ago it was sent. If no match is found, nil is returned.
+func (a *Agent) consumePendingBindingRequest(
+	id [stun.TransactionIDSize]byte, remoteAddr net.Addr,
+) (bool, *bindingRequest, time.Duration) {
 	a.invalidatePendingBindingRequests(time.Now())
 	for i := range a.pendingBindingRequests {
 		if a.pendingBindingRequests[i].transactionID == id {
+			if !addrEqual(a.pendingBindingRequests[i].destination, remoteAddr) {
+				return false, nil, 0
+			}
+
 			validBindingRequest := a.pendingBindingRequests[i]
 			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
 
@@ -1481,7 +1542,7 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 }
 
 // handleInbound processes STUN traffic from a remote candidate.
-func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) { // nolint:cyclop
 	if msg == nil || local == nil {
 		return
 	}
@@ -1504,6 +1565,10 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 		if remoteCandidate, ok = a.handleInboundRequest(remoteCandidate, local, remote, msg); !ok {
 			return
 		}
+	case stun.ClassErrorResponse:
+		if !a.handleInboundErrorResponse(remoteCandidate, local, remote, msg) {
+			return
+		}
 	default:
 	}
 
@@ -1516,7 +1581,8 @@ func canHandleInbound(msg *stun.Message) bool {
 	return msg.Type.Method == stun.MethodBinding &&
 		(msg.Type.Class == stun.ClassSuccessResponse ||
 			msg.Type.Class == stun.ClassRequest ||
-			msg.Type.Class == stun.ClassIndication)
+			msg.Type.Class == stun.ClassIndication ||
+			msg.Type.Class == stun.ClassErrorResponse)
 }
 
 func (a *Agent) handleInboundResponse(
@@ -1534,9 +1600,17 @@ func (a *Agent) handleInboundResponse(
 		return false
 	}
 
-	a.getSelector().HandleSuccessResponse(msg, local, remoteCandidate, remote)
+	handled := a.getSelector().handleSuccessResponse(msg, local, remoteCandidate, remote)
 
-	return true
+	if handled {
+		if selectedPair := a.getSelectedPair(); selectedPair != nil &&
+			selectedPair.Local.Equal(local) && selectedPair.Remote.Equal(remoteCandidate) {
+			// Note consent freshness
+			a.lastConsentAt = time.Now()
+		}
+	}
+
+	return handled
 }
 
 func (a *Agent) handleInboundRequest(
@@ -1600,6 +1674,54 @@ func (a *Agent) handleInboundRequest(
 	a.getSelector().HandleBindingRequest(msg, local, remoteCandidate)
 
 	return remoteCandidate, true
+}
+
+func (a *Agent) handleInboundErrorResponse(
+	remoteCandidate, _ Candidate, remoteAddr net.Addr, msg *stun.Message,
+) bool { // nolint:unparam
+	if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
+		a.log.Warnf("Discard error response with broken integrity from (%s), %v", remoteAddr, err)
+
+		return false
+	}
+
+	if remoteCandidate == nil {
+		a.log.Warnf("Discard error response from (%s), no such remote", remoteAddr)
+
+		return false
+	}
+
+	ok, pendingRequest, _ := a.consumePendingBindingRequest(msg.TransactionID, remoteAddr)
+	if !ok {
+		a.log.Warnf("Discard error response from (%s), unknown TransactionID 0x%x or address mismatch",
+			remoteAddr, msg.TransactionID)
+
+		return false
+	}
+	_ = pendingRequest
+
+	errorCode := stun.ErrorCodeAttribute{}
+	if err := errorCode.GetFrom(msg); err != nil {
+		a.log.Debugf("Discard error response from (%s), no valid ERROR-CODE attribute: %v", remoteAddr, err)
+
+		return false
+	}
+
+	// Return true after successfully validating and accounting for an error response that doesn't immediately fail
+	// the agent, and false for cases where the error response should be discarded or indicates a fatal condition that
+	// should fail the agent.
+	switch errorCode.Code {
+	case stun.CodeForbidden:
+		a.log.Warnf("Received authenticated STUN 403 (Forbidden); revoking consent for %s", remoteAddr)
+		a.updateConnectionState(ConnectionStateFailed)
+
+		return false
+
+	default:
+		a.log.Debugf("Received authenticated STUN error response %d from %s", errorCode.Code, remoteAddr)
+
+		return false
+	}
 }
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,

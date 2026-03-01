@@ -452,12 +452,10 @@ func TestTURNConcurrency(t *testing.T) {
 		require.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := dtls.Listen(
+		serverListener, err := dtls.ListenWithOptions(
 			"udp",
 			&net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: serverPort},
-			&dtls.Config{
-				Certificates: []tls.Certificate{certificate},
-			},
+			dtls.WithCertificates(certificate),
 		)
 		require.NoError(t, err)
 

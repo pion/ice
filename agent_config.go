@@ -56,6 +56,10 @@ const (
 
 	// maxBindingRequestTimeout is the wait time before binding requests can be deleted.
 	maxBindingRequestTimeout = 4000 * time.Millisecond
+
+	// defaultConsentFreshnessTimeout is the maximum time consent can remain valid
+	// without an authenticated, non-error STUN Binding response.
+	defaultConsentFreshnessTimeout = 30 * time.Second
 )
 
 func defaultCandidateTypes() []CandidateType {
@@ -226,6 +230,29 @@ type AgentConfig struct {
 	// switched to that irrespective of relative priority between current selected pair
 	// and priority of the pair being switched to.
 	EnableUseCandidateCheckPriority bool
+
+	// ConsentFreshnessTimeout determines how long consent remains valid without an authenticated,
+	// non-error STUN Binding response.
+	// When this is nil, it defaults to 30 seconds. A timeout of 0 disables consent freshness expiry.
+	ConsentFreshnessTimeout *time.Duration
+
+	// BindingRequestErrorResponseHandler allows applications to send an error response for individual
+	// inbound STUN Binding Requests before a success response is emitted.
+	// It can be used to implement consent revocation by returning a Binding Error 403 (Forbidden)
+	// response when the agent receives a binding request for an existing candidate pair.
+	// Returning nil continues normal handling and sends a success response.
+	// Returning a non-nil BindingRequestErrorResponse causes the agent to send an authenticated
+	// STUN Binding Error response with the provided code/reason and optional extra attributes.
+	// Note: pair is nil when the binding request will create a new pair.
+	BindingRequestErrorResponseHandler func(m *stun.Message, local, remote Candidate,
+		pair *CandidatePair) *BindingRequestErrorResponse
+}
+
+// BindingRequestErrorResponse defines the STUN Binding Error response emitted
+// for an inbound STUN Binding Request.
+type BindingRequestErrorResponse struct {
+	ErrorCodeAttribute stun.ErrorCodeAttribute
+	ExtraAttributes    []stun.Setter
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset.
@@ -288,6 +315,12 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 		agent.keepaliveInterval = defaultKeepaliveInterval
 	} else {
 		agent.keepaliveInterval = *config.KeepaliveInterval
+	}
+
+	if config.ConsentFreshnessTimeout == nil {
+		agent.consentFreshnessTimeout = defaultConsentFreshnessTimeout
+	} else {
+		agent.consentFreshnessTimeout = *config.ConsentFreshnessTimeout
 	}
 
 	if config.CheckInterval == nil {

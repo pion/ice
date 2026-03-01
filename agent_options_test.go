@@ -160,6 +160,7 @@ func TestWithTimeoutOptions(t *testing.T) {
 		WithFailedTimeout(20*time.Second),
 		WithKeepaliveInterval(3*time.Second),
 		WithCheckInterval(150*time.Millisecond),
+		WithConsentFreshnessTimeout(40*time.Second),
 	)
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
@@ -168,6 +169,7 @@ func TestWithTimeoutOptions(t *testing.T) {
 	assert.Equal(t, 20*time.Second, agent.failedTimeout)
 	assert.Equal(t, 3*time.Second, agent.keepaliveInterval)
 	assert.Equal(t, 150*time.Millisecond, agent.checkInterval)
+	assert.Equal(t, 40*time.Second, agent.consentFreshnessTimeout)
 }
 
 func TestWithAcceptanceWaitOptions(t *testing.T) {
@@ -1680,4 +1682,64 @@ func (n *stubNet) CreateDialer(dialer *net.Dialer) transport.Dialer {
 
 func (n *stubNet) CreateListenConfig(listenerConfig *net.ListenConfig) transport.ListenConfig {
 	return nil
+}
+
+func TestWithBindingRequestErrorResponseHandler(t *testing.T) {
+	t.Run("sets binding error response handler", func(t *testing.T) {
+		handlerCalled := false
+		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) *BindingRequestErrorResponse {
+			handlerCalled = true
+
+			// Consent revocation should be sent by returning a Binding Error 403 (Forbidden).
+			return &BindingRequestErrorResponse{
+				ErrorCodeAttribute: stun.ErrorCodeAttribute{Code: stun.CodeForbidden, Reason: []byte("Forbidden")},
+			}
+		}
+
+		agent, err := NewAgentWithOptions(WithBindingRequestErrorResponseHandler(handler))
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.userBindingReqErrorRespHandler)
+
+		if agent.userBindingReqErrorRespHandler != nil {
+			agent.userBindingReqErrorRespHandler(nil, nil, nil, nil)
+			assert.True(t, handlerCalled)
+		}
+	})
+
+	t.Run("default is nil", func(t *testing.T) {
+		agent, err := NewAgentWithOptions()
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.Nil(t, agent.userBindingReqErrorRespHandler)
+	})
+
+	t.Run("works with config", func(t *testing.T) {
+		handlerCalled := false
+		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) *BindingRequestErrorResponse {
+			handlerCalled = true
+
+			return &BindingRequestErrorResponse{
+				ErrorCodeAttribute: stun.ErrorCodeAttribute{Code: stun.CodeForbidden, Reason: []byte("Forbidden")},
+			}
+		}
+
+		config := &AgentConfig{
+			NetworkTypes:                       []NetworkType{NetworkTypeUDP4},
+			BindingRequestErrorResponseHandler: handler,
+		}
+
+		agent, err := NewAgent(config)
+		assert.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+
+		assert.NotNil(t, agent.userBindingReqErrorRespHandler)
+
+		if agent.userBindingReqErrorRespHandler != nil {
+			agent.userBindingReqErrorRespHandler(nil, nil, nil, nil)
+			assert.True(t, handlerCalled)
+		}
+	})
 }

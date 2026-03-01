@@ -29,7 +29,16 @@ const (
 	selectionTestPassword    = "pwd"
 	selectionTestRemoteUfrag = "remote"
 	selectionTestLocalUfrag  = "local"
+	selectionTestCustomAttr  = stun.AttrType(0xC001)
 )
+
+type selectionTestCustomErrorAttributeSetter struct{}
+
+func (selectionTestCustomErrorAttributeSetter) AddTo(m *stun.Message) error {
+	m.Add(selectionTestCustomAttr, []byte("custom-attr"))
+
+	return nil
+}
 
 func sendUntilDone(t *testing.T, writingConn, readingConn net.Conn, maxAttempts int) bool {
 	t.Helper()
@@ -168,6 +177,86 @@ func TestBindingRequestHandler(t *testing.T) {
 	closePipe(t, controllingConn, controlledConn)
 }
 
+func TestBindingRequestErrorResponseHandler(t *testing.T) {
+	testCases := []struct {
+		name          string
+		buildSelector func(*Agent) pairCandidateSelector
+	}{
+		{
+			name: "controlledSelector",
+			buildSelector: func(agent *Agent) pairCandidateSelector {
+				return &controlledSelector{agent: agent, log: agent.log}
+			},
+		},
+		{
+			name: "controllingSelector",
+			buildSelector: func(agent *Agent) pairCandidateSelector {
+				return &controllingSelector{agent: agent, log: agent.log}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, err := NewAgent(&AgentConfig{
+				BindingRequestErrorResponseHandler: func(
+					_ *stun.Message, _, _ Candidate, _ *CandidatePair,
+				) *BindingRequestErrorResponse {
+					return &BindingRequestErrorResponse{
+						ErrorCodeAttribute: stun.ErrorCodeAttribute{
+							Code:   stun.CodeForbidden,
+							Reason: []byte("Forbidden"),
+						},
+						ExtraAttributes: []stun.Setter{selectionTestCustomErrorAttributeSetter{}},
+					}
+				},
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, agent.Close()) }()
+
+			local, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "127.0.0.1",
+				Port:      12345,
+				Component: ComponentRTP,
+			})
+			require.NoError(t, err)
+
+			remote, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "127.0.0.1",
+				Port:      54321,
+				Component: ComponentRTP,
+			})
+			require.NoError(t, err)
+
+			mockConn := &mockPacketConnWithCapture{}
+			local.conn = mockConn
+
+			selector := tc.buildSelector(agent)
+			selector.Start()
+
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID)
+			require.NoError(t, err)
+
+			selector.HandleBindingRequest(msg, local, remote)
+
+			require.Len(t, mockConn.sentPackets, 1)
+
+			out := &stun.Message{Raw: mockConn.sentPackets[0]}
+			require.NoError(t, out.Decode())
+			require.Equal(t, stun.MethodBinding, out.Type.Method)
+			require.Equal(t, stun.ClassErrorResponse, out.Type.Class)
+
+			errorCode := stun.ErrorCodeAttribute{}
+			require.NoError(t, errorCode.GetFrom(out))
+			require.Equal(t, stun.CodeForbidden, errorCode.Code)
+			require.True(t, out.Contains(selectionTestCustomAttr))
+			require.Empty(t, agent.checklist)
+		})
+	}
+}
+
 // copied from pion/webrtc's peerconnection_go_test.go.
 type testICELogger struct {
 	lastErrorMessage string
@@ -266,15 +355,18 @@ func bareAgentForPing() *Agent {
 
 		connectionStateNotifier: &handlerNotifier{
 			done:                make(chan struct{}),
-			connectionStateFunc: func(ConnectionState) {}}, //nolint formatting
+			connectionStateFunc: func(ConnectionState) {},
+		}, //nolint formatting
 
 		candidateNotifier: &handlerNotifier{
 			done:          make(chan struct{}),
-			candidateFunc: func(Candidate) {}}, //nolint formatting
+			candidateFunc: func(Candidate) {},
+		}, //nolint formatting
 
 		selectedCandidatePairNotifier: &handlerNotifier{
 			done:              make(chan struct{}),
-			candidatePairFunc: func(*CandidatePair) {}}, //nolint formatting
+			candidatePairFunc: func(*CandidatePair) {},
+		}, //nolint formatting
 	}
 }
 
@@ -1304,7 +1396,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.NoError(t, err)
 
 		// Handle the success response - this should switch to pair2
-		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addr())
+		selector.handleSuccessResponse(successMsg, local2, remote, remote.addr())
 
 		// The controlling agent should have switched to pair2
 		selectedPair := agent.getSelectedPair()
@@ -1384,7 +1476,7 @@ func TestControllingSideRenomination(t *testing.T) {
 
 		// Handle the success response - this should NOT switch since it's standard nomination
 		// and a pair is already selected
-		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addr())
+		selector.handleSuccessResponse(successMsg, local2, remote, remote.addr())
 
 		// The controlling agent should remain with pair1
 		selectedPair := agent.getSelectedPair()

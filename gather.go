@@ -920,19 +920,21 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 					return
 				}
 
-				conn, connectErr := dtls.Client(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(), &dtls.Config{
-					ServerName:         url.Host,
-					InsecureSkipVerify: a.insecureSkipVerify, //nolint:gosec
-					LoggerFactory:      a.loggerFactory,
-				})
+				conn, connectErr := dtls.ClientWithOptions(
+					&fakenet.PacketConn{Conn: udpConn},
+					udpConn.RemoteAddr(),
+					dtls.WithServerName(url.Host),
+					dtls.WithInsecureSkipVerify(a.insecureSkipVerify), //nolint:gosec
+					dtls.WithLoggerFactory(a.loggerFactory),
+				)
 				if connectErr != nil {
-					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
+					a.log.Warnf("Failed to create DTLS client: %s: %v", turnServerAddr, connectErr)
 
 					return
 				}
 
 				if connectErr = conn.HandshakeContext(ctx); connectErr != nil {
-					a.log.Warnf("Failed to create DTLS client: %v", turnServerAddr, connectErr)
+					a.log.Warnf("Failed to create DTLS client: %s: %v", turnServerAddr, connectErr)
 
 					return
 				}
