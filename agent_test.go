@@ -482,6 +482,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 
 			local.addRemoteCandidateCache(prflx, remote)
 			oldPriority := pair.priority()
+			pair.consentStartedAt = time.Now()
+			agent.revokeConsent(pair)
 
 			srflx, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{Network: "udp", Address: "172.17.0.3", Port: 999, Component: 1, RelAddr: "0.0.0.0", RelPort: 0})
 			require.NoError(t, err)
@@ -495,6 +497,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			updatedPair := agent.findPair(local, srflx)
 			require.NotNil(t, updatedPair)
 			require.NotSame(t, pair, updatedPair)
+			require.True(t, updatedPair.consentRevoked)
+			require.Equal(t, pair.consentStartedAt, updatedPair.consentStartedAt)
 			require.Equal(t, srflx, updatedPair.Remote)
 			require.Equal(t, oldPriority, updatedPair.priority())
 			require.Equal(t, prflx, pair.Remote)
@@ -1162,7 +1166,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 			agent.selector.Start()
 			agent.localCandidates[local.NetworkType()] = append(agent.localCandidates[local.NetworkType()], local)
 			agent.addRemoteCandidate(remoteCandidate) //nolint:contextcheck
-			agent.pendingBindingRequests = []bindingRequest{{timestamp: time.Now(), transactionID: transactionID, destination: remoteAddr, networkType: remoteCandidate.NetworkType()}}
+			agent.pendingBindingRequests = []bindingRequest{{timestamp: time.Now(), transactionID: transactionID, source: local.addrPort(), destination: remoteAddr, networkType: remoteCandidate.NetworkType()}}
 			agent.remotePwd = remotePwd
 		}))
 
@@ -1327,6 +1331,8 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 
 	<-isChecking
 	<-isConnected
+	// Stop the peer so consent responses cannot keep the connection alive.
+	require.NoError(t, bAgent.Close())
 	<-isDisconnected
 	<-isFailed
 
@@ -1704,6 +1710,8 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	}))
 
 	connect(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
+	// Stop the peer so consent responses cannot keep the connection alive.
+	require.NoError(t, bAgent.Close())
 	<-isFailed
 
 	done := make(chan struct{})
@@ -2378,7 +2386,9 @@ func TestValidateSelectedPairTransitions(t *testing.T) {
 
 	remote.setLastReceived(time.Now().Add(-3 * time.Second))
 
-	agent.selectedPair.Store(newCandidatePair(local, remote, true))
+	pair := newCandidatePair(local, remote, true)
+	pair.consentStartedAt = time.Now()
+	agent.selectedPair.Store(pair)
 
 	require.True(t, agent.validateSelectedPair())
 	require.Equal(t, ConnectionStateDisconnected, agent.connectionState)
@@ -2752,41 +2762,26 @@ func TestAddingCandidatesFromOtherGenerations(t *testing.T) {
 	require.Equal(t, agent.gatherGeneration, generation)
 }
 
-func TestAlwaysSentKeepAlive(t *testing.T) { //nolint:cyclop
-	defer test.CheckRoutines(t)()
+func TestAlwaysSentKeepAlive(t *testing.T) {
+	for _, interval := range []time.Duration{0, time.Millisecond} {
+		t.Run(interval.String(), func(t *testing.T) {
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(interval))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, agent.Close()) })
+			local := newHostLocal(t)
+			packets := &mockPacketConnWithCapture{}
+			local.conn = packets
+			pair := agent.addPair(local, newHostRemote(t))
+			pair.state = CandidatePairStateSucceeded
+			pair.UpdateRoundTripTime(time.Millisecond)
+			agent.setSelectedPair(pair)
 
-	// Avoid deadlocks?
-	defer test.TimeOut(1 * time.Second).Stop()
-
-	agent, err := NewAgent()
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, agent.Close())
-	}()
-
-	log := logging.NewDefaultLoggerFactory().NewLogger("agent")
-	agent.selector = &controllingSelector{agent: agent, log: log}
-	pair := makeCandidatePair(t)
-	s, ok := pair.Local.(*CandidateHost)
-	require.True(t, ok)
-	s.conn = &fakenet.MockPacketConn{}
-	agent.setSelectedPair(pair)
-
-	pair.Remote.seen(false)
-
-	lastSent := pair.Local.LastSent()
-	agent.checkKeepalive()
-	newLastSent := pair.Local.LastSent()
-	require.NotEqual(t, lastSent, newLastSent)
-	lastSent = newLastSent
-
-	// Wait for enough time to pass so there is difference in sent time of local candidate.
-	require.Eventually(t, func() bool {
-		agent.checkKeepalive()
-		newLastSent = pair.Local.LastSent()
-
-		return !lastSent.Equal(newLastSent)
-	}, 1*time.Second, 50*time.Millisecond)
+			for sent := 1; sent <= 2; sent++ {
+				agent.checkKeepalive()
+				require.Len(t, packets.sentPackets, sent)
+			}
+		})
+	}
 }
 
 func TestRoleConflict(t *testing.T) {
@@ -3327,22 +3322,27 @@ func TestMDNSLocalAddressFromTCPMux(t *testing.T) {
 }
 
 func TestAgentGetBestValidCandidatePair(t *testing.T) {
-	f := setupTestAgentGetBestValidCandidatePair(t)
+	fixture := setupTestAgentGetBestValidCandidatePair(t)
 	defer func() {
-		require.NoError(t, f.sut.Close())
+		require.NoError(t, fixture.sut.Close())
 	}()
 
-	remoteCandidatesFromLowestPriorityToHighest := []Candidate{f.relayRemote, f.srflxRemote, f.prflxRemote, f.hostRemote}
+	remoteCandidatesFromLowestPriorityToHighest := []Candidate{fixture.relayRemote, fixture.srflxRemote, fixture.prflxRemote, fixture.hostRemote}
 
 	for _, remoteCandidate := range remoteCandidatesFromLowestPriorityToHighest {
-		candidatePair := f.sut.addPair(f.hostLocal, remoteCandidate)
+		candidatePair := fixture.sut.addPair(fixture.hostLocal, remoteCandidate)
 		candidatePair.state = CandidatePairStateSucceeded
 
-		actualBestPair := f.sut.getBestValidCandidatePair()
-		expectedBestPair := &CandidatePair{Remote: remoteCandidate, Local: f.hostLocal, state: CandidatePairStateSucceeded}
+		actualBestPair := fixture.sut.getBestValidCandidatePair()
+		expectedBestPair := &CandidatePair{Remote: remoteCandidate, Local: fixture.hostLocal, state: CandidatePairStateSucceeded}
 
 		require.Equal(t, actualBestPair.String(), expectedBestPair.String())
 	}
+
+	selected := fixture.sut.checklist[len(fixture.sut.checklist)-1]
+	fixture.sut.setSelectedPair(selected)
+	selected.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+	require.Nil(t, fixture.sut.getBestValidCandidatePair(), "expiry of the selected pair tears down all candidates")
 }
 
 func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {
@@ -4418,4 +4418,167 @@ func newHostLocal(t *testing.T) *CandidateHost {
 	require.NoError(t, err)
 
 	return hostLocal
+}
+
+func TestConsentNotEnforcedForICELite(t *testing.T) {
+	agent := &Agent{lite: true}
+	pair := makeCandidatePair(t)
+	agent.selectedPair.Store(pair)
+	pair.consentStartedAt = time.Now().Add(-time.Hour)
+	require.Zero(t, agent.nextConsentDeadline())
+	require.False(t, agent.consentExpired(pair))
+}
+
+func TestConsentExpiry(t *testing.T) {
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(0),
+		WithDisconnectedTimeout(0), WithFailedTimeout(0))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+	failed := make(chan struct{})
+	require.NoError(t, agent.OnConnectionStateChange(func(state ConnectionState) {
+		if state == ConnectionStateFailed {
+			close(failed)
+		}
+	}))
+	require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) {
+		local := newHostLocal(t)
+		local.conn = &mockPacketConnWithCapture{}
+		pair := agent.addPair(local, newHostRemote(t))
+		pair.state = CandidatePairStateSucceeded
+		agent.setRole(true)
+		agent.setSelectedPair(pair)
+		require.False(t, agent.consentExpired(pair))
+		require.Equal(t, pair.consentStartedAt.Add(30*time.Second), agent.nextConsentDeadline())
+		started := pair.consentStartedAt
+		agent.setSelectedPair(pair)
+		require.Equal(t, started, pair.consentStartedAt)
+
+		// Only successful responses renew consent; traffic and reselection do not.
+		pair.UpdateRoundTripTime(time.Millisecond)
+		pair.lastResponseReceivedAt.Store(time.Now().Add(-30*time.Second + 100*time.Millisecond))
+		deadline := agent.nextConsentDeadline()
+		agent.userBindingRequestHandler = func(*stun.Message, Candidate, Candidate, *CandidatePair) bool { return true }
+		agent.getSelector().HandleBindingRequest(stun.MustBuild(stun.BindingRequest, stun.TransactionID), local, pair.Remote)
+		pair.Remote.seen(false)
+		require.Equal(t, deadline, agent.nextConsentDeadline())
+		require.True(t, agent.validateSelectedPair())
+	}))
+	go agent.connectivityChecks()
+	agent.requestConnectivityCheck()
+	select {
+	case <-failed:
+	case <-time.After(time.Second):
+		require.FailNow(t, "consent timer did not fail the connection")
+	}
+}
+
+func TestConsentRevocationIsPairScoped(t *testing.T) {
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) {
+		local := newHostLocal(t)
+		selectedPackets := &mockPacketConnWithCapture{}
+		local.conn = selectedPackets
+		other, candidateErr := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: local.Address(), Port: local.Port() + 1, Component: 1,
+		})
+		require.NoError(t, candidateErr)
+		packets := &mockPacketConnWithCapture{}
+		other.conn = packets
+		remote := newHostRemote(t)
+		agent.remotePwd = "remote-password"
+		request := stun.MustBuild(stun.BindingRequest, stun.TransactionID)
+		response := stun.MustBuild(request, stun.BindingError,
+			stun.ErrorCodeAttribute{Code: stun.CodeForbidden},
+			stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+		// Unsolicited errors with no remote candidate or pair must be harmless.
+		agent.handleInbound(response, local, remote.addrPort()) //nolint:contextcheck
+		agent.addRemoteCandidate(remote)                        //nolint:contextcheck
+		agent.handleInbound(response, local, remote.addrPort()) //nolint:contextcheck
+		selected := agent.addPair(local, remote)
+		backup := agent.addPair(other, remote)
+		selected.state, backup.state = CandidatePairStateSucceeded, CandidatePairStateSucceeded
+		selected.UpdateRoundTripTime(time.Millisecond)
+		backup.UpdateRoundTripTime(time.Millisecond)
+		agent.setSelectedPair(selected)
+		agent.setRole(true)
+
+		agent.sendBindingRequest(stun.MustBuild(stun.BindingRequest, stun.TransactionID), local, remote)
+		agent.sendBindingRequest(request, other, remote)
+
+		// Even a matching transaction from the right remote must arrive on the right local socket.
+		agent.handleInbound(response, local, remote.addrPort()) //nolint:contextcheck
+		require.False(t, backup.consentRevoked)
+		require.Len(t, agent.pendingBindingRequests, 2)
+
+		agent.handleInbound(response, other, remote.addrPort()) //nolint:contextcheck
+		require.Equal(t, CandidatePairStateFailed, backup.state)
+		require.Same(t, selected, agent.getSelectedPair())
+		require.Len(t, agent.pendingBindingRequests, 1)
+
+		// Late successes, new checks and nominations cannot revive the revoked pair.
+		success := stun.MustBuild(request, stun.BindingSuccess,
+			stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+		agent.handleInbound(success, other, remote.addrPort()) //nolint:contextcheck
+		incoming := stun.MustBuild(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), stun.NewShortTermIntegrity(agent.localPwd))
+		agent.handleInbound(incoming, other, remote.addrPort()) //nolint:contextcheck
+		require.Len(t, packets.sentPackets, 2)
+		forbidden := &stun.Message{Raw: packets.sentPackets[1]}
+		require.NoError(t, forbidden.Decode())
+		require.Equal(t, stun.BindingError, forbidden.Type)
+		var code stun.ErrorCodeAttribute
+		require.NoError(t, code.GetFrom(forbidden))
+		require.Equal(t, stun.CodeForbidden, code.Code)
+		require.Equal(t, incoming.TransactionID, forbidden.TransactionID)
+		require.NoError(t, stun.NewShortTermIntegrity(agent.localPwd).Check(forbidden))
+		agent.sendBindingRequest(request, other, remote)
+		agent.setSelectedPair(backup)
+		require.Equal(t, CandidatePairStateFailed, backup.state)
+		require.Len(t, agent.pendingBindingRequests, 1)
+		require.Same(t, selected, agent.getSelectedPair())
+
+		// Expired consent also sends 403, before failing the selected connection.
+		selected.state = CandidatePairStateWaiting
+		selected.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+		agent.handleInbound(incoming, local, remote.addrPort()) //nolint:contextcheck
+		require.Len(t, selectedPackets.sentPackets, 2, "notify the peer before failing the connection")
+		require.Equal(t, ConnectionStateFailed, agent.connectionState)
+	}))
+}
+
+func TestConsentExpirySurvivesStateChanges(t *testing.T) {
+	for _, scenario := range []string{"role conflict", "custom selection"} {
+		t.Run(scenario, func(t *testing.T) {
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, agent.Close()) })
+			local, remote := newHostLocal(t), newHostRemote(t)
+			local.conn = &mockPacketConnWithCapture{}
+			pair := agent.addPair(local, remote)
+			agent.setRole(true)
+			if scenario == "role conflict" {
+				pair.state = CandidatePairStateSucceeded
+				pair.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
+				request := stun.MustBuild(stun.BindingRequest, stun.TransactionID, AttrControlling(agent.tieBreaker))
+				agent.sendBindingRequest(request, local, remote)
+				conflict := stun.MustBuild(request, stun.BindingError, stun.ErrorCodeAttribute{Code: stun.CodeRoleConflict},
+					stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+				require.True(t, agent.handleInboundErrorResponse(remote, local, remote.addrPort(), conflict))
+			} else {
+				// Custom handlers can select a pair before its first successful response.
+				agent.setSelectedPair(pair)
+				pair.consentStartedAt = time.Now().Add(-31 * time.Second)
+			}
+			require.Equal(t, CandidatePairStateWaiting, pair.state)
+			request := stun.MustBuild(stun.BindingRequest, stun.TransactionID)
+			agent.sendBindingRequest(request, local, remote)
+			success := stun.MustBuild(request, stun.BindingSuccess,
+				stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+			require.False(t, agent.handleInboundResponse(remote, local, remote.addrPort(), success))
+			require.True(t, pair.consentRevoked)
+		})
+	}
 }

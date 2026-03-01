@@ -55,6 +55,18 @@ type CandidatePair struct {
 	lastResponseReceivedAt  atomic.Value // time.Time
 	firstRequestReceivedAt  atomic.Value // time.Time
 	lastRequestReceivedAt   atomic.Value // time.Time
+
+	// Keep consent state after the stats to preserve 64-bit atomic alignment on 386.
+	consentRevoked   bool
+	consentStartedAt time.Time
+}
+
+func (p *CandidatePair) lastConsentAt() time.Time {
+	if lastResponse := p.LastResponseReceivedAt(); !lastResponse.IsZero() {
+		return lastResponse
+	}
+
+	return p.consentStartedAt
 }
 
 func (p *CandidatePair) String() string {

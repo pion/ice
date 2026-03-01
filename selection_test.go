@@ -362,6 +362,7 @@ func TestResponseSymmetric(t *testing.T) {
 	local := func(nt NetworkType) Candidate {
 		c := newPingNoIOCand()
 		c.candidateBase.networkType = nt
+		c.setResolvedAddr(&net.UDPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 10000})
 
 		return c
 	}
@@ -393,8 +394,9 @@ func TestResponseSymmetric(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := &bindingRequest{destination: tt.dest, networkType: tt.reqNetwork}
-			require.Equal(t, tt.want, responseSymmetric(req, local(tt.localNT), tt.remoteAddr))
+			candidate := local(tt.localNT)
+			req := &bindingRequest{source: candidate.addrPort(), destination: tt.dest, networkType: tt.reqNetwork}
+			require.Equal(t, tt.want, responseSymmetric(req, candidate, tt.remoteAddr))
 		})
 	}
 }
@@ -479,9 +481,13 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		pair.state = CandidatePairStateInProgress
 
 		resp := sendRequest(t, agent, local, remote)
+		other := newCand(NetworkTypeUDP4, "192.168.1.1", 10001)
+		selector.HandleSuccessResponse(resp, other, remote, remote.addrPort())
+		require.Len(t, agent.pendingBindingRequests, 1, "a response on another local socket must not consume the request")
 		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
 
 		require.Equal(t, CandidatePairStateSucceeded, pair.state, "pair must be marked succeeded when the response transport matches")
+		require.Empty(t, agent.pendingBindingRequests)
 	})
 }
 

@@ -35,6 +35,7 @@ type bindingRequest struct {
 	timestamp       time.Time
 	transactionID   [stun.TransactionIDSize]byte
 	destination     netip.AddrPort
+	source          netip.AddrPort
 	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
 	isControlling   bool        // Role advertised in this request.
 	isUseCandidate  bool
@@ -99,7 +100,7 @@ type Agent struct {
 	failedTimeout time.Duration
 
 	// How often should we send keepalive packets?
-	// 0 means never
+	// 0 disables extra keepalives, but not consent freshness checks.
 	keepaliveInterval time.Duration
 
 	// How often should we run our internal taskLoop to check for state changes when connecting
@@ -415,11 +416,13 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 	lastConnectionState := ConnectionState(0)
 	checkingDuration := time.Time{}
 	checkingTimeout := a.initialCheckingTimeout()
+	consentDeadline := time.Time{}
 
 	contact := func() {
 		if err := a.loop.Run(a.loop, func(_ context.Context) {
 			defer func() {
 				lastConnectionState = a.connectionState
+				consentDeadline = a.nextConsentDeadline()
 			}()
 
 			switch a.connectionState {
@@ -455,11 +458,12 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 	timer.Stop()
 
 	for {
+		// Consent checks continue at the default cadence even when keepalives are disabled.
 		interval := defaultKeepaliveInterval
 
 		updateInterval := func(x time.Duration) {
-			if x != 0 && (interval == 0 || interval > x) {
-				interval = x
+			if x != 0 {
+				interval = min(interval, x)
 			}
 		}
 
@@ -473,6 +477,10 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 		// Ensure we run our task loop as quickly as the minimum of our various configured timeouts
 		updateInterval(a.disconnectedTimeout)
 		updateInterval(a.failedTimeout)
+
+		if !consentDeadline.IsZero() {
+			updateInterval(max(time.Until(consentDeadline), time.Millisecond))
+		}
 
 		timer.Reset(interval)
 
@@ -531,6 +539,16 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 		a.log.Tracef("Unset selected candidate pair")
 
 		return
+	}
+
+	if pair.consentRevoked {
+		a.log.Debugf("Ignoring candidate pair selection because consent was revoked: %s", pair)
+
+		return
+	}
+
+	if pair.consentStartedAt.IsZero() {
+		pair.consentStartedAt = time.Now()
 	}
 
 	pair.nominated = true
@@ -620,19 +638,71 @@ func (a *Agent) getBestAvailableCandidatePair() *CandidatePair {
 
 func (a *Agent) getBestValidCandidatePair() *CandidatePair {
 	var best *CandidatePair
-	for _, p := range a.checklist {
-		if p.state != CandidatePairStateSucceeded {
+	for _, pair := range a.checklist {
+		if pair.state != CandidatePairStateSucceeded {
+			continue
+		}
+		if a.consentExpired(pair) {
+			a.revokeConsent(pair)
+			if a.connectionState == ConnectionStateFailed {
+				return nil
+			}
+
 			continue
 		}
 
-		if best == nil {
-			best = p
-		} else if best.priority() < p.priority() {
-			best = p
+		if best == nil || best.priority() < pair.priority() {
+			best = pair
 		}
 	}
 
 	return best
+}
+
+func (a *Agent) getPairForWrite() (*CandidatePair, error) {
+	// Keep the selected path outside the closure to avoid per-packet allocations.
+	if selected := a.getSelectedPair(); selected != nil {
+		if a.consentExpired(selected) {
+			return nil, ErrNoCandidatePairs
+		}
+
+		return selected, nil
+	}
+
+	var pair *CandidatePair
+	if err := a.loop.Run(a.loop, func(context.Context) {
+		pair = a.getBestValidCandidatePair()
+	}); err != nil {
+		return nil, err
+	}
+	if pair == nil {
+		return nil, ErrNoCandidatePairs
+	}
+
+	return pair, nil
+}
+
+func (a *Agent) getPairByIDForWrite(pairID uint64) (*CandidatePair, error) {
+	var pair *CandidatePair
+	var lookupErr error
+	if err := a.loop.Run(a.loop, func(context.Context) {
+		pair = a.pairsByID[pairID]
+		if pair == nil {
+			lookupErr = ErrCandidatePairNotFound
+
+			return
+		}
+		if a.consentExpired(pair) {
+			a.revokeConsent(pair)
+		}
+		if pair.state != CandidatePairStateSucceeded {
+			lookupErr = ErrCandidatePairNotSucceeded
+		}
+	}); err != nil {
+		return nil, err
+	}
+
+	return pair, lookupErr
 }
 
 func (a *Agent) addPair(local, remote Candidate) *CandidatePair {
@@ -655,11 +725,44 @@ func (a *Agent) findPair(local, remote Candidate) *CandidatePair {
 	return nil
 }
 
+func (a *Agent) nextConsentDeadline() time.Time {
+	pair := a.getSelectedPair()
+	if pair == nil || a.lite {
+		return time.Time{}
+	}
+
+	return pair.lastConsentAt().Add(consentFreshnessTimeout)
+}
+
+func (a *Agent) consentExpired(pair *CandidatePair) bool {
+	lastConsent := pair.lastConsentAt()
+
+	return !a.lite && !lastConsent.IsZero() && time.Since(lastConsent) >= consentFreshnessTimeout
+}
+
+func (a *Agent) revokeConsent(pair *CandidatePair) {
+	pair.consentRevoked = true
+	pair.state = CandidatePairStateFailed
+	a.pendingBindingRequests = slices.DeleteFunc(a.pendingBindingRequests, func(request bindingRequest) bool {
+		return responseSymmetric(&request, pair.Local, pair.Remote.addrPort())
+	})
+	if pair == a.getSelectedPair() {
+		a.updateConnectionState(ConnectionStateFailed)
+	}
+}
+
 // validateSelectedPair checks if the selected pair is (still) valid
 // Note: the caller should hold the agent lock.
 func (a *Agent) validateSelectedPair() bool {
 	selectedPair := a.getSelectedPair()
 	if selectedPair == nil {
+		return false
+	}
+
+	if a.consentExpired(selectedPair) {
+		a.log.Warnf("Consent expired for selected pair after %v without valid response", consentFreshnessTimeout)
+		a.revokeConsent(selectedPair)
+
 		return false
 	}
 
@@ -699,8 +802,7 @@ func (a *Agent) connectionStateForDisconnection(
 	}
 }
 
-// checkKeepalive sends STUN Binding Indications to the selected pair
-// if no packet has been sent on that pair in the last keepaliveInterval
+// checkKeepalive sends a STUN Binding request to refresh consent on the selected pair.
 // Note: the caller should hold the agent lock.
 func (a *Agent) checkKeepalive() {
 	selectedPair := a.getSelectedPair()
@@ -708,11 +810,8 @@ func (a *Agent) checkKeepalive() {
 		return
 	}
 
-	if a.keepaliveInterval != 0 {
-		// We use binding request instead of indication to support refresh consent schemas
-		// see https://tools.ietf.org/html/rfc7675
-		a.getSelector().PingCandidate(selectedPair.Local, selectedPair.Remote)
-	}
+	// Consent must be renewed even when optional keepalives are disabled.
+	a.getSelector().PingCandidate(selectedPair.Local, selectedPair.Remote)
 }
 
 // AddRemoteCandidate adds a new remote candidate.
@@ -953,6 +1052,8 @@ func replacePairRemote(pair *CandidatePair, remote Candidate) *CandidatePair {
 	replacement.state = pair.state
 	replacement.nominated = pair.nominated
 	replacement.nominateOnBindingSuccess = pair.nominateOnBindingSuccess
+	replacement.consentRevoked = pair.consentRevoked
+	replacement.consentStartedAt = pair.consentStartedAt
 
 	atomic.StoreInt64(&replacement.currentRoundTripTime, atomic.LoadInt64(&pair.currentRoundTripTime))
 	atomic.StoreInt64(&replacement.totalRoundTripTime, atomic.LoadInt64(&pair.totalRoundTripTime))
@@ -1481,18 +1582,23 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 		nominationValue = &nomination.Value
 	}
 
+	pair := a.findPair(local, remote)
+	if pair != nil && pair.consentRevoked {
+		return
+	}
 	a.invalidatePendingBindingRequests(time.Now())
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
 		timestamp:       time.Now(),
 		transactionID:   msg.TransactionID,
 		destination:     remote.addrPort(),
+		source:          local.addrPort(),
 		networkType:     remote.NetworkType(),
 		isControlling:   msg.Contains(stun.AttrICEControlling),
 		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
 		nominationValue: nominationValue,
 	})
 
-	if pair := a.findPair(local, remote); pair != nil {
+	if pair != nil {
 		pair.UpdateRequestSent()
 	} else {
 		a.log.Warnf("Failed to find pair for add binding request from %s to %s", local, remote)
@@ -1555,13 +1661,20 @@ func (a *Agent) invalidatePendingBindingRequests(filterTime time.Time) {
 	}
 }
 
-// Assert that the passed TransactionID is in our pendingBindingRequests and returns the destination
-// If the bindingRequest was valid remove it from our pending cache.
-func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bool, *bindingRequest, time.Duration) {
+// handleInboundBindingResponse consumes a pending request only when the transaction and addresses match.
+func (a *Agent) handleInboundBindingResponse(
+	id [stun.TransactionIDSize]byte, local Candidate, remote netip.AddrPort,
+) (bool, *bindingRequest, time.Duration) {
 	a.invalidatePendingBindingRequests(time.Now())
 	for i := range a.pendingBindingRequests {
 		if a.pendingBindingRequests[i].transactionID == id {
 			validBindingRequest := a.pendingBindingRequests[i]
+			if !responseSymmetric(&validBindingRequest, local, remote) {
+				a.log.Debugf("Discard response: expected (%s -> %s), actual (%s -> %s)",
+					validBindingRequest.source, validBindingRequest.destination, local.addrPort(), remote)
+
+				return false, nil, 0
+			}
 			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
 
 			return true, &validBindingRequest, time.Since(validBindingRequest.timestamp)
@@ -1660,11 +1773,23 @@ func (a *Agent) handleInboundResponse(
 		return false
 	}
 
+	if pair := a.findPair(local, remoteCandidate); pair != nil {
+		if pair.consentRevoked {
+			return false
+		}
+		if a.consentExpired(pair) {
+			a.revokeConsent(pair)
+
+			return false
+		}
+	}
+
 	a.getSelector().HandleSuccessResponse(msg, local, remoteCandidate, remote)
 
 	return true
 }
 
+//nolint:cyclop
 func (a *Agent) handleInboundRequest(
 	remoteCandidate, local Candidate, remote netip.AddrPort, msg *stun.Message,
 ) (remoteCand Candidate, ok bool) {
@@ -1727,6 +1852,19 @@ func (a *Agent) handleInboundRequest(
 		}
 	}
 
+	if pair := a.findPair(local, remoteCandidate); pair != nil &&
+		(pair.consentRevoked || a.consentExpired(pair)) {
+		if response, err := stun.Build(msg, stun.BindingError, stun.ErrorCodeAttribute{Code: stun.CodeForbidden},
+			stun.NewShortTermIntegrity(a.localPwd), stun.Fingerprint); err != nil {
+			a.log.Warnf("Failed to build consent revocation response: %v", err)
+		} else {
+			a.sendSTUN(response, local, remoteCandidate)
+		}
+		a.revokeConsent(pair)
+
+		return nil, false
+	}
+
 	// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
 	// keeping to maintain backwards compat
 	remoteTieBreaker := &AttrControl{}
@@ -1741,6 +1879,7 @@ func (a *Agent) handleInboundRequest(
 	return remoteCandidate, true
 }
 
+//nolint:cyclop
 func (a *Agent) handleInboundErrorResponse(
 	remoteCandidate, local Candidate, remote netip.AddrPort, msg *stun.Message,
 ) bool {
@@ -1761,30 +1900,35 @@ func (a *Agent) handleInboundErrorResponse(
 		return false
 	}
 
-	if errCode.Code != stun.CodeRoleConflict {
+	if errCode.Code != stun.CodeForbidden && errCode.Code != stun.CodeRoleConflict {
 		a.log.Debugf("Received STUN error response %d (%s) from %s", errCode.Code, errCode.Reason, remote)
 
 		return false
 	}
 
-	a.log.Warnf("Received role conflict error (487) from %s, switching role", remote)
+	var pair *CandidatePair
+	if remoteCandidate != nil {
+		pair = a.findPair(local, remoteCandidate)
+	}
+	if errCode.Code == stun.CodeForbidden && pair == nil {
+		return false
+	}
 
-	found, bindingReq, _ := a.handleInboundBindingSuccess(msg.TransactionID)
+	found, bindingReq, _ := a.handleInboundBindingResponse(msg.TransactionID, local, remote)
 	if !found {
-		a.log.Debugf("Received role conflict error for unknown transaction ID, ignoring")
+		a.log.Debugf("Received STUN error %d with no matching request, ignoring", errCode.Code)
 
 		return false
 	}
 
-	if !responseSymmetric(bindingReq, local, remote) {
-		a.log.Debugf(
-			"Discard message: transaction source and destination does not match expected(%s), actual(%s)",
-			bindingReq.destination,
-			remote,
-		)
+	if errCode.Code == stun.CodeForbidden {
+		a.log.Warnf("Received authenticated STUN 403; revoking consent for %s", pair)
+		a.revokeConsent(pair)
 
 		return false
 	}
+
+	a.log.Warnf("Received role conflict error (487) from %s, switching role", remote)
 
 	// The new role is determined by the role advertised in the request, not
 	// by the agent's current role. Other in-flight checks may have already
@@ -1799,12 +1943,13 @@ func (a *Agent) handleInboundErrorResponse(
 	a.log.Debugf("Switched ICE role %s → %s after receiving 487 error", oldRole, a.role())
 
 	// Re-enqueue the candidate pair in the triggered-check queue per RFC 8445 §7.2.5.1.
-	if remoteCandidate == nil {
+	switch {
+	case remoteCandidate == nil:
 		a.log.Warnf("Cannot re-enqueue candidate pair, remote candidate not found for %s", bindingReq.destination)
-	} else if pair := a.findPair(local, remoteCandidate); pair != nil {
+	case pair != nil:
 		pair.state = CandidatePairStateWaiting
 		pair.bindingRequestCount = 0
-	} else {
+	default:
 		a.log.Warnf("Cannot re-enqueue candidate pair for %s, not found in checklist", bindingReq.destination)
 	}
 
