@@ -1392,7 +1392,7 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 }
 
 // handleInbound processes STUN traffic from a remote candidate.
-func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) { //nolint:cyclop
 	if msg == nil || local == nil {
 		return
 	}
@@ -1410,20 +1410,20 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Add
 		if !a.handleInboundResponse(remoteCandidate, local, remote, msg) {
 			return
 		}
-
-		remoteCandidate.seen(false)
 	case stun.ClassRequest:
 		var ok bool
 		if remoteCandidate, ok = a.handleInboundRequest(remoteCandidate, local, remote, msg); !ok {
 			return
 		}
-
-		remoteCandidate.seen(false)
 	case stun.ClassErrorResponse:
 		a.handleInboundErrorResponse(remoteCandidate, local, remote, msg)
 
 		return
 	default:
+	}
+
+	if remoteCandidate != nil {
+		remoteCandidate.seen(false)
 	}
 }
 
