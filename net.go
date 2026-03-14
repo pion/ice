@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/pion/ice/v4/internal/netutil"
 	"github.com/pion/logging"
 	"github.com/pion/transport/v4"
 )
@@ -163,7 +164,7 @@ func listenUDPInPortRange(
 			return c, e //nolint:nilerr
 		}
 		log.Debugf("Failed to listen %s: %v", lAddr.String(), e)
-		if isInterfaceLevelError(e) {
+		if netutil.IsAddrUnavailable(e) {
 			return nil, e
 		}
 		portCurrent++
@@ -177,6 +178,3 @@ func listenUDPInPortRange(
 
 	return nil, ErrPort
 }
-
-// isInterfaceLevelError is implemented per-platform in
-// net_errno_unix.go and net_errno_windows.go.
