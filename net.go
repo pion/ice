@@ -34,7 +34,7 @@ func isSupportedIPv6Partial(ip net.IP) bool {
 }
 
 func isZeros(ip net.IP) bool {
-	for i := 0; i < len(ip); i++ {
+	for i := range ip {
 		if ip[i] != 0 {
 			return false
 		}

@@ -23,7 +23,6 @@ func TestTCPMux_Recv(t *testing.T) {
 		"no buffer":    0,
 		"buffered 4MB": 4 * 1024 * 1024,
 	} {
-		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
 			defer test.CheckRoutines(t)()
 

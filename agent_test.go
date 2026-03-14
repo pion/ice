@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -925,7 +924,7 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 		agent.addPair(hostLocal, srflxRemote)
 		candidatePair = agent.findPair(hostLocal, srflxRemote)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		candidatePair.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
 	}
 
@@ -1466,7 +1465,7 @@ func TestGetRemoteCandidates(t *testing.T) {
 
 	expectedCandidates := []Candidate{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",
@@ -1499,7 +1498,7 @@ func TestGetLocalCandidates(t *testing.T) {
 	dummyConn := &net.UDPConn{}
 	expectedCandidates := []Candidate{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",
@@ -2141,7 +2140,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 
 	dummyConn := &net.UDPConn{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",

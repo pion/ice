@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -179,7 +178,7 @@ func TestMultiUDPMux_GetConn_NoUDPMuxAvailable(t *testing.T) {
 
 	// Find a nearby port not in use
 	newPort := udpAddr.Port + 1
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if _, exists := inUse[newPort]; !exists {
 			break
 		}

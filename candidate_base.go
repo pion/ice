@@ -538,8 +538,8 @@ func (c *candidateBase) copy() (Candidate, error) {
 }
 
 func removeZoneIDFromAddress(addr string) string {
-	if i := strings.Index(addr, "%"); i != -1 {
-		return addr[:i]
+	if before, _, ok := strings.Cut(addr, "%"); ok {
+		return before
 	}
 
 	return addr

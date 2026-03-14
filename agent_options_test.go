@@ -698,7 +698,6 @@ func TestWith1To1CandidateIPOptions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			assertAddressRewriteOption(
 				t,
@@ -1484,7 +1483,6 @@ func TestAgentConfigNAT1To1IPs(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			stub := newStubNet(t)
 			config := tc.config

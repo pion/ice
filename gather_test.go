@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -92,7 +91,7 @@ func TestListenUDP(t *testing.T) {
 	total := portMax - portMin + 1
 	result := make([]int, 0, total)
 	portRange := make([]int, 0, total)
-	for i := 0; i < total; i++ {
+	for i := range total {
 		conn, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err, "listenUDP error with no port restriction")
 		require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
@@ -132,7 +131,7 @@ func TestGatherConcurrency(t *testing.T) {
 	}))
 
 	// Testing for panic
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_ = agent.GatherCandidates()
 	}
 
@@ -452,12 +451,10 @@ func TestTURNConcurrency(t *testing.T) {
 		require.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := dtls.Listen(
+		serverListener, err := dtls.ListenWithOptions(
 			"udp",
 			&net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: serverPort},
-			&dtls.Config{
-				Certificates: []tls.Certificate{certificate},
-			},
+			dtls.WithCertificates(certificate),
 		)
 		require.NoError(t, err)
 
@@ -1482,7 +1479,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 
 	var expectedPorts []int
 	var udpMuxInstances []UDPMux
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		port := randomPort(t)
 		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: port})
 		require.NoError(t, err)
@@ -2112,8 +2109,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 		conn:    newStubPacketConn(nil),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	t.Cleanup(func() {
 		agent.loop.Close()
 	})
@@ -2578,7 +2574,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 
 	var expectedPorts []int
 	var tcpMuxInstances []TCPMux
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		port := randomPort(t)
 		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 			IP:   net.IP{127, 0, 0, 1},
@@ -3056,7 +3052,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 
 	numSTUNS := 3
 	urls := []*stun.URI{}
-	for i := 0; i < numSTUNS; i++ {
+	for i := range numSTUNS {
 		urls = append(urls, &stun.URI{
 			Scheme: SchemeTypeSTUN,
 			Host:   localhostIPStr,

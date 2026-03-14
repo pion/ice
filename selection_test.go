@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -266,15 +265,18 @@ func bareAgentForPing() *Agent {
 
 		connectionStateNotifier: &handlerNotifier{
 			done:                make(chan struct{}),
-			connectionStateFunc: func(ConnectionState) {}}, //nolint formatting
+			connectionStateFunc: func(ConnectionState) {},
+		}, //nolint formatting
 
 		candidateNotifier: &handlerNotifier{
 			done:          make(chan struct{}),
-			candidateFunc: func(Candidate) {}}, //nolint formatting
+			candidateFunc: func(Candidate) {},
+		}, //nolint formatting
 
 		selectedCandidatePairNotifier: &handlerNotifier{
 			done:              make(chan struct{}),
-			candidatePairFunc: func(*CandidatePair) {}}, //nolint formatting
+			candidatePairFunc: func(*CandidatePair) {},
+		}, //nolint formatting
 	}
 }
 

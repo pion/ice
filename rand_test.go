@@ -47,15 +47,14 @@ func TestRandomGeneratorCollision(t *testing.T) {
 	const iteration = 100
 
 	for name, testCase := range testCases {
-		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			for iter := 0; iter < iteration; iter++ {
+			for range iteration {
 				var wg sync.WaitGroup
 				var mu sync.Mutex
 
 				rands := make([]string, 0, num)
 
-				for i := 0; i < num; i++ {
+				for range num {
 					wg.Add(1)
 					go func() {
 						r := testCase.gen(t)
@@ -68,7 +67,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 				wg.Wait()
 
 				require.Len(t, rands, num)
-				for i := 0; i < num; i++ {
+				for i := range num {
 					for j := i + 1; j < num; j++ {
 						require.NotEqual(t, rands[i], rands[j])
 					}

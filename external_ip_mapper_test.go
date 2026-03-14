@@ -228,7 +228,6 @@ func TestNewExternalIPMapper(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			mapper, err := newAddressRewriteMapper(tc.rules)
 			if tc.expectMapper != nil {
@@ -377,7 +376,6 @@ func TestAddressRewriteModeDefaultsTable(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			mapper, err := newAddressRewriteMapper([]AddressRewriteRule{tt.rule})
 			assert.NoError(t, err)
