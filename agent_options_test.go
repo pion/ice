@@ -208,6 +208,20 @@ func TestWithIPFilterOption(t *testing.T) {
 	assert.False(t, agent.ipFilter(net.IPv4(192, 0, 2, 1)))
 }
 
+func TestWithRemoteIPFilterOption(t *testing.T) {
+	filter := func(ip net.IP) bool {
+		return ip.IsPrivate()
+	}
+
+	agent, err := NewAgentWithOptions(WithRemoteIPFilter(filter))
+	require.NoError(t, err)
+	defer agent.Close() //nolint:errcheck
+
+	require.NotNil(t, agent.remoteIPFilter)
+	assert.True(t, agent.remoteIPFilter(net.IPv4(192, 168, 1, 10)))
+	assert.False(t, agent.remoteIPFilter(net.IPv4(203, 0, 113, 1)))
+}
+
 func TestWithNetOption(t *testing.T) {
 	stub := newStubNet(t)
 

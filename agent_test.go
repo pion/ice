@@ -633,6 +633,74 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		require.Equal(t, CandidatePairStateSucceeded, pair.state)
 		require.Empty(t, agent.pendingBindingRequests)
 	})
+
+	t.Run("Binding request from blocked prflx address is discarded", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithRemoteIPFilter(func(ip net.IP) bool {
+				return !ip.Equal(net.IPv4(172, 17, 0, 44))
+			}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		selector := &recordingSelector{}
+		agent.selector = selector
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 44), Port: 9999}
+		agent.handleInbound(msg, local, remote)
+
+		require.False(t, selector.handledBindingRequest)
+		require.Len(t, agent.remoteCandidates, 0)
+	})
+
+	t.Run("Binding request prflx filter is called once", func(t *testing.T) {
+		filterCalls := 0
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithRemoteIPFilter(func(net.IP) bool {
+				filterCalls++
+
+				return filterCalls > 1
+			}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		selector := &recordingSelector{}
+		agent.selector = selector
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 45), Port: 9999}
+		agent.handleInbound(msg, local, remote)
+
+		require.Equal(t, 1, filterCalls)
+		require.False(t, selector.handledBindingRequest)
+		require.Len(t, agent.remoteCandidates, 0)
+	})
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
@@ -1484,6 +1552,82 @@ func TestGetRemoteCandidates(t *testing.T) {
 	actualCandidates, err := agent.GetRemoteCandidates()
 	require.NoError(t, err)
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
+}
+
+func TestRemoteIPFilterInAddRemoteCandidate(t *testing.T) {
+	agent, err := NewAgent(&AgentConfig{
+		RemoteIPFilter: func(ip net.IP) (keep bool) {
+			return !ip.Equal(net.IPv4(203, 0, 113, 9))
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	blocked, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "203.0.113.9",
+		Port:      40000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	allowed, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "198.51.100.10",
+		Port:      40001,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	agent.addRemoteCandidate(blocked)
+	agent.addRemoteCandidate(allowed)
+
+	actual, err := agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Len(t, actual, 1)
+	require.Equal(t, allowed.Address(), actual[0].Address())
+}
+
+func TestAddRemoteCandidateHonorsRemoteIPFilter(t *testing.T) {
+	agent, err := NewAgent(&AgentConfig{
+		RemoteIPFilter: func(ip net.IP) (keep bool) {
+			return !ip.Equal(net.IPv4(203, 0, 113, 11))
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	blocked, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "203.0.113.11",
+		Port:      41000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	allowed, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "198.51.100.12",
+		Port:      41001,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, agent.AddRemoteCandidate(blocked))
+	require.NoError(t, agent.AddRemoteCandidate(allowed))
+
+	require.Eventually(t, func() bool {
+		actual, err := agent.GetRemoteCandidates()
+		if err != nil {
+			return false
+		}
+
+		return len(actual) == 1 && actual[0].Address() == allowed.Address()
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestGetLocalCandidates(t *testing.T) {
@@ -2561,6 +2705,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 			"WithRelayAcceptanceMinWait":          WithRelayAcceptanceMinWait(time.Second),
 			"WithSTUNGatherTimeout":               WithSTUNGatherTimeout(time.Second),
 			"WithIPFilter":                        WithIPFilter(func(net.IP) bool { return true }),
+			"WithRemoteIPFilter":                  WithRemoteIPFilter(func(net.IP) bool { return true }),
 			"WithNet":                             WithNet(nil),
 			"WithMulticastDNSMode":                WithMulticastDNSMode(MulticastDNSModeDisabled),
 			"WithMulticastDNSHostName":            WithMulticastDNSHostName("test.local"),
