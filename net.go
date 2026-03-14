@@ -163,6 +163,9 @@ func listenUDPInPortRange(
 			return c, e //nolint:nilerr
 		}
 		log.Debugf("Failed to listen %s: %v", lAddr.String(), e)
+		if isInterfaceLevelError(e) {
+			return nil, e
+		}
 		portCurrent++
 		if portCurrent > portMax {
 			portCurrent = portMin
@@ -174,3 +177,6 @@ func listenUDPInPortRange(
 
 	return nil, ErrPort
 }
+
+// isInterfaceLevelError is implemented per-platform in
+// net_errno_unix.go and net_errno_windows.go.

@@ -7,8 +7,11 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/pion/logging"
@@ -219,6 +222,113 @@ func TestListenUDPInPortRange_DefaultsPortMinTo1024(t *testing.T) {
 	// should have attempted exactly [1024..1030] in some order.
 	sort.Ints(captor.attempts)
 	require.Equal(t, []int{1024, 1025, 1026, 1027, 1028, 1029, 1030}, captor.attempts)
+}
+
+// listenUDPErrorCaptor lets the test control which error ListenUDP returns
+// and counts how many attempts were made.
+type listenUDPErrorCaptor struct {
+	transport.Net
+	attempts int
+	err      error
+}
+
+func (c *listenUDPErrorCaptor) ListenUDP(_ string, _ *net.UDPAddr) (transport.UDPConn, error) {
+	c.attempts++
+
+	return nil, c.err
+}
+
+func TestListenUDPInPortRange_BailsOnEADDRNOTAVAIL(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
+
+	// Reproduce the real kernel error chain: *net.OpError → *os.SyscallError → syscall.Errno.
+	// This is what the kernel returns when binding to an IP that no longer exists
+	// (e.g. a K8s pod interface was deleted).
+	sysErr := &net.OpError{
+		Op:  "listen",
+		Net: "udp",
+		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRNOTAVAIL},
+	}
+
+	captor := &listenUDPErrorCaptor{Net: base, err: sysErr}
+
+	// Use a 101-port range. Without the fix all 101 ports would be tried.
+	_, err = listenUDPInPortRange(
+		captor,
+		logger,
+		1200, // portMax
+		1100, // portMin -> 101 ports
+		udp4,
+		&net.UDPAddr{IP: net.IPv4(10, 244, 1, 5), Port: 0},
+	)
+
+	require.Error(t, err)
+	require.Equal(t, 1, captor.attempts,
+		"should bail immediately on EADDRNOTAVAIL instead of trying all ports")
+}
+
+func TestListenUDPInPortRange_ContinuesOnPortBusyError(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
+
+	// EADDRINUSE means the port is busy — should keep trying other ports.
+	portBusyErr := &net.OpError{
+		Op:  "listen",
+		Net: "udp",
+		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRINUSE},
+	}
+
+	captor := &listenUDPErrorCaptor{Net: base, err: portBusyErr}
+
+	_, err = listenUDPInPortRange(
+		captor,
+		logger,
+		1105, // portMax
+		1100, // portMin -> 6 ports
+		udp4,
+		&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
+	)
+
+	require.ErrorIs(t, err, ErrPort)
+	require.Equal(t, 6, captor.attempts,
+		"should try all ports when error is port-specific (EADDRINUSE)")
+}
+
+// TestListenUDPInPortRange_RealEADDRNOTAVAIL uses an actual kernel call (no mocks)
+// to verify that binding to a non-existent IP bails immediately instead of
+// exhausting the port range. This reproduces the exact scenario from #779.
+func TestListenUDPInPortRange_RealEADDRNOTAVAIL(t *testing.T) {
+	// This test requires real kernel bind() semantics.
+	if runtime.GOARCH == "wasm" {
+		t.Skip("WASM has no real network interfaces")
+	}
+
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
+
+	// 192.0.2.0/24 is TEST-NET-1 (RFC 5737) — guaranteed not assigned to any local interface.
+	// The kernel will return EADDRNOTAVAIL on the first bind attempt.
+	_, err = listenUDPInPortRange(
+		base,
+		logger,
+		5100, // portMax
+		5000, // portMin -> 101 ports
+		udp4,
+		&net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 0},
+	)
+
+	require.Error(t, err)
+	// Without the fix, this would try all 101 ports and return ErrPort.
+	// With the fix, it bails on the first attempt and returns the actual kernel error.
+	require.NotErrorIs(t, err, ErrPort,
+		"should return the kernel error (EADDRNOTAVAIL), not ErrPort from exhausting all ports")
 }
 
 func TestListenUDPInPortRange_DefaultsPortMaxToFFFF(t *testing.T) {
