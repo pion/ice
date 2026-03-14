@@ -157,6 +157,8 @@ func TestLocalInterfaces_SkipLoopbackAddrs_WhenIncludeLoopbackFalse(t *testing.T
 	}
 	if loop == nil {
 		t.Skip("no loopback interface found on this system")
+
+		return
 	}
 
 	// clone the loopback iface and clear the Loopback flag so the outer check
