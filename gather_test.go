@@ -52,6 +52,82 @@ func skipOnPermission(t *testing.T, err error, action string) {
 	}
 }
 
+func TestConfiguredNetworkTypes(t *testing.T) {
+	t.Run("empty returns supported network types", func(t *testing.T) {
+		got := configuredNetworkTypes(nil)
+		require.Equal(t, supportedNetworkTypes(), got)
+	})
+
+	t.Run("non-empty returns configured values", func(t *testing.T) {
+		expected := []NetworkType{NetworkTypeUDP4, NetworkTypeTCP6}
+		got := configuredNetworkTypes(expected)
+		require.Equal(t, expected, got)
+	})
+}
+
+func TestEffectiveURLProtoType(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      stun.URI
+		expected stun.ProtoType
+	}{
+		{
+			name: "stun defaults to udp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeSTUN,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+		{
+			name: "turn defaults to udp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURN,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+		{
+			name: "stuns defaults to tcp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeSTUNS,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeTCP,
+		},
+		{
+			name: "turns defaults to tcp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURNS,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeTCP,
+		},
+		{
+			name: "unknown remains unknown",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeUnknown,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUnknown,
+		},
+		{
+			name: "explicit proto overrides scheme default",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURNS,
+				Proto:  stun.ProtoTypeUDP,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, effectiveURLProtoType(tc.url))
+		})
+	}
+}
+
 func TestListenUDP(t *testing.T) {
 	agent, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
@@ -730,7 +806,13 @@ func (n *relayGatherNet) Interfaces() ([]*transport.Interface, error) {
 		Name:  "relaytest0",
 		Flags: net.FlagUp,
 	})
-	iface.AddAddress(&net.IPNet{IP: n.addr.IP, Mask: net.CIDRMask(24, 32)})
+	maskBits := 32
+	prefixBits := 24
+	if n.addr.IP.To4() == nil {
+		maskBits = 128
+		prefixBits = 64
+	}
+	iface.AddAddress(&net.IPNet{IP: n.addr.IP, Mask: net.CIDRMask(prefixBits, maskBits)})
 
 	return []*transport.Interface{iface}, nil
 }
@@ -1466,6 +1548,111 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 	}
 }
 
+func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("uses configured UDP6 network type", func(t *testing.T) {
+		t.Skip("IPv6 TURN is not supported yet")
+
+		stubClient := &stubTurnClient{}
+		turnNet := newRelayGatherNet(&net.UDPAddr{IP: net.ParseIP("2001:db8::1"), Port: 50000})
+
+		agent, err := NewAgentWithOptions(
+			WithNet(turnNet),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP6}),
+			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+			WithUrls([]*stun.URI{
+				{
+					Scheme:   stun.SchemeTypeTURN,
+					Host:     "example.com",
+					Port:     3478,
+					Username: "username",
+					Password: "password",
+					Proto:    stun.ProtoTypeUDP,
+				},
+			}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.ParseIP("2001:db8::100"), Port: 6000})
+		agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+			stubClient.cfgConn = cfg.Conn
+
+			return stubClient, nil
+		}
+
+		candCh := make(chan Candidate, 1)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c != nil && c.Type() == CandidateTypeRelay {
+				candCh <- c
+			}
+		}))
+
+		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+		select {
+		case cand := <-candCh:
+			require.Equal(t, NetworkTypeUDP6, cand.NetworkType())
+		case <-time.After(time.Second):
+			assert.Fail(t, "expected relay candidate using UDP6 network type")
+		}
+	})
+
+	t.Run("skips TCP transport URL when only UDP network types are enabled", func(t *testing.T) {
+		stubClient := &stubTurnClient{}
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 3), Port: 50000})),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+			WithUrls([]*stun.URI{
+				{
+					Scheme:   stun.SchemeTypeTURN,
+					Host:     "example.com",
+					Port:     3478,
+					Username: "username",
+					Password: "password",
+					Proto:    stun.ProtoTypeTCP,
+				},
+			}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		factoryCalls := 0
+		agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+			factoryCalls++
+			stubClient.cfgConn = cfg.Conn
+
+			return stubClient, nil
+		}
+
+		candidateCh := make(chan Candidate, 1)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateCh <- c
+			}
+		}))
+
+		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+		select {
+		case <-candidateCh:
+			assert.Fail(t, "unexpected relay candidate for TCP TURN URL with UDP-only network types")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		require.Equal(t, 0, factoryCalls)
+	})
+}
+
 func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -1748,6 +1935,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 		WithIncludeLoopback(),
 		WithSTUNGatherTimeout(5*time.Millisecond),
 	)
+
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1762,6 +1950,49 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 	for _, ip := range listenIPs {
 		require.Equal(t, "127.0.0.1", ip)
 	}
+}
+
+func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
+	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49001}
+	srflxAddr := &stun.XORMappedAddress{
+		IP:   net.IP{203, 0, 113, 6},
+		Port: 50001,
+	}
+
+	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
+
+	agent, err := NewAgent(&AgentConfig{
+		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+		UDPMuxSrflx:    udpMuxSrflx,
+	})
+
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{
+		{
+			Scheme: stun.SchemeTypeSTUN,
+			Proto:  stun.ProtoTypeTCP,
+			Host:   "127.0.0.1",
+			Port:   3478,
+		},
+		{
+			Scheme: stun.SchemeTypeSTUN,
+			Proto:  stun.ProtoTypeUDP,
+			Host:   "127.0.0.1",
+			Port:   3478,
+		},
+	}, []NetworkType{NetworkTypeUDP4})
+
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected only UDP transport URL to be used")
 }
 
 // TestUDPMuxDefaultWithNAT1To1IPsUsage requires that candidates

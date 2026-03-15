@@ -134,6 +134,46 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 		}))
 	})
 
+	t.Run("prflx candidate is discarded when network type is disabled", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			agent.selector = &recordingSelector{}
+
+			hostConfig := CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			}
+			local, err := NewCandidateHost(&hostConfig)
+			local.conn = &fakenet.MockPacketConn{}
+			require.NoError(t, err)
+
+			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				UseCandidate(),
+				AttrControlling(agent.tieBreaker),
+				PriorityAttr(local.Priority()),
+				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.Fingerprint,
+			)
+			require.NoError(t, err)
+
+			// nolint: contextcheck
+			agent.handleInbound(msg, local, remote)
+			require.Len(t, agent.remoteCandidates, 0)
+		}))
+	})
+
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
 		require.NoError(t, err)
@@ -171,6 +211,35 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 			require.Len(t, agent.remoteCandidates, 0)
 		}))
 	})
+}
+
+func TestAddRemoteCandidateRespectsNetworkTypes(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgentWithOptions(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	tcpCandidate, err := UnmarshalCandidate("1052353102 1 tcp 1675624447 192.0.2.1 8080 typ host tcptype passive")
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(tcpCandidate))
+
+	udpCandidate, err := UnmarshalCandidate("1052353102 1 udp 1675624447 192.0.2.2 8080 typ host")
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(udpCandidate))
+
+	require.Eventually(t, func() bool {
+		actual, err := agent.GetRemoteCandidates()
+		if err != nil {
+			return false
+		}
+
+		return len(actual) == 1 && actual[0].Address() == udpCandidate.Address()
+	}, time.Second, 10*time.Millisecond)
 }
 
 // Assert that Agent on startup sends message, and doesn't wait for connectivityTicker to fire

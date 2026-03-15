@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1109,6 +1110,12 @@ func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
 // Returns true when the candidate is accepted (including duplicates).
 func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 	if !a.shouldAcceptRemoteCandidate(cand) {
+		return false
+	}
+
+	if len(a.networkTypes) > 0 && !slices.Contains(a.networkTypes, cand.NetworkType()) {
+		a.log.Infof("Ignoring remote candidate with disabled network type %s: %s", cand.NetworkType(), cand)
+
 		return false
 	}
 
