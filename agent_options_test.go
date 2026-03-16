@@ -513,7 +513,7 @@ func TestMultipleConfigOptions(t *testing.T) {
 func TestWithInterfaceFilter(t *testing.T) {
 	t.Run("sets interface filter", func(t *testing.T) {
 		filter := func(interfaceName string) bool {
-			return interfaceName == "eth0"
+			return interfaceName == "eth0" // nolint:goconst
 		}
 
 		agent, err := NewAgentWithOptions(WithInterfaceFilter(filter))
@@ -521,7 +521,7 @@ func TestWithInterfaceFilter(t *testing.T) {
 		defer agent.Close() //nolint:errcheck
 
 		assert.NotNil(t, agent.interfaceFilter)
-		assert.True(t, agent.interfaceFilter("eth0"))
+		assert.True(t, agent.interfaceFilter("eth0")) // nolint:goconst
 		assert.False(t, agent.interfaceFilter("wlan0"))
 	})
 
@@ -549,7 +549,7 @@ func TestWithInterfaceFilter(t *testing.T) {
 
 		assert.NotNil(t, agent.interfaceFilter)
 		assert.True(t, agent.interfaceFilter("lo"))
-		assert.False(t, agent.interfaceFilter("eth0"))
+		assert.False(t, agent.interfaceFilter("eth0")) // nolint:goconst
 	})
 }
 
