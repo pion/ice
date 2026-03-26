@@ -25,12 +25,12 @@ func TestConnectionStateNotifier(t *testing.T) {
 		}
 		// Enqueue all updates upfront to ensure that it
 		// doesn't block
-		for i := 0; i < 10000; i++ {
+		for range 10000 {
 			notifier.EnqueueConnectionState(ConnectionStateNew)
 		}
 		done := make(chan struct{})
 		go func() {
-			for i := 0; i < 10000; i++ {
+			for range 10000 {
 				<-updates
 			}
 			select {
@@ -54,7 +54,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 		}
 		done := make(chan struct{})
 		go func() {
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				assert.Equal(t, ConnectionState(i), <-updates)
 			}
 			select {
@@ -64,7 +64,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 			}
 			close(done)
 		}()
-		for i := 0; i < 10000; i++ {
+		for i := range 10000 {
 			notifer.EnqueueConnectionState(ConnectionState(i))
 		}
 		<-done

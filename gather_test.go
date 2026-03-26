@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -53,6 +52,82 @@ func skipOnPermission(t *testing.T, err error, action string) {
 	}
 }
 
+func TestConfiguredNetworkTypes(t *testing.T) {
+	t.Run("empty returns supported network types", func(t *testing.T) {
+		got := configuredNetworkTypes(nil)
+		require.Equal(t, supportedNetworkTypes(), got)
+	})
+
+	t.Run("non-empty returns configured values", func(t *testing.T) {
+		expected := []NetworkType{NetworkTypeUDP4, NetworkTypeTCP6}
+		got := configuredNetworkTypes(expected)
+		require.Equal(t, expected, got)
+	})
+}
+
+func TestEffectiveURLProtoType(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      stun.URI
+		expected stun.ProtoType
+	}{
+		{
+			name: "stun defaults to udp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeSTUN,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+		{
+			name: "turn defaults to udp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURN,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+		{
+			name: "stuns defaults to tcp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeSTUNS,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeTCP,
+		},
+		{
+			name: "turns defaults to tcp",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURNS,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeTCP,
+		},
+		{
+			name: "unknown remains unknown",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeUnknown,
+				Proto:  stun.ProtoTypeUnknown,
+			},
+			expected: stun.ProtoTypeUnknown,
+		},
+		{
+			name: "explicit proto overrides scheme default",
+			url: stun.URI{
+				Scheme: stun.SchemeTypeTURNS,
+				Proto:  stun.ProtoTypeUDP,
+			},
+			expected: stun.ProtoTypeUDP,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, effectiveURLProtoType(tc.url))
+		})
+	}
+}
+
 func TestListenUDP(t *testing.T) {
 	agent, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
@@ -92,7 +167,7 @@ func TestListenUDP(t *testing.T) {
 	total := portMax - portMin + 1
 	result := make([]int, 0, total)
 	portRange := make([]int, 0, total)
-	for i := 0; i < total; i++ {
+	for i := range total {
 		conn, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err, "listenUDP error with no port restriction")
 		require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
@@ -132,7 +207,7 @@ func TestGatherConcurrency(t *testing.T) {
 	}))
 
 	// Testing for panic
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_ = agent.GatherCandidates()
 	}
 
@@ -452,12 +527,10 @@ func TestTURNConcurrency(t *testing.T) {
 		require.NoError(t, genErr)
 
 		serverPort := randomPort(t)
-		serverListener, err := dtls.Listen(
+		serverListener, err := dtls.ListenWithOptions(
 			"udp",
 			&net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: serverPort},
-			&dtls.Config{
-				Certificates: []tls.Certificate{certificate},
-			},
+			dtls.WithCertificates(certificate),
 		)
 		require.NoError(t, err)
 
@@ -733,7 +806,13 @@ func (n *relayGatherNet) Interfaces() ([]*transport.Interface, error) {
 		Name:  "relaytest0",
 		Flags: net.FlagUp,
 	})
-	iface.AddAddress(&net.IPNet{IP: n.addr.IP, Mask: net.CIDRMask(24, 32)})
+	maskBits := 32
+	prefixBits := 24
+	if n.addr.IP.To4() == nil {
+		maskBits = 128
+		prefixBits = 64
+	}
+	iface.AddAddress(&net.IPNet{IP: n.addr.IP, Mask: net.CIDRMask(prefixBits, maskBits)})
 
 	return []*transport.Interface{iface}, nil
 }
@@ -774,6 +853,128 @@ func (n *relayGatherNet) CreateDialer(*net.Dialer) transport.Dialer {
 
 func (n *relayGatherNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
 	return nil
+}
+
+type relayListenCaptureNet struct {
+	listenPacketAddresses []string
+	mu                    sync.Mutex
+}
+
+func newRelayListenCaptureNet() *relayListenCaptureNet {
+	return &relayListenCaptureNet{}
+}
+
+func (n *relayListenCaptureNet) ListenPacket(_ string, address string) (net.PacketConn, error) {
+	n.mu.Lock()
+	n.listenPacketAddresses = append(n.listenPacketAddresses, address)
+	n.mu.Unlock()
+
+	udpAddr, err := net.ResolveUDPAddr("udp4", address)
+	if err != nil {
+		return nil, err
+	}
+
+	return newStubPacketConn(udpAddr), nil
+}
+
+func (n *relayListenCaptureNet) ListenUDP(string, *net.UDPAddr) (transport.UDPConn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *relayListenCaptureNet) ListenTCP(string, *net.TCPAddr) (transport.TCPListener, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *relayListenCaptureNet) Dial(string, string) (net.Conn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *relayListenCaptureNet) DialUDP(string, *net.UDPAddr, *net.UDPAddr) (transport.UDPConn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *relayListenCaptureNet) DialTCP(string, *net.TCPAddr, *net.TCPAddr) (transport.TCPConn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *relayListenCaptureNet) ResolveIPAddr(network, address string) (*net.IPAddr, error) {
+	return net.ResolveIPAddr(network, address)
+}
+
+func (n *relayListenCaptureNet) ResolveUDPAddr(network, address string) (*net.UDPAddr, error) {
+	return net.ResolveUDPAddr(network, address)
+}
+
+func (n *relayListenCaptureNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, error) {
+	return net.ResolveTCPAddr(network, address)
+}
+
+func (n *relayListenCaptureNet) Interfaces() ([]*transport.Interface, error) {
+	iface0 := transport.NewInterface(net.Interface{
+		Index: 1,
+		MTU:   1500,
+		Name:  "eth0",
+		Flags: net.FlagUp,
+	})
+	iface0.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
+
+	iface1 := transport.NewInterface(net.Interface{
+		Index: 2,
+		MTU:   1500,
+		Name:  "wlan0",
+		Flags: net.FlagUp,
+	})
+	iface1.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(8, 32)})
+
+	return []*transport.Interface{iface0, iface1}, nil
+}
+
+func (n *relayListenCaptureNet) InterfaceByIndex(index int) (*transport.Interface, error) {
+	ifaces, err := n.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		if iface.Index == index {
+			return iface, nil
+		}
+	}
+
+	return nil, transport.ErrInterfaceNotFound
+}
+
+func (n *relayListenCaptureNet) InterfaceByName(name string) (*transport.Interface, error) {
+	ifaces, err := n.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		if iface.Name == name {
+			return iface, nil
+		}
+	}
+
+	return nil, transport.ErrInterfaceNotFound
+}
+
+func (n *relayListenCaptureNet) CreateDialer(*net.Dialer) transport.Dialer {
+	return nil
+}
+
+func (n *relayListenCaptureNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
+	return nil
+}
+
+func (n *relayListenCaptureNet) listenAddresses() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	addrs := make([]string, len(n.listenPacketAddresses))
+	copy(addrs, n.listenPacketAddresses)
+
+	return addrs
 }
 
 type hostGatherNet struct {
@@ -876,6 +1077,138 @@ func (n *hostGatherNet) CreateDialer(*net.Dialer) transport.Dialer {
 
 func (n *hostGatherNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
 	return nil
+}
+
+type srflxListenCaptureNet struct {
+	listenCalls []*net.UDPAddr
+	mu          sync.Mutex
+}
+
+func newSrflxListenCaptureNet() *srflxListenCaptureNet {
+	return &srflxListenCaptureNet{}
+}
+
+func (n *srflxListenCaptureNet) ListenPacket(string, string) (net.PacketConn, error) {
+	return newStubPacketConn(&net.UDPAddr{IP: net.IPv4zero, Port: 0}), nil
+}
+
+func (n *srflxListenCaptureNet) ListenUDP(network string, laddr *net.UDPAddr) (transport.UDPConn, error) {
+	n.mu.Lock()
+	if laddr != nil {
+		n.listenCalls = append(n.listenCalls, &net.UDPAddr{
+			IP:   append(net.IP{}, laddr.IP...),
+			Port: laddr.Port,
+			Zone: laddr.Zone,
+		})
+	} else {
+		n.listenCalls = append(n.listenCalls, nil)
+	}
+	n.mu.Unlock()
+
+	return net.ListenUDP(network, &net.UDPAddr{IP: net.IPv4zero, Port: 0}) //nolint:wrapcheck
+}
+
+func (n *srflxListenCaptureNet) ListenTCP(string, *net.TCPAddr) (transport.TCPListener, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *srflxListenCaptureNet) Dial(string, string) (net.Conn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *srflxListenCaptureNet) DialUDP(string, *net.UDPAddr, *net.UDPAddr) (transport.UDPConn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *srflxListenCaptureNet) DialTCP(string, *net.TCPAddr, *net.TCPAddr) (transport.TCPConn, error) {
+	return nil, transport.ErrNotSupported
+}
+
+func (n *srflxListenCaptureNet) ResolveIPAddr(network, address string) (*net.IPAddr, error) {
+	return net.ResolveIPAddr(network, address)
+}
+
+func (n *srflxListenCaptureNet) ResolveUDPAddr(network, address string) (*net.UDPAddr, error) {
+	return net.ResolveUDPAddr(network, address)
+}
+
+func (n *srflxListenCaptureNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, error) {
+	return net.ResolveTCPAddr(network, address)
+}
+
+func (n *srflxListenCaptureNet) Interfaces() ([]*transport.Interface, error) {
+	iface0 := transport.NewInterface(net.Interface{
+		Index: 1,
+		MTU:   1500,
+		Name:  "eth0",
+		Flags: net.FlagUp,
+	})
+	iface0.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
+
+	iface1 := transport.NewInterface(net.Interface{
+		Index: 2,
+		MTU:   1500,
+		Name:  "wlan0",
+		Flags: net.FlagUp,
+	})
+	iface1.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(8, 32)})
+
+	return []*transport.Interface{iface0, iface1}, nil
+}
+
+func (n *srflxListenCaptureNet) InterfaceByIndex(index int) (*transport.Interface, error) {
+	ifaces, err := n.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		if iface.Index == index {
+			return iface, nil
+		}
+	}
+
+	return nil, transport.ErrInterfaceNotFound
+}
+
+func (n *srflxListenCaptureNet) InterfaceByName(name string) (*transport.Interface, error) {
+	ifaces, err := n.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		if iface.Name == name {
+			return iface, nil
+		}
+	}
+
+	return nil, transport.ErrInterfaceNotFound
+}
+
+func (n *srflxListenCaptureNet) CreateDialer(*net.Dialer) transport.Dialer {
+	return nil
+}
+
+func (n *srflxListenCaptureNet) CreateListenConfig(*net.ListenConfig) transport.ListenConfig {
+	return nil
+}
+
+func (n *srflxListenCaptureNet) listenCallIPs() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	ipStrings := make([]string, 0, len(n.listenCalls))
+	for _, addr := range n.listenCalls {
+		if addr == nil || addr.IP == nil {
+			ipStrings = append(ipStrings, "")
+
+			continue
+		}
+		ipStrings = append(ipStrings, addr.IP.String())
+	}
+
+	return ipStrings
 }
 
 type errorPacketConn struct {
@@ -1167,6 +1500,159 @@ func TestGatherCandidatesRelayUsesTurnNet(t *testing.T) {
 	}
 }
 
+func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	netCapture := newRelayListenCaptureNet()
+	stubClient := &stubTurnClient{}
+
+	agent, err := NewAgentWithOptions(
+		WithNet(netCapture),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithUrls([]*stun.URI{
+			{
+				Scheme:   stun.SchemeTypeTURN,
+				Host:     "example.com",
+				Port:     3478,
+				Username: "username",
+				Password: "password",
+				Proto:    stun.ProtoTypeUDP,
+			},
+		}),
+		WithInterfaceFilter(func(iface string) bool {
+			return iface == "eth0"
+		}),
+		WithIncludeLoopback(),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+		stubClient.cfgConn = cfg.Conn
+
+		return stubClient, nil
+	}
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+	listenAddrs := netCapture.listenAddresses()
+	require.NotEmpty(t, listenAddrs)
+	for _, addr := range listenAddrs {
+		require.Equal(t, "127.0.0.1:0", addr)
+	}
+}
+
+func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("uses configured UDP6 network type", func(t *testing.T) {
+		t.Skip("IPv6 TURN is not supported yet")
+
+		stubClient := &stubTurnClient{}
+		turnNet := newRelayGatherNet(&net.UDPAddr{IP: net.ParseIP("2001:db8::1"), Port: 50000})
+
+		agent, err := NewAgentWithOptions(
+			WithNet(turnNet),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP6}),
+			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+			WithUrls([]*stun.URI{
+				{
+					Scheme:   stun.SchemeTypeTURN,
+					Host:     "example.com",
+					Port:     3478,
+					Username: "username",
+					Password: "password",
+					Proto:    stun.ProtoTypeUDP,
+				},
+			}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.ParseIP("2001:db8::100"), Port: 6000})
+		agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+			stubClient.cfgConn = cfg.Conn
+
+			return stubClient, nil
+		}
+
+		candCh := make(chan Candidate, 1)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c != nil && c.Type() == CandidateTypeRelay {
+				candCh <- c
+			}
+		}))
+
+		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+		select {
+		case cand := <-candCh:
+			require.Equal(t, NetworkTypeUDP6, cand.NetworkType())
+		case <-time.After(time.Second):
+			assert.Fail(t, "expected relay candidate using UDP6 network type")
+		}
+	})
+
+	t.Run("skips TCP transport URL when only UDP network types are enabled", func(t *testing.T) {
+		stubClient := &stubTurnClient{}
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 3), Port: 50000})),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+			WithUrls([]*stun.URI{
+				{
+					Scheme:   stun.SchemeTypeTURN,
+					Host:     "example.com",
+					Port:     3478,
+					Username: "username",
+					Password: "password",
+					Proto:    stun.ProtoTypeTCP,
+				},
+			}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		factoryCalls := 0
+		agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+			factoryCalls++
+			stubClient.cfgConn = cfg.Conn
+
+			return stubClient, nil
+		}
+
+		candidateCh := make(chan Candidate, 1)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c != nil {
+				candidateCh <- c
+			}
+		}))
+
+		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+		select {
+		case <-candidateCh:
+			assert.Fail(t, "unexpected relay candidate for TCP TURN URL with UDP-only network types")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		require.Equal(t, 0, factoryCalls)
+	})
+}
+
 func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -1430,6 +1916,85 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected mux to be asked for one connection")
 }
 
+func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
+	netCapture := newSrflxListenCaptureNet()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(netCapture),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithUrls([]*stun.URI{{
+			Scheme: stun.SchemeTypeSTUN,
+			Host:   localhostIPStr,
+			Port:   9,
+		}}),
+		WithInterfaceFilter(func(iface string) bool {
+			return iface == "eth0"
+		}),
+		WithIncludeLoopback(),
+		WithSTUNGatherTimeout(5*time.Millisecond),
+	)
+
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesSrflx(context.Background(), agent.urls, []NetworkType{NetworkTypeUDP4})
+
+	listenIPs := netCapture.listenCallIPs()
+	require.NotEmpty(t, listenIPs)
+	for _, ip := range listenIPs {
+		require.Equal(t, "127.0.0.1", ip)
+	}
+}
+
+func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
+	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49001}
+	srflxAddr := &stun.XORMappedAddress{
+		IP:   net.IP{203, 0, 113, 6},
+		Port: 50001,
+	}
+
+	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
+
+	agent, err := NewAgent(&AgentConfig{
+		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+		UDPMuxSrflx:    udpMuxSrflx,
+	})
+
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{
+		{
+			Scheme: stun.SchemeTypeSTUN,
+			Proto:  stun.ProtoTypeTCP,
+			Host:   "127.0.0.1",
+			Port:   3478,
+		},
+		{
+			Scheme: stun.SchemeTypeSTUN,
+			Proto:  stun.ProtoTypeUDP,
+			Host:   "127.0.0.1",
+			Port:   3478,
+		},
+	}, []NetworkType{NetworkTypeUDP4})
+
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected only UDP transport URL to be used")
+}
+
 // TestUDPMuxDefaultWithNAT1To1IPsUsage requires that candidates
 // are given and connections are valid when using UDPMuxDefault and NAT1To1IPs.
 func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
@@ -1482,7 +2047,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 
 	var expectedPorts []int
 	var udpMuxInstances []UDPMux
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		port := randomPort(t)
 		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: port})
 		require.NoError(t, err)
@@ -2112,8 +2677,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 		conn:    newStubPacketConn(nil),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	t.Cleanup(func() {
 		agent.loop.Close()
 	})
@@ -2578,7 +3142,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 
 	var expectedPorts []int
 	var tcpMuxInstances []TCPMux
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		port := randomPort(t)
 		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 			IP:   net.IP{127, 0, 0, 1},
@@ -3056,7 +3620,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 
 	numSTUNS := 3
 	urls := []*stun.URI{}
-	for i := 0; i < numSTUNS; i++ {
+	for i := range numSTUNS {
 		urls = append(urls, &stun.URI{
 			Scheme: SchemeTypeSTUN,
 			Host:   localhostIPStr,

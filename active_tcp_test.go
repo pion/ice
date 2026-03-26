@@ -2,17 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/netip"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,7 +29,7 @@ func getLocalIPAddress(t *testing.T, networkType NetworkType) netip.Addr {
 	require.NoError(t, err)
 	require.NotEmpty(t, localAddrs)
 
-	if networkType.IsIPv6() && runtime.GOOS == "darwin" {
+	if networkType.IsIPv6() {
 		for _, addr := range localAddrs {
 			if !addr.addr.IsLinkLocalUnicast() {
 				return addr.addr
@@ -53,17 +50,13 @@ func ipv6Available(t *testing.T) bool {
 	_, localAddrs, err := localInterfaces(net, problematicNetworkInterfaces, nil, []NetworkType{NetworkTypeTCP6}, false)
 	require.NoError(t, err)
 
-	if runtime.GOOS == "darwin" {
-		for _, addr := range localAddrs {
-			if !addr.addr.IsLinkLocalUnicast() {
-				return true
-			}
+	for _, addr := range localAddrs {
+		if !addr.addr.IsLinkLocalUnicast() {
+			return true
 		}
-
-		return false
 	}
 
-	return len(localAddrs) > 0
+	return false
 }
 
 func TestActiveTCP(t *testing.T) {
@@ -329,8 +322,7 @@ func TestNewActiveTCPConn_LocalAddrError_EarlyReturn(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 
 	// an invalid local address so getTCPAddrOnInterface fails at ResolveTCPAddr.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ra := netip.MustParseAddrPort("127.0.0.1:1")
 
@@ -352,8 +344,7 @@ func TestActiveTCPConn_ReadLoop_BufferWriteError(t *testing.T) {
 	ra := netip.MustParseAddrPort(tcpListener.Addr().String())
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a := newActiveTCPConn(ctx, "127.0.0.1:0", ra, logger)
 	require.NotNil(t, a)
@@ -380,8 +371,7 @@ func TestActiveTCPConn_WriteLoop_WriteStreamingError(t *testing.T) {
 	ra := netip.MustParseAddrPort(tcpListener.Addr().String())
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	a := newActiveTCPConn(ctx, "127.0.0.1:0", ra, logger)
 	require.NotNil(t, a)
@@ -401,8 +391,7 @@ func TestActiveTCPConn_WriteLoop_WriteStreamingError(t *testing.T) {
 func TestActiveTCPConn_LocalAddr_DefaultWhenUnset(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	invalidLocal := "127.0.0.1:65536"
 	remote := netip.MustParseAddrPort("127.0.0.1:1")
@@ -424,8 +413,7 @@ func TestActiveTCPConn_LocalAddr_DefaultWhenUnset(t *testing.T) {
 func TestActiveTCPConn_SetDeadlines_ReturnEOF(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	invalidLocal := "127.0.0.1:65536"
 	remote := netip.MustParseAddrPort("127.0.0.1:1")
@@ -453,8 +441,7 @@ func TestActiveTCPConn_SetDeadlines_WhenConnected(t *testing.T) {
 
 	remote := netip.MustParseAddrPort(ln.Addr().String())
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	active := newActiveTCPConn(ctx, "127.0.0.1:0", remote, logger)
 	require.NotNil(t, active)

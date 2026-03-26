@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
 import (
 	"context"
 	"net"
+	"net/netip"
 	"strconv"
 	"sync"
 	"testing"
@@ -134,6 +134,46 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 		}))
 	})
 
+	t.Run("prflx candidate is discarded when network type is disabled", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			agent.selector = &recordingSelector{}
+
+			hostConfig := CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			}
+			local, err := NewCandidateHost(&hostConfig)
+			local.conn = &fakenet.MockPacketConn{}
+			require.NoError(t, err)
+
+			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				UseCandidate(),
+				AttrControlling(agent.tieBreaker),
+				PriorityAttr(local.Priority()),
+				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.Fingerprint,
+			)
+			require.NoError(t, err)
+
+			// nolint: contextcheck
+			agent.handleInbound(msg, local, remote)
+			require.Len(t, agent.remoteCandidates, 0)
+		}))
+	})
+
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
 		require.NoError(t, err)
@@ -171,6 +211,35 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop
 			require.Len(t, agent.remoteCandidates, 0)
 		}))
 	})
+}
+
+func TestAddRemoteCandidateRespectsNetworkTypes(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgentWithOptions(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	tcpCandidate, err := UnmarshalCandidate("1052353102 1 tcp 1675624447 192.0.2.1 8080 typ host tcptype passive")
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(tcpCandidate))
+
+	udpCandidate, err := UnmarshalCandidate("1052353102 1 udp 1675624447 192.0.2.2 8080 typ host")
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(udpCandidate))
+
+	require.Eventually(t, func() bool {
+		actual, err := agent.GetRemoteCandidates()
+		if err != nil {
+			return false
+		}
+
+		return len(actual) == 1 && actual[0].Address() == udpCandidate.Address()
+	}, time.Second, 10*time.Millisecond)
 }
 
 // Assert that Agent on startup sends message, and doesn't wait for connectivityTicker to fire
@@ -633,6 +702,74 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		require.Equal(t, CandidatePairStateSucceeded, pair.state)
 		require.Empty(t, agent.pendingBindingRequests)
 	})
+
+	t.Run("Binding request from blocked prflx address is discarded", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithRemoteIPFilter(func(ip net.IP) bool {
+				return !ip.Equal(net.IPv4(172, 17, 0, 44))
+			}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		selector := &recordingSelector{}
+		agent.selector = selector
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 44), Port: 9999}
+		agent.handleInbound(msg, local, remote)
+
+		require.False(t, selector.handledBindingRequest)
+		require.Len(t, agent.remoteCandidates, 0)
+	})
+
+	t.Run("Binding request prflx filter is called once", func(t *testing.T) {
+		filterCalls := 0
+		agent, err := NewAgentWithOptions(
+			WithNet(newStubNet(t)),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithRemoteIPFilter(func(net.IP) bool {
+				filterCalls++
+
+				return filterCalls > 1
+			}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		local := newHostLocal(t)
+		selector := &recordingSelector{}
+		agent.selector = selector
+
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 45), Port: 9999}
+		agent.handleInbound(msg, local, remote)
+
+		require.Equal(t, 1, filterCalls)
+		require.False(t, selector.handledBindingRequest)
+		require.Len(t, agent.remoteCandidates, 0)
+	})
 }
 
 func TestInvalidAgentStarts(t *testing.T) {
@@ -924,7 +1061,7 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 		agent.addPair(hostLocal, srflxRemote)
 		candidatePair = agent.findPair(hostLocal, srflxRemote)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		candidatePair.UpdateRoundTripTime(time.Duration(i+1) * time.Second)
 	}
 
@@ -1465,7 +1602,7 @@ func TestGetRemoteCandidates(t *testing.T) {
 
 	expectedCandidates := []Candidate{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",
@@ -1486,6 +1623,82 @@ func TestGetRemoteCandidates(t *testing.T) {
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 }
 
+func TestRemoteIPFilterInAddRemoteCandidate(t *testing.T) {
+	agent, err := NewAgent(&AgentConfig{
+		RemoteIPFilter: func(ip net.IP) (keep bool) {
+			return !ip.Equal(net.IPv4(203, 0, 113, 9))
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	blocked, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "203.0.113.9",
+		Port:      40000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	allowed, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "198.51.100.10",
+		Port:      40001,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	agent.addRemoteCandidate(blocked)
+	agent.addRemoteCandidate(allowed)
+
+	actual, err := agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Len(t, actual, 1)
+	require.Equal(t, allowed.Address(), actual[0].Address())
+}
+
+func TestAddRemoteCandidateHonorsRemoteIPFilter(t *testing.T) {
+	agent, err := NewAgent(&AgentConfig{
+		RemoteIPFilter: func(ip net.IP) (keep bool) {
+			return !ip.Equal(net.IPv4(203, 0, 113, 11))
+		},
+	})
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	blocked, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "203.0.113.11",
+		Port:      41000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	allowed, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "198.51.100.12",
+		Port:      41001,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, agent.AddRemoteCandidate(blocked))
+	require.NoError(t, agent.AddRemoteCandidate(allowed))
+
+	require.Eventually(t, func() bool {
+		actual, err := agent.GetRemoteCandidates()
+		if err != nil {
+			return false
+		}
+
+		return len(actual) == 1 && actual[0].Address() == allowed.Address()
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestGetLocalCandidates(t *testing.T) {
 	var config AgentConfig
 
@@ -1498,7 +1711,7 @@ func TestGetLocalCandidates(t *testing.T) {
 	dummyConn := &net.UDPConn{}
 	expectedCandidates := []Candidate{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",
@@ -2140,7 +2353,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 
 	dummyConn := &net.UDPConn{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		cfg := CandidateHostConfig{
 			Network:   "udp",
 			Address:   "192.168.0.2",
@@ -2561,6 +2774,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 			"WithRelayAcceptanceMinWait":          WithRelayAcceptanceMinWait(time.Second),
 			"WithSTUNGatherTimeout":               WithSTUNGatherTimeout(time.Second),
 			"WithIPFilter":                        WithIPFilter(func(net.IP) bool { return true }),
+			"WithRemoteIPFilter":                  WithRemoteIPFilter(func(net.IP) bool { return true }),
 			"WithNet":                             WithNet(nil),
 			"WithMulticastDNSMode":                WithMulticastDNSMode(MulticastDNSModeDisabled),
 			"WithMulticastDNSHostName":            WithMulticastDNSHostName("test.local"),
@@ -2591,5 +2805,89 @@ func TestAgentUpdateOptions(t *testing.T) {
 			err := agent.UpdateOptions(opt)
 			require.ErrorIs(t, err, ErrAgentOptionNotUpdatable, "option %s should not be updatable", name)
 		}
+	})
+}
+
+func TestRemoteDialIPForLocalInterface(t *testing.T) {
+	t.Run("adds local zone for zone-less link-local IPv6", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, netip.MustParseAddr("fe80::1234%eth0"), got)
+	})
+
+	t.Run("keeps existing remote zone", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234%eth9")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+
+	t.Run("does not modify global IPv6", func(t *testing.T) {
+		remote := netip.MustParseAddr("2001:db8::1234")
+		local := netip.MustParseAddr("fe80::1%eth0")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+
+	t.Run("does not modify zone-less link-local when local has no zone", func(t *testing.T) {
+		remote := netip.MustParseAddr("fe80::1234")
+		local := netip.MustParseAddr("2001:db8::1")
+
+		got := remoteDialIPForLocalInterface(remote, local)
+		require.Equal(t, remote, got)
+	})
+}
+
+func TestMDNSQueryTimeout(t *testing.T) {
+	t.Run("falls back to default when unset", func(t *testing.T) {
+		agent := &Agent{}
+		require.Equal(t, defaultSTUNGatherTimeout, agent.mDNSQueryTimeout())
+	})
+
+	t.Run("uses configured stun gather timeout when set", func(t *testing.T) {
+		agent := &Agent{stunGatherTimeout: 3 * time.Second}
+		require.Equal(t, 3*time.Second, agent.mDNSQueryTimeout())
+	})
+}
+
+type localAddrTCPMux struct {
+	addr net.Addr
+}
+
+func (m *localAddrTCPMux) Close() error { return nil }
+
+func (m *localAddrTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *localAddrTCPMux) RemoveConnByUfrag(string) {}
+
+func (m *localAddrTCPMux) LocalAddr() net.Addr { return m.addr }
+
+func TestMDNSLocalAddressFromTCPMux(t *testing.T) {
+	t.Run("nil for mixed network types", func(t *testing.T) {
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: net.ParseIP("2001:db8::1")}}
+		require.Nil(t, mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6, NetworkTypeUDP6}))
+	})
+
+	t.Run("nil for link-local IPv6 listener", func(t *testing.T) {
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: net.ParseIP("fe80::1"), Zone: "eth0"}}
+		require.Nil(t, mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6}))
+	})
+
+	t.Run("uses listener IP for TCP-only global IPv6", func(t *testing.T) {
+		want := net.ParseIP("2001:db8::1")
+		mux := &localAddrTCPMux{addr: &net.TCPAddr{IP: want, Zone: "wg0"}}
+
+		got := mDNSLocalAddressFromTCPMux(mux, []NetworkType{NetworkTypeTCP6})
+		require.Equal(t, want.To16(), got)
+	})
+
+	t.Run("nil for TCP mux without LocalAddr", func(t *testing.T) {
+		require.Nil(t, mDNSLocalAddressFromTCPMux(&stubTCPMux{}, []NetworkType{NetworkTypeTCP4}))
 	})
 }

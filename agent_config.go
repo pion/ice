@@ -173,6 +173,10 @@ type AgentConfig struct {
 	// the ips which are used to gather ICE candidates.
 	IPFilter func(net.IP) (keep bool)
 
+	// RemoteIPFilter is a function that you can use in order to whitelist or blacklist
+	// remote candidate IP addresses before they are added to the agent.
+	RemoteIPFilter func(net.IP) (keep bool)
+
 	// InsecureSkipVerify controls if self-signed certificates are accepted when connecting
 	// to TURN servers via TLS or DTLS
 	InsecureSkipVerify bool

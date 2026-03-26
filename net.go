@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/pion/ice/v4/internal/netutil"
 	"github.com/pion/logging"
 	"github.com/pion/transport/v4"
 )
@@ -34,7 +35,7 @@ func isSupportedIPv6Partial(ip net.IP) bool {
 }
 
 func isZeros(ip net.IP) bool {
-	for i := 0; i < len(ip); i++ {
+	for i := range ip {
 		if ip[i] != 0 {
 			return false
 		}
@@ -163,6 +164,9 @@ func listenUDPInPortRange(
 			return c, e //nolint:nilerr
 		}
 		log.Debugf("Failed to listen %s: %v", lAddr.String(), e)
+		if netutil.IsAddrUnavailable(e) {
+			return nil, e
+		}
 		portCurrent++
 		if portCurrent > portMax {
 			portCurrent = portMin

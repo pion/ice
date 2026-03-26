@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -151,6 +152,7 @@ type Agent struct {
 
 	interfaceFilter func(string) (keep bool)
 	ipFilter        func(net.IP) (keep bool)
+	remoteIPFilter  func(net.IP) (keep bool)
 	includeLoopback bool
 
 	insecureSkipVerify bool
@@ -364,6 +366,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		forceCandidateContact:           make(chan bool, 1),
 		interfaceFilter:                 config.InterfaceFilter,
 		ipFilter:                        config.IPFilter,
+		remoteIPFilter:                  config.RemoteIPFilter,
 		insecureSkipVerify:              config.InsecureSkipVerify,
 		includeLoopback:                 config.IncludeLoopback,
 		disableActiveTCP:                config.DisableActiveTCP,
@@ -487,6 +490,8 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		return nil, fmt.Errorf("error getting local interfaces: %w", err)
 	}
 
+	mDNSLocalAddress := mDNSLocalAddressFromTCPMux(agent.tcpMux, agent.networkTypes)
+
 	// Opportunistic mDNS: If we can't open the connection, that's ok: we
 	// can continue without it.
 	if agent.mDNSConn, agent.mDNSMode, err = createMulticastDNS(
@@ -494,6 +499,7 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		agent.networkTypes,
 		localIfcs,
 		agent.includeLoopback,
+		mDNSLocalAddress,
 		agent.mDNSMode,
 		agent.mDNSName,
 		agent.log,
@@ -556,6 +562,67 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	agent.constructed = true
 
 	return agent, nil
+}
+
+func mDNSLocalAddressFromTCPMux(tcpMux TCPMux, networkTypes []NetworkType) net.IP {
+	if tcpMux == nil || !allNetworkTypesTCP(networkTypes) {
+		return nil
+	}
+
+	tcpAddr, ok := localTCPAddrFromMux(tcpMux)
+	if !ok {
+		return nil
+	}
+
+	localAddr, ok := mDNSLocalAddressFromIP(tcpAddr.IP)
+	if !ok {
+		return nil
+	}
+
+	return localAddr
+}
+
+func allNetworkTypesTCP(networkTypes []NetworkType) bool {
+	if len(networkTypes) == 0 {
+		return false
+	}
+
+	for _, networkType := range networkTypes {
+		if !networkType.IsTCP() {
+			return false
+		}
+	}
+
+	return true
+}
+
+func localTCPAddrFromMux(tcpMux TCPMux) (*net.TCPAddr, bool) {
+	addrProvider, ok := tcpMux.(interface{ LocalAddr() net.Addr })
+	if !ok {
+		return nil, false
+	}
+
+	tcpAddr, ok := addrProvider.LocalAddr().(*net.TCPAddr)
+	if !ok || tcpAddr.IP == nil || tcpAddr.IP.IsUnspecified() {
+		return nil, false
+	}
+
+	return tcpAddr, true
+}
+
+func mDNSLocalAddressFromIP(ip net.IP) (net.IP, bool) {
+	parsed, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return nil, false
+	}
+
+	parsed = parsed.Unmap()
+	if parsed.Is6() && (parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast()) {
+		// mdns.Config.LocalAddress has no zone support for link-local IPv6.
+		return nil, false
+	}
+
+	return parsed.AsSlice(), true
 }
 
 func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remotePwd string) error {
@@ -924,7 +991,10 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 		return
 	}
 
-	_, src, err := a.mDNSConn.QueryAddr(cand.context(), cand.Address())
+	ctx, cancel := context.WithTimeout(a.loop, a.mDNSQueryTimeout())
+	defer cancel()
+
+	_, src, err := a.mDNSConn.QueryAddr(ctx, cand.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
 
@@ -945,6 +1015,14 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 
 		return
 	}
+}
+
+func (a *Agent) mDNSQueryTimeout() time.Duration {
+	if a.stunGatherTimeout > 0 {
+		return a.stunGatherTimeout
+	}
+
+	return defaultSTUNGatherTimeout
 }
 
 func (a *Agent) requestConnectivityCheck() {
@@ -976,10 +1054,12 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			continue
 		}
 
+		dialIP := remoteDialIPForLocalInterface(ip, localIPs[i].addr)
+
 		conn := newActiveTCPConn(
 			a.loop,
 			net.JoinHostPort(localIPs[i].addr.String(), "0"),
-			netip.AddrPortFrom(ip, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
+			netip.AddrPortFrom(dialIP, uint16(remoteCandidate.Port())), //nolint:gosec // G115, no overflow, a port
 			a.log,
 		)
 
@@ -1014,13 +1094,36 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 	}
 }
 
+func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
+	if remoteIP.Is6() &&
+		remoteIP.Zone() == "" &&
+		(remoteIP.IsLinkLocalUnicast() || remoteIP.IsLinkLocalMulticast()) {
+		if zone := localIP.Zone(); zone != "" {
+			return remoteIP.WithZone(zone)
+		}
+	}
+
+	return remoteIP
+}
+
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run).
-func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
+// Returns true when the candidate is accepted (including duplicates).
+func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
+	if !a.shouldAcceptRemoteCandidate(cand) {
+		return false
+	}
+
+	if len(a.networkTypes) > 0 && !slices.Contains(a.networkTypes, cand.NetworkType()) {
+		a.log.Infof("Ignoring remote candidate with disabled network type %s: %s", cand.NetworkType(), cand)
+
+		return false
+	}
+
 	set := a.remoteCandidates[cand.NetworkType()]
 
 	for _, candidate := range set {
 		if candidate.Equal(cand) {
-			return
+			return true
 		}
 	}
 
@@ -1050,6 +1153,29 @@ func (a *Agent) addRemoteCandidate(cand Candidate) { //nolint:cyclop
 	}
 
 	a.requestConnectivityCheck()
+
+	return true
+}
+
+func (a *Agent) shouldAcceptRemoteCandidate(cand Candidate) bool {
+	if a.remoteIPFilter == nil {
+		return true
+	}
+
+	ipAddr, _, _, err := parseAddr(cand.addr())
+	if err != nil {
+		a.log.Warnf("Ignoring remote candidate with unparsable address %q: %v", cand.addr(), err)
+
+		return false
+	}
+
+	if !a.remoteIPFilter(ipAddr.AsSlice()) {
+		a.log.Warnf("Ignoring remote candidate filtered by remote IP policy: %s", cand)
+
+		return false
+	}
+
+	return true
 }
 
 func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
@@ -1496,7 +1622,9 @@ func (a *Agent) handleInboundRequest(
 		remoteCandidate = prflxCandidate
 
 		a.log.Debugf("Adding a new peer-reflexive candidate: %s ", remote)
-		a.addRemoteCandidate(remoteCandidate)
+		if !a.addRemoteCandidate(remoteCandidate) {
+			return nil, false
+		}
 	}
 
 	// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but

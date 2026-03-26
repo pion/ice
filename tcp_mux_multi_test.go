@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 //go:build !js
-// +build !js
 
 package ice
 
@@ -23,14 +22,13 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 		"no buffer":    0,
 		"buffered 4MB": 4 * 1024 * 1024,
 	} {
-		bufSize := bufSize
 		t.Run(name, func(t *testing.T) {
 			defer test.CheckRoutines(t)()
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 
 			var muxInstances []TCPMux
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 					IP:   net.IP{127, 0, 0, 1},
 					Port: 0,
@@ -102,7 +100,7 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	var tcpMuxInstances []TCPMux
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 			IP:   net.IP{127, 0, 0, 1},
 			Port: 0,
