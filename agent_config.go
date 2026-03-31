@@ -112,9 +112,23 @@ type AgentConfig struct {
 	// connecting state.
 	CheckInterval *time.Duration
 
-	// NetworkTypes is an optional configuration for disabling or enabling
-	// support for specific network types.
+	// NetworkTypes controls the candidate network types exposed in ICE candidates
+	// and used for pairing.
+	//
+	// This is independent from the TURN client-to-server transport configured via
+	// WithTURNTransportProtocols. Supported values are the NetworkType variants
+	// (NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP4, NetworkTypeTCP6).
+	// When empty, all candidate network types are enabled by default.
 	NetworkTypes []NetworkType
+
+	// turnTransportProtocols restricts protocols used internally by this agent when connecting
+	// to TURN servers (the TURN client <-> TURN server transport).
+	//
+	// This is independent from NetworkTypes, which controls candidate network types
+	// exposed in ICE and used for pairing. Configure this via
+	// WithTURNTransportProtocols. Supported values are the NetworkType variants
+	// (NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP4, NetworkTypeTCP6).
+	turnTransportProtocols []NetworkType
 
 	// CandidateTypes is an optional configuration for disabling or enabling
 	// support for specific candidate types.

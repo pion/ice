@@ -616,6 +616,86 @@ func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 	})
 }
 
+func TestWithNetworkTypes(t *testing.T) {
+	t.Run("applies option", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.Equal(t, []NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}, agent.networkTypes)
+	})
+
+	t.Run("deduplicates values", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.Equal(t, []NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}, agent.networkTypes)
+	})
+
+	t.Run("rejects unsupported value", func(t *testing.T) {
+		_, err := NewAgentWithOptions(
+			WithNetworkTypes([]NetworkType{NetworkType(0)}),
+		)
+		require.ErrorIs(t, err, ErrProtoType)
+	})
+
+	t.Run("rejects unsupported value from config", func(t *testing.T) {
+		_, err := NewAgent(&AgentConfig{
+			NetworkTypes: []NetworkType{NetworkType(0)},
+		})
+		require.ErrorIs(t, err, ErrProtoType)
+	})
+}
+
+func TestWithTURNTransportProtocols(t *testing.T) {
+	t.Run("applies option", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.Equal(t, []NetworkType{NetworkTypeTCP4}, agent.turnTransportProtocols)
+	})
+
+	t.Run("deduplicates protocols", func(t *testing.T) {
+		agent, err := NewAgentWithOptions(
+			WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.Equal(t, []NetworkType{NetworkTypeTCP4, NetworkTypeUDP4}, agent.turnTransportProtocols)
+	})
+
+	t.Run("rejects unsupported proto", func(t *testing.T) {
+		_, err := NewAgentWithOptions(
+			WithTURNTransportProtocols([]NetworkType{NetworkType(0)}),
+		)
+		require.ErrorIs(t, err, ErrProtoType)
+	})
+
+	t.Run("rejects unsupported proto from config", func(t *testing.T) {
+		_, err := NewAgent(&AgentConfig{
+			turnTransportProtocols: []NetworkType{NetworkType(0)},
+		})
+		require.ErrorIs(t, err, ErrProtoType)
+	})
+}
+
 func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	stunURL, err := stun.ParseURI("stun:example.com:3478")
 	require.NoError(t, err)

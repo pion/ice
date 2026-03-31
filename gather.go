@@ -64,30 +64,38 @@ func urlSupportsSrflxGathering(url stun.URI) bool {
 	return url.Scheme == stun.SchemeTypeSTUN || url.Scheme == stun.SchemeTypeTURN
 }
 
-func relayNetworkTypesForURL(url stun.URI, networkTypes []NetworkType) []NetworkType {
+func relayNetworkTypesForConfiguredCandidates(networkTypes []NetworkType) []NetworkType {
+	// Relay allocations currently produce UDP relay endpoints, so relay candidate
+	// publication must be gated by configured UDP candidate network types.
+	res := []NetworkType{}
+	for _, networkType := range configuredNetworkTypes(networkTypes) {
+		if networkType.IsUDP() {
+			res = append(res, networkType)
+		}
+	}
+
+	return res
+}
+
+func turnNetworkTypesForURL(url stun.URI, networkTypes []NetworkType) []NetworkType {
 	proto := effectiveURLProtoType(url)
-	switch proto {
-	case stun.ProtoTypeUDP:
-		res := []NetworkType{}
-		for _, networkType := range configuredNetworkTypes(networkTypes) {
+	res := []NetworkType{}
+
+	for _, networkType := range configuredNetworkTypes(networkTypes) {
+		switch proto {
+		case stun.ProtoTypeUDP:
 			if networkType.IsUDP() {
 				res = append(res, networkType)
 			}
-		}
-
-		return res
-	case stun.ProtoTypeTCP:
-		res := []NetworkType{}
-		for _, networkType := range configuredNetworkTypes(networkTypes) {
+		case stun.ProtoTypeTCP:
 			if networkType.IsTCP() {
 				res = append(res, networkType)
 			}
+		default:
 		}
-
-		return res
-	default:
-		return nil
 	}
+
+	return res
 }
 
 // Close a net.Conn and log if we have a failure.
@@ -932,6 +940,13 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 	localAddrs := []ifaceAddr{}
 	if useFilteredLocalAddrs {
 		localAddrs = append(localAddrs, ifaces...)
+		if len(localAddrs) == 0 {
+			return
+		}
+	}
+
+	if len(relayNetworkTypesForConfiguredCandidates(a.networkTypes)) == 0 {
+		return
 	}
 
 	for _, url := range urls {
@@ -948,7 +963,9 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 			return
 		}
 
-		networkTypes := relayNetworkTypesForURL(*url, a.networkTypes)
+		urlProto := effectiveURLProtoType(*url)
+
+		networkTypes := turnNetworkTypesForURL(*url, a.turnTransportProtocols)
 		if len(networkTypes) == 0 {
 			continue
 		}
@@ -960,8 +977,6 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 			}
 
 			network := networkType.String()
-			urlProto := effectiveURLProtoType(*url)
-
 			bindAddrs := []string{}
 			if !useFilteredLocalAddrs { // nolint:nestif
 				if networkType.IsIPv6() {
@@ -1175,8 +1190,10 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 						return
 					}
 
+					// Relay allocations currently produce UDP relay endpoints regardless of
+					// whether the TURN control connection uses UDP/TCP/TLS/DTLS.
 					a.addRelayCandidates(ctx, relayEndpoint{
-						network:  network,
+						network:  udp,
 						address:  rAddr.IP,
 						port:     rAddr.Port,
 						relAddr:  relAddr,

@@ -856,7 +856,9 @@ func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 	}
 }
 
-// WithNetworkTypes sets the enabled network types for candidate gathering.
+// WithNetworkTypes sets the enabled candidate network types for candidate gathering.
+// This controls the network types exposed in ICE candidates and used for pairing.
+// Use WithTURNTransportProtocols to control the local TURN client-to-server transport.
 // By default, all network types are enabled.
 //
 // Example:
@@ -870,10 +872,61 @@ func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 			return ErrAgentOptionNotUpdatable
 		}
 
-		a.networkTypes = networkTypes
+		normalized, err := sanitizeTransportNetworkTypes(networkTypes)
+		if err != nil {
+			return err
+		}
+
+		a.networkTypes = normalized
 
 		return nil
 	}
+}
+
+// WithTURNTransportProtocols restricts protocols used by this agent when
+// connecting to TURN servers (TURN client <-> TURN server transport).
+//
+// This is independent from WithNetworkTypes, which controls ICE candidate
+// network types announced to the peer. Supported values are
+// NetworkTypeUDP4/UDP6 and NetworkTypeTCP4/TCP6.
+func WithTURNTransportProtocols(protocols []NetworkType) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		normalized, err := sanitizeTransportNetworkTypes(protocols)
+		if err != nil {
+			return err
+		}
+
+		a.turnTransportProtocols = normalized
+
+		return nil
+	}
+}
+
+func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {
+	if len(types) == 0 {
+		return nil, nil
+	}
+
+	seen := map[NetworkType]struct{}{}
+	out := make([]NetworkType, 0, len(types))
+	for _, networkType := range types {
+		if !networkType.IsUDP() && !networkType.IsTCP() {
+			return nil, ErrProtoType
+		}
+
+		if _, ok := seen[networkType]; ok {
+			continue
+		}
+
+		seen[networkType] = struct{}{}
+		out = append(out, networkType)
+	}
+
+	return out, nil
 }
 
 // WithCandidateTypes sets the enabled candidate types for gathering.

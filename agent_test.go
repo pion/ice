@@ -443,7 +443,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}))
 	})
 
-	t.Run("prflx candidate is discarded when network type is disabled", func(t *testing.T) {
+	t.Run("prflx candidate is stored even when network type is disabled", func(t *testing.T) {
 		agent, err := NewAgentWithOptions(
 			WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
 		)
@@ -479,7 +479,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 
 			// nolint: contextcheck
 			agent.handleInbound(msg, local, remote)
-			require.Len(t, agent.remoteCandidates, 0)
+			require.Len(t, agent.remoteCandidates, 1)
+			require.Len(t, agent.remoteCandidates[NetworkTypeUDP4], 1)
 		}))
 	})
 
@@ -522,7 +523,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 }
 
-func TestAddRemoteCandidateRespectsNetworkTypes(t *testing.T) {
+func TestAddRemoteCandidateStoresCandidatesIndependentlyOfNetworkTypes(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	agent, err := NewAgentWithOptions(
@@ -547,7 +548,21 @@ func TestAddRemoteCandidateRespectsNetworkTypes(t *testing.T) {
 			return false
 		}
 
-		return len(actual) == 1 && actual[0].Address() == udpCandidate.Address()
+		if len(actual) != 2 {
+			return false
+		}
+
+		var hasUDP, hasTCP bool
+		for _, c := range actual {
+			if c.Address() == udpCandidate.Address() {
+				hasUDP = true
+			}
+			if c.Address() == tcpCandidate.Address() {
+				hasTCP = true
+			}
+		}
+
+		return hasUDP && hasTCP
 	}, time.Second, 10*time.Millisecond)
 }
 
@@ -3104,6 +3119,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 			"WithContinualGatheringPolicy":        WithContinualGatheringPolicy(GatherOnce),
 			"WithNetworkMonitorInterval":          WithNetworkMonitorInterval(time.Second),
 			"WithNetworkTypes":                    WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			"WithTURNTransportProtocols":          WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 			"WithCandidateTypes":                  WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 			"WithAutomaticRenomination":           WithAutomaticRenomination(time.Second),
 			"WithInterfaceFilter":                 WithInterfaceFilter(func(string) bool { return true }),
@@ -3160,6 +3176,135 @@ func TestMDNSQueryTimeout(t *testing.T) {
 	t.Run("uses configured stun gather timeout when set", func(t *testing.T) {
 		agent := &Agent{stunGatherTimeout: 3 * time.Second}
 		require.Equal(t, 3*time.Second, agent.mDNSQueryTimeout())
+	})
+}
+
+func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
+	t.Run("accepts UDP relay candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			Urls: []*stun.URI{{
+				Scheme:   stun.SchemeTypeTURN,
+				Proto:    stun.ProtoTypeTCP,
+				Host:     "turn.example.com",
+				Port:     3478,
+				Username: "user",
+				Password: "pass",
+			}},
+		})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		cand, err := NewCandidateRelay(&CandidateRelayConfig{
+			Network:   udp,
+			Address:   "198.51.100.2",
+			Port:      5000,
+			Component: ComponentRTP,
+			RelAddr:   "192.0.2.10",
+			RelPort:   4000,
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			accepted := agent.addRemoteCandidate(cand) // nolint:contextcheck
+			require.True(t, accepted)
+			require.Len(t, agent.remoteCandidates[NetworkTypeUDP4], 1)
+		}))
+	})
+
+	// nolint:dupl
+	t.Run("accepts UDP host candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			Urls: []*stun.URI{{
+				Scheme:   stun.SchemeTypeTURN,
+				Proto:    stun.ProtoTypeTCP,
+				Host:     "turn.example.com",
+				Port:     3478,
+				Username: "user",
+				Password: "pass",
+			}},
+		})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		cand, err := UnmarshalCandidate("1052353102 1 udp 1675624447 198.51.100.20 5002 typ host")
+		require.NoError(t, err)
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			accepted := agent.addRemoteCandidate(cand) // nolint:contextcheck
+			require.True(t, accepted)
+			require.Len(t, agent.remoteCandidates[NetworkTypeUDP4], 1)
+		}))
+	})
+
+	// nolint:dupl
+	t.Run("accepts UDP srflx candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			Urls: []*stun.URI{{
+				Scheme:   stun.SchemeTypeTURN,
+				Proto:    stun.ProtoTypeTCP,
+				Host:     "turn.example.com",
+				Port:     3478,
+				Username: "user",
+				Password: "pass",
+			}},
+		})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		cand, err := UnmarshalCandidate(
+			"1052353102 1 udp 1675624447 198.51.100.21 5003 typ srflx raddr 192.0.2.21 rport 4003")
+		require.NoError(t, err)
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			accepted := agent.addRemoteCandidate(cand) // nolint:contextcheck
+			require.True(t, accepted)
+			require.Len(t, agent.remoteCandidates[NetworkTypeUDP4], 1)
+		}))
+	})
+
+	t.Run("stores UDP relay candidate regardless of TURN URL transport", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:   []NetworkType{NetworkTypeTCP4},
+			CandidateTypes: []CandidateType{CandidateTypeRelay},
+			Urls: []*stun.URI{{
+				Scheme: stun.SchemeTypeTURN,
+				Proto:  stun.ProtoTypeUDP,
+				Host:   "turn.example.com",
+				Port:   3478,
+			}},
+		})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		cand, err := NewCandidateRelay(&CandidateRelayConfig{
+			Network:   udp,
+			Address:   "198.51.100.3",
+			Port:      5001,
+			Component: ComponentRTP,
+			RelAddr:   "192.0.2.11",
+			RelPort:   4001,
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			accepted := agent.addRemoteCandidate(cand) // nolint:contextcheck
+			require.True(t, accepted)
+			require.Len(t, agent.remoteCandidates[NetworkTypeUDP4], 1)
+		}))
 	})
 }
 

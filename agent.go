@@ -119,9 +119,10 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls                []*stun.URI
-	networkTypes        []NetworkType
-	addressRewriteRules []AddressRewriteRule
+	urls                   []*stun.URI
+	networkTypes           []NetworkType
+	turnTransportProtocols []NetworkType
+	addressRewriteRules    []AddressRewriteRule
 
 	buf *packetio.Buffer
 
@@ -324,6 +325,16 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		return nil, ErrPort
 	}
 
+	normalizedNetworkTypes, err := sanitizeTransportNetworkTypes(config.NetworkTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	normalizedTURNTransportProtocols, err := sanitizeTransportNetworkTypes(config.turnTransportProtocols)
+	if err != nil {
+		return nil, err
+	}
+
 	mDNSName, mDNSMode, err := setupMDNSConfig(config)
 	if err != nil {
 		return nil, err
@@ -346,7 +357,8 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		remoteCandidates:                make(map[NetworkType][]Candidate),
 		pairsByID:                       make(map[uint64]*CandidatePair),
 		urls:                            config.Urls,
-		networkTypes:                    config.NetworkTypes,
+		networkTypes:                    normalizedNetworkTypes,
+		turnTransportProtocols:          normalizedTURNTransportProtocols,
 		onConnected:                     make(chan struct{}),
 		buf:                             packetio.NewBuffer(),
 		startedCh:                       startedCtx.Done(),
@@ -1152,12 +1164,6 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 		return false
 	}
 
-	if len(a.networkTypes) > 0 && !slices.Contains(a.networkTypes, cand.NetworkType()) {
-		a.log.Infof("Ignoring remote candidate with disabled network type %s: %s", cand.NetworkType(), cand)
-
-		return false
-	}
-
 	set := a.remoteCandidates[cand.NetworkType()]
 
 	for _, candidate := range set {
@@ -1174,10 +1180,8 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 	acceptRemotePassiveTCPCandidate := false
 	// Assert that TCP4 or TCP6 is a enabled NetworkType locally
 	if !a.disableActiveTCP && cand.TCPType() == TCPTypePassive {
-		for _, networkType := range a.networkTypes {
-			if cand.NetworkType() == networkType {
-				acceptRemotePassiveTCPCandidate = true
-			}
+		if slices.Contains(configuredNetworkTypes(a.networkTypes), cand.NetworkType()) {
+			acceptRemotePassiveTCPCandidate = true
 		}
 	}
 

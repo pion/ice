@@ -1602,12 +1602,13 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
 		}
 	})
 
-	t.Run("skips TCP transport URL when only UDP network types are enabled", func(t *testing.T) {
+	t.Run("skips TCP transport URL when TURN transport protocols allow only UDP", func(t *testing.T) {
 		stubClient := &stubTurnClient{}
 
 		agent, err := NewAgentWithOptions(
 			WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 3), Port: 50000})),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 			WithUrls([]*stun.URI{
 				{
@@ -1724,6 +1725,27 @@ func (m *mockConn) SetDeadline(time.Time) error      { return io.EOF }
 func (m *mockConn) SetReadDeadline(time.Time) error  { return io.EOF }
 func (m *mockConn) SetWriteDeadline(time.Time) error { return io.EOF }
 
+type relayTCPProxyDialer struct {
+	localAddr *net.TCPAddr
+}
+
+func (d *relayTCPProxyDialer) Dial(string, string) (net.Conn, error) {
+	return &relayTCPProxyConn{localAddr: d.localAddr}, nil
+}
+
+type relayTCPProxyConn struct {
+	localAddr *net.TCPAddr
+}
+
+func (c *relayTCPProxyConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (c *relayTCPProxyConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (c *relayTCPProxyConn) Close() error                     { return nil }
+func (c *relayTCPProxyConn) LocalAddr() net.Addr              { return c.localAddr }
+func (c *relayTCPProxyConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (c *relayTCPProxyConn) SetDeadline(time.Time) error      { return nil }
+func (c *relayTCPProxyConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *relayTCPProxyConn) SetWriteDeadline(time.Time) error { return nil }
+
 func (m *mockProxy) Dial(string, string) (net.Conn, error) {
 	m.proxyWasDialed()
 
@@ -1776,6 +1798,66 @@ func TestTURNProxyDialer(t *testing.T) {
 	require.NoError(t, agent.GatherCandidates())
 	<-candidateGatherFinish.Done()
 	<-proxyWasDialed.Done()
+}
+
+func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	stubClient := &stubTurnClient{}
+	stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 10), Port: 6000})
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000})),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithUrls([]*stun.URI{
+			{
+				Scheme:   stun.SchemeTypeTURN,
+				Host:     "example.com",
+				Port:     3478,
+				Username: "username",
+				Password: "password",
+				Proto:    stun.ProtoTypeTCP,
+			},
+		}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	agent.proxyDialer = &relayTCPProxyDialer{localAddr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 55000}}
+	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
+		stubClient.cfgConn = cfg.Conn
+
+		return stubClient, nil
+	}
+
+	relayCandidateCh := make(chan *CandidateRelay, 1)
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil || c.Type() != CandidateTypeRelay {
+			return
+		}
+
+		relay, ok := c.(*CandidateRelay)
+		require.True(t, ok)
+
+		select {
+		case relayCandidateCh <- relay:
+		default:
+		}
+	}))
+
+	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+
+	select {
+	case relay := <-relayCandidateCh:
+		require.Equal(t, NetworkTypeUDP4, relay.NetworkType())
+		require.Equal(t, tcp, relay.RelayProtocol())
+	case <-time.After(time.Second):
+		require.FailNow(t, "expected relay candidate for TURN over TCP")
+	}
 }
 
 func buildSimpleVNet(t *testing.T) (*vnet.Router, *vnet.Net) {
