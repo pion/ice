@@ -15,7 +15,7 @@ const (
 	// DefaultNominationAttribute represents the default STUN Nomination attribute.
 	// This is a custom attribute for ICE renomination support.
 	// This value can be overridden via AgentConfig.NominationAttribute.
-	DefaultNominationAttribute stun.AttrType = 0x0030 // Using a value in the reserved range
+	DefaultNominationAttribute stun.AttrType = 0xC001 // matching libwebrtc.
 )
 
 // NominationAttribute represents a STUN Nomination attribute.

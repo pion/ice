@@ -372,8 +372,8 @@ func TestWithNominationAttribute(t *testing.T) {
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
-		// Should use default value 0x0030
-		assert.Equal(t, stun.AttrType(0x0030), agent.nominationAttribute)
+		// Should use default value 0xC001
+		assert.Equal(t, stun.AttrType(0xC001), agent.nominationAttribute)
 	})
 }
 

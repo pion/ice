@@ -461,7 +461,15 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 	}
 
 	s.agent.sendBindingSuccess(message, local, remote)
-	s.PingCandidate(local, remote)
+
+	// Only send a triggered check during ICE checking phase (RFC 8445 §7.3.1.4).
+	// Once the pair is established (succeeded + selected), sending a triggered check
+	// on every inbound request creates a ping-pong busy loop: the remote side responds
+	// and sends its own request, which triggers another check here, repeating at 1/RTT.
+	// After connection, consent freshness is maintained by checkKeepalive() on a timer.
+	if pair.state != CandidatePairStateSucceeded || s.agent.getSelectedPair() == nil {
+		s.PingCandidate(local, remote)
+	}
 
 	if s.agent.userBindingRequestHandler != nil {
 		if shouldSwitch := s.agent.userBindingRequestHandler(message, local, remote, pair); shouldSwitch {

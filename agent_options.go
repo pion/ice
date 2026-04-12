@@ -682,7 +682,7 @@ func WithRenomination(generator NominationValueGenerator) AgentOption {
 }
 
 // WithNominationAttribute sets the STUN attribute type to use for ICE renomination.
-// The default value is 0x0030. This can be configured until the attribute is officially
+// The default value is 0xC001. This can be configured until the attribute is officially
 // assigned by IANA for draft-thatcher-ice-renomination.
 //
 // This option returns an error if the provided attribute type is invalid.

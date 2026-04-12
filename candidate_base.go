@@ -248,7 +248,9 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 
 var bufferPool = sync.Pool{ // nolint:gochecknoglobals
 	New: func() any {
-		return make([]byte, receiveMTU)
+		buf := make([]byte, receiveMTU)
+
+		return &buf
 	},
 }
 
@@ -263,12 +265,12 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 		return
 	}
 
-	bufferPoolBuffer := bufferPool.Get()
-	defer bufferPool.Put(bufferPoolBuffer)
-	buf, ok := bufferPoolBuffer.([]byte)
+	bufPtr, ok := bufferPool.Get().(*[]byte)
 	if !ok {
 		return
 	}
+	defer bufferPool.Put(bufPtr)
+	buf := *bufPtr
 
 	for {
 		n, srcAddr, err := c.conn.ReadFrom(buf)

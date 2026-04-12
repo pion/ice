@@ -880,7 +880,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 		defer agent.Close() //nolint:errcheck
 
 		// Verify the agent has the default attribute
-		assert.Equal(t, stun.AttrType(0x0030), agent.nominationAttribute)
+		assert.Equal(t, stun.AttrType(0xC001), agent.nominationAttribute)
 	})
 
 	t.Run("multiple options can be applied", func(t *testing.T) {

@@ -374,8 +374,8 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
 		enableRenomination:              false,
 		nominationValueGenerator:        nil,
-		nominationAttribute:             stun.AttrType(0x0030), // Default value
-		continualGatheringPolicy:        GatherOnce,            // Default to GatherOnce
+		nominationAttribute:             DefaultNominationAttribute,
+		continualGatheringPolicy:        GatherOnce, // Default to GatherOnce
 		networkMonitorInterval:          2 * time.Second,
 		lastKnownInterfaces:             make(map[string]netip.Addr),
 		automaticRenomination:           false,
