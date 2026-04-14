@@ -1581,10 +1581,15 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 	})
 
 	t.Run("NominationStillAccepted", func(t *testing.T) {
-		// A lite agent must still accept USE-CANDIDATE and set the selected pair
-		// (RFC 8445 §7.3.2), even though it never sends its own checks.
+		// RFC 8445 §7.3.2: the lite agent must accept USE-CANDIDATE and select the
+		// pair directly, even when the pair has never reached Succeeded state via a
+		// triggered check (which it never sends). Leave the pair in Waiting — the
+		// default after addPair — to confirm the || s.agent.lite branch is exercised.
 		agent, local, remote, pair := setupAgent(t)
-		pair.state = CandidatePairStateSucceeded
+		// Intentionally do NOT set pair.state = CandidatePairStateSucceeded.
+		// A lite agent never generates triggered checks, so the pair will never reach
+		// Succeeded that way. The nomination must be accepted regardless.
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
 
 		ls, ok := agent.getSelector().(*liteSelector)
 		require.True(t, ok)
@@ -1603,7 +1608,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		ls.HandleBindingRequest(msg, local, remote)
 
 		assert.Equal(t, pair, agent.getSelectedPair(),
-			"lite controlled agent must accept nomination and set selected pair")
+			"lite controlled agent must accept nomination even when pair has not reached Succeeded")
 		// Still no triggered check emitted
 		assert.Equal(t, uint64(0), pair.RequestsSent())
 	})
