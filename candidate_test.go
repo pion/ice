@@ -1454,3 +1454,36 @@ func TestCandidateRemoveExtension(t *testing.T) {
 		require.Empty(t, candidate.Extensions())
 	})
 }
+
+func FuzzUnmarshalCandidate(f *testing.F) {
+	// Seed corpus from real-world ICE candidate strings covering all candidate
+	// types, address families, and extension combinations.
+	f.Add("750 1 udp 500 fcd9:e3b8:12ce:9fc5:74a5:c6bb:d8b:e08a 53987 typ host")
+	f.Add("4273957277 1 udp 2130706431 10.0.75.1 53634 typ host")
+	f.Add("1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype active")
+	f.Add("1380287402 1 udp 2130706431 e2494022-4d9a-4c1e-a750-cc48d4f8d6ee.local 60542 typ host")
+	f.Add("647372371 1 udp 1694498815 191.228.238.68 53991 typ srflx raddr 192.168.0.274 rport 53991")
+	//nolint: lll
+	f.Add("4207374052 1 tcp 1685790463 192.0.2.15 50000 typ prflx raddr 10.0.0.1 rport 12345 generation 0 network-id 2 network-cost 10")
+	f.Add("848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 5001")
+	f.Add("candidate:750 1 udp 500 127.0.0.1 80 typ host")
+	f.Add(" 1 udp 500 127.0.0.1 80 typ host")
+	f.Add("1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype passive")
+	f.Add("1052353102 1 tcp 2128609279 192.168.0.196 0 typ host tcptype so")
+	f.Add("750 1 udp 500 10.0.0.1 0 typ host")
+	f.Add("750 1 udp 500 10.0.0.1 65535 typ host")
+	f.Add("1380287402 1 udp 2130706431 redacted-ip.invalid 60542 typ host")
+
+	f.Fuzz(func(t *testing.T, raw string) {
+		candidate, err := UnmarshalCandidate(raw)
+		if err != nil {
+			return
+		}
+
+		// If parsing succeeded, marshaling must not panic.
+		marshaled := candidate.Marshal()
+
+		// Re-parsing the marshaled output must not panic either.
+		_, _ = UnmarshalCandidate(marshaled)
+	})
+}
