@@ -1118,6 +1118,118 @@ func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
 	return remoteIP
 }
 
+func copyAtomicValue(dst, src *atomic.Value) {
+	if value := src.Load(); value != nil {
+		dst.Store(value)
+	}
+}
+
+type candidateActivitySetter interface {
+	setLastReceived(time.Time)
+	setLastSent(time.Time)
+}
+
+func copyCandidateActivity(dst, src Candidate) {
+	setter, ok := dst.(candidateActivitySetter)
+	if !ok {
+		return
+	}
+
+	if lastReceived := src.LastReceived(); !lastReceived.IsZero() && dst.LastReceived().IsZero() {
+		setter.setLastReceived(lastReceived)
+	}
+
+	if lastSent := src.LastSent(); !lastSent.IsZero() && dst.LastSent().IsZero() {
+		setter.setLastSent(lastSent)
+	}
+}
+
+func replacePairRemote(pair *CandidatePair, remote Candidate) *CandidatePair {
+	replacement := newCandidatePair(pair.Local, remote, pair.iceRoleControlling)
+	replacement.id = pair.id
+	replacement.bindingRequestCount = pair.bindingRequestCount
+	replacement.state = pair.state
+	replacement.nominated = pair.nominated
+	replacement.nominateOnBindingSuccess = pair.nominateOnBindingSuccess
+
+	atomic.StoreInt64(&replacement.currentRoundTripTime, atomic.LoadInt64(&pair.currentRoundTripTime))
+	atomic.StoreInt64(&replacement.totalRoundTripTime, atomic.LoadInt64(&pair.totalRoundTripTime))
+	atomic.StoreUint32(&replacement.packetsSent, atomic.LoadUint32(&pair.packetsSent))
+	atomic.StoreUint32(&replacement.packetsReceived, atomic.LoadUint32(&pair.packetsReceived))
+	atomic.StoreUint64(&replacement.bytesSent, atomic.LoadUint64(&pair.bytesSent))
+	atomic.StoreUint64(&replacement.bytesReceived, atomic.LoadUint64(&pair.bytesReceived))
+	atomic.StoreUint64(&replacement.requestsReceived, atomic.LoadUint64(&pair.requestsReceived))
+	atomic.StoreUint64(&replacement.requestsSent, atomic.LoadUint64(&pair.requestsSent))
+	atomic.StoreUint64(&replacement.responsesReceived, atomic.LoadUint64(&pair.responsesReceived))
+	atomic.StoreUint64(&replacement.responsesSent, atomic.LoadUint64(&pair.responsesSent))
+
+	copyAtomicValue(&replacement.lastPacketSentAt, &pair.lastPacketSentAt)
+	copyAtomicValue(&replacement.lastPacketReceivedAt, &pair.lastPacketReceivedAt)
+	copyAtomicValue(&replacement.firstRequestSentAt, &pair.firstRequestSentAt)
+	copyAtomicValue(&replacement.lastRequestSentAt, &pair.lastRequestSentAt)
+	copyAtomicValue(&replacement.firstResponseReceivedAt, &pair.firstResponseReceivedAt)
+	copyAtomicValue(&replacement.lastResponseReceivedAt, &pair.lastResponseReceivedAt)
+	copyAtomicValue(&replacement.firstRequestReceivedAt, &pair.firstRequestReceivedAt)
+	copyAtomicValue(&replacement.lastRequestReceivedAt, &pair.lastRequestReceivedAt)
+
+	return replacement
+}
+
+func (a *Agent) retargetKnownPairHolders(oldPair, newPair *CandidatePair) {
+	selector := a.getSelector()
+
+	switch s := selector.(type) {
+	case *controllingSelector:
+		if s.nominatedPair == oldPair {
+			s.nominatedPair = newPair
+		}
+	case *liteSelector:
+		if cs, ok := s.pairCandidateSelector.(*controllingSelector); ok && cs.nominatedPair == oldPair {
+			cs.nominatedPair = newPair
+		}
+	}
+}
+
+func removeRedundantPrflxFromSet(set []Candidate, cand Candidate) ([]Candidate, []Candidate) {
+	var replacedPrflx []Candidate
+
+	for i := 0; i < len(set); i++ {
+		existing := set[i]
+		if existing.Type() == CandidateTypePeerReflexive && existing.transportAddressEqual(cand) {
+			replacedPrflx = append(replacedPrflx, existing)
+			set = append(set[:i], set[i+1:]...)
+			i--
+		}
+	}
+
+	return set, replacedPrflx
+}
+
+func (a *Agent) replaceRemoteInPairs(oldRemote, newRemote Candidate) {
+	for i, pair := range a.checklist {
+		if pair.Remote == oldRemote {
+			oldPriority := pair.priority()
+			replacement := replacePairRemote(pair, newRemote)
+			replacement.setPriorityOverride(oldPriority)
+			a.checklist[i] = replacement
+			a.pairsByID[replacement.id] = replacement
+			a.retargetKnownPairHolders(pair, replacement)
+
+			if a.getSelectedPair() == pair {
+				a.setSelectedPair(replacement)
+			}
+		}
+	}
+}
+
+func (a *Agent) replaceRemoteInLocalCaches(oldRemote, newRemote Candidate) {
+	for _, locals := range a.localCandidates {
+		for _, local := range locals {
+			local.replaceRemoteCandidateCacheValues(oldRemote, newRemote)
+		}
+	}
+}
+
 // replaceRedundantPeerReflexiveCandidates removes any peer-reflexive candidates
 // from the given set that have the same transport address as cand.
 // It also updates any candidate pairs and local candidate caches that
@@ -1125,36 +1237,18 @@ func remoteDialIPForLocalInterface(remoteIP, localIP netip.Addr) netip.Addr {
 // It is implemented according to RFC 8838 §11.4.
 // It returns the updated set of candidates.
 func (a *Agent) replaceRedundantPeerReflexiveCandidates(set []Candidate, cand Candidate) []Candidate {
-	if cand.Type() != CandidateTypePeerReflexive {
-		var replacedPrflx []Candidate
-
-		for i := 0; i < len(set); i++ {
-			existing := set[i]
-			if existing.Type() == CandidateTypePeerReflexive && existing.transportAddressEqual(cand) {
-				replacedPrflx = append(replacedPrflx, existing)
-				set = append(set[:i], set[i+1:]...)
-				i--
-			}
-		}
-
-		for _, oldRemote := range replacedPrflx {
-			for _, pair := range a.checklist {
-				if pair.Remote == oldRemote {
-					oldPriority := pair.priority()
-					pair.Remote = cand
-					pair.setPriorityOverride(oldPriority)
-				}
-			}
-
-			for _, locals := range a.localCandidates {
-				for _, local := range locals {
-					local.replaceRemoteCandidateCacheValues(oldRemote, cand)
-				}
-			}
-		}
+	if cand.Type() == CandidateTypePeerReflexive {
+		return set
 	}
 
-	return set
+	updatedSet, replacedPrflx := removeRedundantPrflxFromSet(set, cand)
+	for _, oldRemote := range replacedPrflx {
+		copyCandidateActivity(cand, oldRemote)
+		a.replaceRemoteInPairs(oldRemote, cand)
+		a.replaceRemoteInLocalCaches(oldRemote, cand)
+	}
+
+	return updatedSet
 }
 
 // addRemoteCandidate assumes you are holding the lock (must be execute using a.run).

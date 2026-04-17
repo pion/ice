@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -124,7 +125,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		for _, c := range controlledAgent.localCandidates[NetworkTypeUDP4] {
 			cast, ok := c.(*CandidateHost)
 			require.True(t, ok)
-			cast.remoteCandidateCaches = map[AddrPort]Candidate{}
+			cast.remoteCandidateCaches = sync.Map{}
 		}
 
 		controlledAgent.setSelectedPair(nil)
