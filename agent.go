@@ -1574,15 +1574,20 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 		return
 	}
 
-	if out, err := stun.Build(m, stun.BindingSuccess,
+	attributes := []stun.Setter{
+		m,
+		stun.BindingSuccess,
 		&stun.XORMappedAddress{
 			IP:   ip.AsSlice(),
 			Port: port,
 		},
+	}
+	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.localPwd),
-		stun.Fingerprint,
-	); err != nil {
-		a.log.Warnf("Failed to handle inbound ICE from: %s to: %s error: %s", local, remote, err)
+		stun.Fingerprint)
+
+	if out, err := stun.Build(attributes...); err != nil {
+		a.log.Errorf("failed to build binding success: %w", err)
 	} else {
 		if pair := a.findPair(local, remote); pair != nil {
 			pair.UpdateResponseSent()
