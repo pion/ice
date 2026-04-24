@@ -178,6 +178,8 @@ type Agent struct {
 	lastRenominationTime  time.Time
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
+
+	piggyback piggybackingController
 }
 
 // NewAgent creates a new Agent.
@@ -515,20 +517,40 @@ func (a *Agent) initialCheckingTimeout() time.Duration {
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
-	if a.connectionState != newState {
+	switch newState {
+	case a.connectionState:
+		return
+	case ConnectionStateFailed:
 		// Connection has gone to failed, release all gathered candidates
-		if newState == ConnectionStateFailed {
-			a.removeUfragFromMux()
-			a.checklist = make([]*CandidatePair, 0)
-			a.pairsByID = make(map[uint64]*CandidatePair)
-			a.pendingBindingRequests = make([]bindingRequest, 0)
-			a.setSelectedPair(nil)
-			a.deleteAllCandidates()
-		}
+		a.removeUfragFromMux()
+		a.checklist = make([]*CandidatePair, 0)
+		a.pairsByID = make(map[uint64]*CandidatePair)
+		a.pendingBindingRequests = make([]bindingRequest, 0)
+		a.setSelectedPair(nil)
+		a.deleteAllCandidates()
+	case ConnectionStateConnected:
+		a.flushPiggyback()
+	default:
+	}
 
-		a.log.Infof("Setting new connection state: %s", newState)
-		a.connectionState = newState
-		a.connectionStateNotifier.Enqueue(newState)
+	a.log.Infof("Setting new connection state: %s", newState)
+	a.connectionState = newState
+	a.connectionStateNotifier.Enqueue(newState)
+}
+
+// flushPiggyback sends any DTLS packets that were queued while piggybacking
+// turned out to be unsupported as plain DTLS over the selected pair once the
+// ICE connection is established.
+func (a *Agent) flushPiggyback() {
+	packets := a.piggyback.flushOnConnected()
+	pair := a.getSelectedPair()
+	if pair == nil {
+		return
+	}
+	for _, p := range packets {
+		if n, err := pair.Write(p.data); err == nil {
+			pair.UpdatePacketSent(n)
+		}
 	}
 }
 
@@ -1624,6 +1646,7 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 			Port: port,
 		},
 	}
+	attributes = a.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint)
@@ -1864,6 +1887,8 @@ func (a *Agent) handleInboundRequest(
 
 		return nil, false
 	}
+
+	a.reportPiggybackingFromMessage(msg, remoteCandidate)
 
 	// Support Remotes that don't set a TIE-BREAKER. Not standards compliant, but
 	// keeping to maintain backwards compat
@@ -2176,6 +2201,7 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 		a.log.Tracef("Sending renomination request from %s to %s with nomination value %d",
 			pair.Local, pair.Remote, nominationValue)
 	}
+	attributes = a.appendPiggybackAttributes(attributes)
 
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.remotePwd),
