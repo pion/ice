@@ -766,11 +766,13 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 
 		var packetsToFlush []packetWithCrc
 		a.piggyback.mu.Lock()
-		if newState == ConnectionStateConnected && a.piggyback.state == PiggybackingStateOff {
-			// Piggybacking was discovered as not supported.
+		if newState == ConnectionStateConnected &&
+			(a.piggyback.state == PiggybackingStateOff || a.piggyback.state == PiggybackingStateComplete) {
+			// Piggybacking was discovered as not supported or has finished.
 			// Flush any pending DTLS packets.
-			packetsToFlush = a.piggyback.packets
+			packetsToFlush = append([]packetWithCrc{}, a.piggyback.packets...)
 			a.piggyback.packets = []packetWithCrc{}
+			a.piggyback.packetsIndex = 0
 		}
 		a.piggyback.mu.Unlock()
 
