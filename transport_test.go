@@ -443,6 +443,38 @@ func TestConn_Write_RejectsSTUN(t *testing.T) {
 	require.ErrorIs(t, werr, errWriteSTUNMessageToIceConn)
 }
 
+func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	}
+	a, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, a.Close())
+	}()
+
+	b, err := NewAgent(cfg)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, b.Close())
+	}()
+
+	bUfrag, bPwd, err := b.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	conn, err := a.StartDial(bUfrag, bPwd)
+	require.NoError(t, err)
+
+	n, werr := conn.Write([]byte("early application data"))
+	require.Zero(t, n)
+	require.ErrorIs(t, werr, ErrNoCandidatePairs)
+	require.Zero(t, conn.BytesSent())
+}
+
 func TestConn_GetCandidatePairsInfo(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
