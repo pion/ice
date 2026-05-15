@@ -10,6 +10,8 @@ import (
 	"net"
 	"slices"
 	"sync"
+
+	"github.com/pion/stun/v3"
 )
 
 type packetWithCrc struct {
@@ -20,7 +22,7 @@ type packetWithCrc struct {
 type piggybackingState int
 
 const (
-	PiggybackingStateTentative = iota
+	PiggybackingStateTentative piggybackingState = iota
 	PiggybackingStateConfirmed
 	PiggybackingStatePending
 	PiggybackingStateComplete
@@ -36,6 +38,29 @@ type piggybackingController struct {
 	acks         []uint32
 	dtlsCallback func(packet []byte, rAddr net.Addr)
 	newFlight    bool
+}
+
+// init sets the controller to its initial off state. SetDtlsCallback flips it
+// to tentative when piggybacking is enabled.
+func (p *piggybackingController) init() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.acks = []uint32{}
+	p.state = PiggybackingStateOff
+}
+
+// flushOnConnected returns any pending packets that need to be sent as plain
+// DTLS once the ICE connection is established with piggybacking disabled.
+func (p *piggybackingController) flushOnConnected() []packetWithCrc {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.state != PiggybackingStateOff {
+		return nil
+	}
+	packets := p.packets
+	p.packets = []packetWithCrc{}
+
+	return packets
 }
 
 // SetDtlsCallback sets the callback for DTLS packets. Setting this callback
@@ -164,6 +189,32 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 	if dtlsCallback != nil {
 		dtlsCallback(packet, rAddr)
 	}
+}
+
+// appendPiggybackAttributes appends DTLS-in-STUN and ACK attributes (when
+// available) to the given setter slice. It is the single place that knows
+// the wire-order of those attributes in outgoing STUN messages.
+func (a *Agent) appendPiggybackAttributes(attrs []stun.Setter) []stun.Setter {
+	packet, acks := a.GetPiggybackDataAndAcks()
+	if acks == nil {
+		return attrs
+	}
+	attrs = append(attrs, DtlsInStunAckAttribute(acks))
+	if packet != nil {
+		attrs = append(attrs, DtlsInStunAttribute(packet))
+	}
+
+	return attrs
+}
+
+// reportPiggybackingFromMessage extracts the DTLS-in-STUN payload and ACK list
+// from a STUN message and forwards them to the controller.
+func (a *Agent) reportPiggybackingFromMessage(message *stun.Message, remote Candidate) {
+	var dtls DtlsInStunAttribute
+	_ = dtls.GetFrom(message)
+	var ack DtlsInStunAckAttribute
+	_ = ack.GetFrom(message)
+	a.ReportPiggybacking(dtls, ack, remote.addr())
 }
 
 func (a *Agent) ReportDtlsPacket(packet []byte) {
