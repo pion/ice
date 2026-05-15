@@ -225,10 +225,7 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 
 	// Embedding DTLS in STUN. This is off by default and enabled
 	// by the use of `SetDtlsCallback`.
-	agent.piggyback.mu.Lock()
-	agent.piggyback.acks = []uint32{}
-	agent.piggyback.state = PiggybackingStateOff
-	agent.piggyback.mu.Unlock()
+	agent.piggyback.init()
 
 	return newAgentWithConfig(agent, opts...)
 }
@@ -753,37 +750,35 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
-	if a.connectionState != newState {
-		// Connection has gone to failed, release all gathered candidates
-		if newState == ConnectionStateFailed {
-			a.removeUfragFromMux()
-			a.checklist = make([]*CandidatePair, 0)
-			a.pairsByID = make(map[uint64]*CandidatePair)
-			a.pendingBindingRequests = make([]bindingRequest, 0)
-			a.setSelectedPair(nil)
-			a.deleteAllCandidates()
-		}
+	if a.connectionState == newState {
+		return
+	}
 
-		var packetsToFlush []packetWithCrc
-		a.piggyback.mu.Lock()
-		if newState == ConnectionStateConnected && a.piggyback.state == PiggybackingStateOff {
-			// Piggybacking was discovered as not supported.
-			// Flush any pending DTLS packets.
-			packetsToFlush = a.piggyback.packets
-			a.piggyback.packets = []packetWithCrc{}
-		}
-		a.piggyback.mu.Unlock()
+	// Connection has gone to failed, release all gathered candidates
+	if newState == ConnectionStateFailed {
+		a.removeUfragFromMux()
+		a.checklist = make([]*CandidatePair, 0)
+		a.pairsByID = make(map[uint64]*CandidatePair)
+		a.pendingBindingRequests = make([]bindingRequest, 0)
+		a.setSelectedPair(nil)
+		a.deleteAllCandidates()
+	}
 
-		if pair := a.getSelectedPair(); pair != nil && len(packetsToFlush) > 0 {
-			for _, p := range packetsToFlush {
-				_, _ = pair.Write(p.data)
+	if newState == ConnectionStateConnected {
+		// If piggybacking has been discovered as not supported
+		// flush any pending DTLS packets.
+		if packets := a.piggyback.flushOnConnected(); len(packets) > 0 {
+			if pair := a.getSelectedPair(); pair != nil {
+				for _, p := range packets {
+					_, _ = pair.Write(p.data)
+				}
 			}
 		}
-
-		a.log.Infof("Setting new connection state: %s", newState)
-		a.connectionState = newState
-		a.connectionStateNotifier.EnqueueConnectionState(newState)
 	}
+
+	a.log.Infof("Setting new connection state: %s", newState)
+	a.connectionState = newState
+	a.connectionStateNotifier.EnqueueConnectionState(newState)
 }
 
 func (a *Agent) setSelectedPair(pair *CandidatePair) {
@@ -1607,14 +1602,7 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 			Port: port,
 		},
 	}
-	if packet, acks := a.GetPiggybackDataAndAcks(); acks != nil {
-		if acks != nil {
-			attributes = append(attributes, DtlsInStunAckAttribute(acks))
-		}
-		if packet != nil {
-			attributes = append(attributes, DtlsInStunAttribute(packet))
-		}
-	}
+	attributes = a.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint)
@@ -2086,14 +2074,7 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 		a.log.Tracef("Sending renomination request from %s to %s with nomination value %d",
 			pair.Local, pair.Remote, nominationValue)
 	}
-	if packet, acks := a.GetPiggybackDataAndAcks(); acks != nil {
-		if acks != nil {
-			attributes = append(attributes, DtlsInStunAckAttribute(acks))
-		}
-		if packet != nil {
-			attributes = append(attributes, DtlsInStunAttribute(packet))
-		}
-	}
+	attributes = a.appendPiggybackAttributes(attributes)
 
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.remotePwd),
