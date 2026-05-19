@@ -424,6 +424,15 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 }
 
 func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) { //nolint:cyclop
+	s.handleBindingRequest(message, local, remote, true)
+}
+
+//nolint:cyclop
+func (s *controlledSelector) handleBindingRequest(
+	message *stun.Message,
+	local, remote Candidate,
+	pingCandidate bool,
+) {
 	pair := s.agent.findPair(local, remote)
 	if pair == nil {
 		pair = s.agent.addPair(local, remote)
@@ -481,7 +490,7 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 	// on every inbound request creates a ping-pong busy loop: the remote side responds
 	// and sends its own request, which triggers another check here, repeating at 1/RTT.
 	// After connection, consent freshness is maintained by checkKeepalive() on a timer.
-	if pair.state != CandidatePairStateSucceeded || s.agent.getSelectedPair() == nil {
+	if pingCandidate && (pair.state != CandidatePairStateSucceeded || s.agent.getSelectedPair() == nil) {
 		s.PingCandidate(local, remote)
 	}
 
@@ -494,6 +503,25 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 
 type liteSelector struct {
 	pairCandidateSelector
+}
+
+// A lite selector only acts as a STUN server, so it responds to Binding
+// Requests but does not generate triggered checks of its own.
+func (s *liteSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) {
+	if v, ok := s.pairCandidateSelector.(*controlledSelector); ok {
+		if message.Contains(stun.AttrUseCandidate) || message.Contains(v.agent.nominationAttribute) {
+			pair := v.agent.findPair(local, remote)
+			if pair == nil {
+				pair = v.agent.addPair(local, remote)
+			}
+			pair.state = CandidatePairStateSucceeded
+		}
+		v.handleBindingRequest(message, local, remote, false)
+
+		return
+	}
+
+	s.pairCandidateSelector.HandleBindingRequest(message, local, remote)
 }
 
 // A lite selector should not contact candidates.

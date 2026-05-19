@@ -465,6 +465,47 @@ func TestControlledSelector_TriggeredCheckDuringChecking(t *testing.T) {
 		"triggered check should be sent during ICE checking phase")
 }
 
+func TestLiteSelector_NoTriggeredCheckForAcceptedNomination(t *testing.T) {
+	agent := bareAgentForPing()
+	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+	agent.remoteUfrag = selectionTestRemoteUfrag
+	agent.localUfrag = selectionTestLocalUfrag
+	agent.remotePwd = selectionTestPassword
+	agent.localPwd = selectionTestPassword
+	agent.tieBreaker = 1
+	agent.nominationAttribute = DefaultNominationAttribute
+	agent.onConnected = make(chan struct{})
+
+	selector := &liteSelector{pairCandidateSelector: &controlledSelector{agent: agent, log: agent.log}}
+	selector.Start()
+
+	local := newPingNoIOCand()
+	local.candidateBase.networkType = NetworkTypeUDP4
+	local.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+
+	remote := newPingNoIOCand()
+	remote.candidateBase.networkType = NetworkTypeUDP4
+	remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+
+	msg, err := stun.Build(
+		stun.BindingRequest,
+		stun.TransactionID,
+		stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+		UseCandidate(),
+		stun.NewShortTermIntegrity(agent.localPwd),
+		stun.Fingerprint,
+	)
+	require.NoError(t, err)
+
+	selector.HandleBindingRequest(msg, local, remote)
+
+	pair := agent.findPair(local, remote)
+	require.NotNil(t, pair)
+	assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+	assert.Equal(t, pair, agent.getSelectedPair())
+	assert.Zero(t, pair.RequestsSent(), "lite agent should not send a triggered check")
+}
+
 func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 	report := test.CheckRoutines(t)
 	defer report()
