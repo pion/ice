@@ -332,6 +332,13 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 		return
 	}
 
+	// Detect duplicate candidate configs before calling addCandidate(), since
+	// TCPMux returns the same underlying tcpPacketConn for multiple mapped IPs
+	// that share a real local IP. Without this, addCandidate() would treat the
+	// second registration as a duplicate and close the shared conn,
+	// invalidating the first candidate.
+	existingConfigs := make(map[CandidateHostConfig]struct{})
+
 	for _, info := range localAddrs {
 		addr := info.addr
 		ifaceName := info.iface
@@ -344,7 +351,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 		}
 
-		for mappedIdx, mappedIP := range mappedAddrs {
+		for _, mappedIP := range mappedAddrs {
 			address := mappedIP.String()
 			var isLocationTracked bool
 			if a.mDNSMode == MulticastDNSModeQueryAndGather {
@@ -357,12 +364,6 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 
 			for network := range networks {
-				// TCPMux maintains a single listener per interface. Avoid duplicating passive TCP candidates
-				// for additional mapped IPs until connection sharing is supported.
-				if network == tcp && mappedIdx > 0 {
-					continue
-				}
-
 				type connAndPort struct {
 					conn net.PacketConn
 					port int
@@ -461,6 +462,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						IsLocationTracked: isLocationTracked,
 					}
 
+					// Skip a duplicate config before addCandidate() can close
+					// the shared mux conn that other alias candidates rely on.
+					if _, ok := existingConfigs[hostConfig]; ok {
+						continue
+					}
+
 					candidateHost, err := NewCandidateHost(&hostConfig)
 
 					if err == nil && a.mDNSMode == MulticastDNSModeQueryAndGather {
@@ -485,7 +492,11 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
 						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+
+						continue
 					}
+
+					existingConfigs[hostConfig] = struct{}{}
 				}
 			}
 		}

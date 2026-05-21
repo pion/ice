@@ -3386,6 +3386,149 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 		}
 	})
 
+	t.Run("append host via TCPMux", func(t *testing.T) {
+		tcpMux := &boundTCPMux{}
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+			WithTCPMux(tcpMux),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"203.0.113.2"},
+				Local:           "10.0.0.1",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			}),
+		)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, agent.Close())
+		})
+
+		var (
+			mu        sync.Mutex
+			addresses []Candidate
+			done      = make(chan struct{})
+		)
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c == nil {
+				close(done)
+
+				return
+			}
+			mu.Lock()
+			addresses = append(addresses, c)
+			mu.Unlock()
+		}))
+
+		require.NoError(t, agent.GatherCandidates())
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			require.FailNow(t, "gather did not complete")
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, addresses, 2)
+		seenAddrs := []string{addresses[0].Address(), addresses[1].Address()}
+		assert.ElementsMatch(t, []string{"10.0.0.1", "203.0.113.2"}, seenAddrs)
+		for _, cand := range addresses {
+			assert.Equal(t, CandidateTypeHost, cand.Type())
+			assert.Equal(t, NetworkTypeTCP4, cand.NetworkType())
+			assert.Equal(t, TCPTypePassive, cand.TCPType())
+			assert.Equal(t, 12345, cand.Port())
+		}
+	})
+
+	t.Run("append host via MultiTCPMux", func(t *testing.T) {
+		const numMuxes = 2
+		muxes := make([]TCPMux, 0, numMuxes)
+		expectedPorts := make([]int, 0, numMuxes)
+		for range numMuxes {
+			l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+			require.NoError(t, err)
+			lAddr, ok := l.Addr().(*net.TCPAddr)
+			require.True(t, ok)
+			expectedPorts = append(expectedPorts, lAddr.Port)
+
+			mux := NewTCPMuxDefault(TCPMuxParams{
+				Listener:       l,
+				Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
+				ReadBufferSize: 20,
+			})
+			muxes = append(muxes, mux)
+		}
+		multi := NewMultiTCPMuxDefault(muxes...)
+		defer func() {
+			_ = multi.Close()
+		}()
+
+		agent, err := NewAgentWithOptions(
+			WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+			WithTCPMux(multi),
+			WithIncludeLoopback(),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				External:        []string{"198.51.100.1"},
+				Local:           "127.0.0.1",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			}),
+		)
+		require.NoError(t, err)
+		defer func() {
+			_ = agent.Close()
+		}()
+
+		done := make(chan struct{})
+		require.NoError(t, agent.OnCandidate(func(c Candidate) {
+			if c == nil {
+				close(done)
+			}
+		}))
+		require.NoError(t, agent.GatherCandidates())
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			require.FailNow(t, "gather did not complete")
+		}
+
+		cands, err := agent.GetLocalCandidates()
+		require.NoError(t, err)
+		require.Len(t, cands, 2*numMuxes, "expected M*N alias TCP candidates")
+
+		byPort := map[int][]*CandidateHost{}
+		for _, c := range cands {
+			h, ok := c.(*CandidateHost)
+			require.True(t, ok)
+			require.Equal(t, NetworkTypeTCP4, h.NetworkType())
+			require.Equal(t, TCPTypePassive, h.TCPType())
+			byPort[h.Port()] = append(byPort[h.Port()], h)
+		}
+		require.Len(t, byPort, numMuxes, "expected one port per child mux")
+		for _, port := range expectedPorts {
+			group := byPort[port]
+			require.Len(t, group, 2, "expected 2 alias candidates for port %d", port)
+			require.NotNil(t, group[0].conn)
+			require.Same(t, group[0].conn, group[1].conn,
+				"alias candidates on the same mux port must share one tcpPacketConn")
+			addrs := []string{group[0].Address(), group[1].Address()}
+			assert.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, addrs,
+				"each port's two candidates should expose both mapped IPs")
+		}
+
+		// Conns across different muxes must be distinct.
+		firstGroup := byPort[expectedPorts[0]]
+		secondGroup := byPort[expectedPorts[1]]
+		require.NotSame(t, firstGroup[0].conn, secondGroup[0].conn,
+			"conns from different child muxes must be distinct")
+	})
+
 	t.Run("replace host via UDPMux with empty mapping drops candidate", func(t *testing.T) {
 		mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 2}, Port: 1234}})
 
@@ -3496,6 +3639,125 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 		assert.Equal(t, "10.0.0.3", addresses[0].Address())
 		assert.Equal(t, 1, mux.connCount())
 	})
+}
+
+func TestGatherAddressRewriteAppendTCPMuxSharesConn(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{
+		Listener:       listener,
+		Logger:         loggerFactory.NewLogger("ice"),
+		ReadBufferSize: 20,
+	})
+	defer func() {
+		_ = tcpMux.Close()
+	}()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithTCPMux(tcpMux),
+		WithIncludeLoopback(),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"198.51.100.1"},
+			Local:           "127.0.0.1",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteAppend,
+		}),
+	)
+	require.NoError(t, err)
+	defer func() {
+		_ = agent.Close()
+	}()
+
+	done := make(chan struct{})
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+		}
+	}))
+	require.NoError(t, agent.GatherCandidates())
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "gather did not complete")
+	}
+
+	cands, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, cands, 2)
+	assert.ElementsMatch(t,
+		[]string{"127.0.0.1", "198.51.100.1"},
+		[]string{cands[0].Address(), cands[1].Address()},
+	)
+
+	hostA, ok := cands[0].(*CandidateHost)
+	require.True(t, ok)
+	hostB, ok := cands[1].(*CandidateHost)
+	require.True(t, ok)
+	require.NotNil(t, hostA.conn)
+	require.Same(t, hostA.conn, hostB.conn, "alias candidates must share one tcpPacketConn")
+
+	ufrag, _, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	peer, err := net.DialTCP("tcp", nil, listenerAddr)
+	require.NoError(t, err)
+	defer func() {
+		_ = peer.Close()
+	}()
+
+	bindReq := stun.New()
+	bindReq.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
+	bindReq.Add(stun.AttrUsername, []byte(ufrag+":otherufrag"))
+	bindReq.Encode()
+	_, err = writeStreamingPacket(peer, bindReq.Raw)
+	require.NoError(t, err)
+
+	// Exercise both candidates' conns end-to-end. Once the mux has dispatched
+	// the peer's STUN to the shared tcpPacketConn, a WriteTo through either
+	// candidate reaches the peer. We send a distinct payload via each and
+	// require both to be observed on the peer — proving the shared conn is
+	// usable from either alias.
+	payloadA := []byte("payload-from-hostA")
+	payloadB := []byte("payload-from-hostB")
+
+	require.Eventually(t, func() bool {
+		n, werr := hostA.conn.WriteTo(payloadA, peer.LocalAddr())
+
+		return werr == nil && n == len(payloadA)
+	}, 2*time.Second, 20*time.Millisecond, "WriteTo from hostA never reached peer")
+
+	n, err := hostB.conn.WriteTo(payloadB, peer.LocalAddr())
+	require.NoError(t, err)
+	require.Equal(t, len(payloadB), n, "WriteTo from hostB short-wrote")
+
+	// Read streaming packets on the peer until we have seen both payloads.
+	// The agent's own STUN handling may inject a binding error/response on the
+	// wire first (we sent a request without integrity); skip non-matching
+	// frames.
+	require.NoError(t, peer.SetReadDeadline(time.Now().Add(2*time.Second)))
+	seenA, seenB := false, false
+	for !seenA || !seenB {
+		buf := make([]byte, 1500)
+		nr, rerr := readStreamingPacket(peer, buf)
+		require.NoError(t, rerr)
+		switch string(buf[:nr]) {
+		case string(payloadA):
+			seenA = true
+		case string(payloadB):
+			seenB = true
+		}
+	}
 }
 
 func TestGatherAddressRewriteSrflxModes(t *testing.T) {
