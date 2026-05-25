@@ -4,10 +4,12 @@
 package ice
 
 import (
+	"context"
 	"io"
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
@@ -41,6 +43,9 @@ type udpMuxedConn struct {
 	closedChan       chan struct{}
 	state            udpMuxedConnState
 	mu               sync.Mutex
+
+	// refs counts outstanding sharedPacketConn wrappers handed out by the mux.
+	refs atomic.Int32
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
@@ -51,7 +56,11 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 	}
 }
 
-func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
+func (c *udpMuxedConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	return c.readFromContext(context.Background(), b)
+}
+
+func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (n int, rAddr net.Addr, err error) {
 	for {
 		c.mu.Lock()
 		if c.bufTail != nil {
@@ -89,6 +98,8 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 		case <-c.notify:
 		case <-c.closedChan:
 			return 0, nil, io.EOF
+		case <-ctx.Done():
+			return 0, nil, ctx.Err()
 		}
 	}
 }

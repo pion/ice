@@ -344,7 +344,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 		}
 
-		for mappedIdx, mappedIP := range mappedAddrs {
+		for _, mappedIP := range mappedAddrs {
 			address := mappedIP.String()
 			var isLocationTracked bool
 			if a.mDNSMode == MulticastDNSModeQueryAndGather {
@@ -357,12 +357,6 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 			}
 
 			for network := range networks {
-				// TCPMux maintains a single listener per interface. Avoid duplicating passive TCP candidates
-				// for additional mapped IPs until connection sharing is supported.
-				if network == tcp && mappedIdx > 0 {
-					continue
-				}
-
 				type connAndPort struct {
 					conn net.PacketConn
 					port int
@@ -418,7 +412,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						if tcpConn, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 							conns = append(conns, connAndPort{conn, tcpConn.Port})
 						} else {
-							a.log.Warnf("Failed to get port of connection from TCPMux: %s %s %s", network, addr, a.localUfrag)
+							closeConnAndLog(
+								conn,
+								a.log,
+								"Failed to get port of connection from TCPMux: %s %s %s",
+								network, addr, a.localUfrag,
+							)
 						}
 					}
 					if len(conns) == 0 {
@@ -484,7 +483,12 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						if closeErr := candidateHost.close(); closeErr != nil {
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
-						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+						closeConnAndLog(
+							connAndPort.conn,
+							a.log,
+							"Failed to append to localCandidates and run onCandidateHdlr: %v",
+							err,
+						)
 					}
 				}
 			}
@@ -792,7 +796,12 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 						if closeErr := c.close(); closeErr != nil {
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
-						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
+						closeConnAndLog(
+							conn,
+							a.log,
+							"Failed to append srflx mux candidate to localCandidates: %v",
+							err,
+						)
 					}
 				}(*urls[i], networkType.String(), udpAddr)
 			}

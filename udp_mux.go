@@ -145,7 +145,9 @@ func (m *UDPMuxDefault) GetListenAddresses() []net.Addr {
 }
 
 // GetConn returns a PacketConn given the connection's ufrag and network address.
-// creates the connection if an existing one can't be found.
+// creates the connection if an existing one can't be found. The returned conn
+// is a refcounted — repeat calls return connection with increased refcount, so
+// the connection's Close method should be called for each GetConn call to avoid leaks.
 func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	// don't check addr for mux using unspecified address
 	if len(m.localAddrsForUnspecified) == 0 && m.params.UDPConnString != addr.String() {
@@ -163,23 +165,22 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 		return nil, io.ErrClosedPipe
 	}
 
-	if conn, ok := m.getConn(ufrag, isIPv6); ok {
-		return conn, nil
+	muxedConn, ok := m.getConn(ufrag, isIPv6)
+	if !ok {
+		muxedConn = m.createMuxedConn(ufrag)
+		go func() {
+			<-muxedConn.CloseChannel()
+			m.RemoveConnByUfrag(ufrag)
+		}()
+
+		if isIPv6 {
+			m.connsIPv6[ufrag] = muxedConn
+		} else {
+			m.connsIPv4[ufrag] = muxedConn
+		}
 	}
 
-	c := m.createMuxedConn(ufrag)
-	go func() {
-		<-c.CloseChannel()
-		m.RemoveConnByUfrag(ufrag)
-	}()
-
-	if isIPv6 {
-		m.connsIPv6[ufrag] = c
-	} else {
-		m.connsIPv4[ufrag] = c
-	}
-
-	return c, nil
+	return newSharedPacketConn(muxedConn, &muxedConn.refs), nil
 }
 
 // RemoveConnByUfrag stops and removes the muxed packet connection.

@@ -264,3 +264,62 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 		require.Equal(t, msg.Raw, recv, "received bytes mismatch")
 	})
 }
+
+// Two GetConnByUfrag calls with the same (ufrag, isIPv6, local) must return
+// distinct wrappers backed by one underlying tcpPacketConn. Closing one
+// wrapper leaves the underlying alive (its CloseChannel remains open);
+// closing both releases it.
+func TestTCPMux_GetConnByUfrag_SharedRefcount(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	defer func() {
+		_ = listener.Close()
+	}()
+
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{
+		Listener:       listener,
+		Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
+		ReadBufferSize: 20,
+	})
+	defer func() {
+		_ = tcpMux.Close()
+	}()
+
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	connA, err := tcpMux.GetConnByUfrag("shared-ufrag", false, listenerAddr.IP)
+	require.NoError(t, err)
+	connB, err := tcpMux.GetConnByUfrag("shared-ufrag", false, listenerAddr.IP)
+	require.NoError(t, err)
+
+	wrapperA, ok := connA.(*sharedPacketConn)
+	require.True(t, ok, "GetConnByUfrag must return *sharedPacketConn")
+	wrapperB, ok := connB.(*sharedPacketConn)
+	require.True(t, ok)
+	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
+	require.Same(t, wrapperA.underlying, wrapperB.underlying,
+		"wrappers must share one underlying tcpPacketConn")
+
+	underlying, ok := wrapperA.underlying.(*tcpPacketConn)
+	require.True(t, ok)
+	require.Equal(t, int32(2), underlying.refs.Load())
+
+	require.NoError(t, connA.Close())
+	require.Equal(t, int32(1), underlying.refs.Load())
+	select {
+	case <-underlying.CloseChannel():
+		require.FailNow(t, "underlying must stay open while another wrapper holds a reference")
+	default:
+	}
+
+	require.NoError(t, connB.Close())
+	require.Equal(t, int32(0), underlying.refs.Load())
+	select {
+	case <-underlying.CloseChannel():
+	case <-time.After(time.Second):
+		require.FailNow(t, "underlying must close when the last wrapper is released")
+	}
+}

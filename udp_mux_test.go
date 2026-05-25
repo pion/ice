@@ -810,9 +810,55 @@ func TestUDPMux_connWorker_WritePacketError(t *testing.T) {
 	ipport, err := newIPPort(remote.IP, remote.Zone, 5555)
 	require.NoError(t, err)
 
-	cInner, ok := c.(*udpMuxedConn)
-	require.True(t, ok, "expected *udpMuxedConn from UDPMuxDefault.GetConn")
-	mux.registerConnForAddress(cInner, ipport)
+	cInner, ok := c.(*sharedPacketConn)
+	require.True(t, ok, "expected *sharedPacketConn from UDPMuxDefault.GetConn")
+	muxedConn, ok := cInner.underlying.(*udpMuxedConn)
+	require.True(t, ok, "expected sharedPacketConn to wrap *udpMuxedConn")
+	mux.registerConnForAddress(muxedConn, ipport)
+}
+
+// Two GetConn calls with the same ufrag/network must return distinct wrappers
+// backed by one underlying udpMuxedConn. Closing one wrapper leaves the
+// underlying alive; closing both releases it.
+func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	udpConn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() { _ = udpConn.Close() }()
+
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() { _ = mux.Close() }()
+
+	addr := mux.LocalAddr()
+	connA, err := mux.GetConn("shared-ufrag", addr)
+	require.NoError(t, err)
+	connB, err := mux.GetConn("shared-ufrag", addr)
+	require.NoError(t, err)
+
+	wrapperA, ok := connA.(*sharedPacketConn)
+	require.True(t, ok, "GetConn must return *sharedPacketConn")
+	wrapperB, ok := connB.(*sharedPacketConn)
+	require.True(t, ok)
+	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
+	require.Same(t, wrapperA.underlying, wrapperB.underlying,
+		"wrappers must share one underlying udpMuxedConn")
+
+	underlying, ok := wrapperA.underlying.(*udpMuxedConn)
+	require.True(t, ok)
+	require.Equal(t, int32(2), underlying.refs.Load())
+
+	require.NoError(t, connA.Close())
+	require.Equal(t, int32(1), underlying.refs.Load())
+	require.False(t, underlying.isClosed(), "underlying must stay open while a wrapper holds a reference")
+
+	require.NoError(t, connB.Close())
+	require.Equal(t, int32(0), underlying.refs.Load())
+	select {
+	case <-underlying.CloseChannel():
+	case <-time.After(time.Second):
+		require.FailNow(t, "underlying must close when the last wrapper is released")
+	}
 }
 
 func TestNewUDPMuxDefault_UnspecifiedAddr_AutoInitNet(t *testing.T) {
