@@ -366,6 +366,53 @@ func TestUDPMuxedConn_ReadFrom_WaitingThenClosedEOF(t *testing.T) {
 	}
 }
 
+func TestUDPMuxedConn_TwoReadersWokenByTwoWrites(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 10).Stop()
+
+	conn := secondTestMuxedConn(t, 1500)
+	remote := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 5678}
+
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	results := make(chan readResult, 2)
+	read := func() {
+		buf := make([]byte, 1500)
+		n, _, err := conn.ReadFrom(buf)
+		results <- readResult{data: append([]byte(nil), buf[:n]...), err: err}
+	}
+	go read()
+	go read()
+
+	// Both readers must be parked before we write.
+	require.Eventually(t, func() bool {
+		return conn.readWaiting.Load() == 2
+	}, 2*time.Second, time.Millisecond, "both readers must block on the empty queue")
+
+	// First write wakes exactly one reader, which drains the single packet.
+	require.NoError(t, conn.writePacket([]byte("p1"), remote))
+	first := <-results
+	require.NoError(t, first.err)
+	require.Equal(t, []byte("p1"), first.data)
+
+	// The other reader is still parked; the first has decremented on unpark.
+	require.Eventually(t, func() bool {
+		return conn.readWaiting.Load() == 1
+	}, 2*time.Second, time.Millisecond, "the second reader must still be parked")
+
+	// Second write wakes the remaining reader.
+	require.NoError(t, conn.writePacket([]byte("p2"), remote))
+	second := <-results
+	require.NoError(t, second.err)
+	require.Equal(t, []byte("p2"), second.data)
+
+	// Both readers returned and the counter is balanced.
+	require.Equal(t, int32(0), conn.readWaiting.Load(),
+		"readWaiting must be 0 after both readers are woken")
+}
+
 func TestUDPMuxedConn_WriteTo_ClosedPipe(t *testing.T) {
 	conn := secondTestMuxedConn(t, 64)
 	require.NoError(t, conn.Close())
@@ -493,7 +540,7 @@ func TestUDPMuxedConn_writePacket_ClosedState(t *testing.T) {
 
 	// closed state before write
 	conn.mu.Lock()
-	conn.state = udpMuxedConnClosed
+	conn.closed = true
 	conn.mu.Unlock()
 
 	err := conn.writePacket([]byte{1, 2, 3}, addr) // fits in cap
@@ -511,10 +558,8 @@ func TestUDPMuxedConn_writePacket_NotifyDefaultBranch(t *testing.T) {
 	// fill notify channel so send would block
 	conn.notify <- struct{}{}
 
-	// set pre-state to waiting so the post-unlock select triggers
-	conn.mu.Lock()
-	conn.state = udpMuxedConnWaiting
-	conn.mu.Unlock()
+	// mark a reader as parked so writePacket attempts the (now blocked) notify
+	conn.readWaiting.Store(1)
 
 	// write should take default branch
 	err := conn.writePacket([]byte("hello"), addr)
