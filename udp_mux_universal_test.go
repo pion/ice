@@ -163,11 +163,17 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc2.Close()
 	}()
 
-	c1, ok := pc1.(*udpMuxedConn)
-	require.True(t, ok, "pc1 is not *udpMuxedConn")
-	c2, ok := pc2.(*udpMuxedConn)
-	require.True(t, ok, "pc2 is not *udpMuxedConn")
-	require.NotEqual(t, c1, c2, "expected distinct muxed conns for different URLs with same ufrag")
+	// GetConnForURL now hands out *sharedPacketConn wrappers around the
+	// per-(ufrag,url) underlying *udpMuxedConn; unwrap to compare identity.
+	w1, ok := pc1.(*sharedPacketConn)
+	require.True(t, ok, "pc1 is not *sharedPacketConn")
+	w2, ok := pc2.(*sharedPacketConn)
+	require.True(t, ok, "pc2 is not *sharedPacketConn")
+	c1, ok := w1.underlying.(*udpMuxedConn)
+	require.True(t, ok, "pc1 underlying is not *udpMuxedConn")
+	c2, ok := w2.underlying.(*udpMuxedConn)
+	require.True(t, ok, "pc2 underlying is not *udpMuxedConn")
+	require.NotSame(t, c1, c2, "expected distinct muxed conns for different URLs with same ufrag")
 
 	pc1b, err := udpMux.GetConnForURL("ufragX", "stun:serverA", lf)
 	require.NoError(t, err)
@@ -175,10 +181,13 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc1b.Close()
 	}()
 
-	c1b, ok := pc1b.(*udpMuxedConn)
-	require.True(t, ok, "pc1b is not *udpMuxedConn")
+	w1b, ok := pc1b.(*sharedPacketConn)
+	require.True(t, ok, "pc1b is not *sharedPacketConn")
+	c1b, ok := w1b.underlying.(*udpMuxedConn)
+	require.True(t, ok, "pc1b underlying is not *udpMuxedConn")
 
-	require.Equal(t, c1, c1b, "expected same muxed conn when requesting the same (ufrag,url)")
+	require.NotSame(t, w1, w1b, "GetConnForURL must return a fresh wrapper each call")
+	require.Same(t, c1, c1b, "expected same underlying muxed conn when requesting the same (ufrag,url)")
 }
 
 func newLogger() logging.LeveledLogger {
