@@ -172,6 +172,9 @@ var (
 	// ErrAgentOptionNotUpdatable indicates an option cannot be updated after construction.
 	ErrAgentOptionNotUpdatable = errors.New("option can only be set during agent construction")
 
+	// ErrPacketConnNil indicates an net.PacketConn value was nil.
+	ErrPacketConnNil = errors.New("net.PacketConn is nil")
+
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errClosingConnection             = errors.New("failed to close connection")
 	errConnectionAddrAlreadyExist    = errors.New("connection with same remote address already exists")

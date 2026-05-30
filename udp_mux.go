@@ -67,7 +67,11 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault { //nolint:cyclop
 	}
 
 	var localAddrsForUnspecified []net.Addr
-	if udpAddr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok { //nolint:nestif
+	//nolint:nestif
+	if params.UDPConn == nil {
+		params.Logger.Errorf("UDPConn is nil")
+		params.UDPConn = &ErrorConn{}
+	} else if udpAddr, ok := params.UDPConn.LocalAddr().(*net.UDPAddr); !ok { //nolint:nestif
 		params.Logger.Errorf("LocalAddr is not a net.UDPAddr, got %T", params.UDPConn.LocalAddr())
 	} else if ok && udpAddr.IP.IsUnspecified() {
 		// For unspecified addresses, the correct behavior is to return errListenUnspecified, but
