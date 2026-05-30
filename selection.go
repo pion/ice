@@ -449,11 +449,10 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 			return
 		}
 
-		if pair.state == CandidatePairStateSucceeded {
-			// If the state of this pair is Succeeded, it means that the check
-			// previously sent by this pair produced a successful response and
-			// generated a valid pair (Section 7.2.5.3.2).  The agent sets the
-			// nominated flag value of the valid pair to true.
+		if pair.state == CandidatePairStateSucceeded || s.agent.lite {
+			// For full agents: pair reached Succeeded via a triggered check (RFC 8445 §7.3.1.5).
+			// For lite agents: RFC 8445 §7.3.2 — the lite agent directly constructs the pair,
+			// places it in the valid list, and sets the nominated flag; no triggered check needed.
 			selectedPair := s.agent.getSelectedPair()
 			if s.shouldSwitchSelectedPair(pair, selectedPair, nominationValue) {
 				s.log.Tracef("Accepting nomination for pair %s", pair)
@@ -476,12 +475,13 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 
 	s.agent.sendBindingSuccess(message, local, remote)
 
-	// Only send a triggered check during ICE checking phase (RFC 8445 §7.3.1.4).
+	// Lite agents only act as STUN servers and MUST NOT generate connectivity checks (RFC 8445 §7).
+	// For full agents: only send a triggered check during ICE checking phase (RFC 8445 §7.3.1.4).
 	// Once the pair is established (succeeded + selected), sending a triggered check
 	// on every inbound request creates a ping-pong busy loop: the remote side responds
 	// and sends its own request, which triggers another check here, repeating at 1/RTT.
 	// After connection, consent freshness is maintained by checkKeepalive() on a timer.
-	if pair.state != CandidatePairStateSucceeded || s.agent.getSelectedPair() == nil {
+	if !s.agent.lite && (pair.state != CandidatePairStateSucceeded || s.agent.getSelectedPair() == nil) {
 		s.PingCandidate(local, remote)
 	}
 
