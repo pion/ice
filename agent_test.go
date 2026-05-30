@@ -2846,6 +2846,95 @@ func TestRoleConflict(t *testing.T) {
 	})
 }
 
+func TestRoleConflictErrorResponse(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	cfg := &AgentConfig{
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		InterfaceFilter:  problematicNetworkInterfaces,
+	}
+
+	aAgent, err := NewAgent(cfg)
+	require.NoError(t, err)
+
+	bAgent, err := NewAgent(cfg)
+	require.NoError(t, err)
+
+	// Set up both agents and exchange candidates
+	gatherAndExchangeCandidates(t, aAgent, bAgent)
+
+	// Start connectivity checks - aAgent will be controlling (Dial)
+	ufragB, pwdB, err := bAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	connDone := make(chan struct{})
+	go func() {
+		defer close(connDone)
+		_, dialErr := aAgent.Dial(context.TODO(), ufragB, pwdB)
+		if dialErr != nil {
+			t.Logf("Dial error (expected): %v", dialErr)
+		}
+	}()
+
+	// Wait a bit for binding requests to be sent
+	time.Sleep(200 * time.Millisecond)
+
+	// Store the original role
+	originalRole := aAgent.isControlling.Load()
+	require.True(t, originalRole, "aAgent should be controlling after Dial")
+
+	// Access agent internals to get pending request and create error response
+	var txID [stun.TransactionIDSize]byte
+	var destAddr net.Addr
+	var localCand Candidate
+
+	err = aAgent.loop.Run(context.Background(), func(_ context.Context) {
+		if len(aAgent.pendingBindingRequests) > 0 {
+			txID = aAgent.pendingBindingRequests[0].transactionID
+			destAddr = aAgent.pendingBindingRequests[0].destination
+		}
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, [stun.TransactionIDSize]byte{}, txID, "Should have a transaction ID")
+
+	localCands, err := aAgent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.NotEmpty(t, localCands)
+	localCand = localCands[0]
+
+	// Create and send 487 error response
+	errorMsg, err := stun.Build(
+		stun.NewTransactionIDSetter(txID),
+		stun.BindingError,
+		stun.ErrorCodeAttribute{
+			Code:   stun.CodeRoleConflict,
+			Reason: []byte("Role Conflict"),
+		},
+		stun.NewShortTermIntegrity(aAgent.remotePwd),
+		stun.Fingerprint,
+	)
+	require.NoError(t, err)
+
+	// Inject the error response through the agent's event loop to avoid data races
+	err = aAgent.loop.Run(context.Background(), func(_ context.Context) {
+		// nolint: contextcheck
+		aAgent.handleInbound(errorMsg, localCand, destAddr)
+	})
+	require.NoError(t, err)
+
+	// Verify role switched
+	newRole := aAgent.isControlling.Load()
+	require.False(t, newRole, "Agent should have switched to controlled after receiving 487 error")
+
+	// Clean up
+	require.NoError(t, aAgent.Close())
+	require.NoError(t, bAgent.Close())
+
+	<-connDone
+}
+
 func TestDefaultCandidateTypes(t *testing.T) {
 	expected := []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
 
