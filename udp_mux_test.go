@@ -19,6 +19,7 @@ import (
 	"github.com/pion/ice/v4/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
 	"github.com/stretchr/testify/require"
 )
@@ -904,6 +905,81 @@ func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
 	case <-time.After(time.Second):
 		require.FailNow(t, "underlying must close when the last wrapper is released")
 	}
+}
+
+type mutableNet struct {
+	transport.Net
+	mu     sync.Mutex
+	ifaces []*transport.Interface
+}
+
+func (m *mutableNet) Interfaces() ([]*transport.Interface, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.ifaces, nil
+}
+
+func (m *mutableNet) setInterfaces(ifaces []*transport.Interface) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ifaces = ifaces
+}
+
+// Verify that that GetListenAddresses is able to reflect interface changes.
+func TestUDPMuxDefault_GetListenAddresses_ReflectsInterfaceChanges(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4zero})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	wantPort := udpAddr.Port
+
+	makeIface := func(name string, ip net.IP) *transport.Interface {
+		ifc := transport.NewInterface(net.Interface{
+			Index: 1,
+			MTU:   1500,
+			Name:  name,
+			Flags: net.FlagUp | net.FlagMulticast,
+		})
+		ifc.AddAddress(&net.IPNet{IP: ip, Mask: net.CIDRMask(24, 32)})
+
+		return ifc
+	}
+
+	ip1 := net.IPv4(10, 0, 0, 1).To4()
+	mn := &mutableNet{ifaces: []*transport.Interface{makeIface("eth0", ip1)}}
+
+	mux := NewUDPMuxDefault(UDPMuxParams{
+		Logger:  nil,
+		UDPConn: conn,
+		Net:     mn,
+	})
+	require.NotNil(t, mux)
+	defer func() { _ = mux.Close() }()
+
+	// first call: should expose ip1.
+	addrs := mux.GetListenAddresses()
+	require.Len(t, addrs, 1, "expected exactly one listen address for the initial interface")
+	ua, ok := addrs[0].(*net.UDPAddr)
+	require.True(t, ok)
+	require.Equal(t, wantPort, ua.Port)
+	require.True(t, ua.IP.Equal(ip1), "expected %s, got %s", ip1, ua.IP)
+
+	// simulate a network change: replace ip1 with ip2.
+	ip2 := net.IPv4(10, 0, 0, 2).To4()
+	mn.setInterfaces([]*transport.Interface{makeIface("eth1", ip2)})
+
+	// second call: must reflect the new interface without requiring a restart.
+	addrs = mux.GetListenAddresses()
+	require.Len(t, addrs, 1, "expected exactly one listen address after interface change")
+	ua, ok = addrs[0].(*net.UDPAddr)
+	require.True(t, ok)
+	require.Equal(t, wantPort, ua.Port)
+	require.True(t, ua.IP.Equal(ip2), "GetListenAddresses must not cache: expected %s, got %s", ip2, ua.IP)
 }
 
 func TestNewUDPMuxDefault_UnspecifiedAddr_AutoInitNet(t *testing.T) {
