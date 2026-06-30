@@ -7,10 +7,13 @@ package ice
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/netip"
+	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -49,6 +52,472 @@ func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Cand
 
 func (r *recordingSelector) HandleBindingRequest(*stun.Message, Candidate, Candidate) {
 	r.handledBindingRequest = true
+}
+
+type blockingWritePacketConn struct {
+	writeStarted     chan struct{}
+	writeStartedOnce sync.Once
+	closed           chan struct{}
+	closeOnce        sync.Once
+}
+
+func newBlockingWritePacketConn() *blockingWritePacketConn {
+	return &blockingWritePacketConn{
+		writeStarted: make(chan struct{}),
+		closed:       make(chan struct{}),
+	}
+}
+
+func (b *blockingWritePacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	<-b.closed
+
+	return 0, nil, io.EOF
+}
+
+func (b *blockingWritePacketConn) WriteTo([]byte, net.Addr) (int, error) {
+	b.writeStartedOnce.Do(func() {
+		close(b.writeStarted)
+	})
+
+	<-b.closed
+
+	return 0, io.ErrClosedPipe
+}
+
+func (b *blockingWritePacketConn) Close() error {
+	b.closeOnce.Do(func() {
+		close(b.closed)
+	})
+
+	return nil
+}
+
+func (b *blockingWritePacketConn) LocalAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 1}
+}
+
+func (b *blockingWritePacketConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (b *blockingWritePacketConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (b *blockingWritePacketConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type deadlineBlockingPacketConn struct {
+	*blockingWritePacketConn
+	writeDeadlineSet  chan struct{}
+	writeDeadlineOnce sync.Once
+}
+
+func newDeadlineBlockingPacketConn() *deadlineBlockingPacketConn {
+	return &deadlineBlockingPacketConn{
+		blockingWritePacketConn: newBlockingWritePacketConn(),
+		writeDeadlineSet:        make(chan struct{}),
+	}
+}
+
+func (b *deadlineBlockingPacketConn) WriteTo([]byte, net.Addr) (int, error) {
+	b.writeStartedOnce.Do(func() {
+		close(b.writeStarted)
+	})
+
+	select {
+	case <-b.closed:
+		return 0, io.ErrClosedPipe
+	case <-b.writeDeadlineSet:
+		return 0, os.ErrDeadlineExceeded
+	}
+}
+
+func (b *deadlineBlockingPacketConn) SetDeadline(t time.Time) error {
+	return b.SetWriteDeadline(t)
+}
+
+func (b *deadlineBlockingPacketConn) SetWriteDeadline(t time.Time) error {
+	if !t.IsZero() {
+		b.writeDeadlineOnce.Do(func() {
+			close(b.writeDeadlineSet)
+		})
+	}
+
+	return nil
+}
+
+type blockingMuxedPacketConn struct {
+	*blockingWritePacketConn
+	refs       atomic.Int32
+	closeCount atomic.Int32
+}
+
+func newBlockingMuxedPacketConn() *blockingMuxedPacketConn {
+	return &blockingMuxedPacketConn{
+		blockingWritePacketConn: newBlockingWritePacketConn(),
+	}
+}
+
+func (b *blockingMuxedPacketConn) readFromContext(ctx context.Context, _ []byte) (int, net.Addr, error) {
+	select {
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	case <-b.closed:
+		return 0, nil, io.EOF
+	}
+}
+
+func (b *blockingMuxedPacketConn) Close() error {
+	b.closeCount.Add(1)
+
+	return b.blockingWritePacketConn.Close()
+}
+
+func TestAgentCloseAbortsBlockedCandidateWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+
+	conn := newBlockingWritePacketConn()
+	local, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.1",
+		Port:      1,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	local.start(agent, conn, agent.startedCh)
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.2",
+		Port:      2,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID)
+	require.NoError(t, err)
+
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- agent.loop.Run(agent.loop, func(context.Context) {
+			agent.sendSTUN(msg, local, remote)
+		})
+	}()
+
+	select {
+	case <-conn.writeStarted:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for candidate write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent.Close()
+	}()
+
+	select {
+	case <-conn.closed:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for close to abort candidate I/O")
+	}
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for agent close")
+	}
+
+	require.NoError(t, <-runErr)
+}
+
+func TestAgentCloseAbortsBlockedSharedCandidateWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+
+	muxedConn := newBlockingMuxedPacketConn()
+	localA, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.1",
+		Port:      1,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	localA.start(agent, newSharedPacketConn(muxedConn, &muxedConn.refs), agent.startedCh)
+
+	localB, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.1",
+		Port:      2,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	localB.start(agent, newSharedPacketConn(muxedConn, &muxedConn.refs), agent.startedCh)
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.2",
+		Port:      3,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID)
+	require.NoError(t, err)
+
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- agent.loop.Run(agent.loop, func(context.Context) {
+			agent.sendSTUN(msg, localA, remote)
+		})
+	}()
+
+	select {
+	case <-muxedConn.writeStarted:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for shared candidate write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent.Close()
+	}()
+
+	select {
+	case <-muxedConn.closed:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for close to abort shared candidate I/O")
+	}
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for agent close")
+	}
+
+	require.NoError(t, <-runErr)
+	require.Equal(t, int32(0), muxedConn.refs.Load())
+	require.Equal(t, int32(1), muxedConn.closeCount.Load())
+}
+
+func TestAgentCloseAbortsBlockedUDPMuxWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+
+	udpConn := newDeadlineBlockingPacketConn()
+	udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() {
+		_ = udpMux.Close()
+	}()
+
+	muxedConn, err := udpMux.GetConn(agent.localUfrag, udpConn.LocalAddr())
+	require.NoError(t, err)
+
+	local, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.1",
+		Port:      1,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	local.start(agent, muxedConn, agent.startedCh)
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.2",
+		Port:      2,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID)
+	require.NoError(t, err)
+
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- agent.loop.Run(agent.loop, func(context.Context) {
+			agent.sendSTUN(msg, local, remote)
+		})
+	}()
+
+	select {
+	case <-udpConn.writeStarted:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for UDP mux write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent.Close()
+	}()
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		_ = udpConn.Close()
+		<-closeErr
+		require.Fail(t, "agent close did not abort blocked UDP mux write")
+	}
+
+	require.NoError(t, <-runErr)
+}
+
+func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	udpConn := newBlockingDeadlinePacketConn()
+	udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() {
+		_ = udpMux.Close()
+	}()
+
+	newMuxAgent := func(t *testing.T) *Agent {
+		t.Helper()
+
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:    []NetworkType{NetworkTypeUDP4},
+			CandidateTypes:  []CandidateType{CandidateTypeHost},
+			UDPMux:          udpMux,
+			IncludeLoopback: true,
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+
+		return agent
+	}
+
+	agent1 := newMuxAgent(t)
+	defer func() {
+		_ = agent1.Close()
+	}()
+
+	agent2 := newMuxAgent(t)
+	defer func() {
+		_ = agent2.Close()
+	}()
+
+	onlyLocalCandidate := func(t *testing.T, agent *Agent) Candidate {
+		t.Helper()
+
+		candidates, err := agent.GetLocalCandidates()
+		require.NoError(t, err)
+		require.Len(t, candidates, 1)
+
+		return candidates[0]
+	}
+
+	local1 := onlyLocalCandidate(t, agent1)
+	local2 := onlyLocalCandidate(t, agent2)
+
+	remote1, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.2",
+		Port:      2,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	remote2, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   NetworkTypeUDP4.String(),
+		Address:   "192.0.2.3",
+		Port:      3,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID)
+	require.NoError(t, err)
+
+	firstRunErr := make(chan error, 1)
+	go func() {
+		firstRunErr <- agent1.loop.Run(agent1.loop, func(context.Context) {
+			agent1.sendSTUN(msg, local1, remote1)
+		})
+	}()
+
+	select {
+	case <-udpConn.firstWriteStarted:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for first agent write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent1.Close()
+	}()
+
+	select {
+	case <-udpConn.deadlineSet:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for UDP mux abort deadline")
+	}
+
+	close(udpConn.allowFirstReturn)
+
+	select {
+	case <-udpConn.deadlineCleared:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for UDP mux abort deadline to clear")
+	}
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for first agent close")
+	}
+
+	require.NoError(t, <-firstRunErr)
+
+	select {
+	case <-udpConn.closed:
+		require.FailNow(t, "shared UDP socket was closed by first agent")
+	default:
+	}
+
+	const payload = "second"
+	secondResult := make(chan struct {
+		n   int
+		err error
+	}, 1)
+	go func() {
+		var n int
+		var writeErr error
+		runErr := agent2.loop.Run(agent2.loop, func(context.Context) {
+			n, writeErr = local2.writeTo([]byte(payload), remote2)
+		})
+		if writeErr == nil {
+			writeErr = runErr
+		}
+		secondResult <- struct {
+			n   int
+			err error
+		}{n: n, err: writeErr}
+	}()
+
+	select {
+	case result := <-secondResult:
+		require.NoError(t, result.err)
+		require.Equal(t, len(payload), result.n)
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for second agent write")
+	}
 }
 
 func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx

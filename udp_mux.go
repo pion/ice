@@ -9,8 +9,11 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
@@ -46,7 +49,16 @@ type UDPMuxDefault struct {
 
 	// whether the UDP connection listens on an unspecified address
 	isUnspecified bool
+
+	// writeState packs write in-flight count.
+	writeState atomic.Uint64
 }
+
+const (
+	udpMuxWriteBlockedBit  = uint64(1) << 63
+	udpMuxWriteDeadlineBit = uint64(1) << 62
+	udpMuxWriteCountMask   = udpMuxWriteDeadlineBit - 1
+)
 
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
@@ -98,7 +110,6 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		},
 		isUnspecified: isUnspecified,
 	}
-
 	go mux.connWorker()
 
 	return mux
@@ -258,7 +269,120 @@ func (m *UDPMuxDefault) Close() error {
 }
 
 func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
+	m.startWrite()
+
+	defer func() {
+		err = m.finishWrite(err)
+	}()
+
 	return m.params.UDPConn.WriteTo(buf, rAddr)
+}
+
+func (m *UDPMuxDefault) abortWrite() error {
+	for {
+		state := m.writeState.Load()
+		if state&udpMuxWriteBlockedBit != 0 || state&udpMuxWriteCountMask == 0 {
+			return nil
+		}
+
+		if !m.writeState.CompareAndSwap(state, state|udpMuxWriteBlockedBit) {
+			continue
+		}
+
+		if err := m.params.UDPConn.SetWriteDeadline(time.Now()); err != nil {
+			m.clearWriteAbortState()
+
+			return err
+		}
+
+		m.setWriteDeadlineArmed()
+
+		return nil
+	}
+}
+
+func (m *UDPMuxDefault) startWrite() {
+	for {
+		state := m.writeState.Load()
+		if state&udpMuxWriteBlockedBit != 0 {
+			runtime.Gosched()
+
+			continue
+		}
+
+		if m.writeState.CompareAndSwap(state, state+1) {
+			return
+		}
+	}
+}
+
+func (m *UDPMuxDefault) finishWrite(writeErr error) error {
+	for {
+		state := m.writeState.Load()
+		count := state & udpMuxWriteCountMask
+		if count == 0 {
+			return writeErr
+		}
+
+		if state&udpMuxWriteBlockedBit != 0 && count == 1 {
+			if !m.writeState.CompareAndSwap(state, state-1) {
+				continue
+			}
+
+			return m.clearWriteDeadlineAfterAbort(writeErr)
+		}
+
+		if m.writeState.CompareAndSwap(state, state-1) {
+			return writeErr
+		}
+	}
+}
+
+func (m *UDPMuxDefault) setWriteDeadlineArmed() {
+	for {
+		state := m.writeState.Load()
+		if state&udpMuxWriteBlockedBit == 0 || state&udpMuxWriteDeadlineBit != 0 {
+			return
+		}
+		if m.writeState.CompareAndSwap(state, state|udpMuxWriteDeadlineBit) {
+			return
+		}
+	}
+}
+
+func (m *UDPMuxDefault) clearWriteDeadlineAfterAbort(writeErr error) error {
+	for {
+		state := m.writeState.Load()
+		if state&udpMuxWriteBlockedBit == 0 {
+			return writeErr
+		}
+		if state&udpMuxWriteDeadlineBit == 0 {
+			runtime.Gosched()
+
+			continue
+		}
+
+		clearErr := m.params.UDPConn.SetWriteDeadline(time.Time{})
+		m.writeState.Store(0)
+		if writeErr == nil {
+			return clearErr
+		}
+
+		return writeErr
+	}
+}
+
+func (m *UDPMuxDefault) clearWriteAbortState() {
+	for {
+		state := m.writeState.Load()
+		newState := state &^ (udpMuxWriteBlockedBit | udpMuxWriteDeadlineBit)
+		if state == newState {
+			return
+		}
+		if m.writeState.CompareAndSwap(state, newState) {
+			return
+		}
+	}
 }
 
 func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr ipPort) {

@@ -39,6 +39,8 @@ type candidateBase struct {
 	currAgent *Agent
 	closeCh   chan struct{}
 	closedCh  chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 
 	foundationOverride string
 	priorityOverride   uint32
@@ -48,6 +50,10 @@ type candidateBase struct {
 	remoteCandidateCaches sync.Map // map[AddrPort]Candidate
 	isLocationTracked     bool
 	extensions            []CandidateExtension
+}
+
+type writeAborter interface {
+	abortWrite() error
 }
 
 // Save a time reference to calculate monotonic time for candidate last sent/received.
@@ -242,6 +248,7 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 	c.conn = conn
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
+	a.registerStartedCandidate(c)
 
 	go c.recvLoop(initializedCh)
 }
@@ -379,34 +386,46 @@ func (c *candidateBase) close() error {
 		return nil
 	}
 
-	// Assert that conn has not already been closed
-	select {
-	case <-c.Done():
-		return nil
-	default:
-	}
-
-	var firstErr error
-
-	// Unblock recvLoop
-	close(c.closeCh)
-	if err := c.conn.SetDeadline(time.Now()); err != nil {
-		firstErr = err
-	}
-
-	// Close the conn
-	if err := c.conn.Close(); err != nil && firstErr == nil {
-		firstErr = err
-	}
-
-	if firstErr != nil {
-		return firstErr
-	}
+	err := c.abortIO()
 
 	// Wait until the recvLoop is closed
 	<-c.closedCh
 
-	return nil
+	if c.currAgent != nil {
+		c.currAgent.unregisterStartedCandidate(c)
+	}
+
+	return err
+}
+
+func (c *candidateBase) abortIO() error {
+	// If conn has never been started will be nil.
+	if c.Done() == nil {
+		return nil
+	}
+
+	c.closeOnce.Do(func() {
+		// Unblock recvLoop.
+		close(c.closeCh)
+
+		if err := c.conn.SetDeadline(time.Now()); err != nil {
+			c.closeErr = err
+		}
+
+		if aborter, ok := c.conn.(writeAborter); ok {
+			if err := aborter.abortWrite(); err != nil && c.closeErr == nil {
+				c.closeErr = err
+			}
+		}
+
+		// Close the conn to abort in-flight socket I/O before the task loop
+		// waits for the current task to finish.
+		if err := c.conn.Close(); err != nil && c.closeErr == nil {
+			c.closeErr = err
+		}
+	})
+
+	return c.closeErr
 }
 
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {

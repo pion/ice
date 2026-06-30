@@ -8,6 +8,7 @@ package taskloop
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	atomicx "github.com/pion/ice/v4/internal/atomic"
@@ -28,6 +29,7 @@ type Loop struct {
 	// State for closing
 	done         chan struct{}
 	taskLoopDone chan struct{}
+	closeOnce    sync.Once
 	err          atomicx.Error
 }
 
@@ -65,13 +67,21 @@ func (l *Loop) runLoop(onClose func()) {
 // Close stops the loop after finishing the execution of the current task.
 // Other pending tasks will not be executed.
 func (l *Loop) Close() {
-	if err := l.Err(); err != nil {
-		return
-	}
+	l.CloseWithPreStop(nil)
+}
 
-	l.err.Store(ErrClosed)
+// CloseWithPreStop stops the loop after finishing the execution of the current task.
+// It calls preStop after the loop is marked closed and before waiting for the
+// current task to return.
+func (l *Loop) CloseWithPreStop(preStop func()) {
+	l.closeOnce.Do(func() {
+		l.err.Store(ErrClosed)
 
-	close(l.done)
+		close(l.done)
+		if preStop != nil {
+			preStop()
+		}
+	})
 	<-l.taskLoopDone
 }
 

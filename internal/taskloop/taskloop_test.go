@@ -5,6 +5,7 @@ package taskloop
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -57,4 +58,48 @@ func TestRunReturnsErrClosedWhenLoopClosing(t *testing.T) {
 	}
 
 	assert.False(t, secondRan.Load(), "second task should not excute after loop is closed")
+}
+
+func TestCloseWithPreStopConcurrentWaits(t *testing.T) {
+	loop := New(func() {})
+
+	blockStarted := make(chan struct{})
+	releaseBlock := make(chan struct{})
+	go func() {
+		_ = loop.Run(context.Background(), func(context.Context) {
+			close(blockStarted)
+			<-releaseBlock
+		})
+	}()
+	<-blockStarted
+
+	const closers = 8
+	var preStopCalls atomic.Int32
+	closeReturned := make(chan struct{}, closers)
+	var wg sync.WaitGroup
+	wg.Add(closers)
+	for range closers {
+		go func() {
+			defer wg.Done()
+			loop.CloseWithPreStop(func() {
+				preStopCalls.Add(1)
+			})
+			closeReturned <- struct{}{}
+		}()
+	}
+
+	assert.Eventually(t, func() bool {
+		return preStopCalls.Load() == 1
+	}, time.Second, time.Millisecond)
+
+	select {
+	case <-closeReturned:
+		assert.Fail(t, "CloseWithPreStop returned before the active task finished")
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	close(releaseBlock)
+	wg.Wait()
+
+	assert.Equal(t, int32(1), preStopCalls.Load())
 }

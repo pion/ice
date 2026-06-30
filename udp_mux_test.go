@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -674,6 +675,168 @@ func TestUDPMuxDefault_registerConnForAddress_ReplacesExisting(t *testing.T) {
 
 	// old conn should have ipAddr removed from its addresses.
 	require.False(t, existing.containsAddress(ipAddr), "old conn should have removed the address backref")
+}
+
+type blockingDeadlinePacketConn struct {
+	local     *net.UDPAddr
+	closed    chan struct{}
+	closeOnce sync.Once
+
+	firstWriteStarted  chan struct{}
+	firstWriteOnce     sync.Once
+	allowFirstReturn   chan struct{}
+	secondWriteStarted chan struct{}
+	secondWriteOnce    sync.Once
+
+	deadlineSet         chan struct{}
+	deadlineSetOnce     sync.Once
+	deadlineCleared     chan struct{}
+	deadlineClearedOnce sync.Once
+
+	mu              sync.Mutex
+	writeCalls      int
+	writeDeadline   time.Time
+	deadlineIsArmed bool
+}
+
+func newBlockingDeadlinePacketConn() *blockingDeadlinePacketConn {
+	return &blockingDeadlinePacketConn{
+		local:              &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
+		closed:             make(chan struct{}),
+		firstWriteStarted:  make(chan struct{}),
+		allowFirstReturn:   make(chan struct{}),
+		secondWriteStarted: make(chan struct{}),
+		deadlineSet:        make(chan struct{}),
+		deadlineCleared:    make(chan struct{}),
+	}
+}
+
+func (b *blockingDeadlinePacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	<-b.closed
+
+	return 0, nil, io.EOF
+}
+
+func (b *blockingDeadlinePacketConn) WriteTo(payload []byte, _ net.Addr) (int, error) {
+	b.mu.Lock()
+	b.writeCalls++
+	call := b.writeCalls
+	deadlineIsArmed := b.deadlineIsArmed
+	b.mu.Unlock()
+
+	if call == 1 {
+		b.firstWriteOnce.Do(func() {
+			close(b.firstWriteStarted)
+		})
+		<-b.deadlineSet
+		<-b.allowFirstReturn
+
+		return 0, os.ErrDeadlineExceeded
+	}
+
+	b.secondWriteOnce.Do(func() {
+		close(b.secondWriteStarted)
+	})
+	if deadlineIsArmed {
+		return 0, os.ErrDeadlineExceeded
+	}
+
+	return len(payload), nil
+}
+
+func (b *blockingDeadlinePacketConn) Close() error {
+	b.closeOnce.Do(func() {
+		close(b.closed)
+	})
+
+	return nil
+}
+
+func (b *blockingDeadlinePacketConn) LocalAddr() net.Addr {
+	return b.local
+}
+
+func (b *blockingDeadlinePacketConn) SetDeadline(t time.Time) error {
+	return b.SetWriteDeadline(t)
+}
+
+func (b *blockingDeadlinePacketConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (b *blockingDeadlinePacketConn) SetWriteDeadline(t time.Time) error {
+	b.mu.Lock()
+	b.writeDeadline = t
+	b.deadlineIsArmed = !t.IsZero()
+	b.mu.Unlock()
+
+	if t.IsZero() {
+		b.deadlineClearedOnce.Do(func() {
+			close(b.deadlineCleared)
+		})
+	} else {
+		b.deadlineSetOnce.Do(func() {
+			close(b.deadlineSet)
+		})
+	}
+
+	return nil
+}
+
+func TestUDPMuxDefault_abortWriteBlocksNewWritesUntilDeadlineCleared(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	pc := newBlockingDeadlinePacketConn()
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
+	defer func() {
+		_ = mux.Close()
+	}()
+
+	remote := &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 1}
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := mux.writeTo([]byte("first"), remote)
+		firstErr <- err
+	}()
+
+	select {
+	case <-pc.firstWriteStarted:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for first write")
+	}
+
+	require.NoError(t, mux.abortWrite())
+
+	secondResult := make(chan struct {
+		n   int
+		err error
+	}, 1)
+	go func() {
+		n, err := mux.writeTo([]byte("second"), remote)
+		secondResult <- struct {
+			n   int
+			err error
+		}{n: n, err: err}
+	}()
+
+	select {
+	case <-pc.secondWriteStarted:
+		require.FailNow(t, "second write reached UDPConn before the abort deadline was cleared")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(pc.allowFirstReturn)
+	require.ErrorIs(t, <-firstErr, os.ErrDeadlineExceeded)
+
+	select {
+	case <-pc.deadlineCleared:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for write deadline to clear")
+	}
+
+	result := <-secondResult
+	require.NoError(t, result.err)
+	require.Equal(t, len("second"), result.n)
 }
 
 func stunWithLen(l uint16) []byte {

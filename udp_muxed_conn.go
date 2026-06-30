@@ -146,6 +146,10 @@ func (c *udpMuxedConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
 
+func (c *udpMuxedConn) abortWrite() error {
+	return c.params.Mux.abortWrite()
+}
+
 func (c *udpMuxedConn) CloseChannel() <-chan struct{} {
 	return c.closedChan
 }

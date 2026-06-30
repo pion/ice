@@ -42,6 +42,9 @@ type bindingRequest struct {
 type Agent struct {
 	loop *taskloop.Loop
 
+	startedCandidatesMu sync.Mutex
+	startedCandidates   map[*candidateBase]struct{}
+
 	// constructed is set to true after the agent is fully initialized.
 	// Options can check this flag to reject updates that are only valid during construction.
 	constructed bool
@@ -353,6 +356,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		lite:                            config.Lite,
 		gatheringState:                  GatheringStateNew,
 		connectionState:                 ConnectionStateNew,
+		startedCandidates:               make(map[*candidateBase]struct{}),
 		localCandidates:                 make(map[NetworkType][]Candidate),
 		remoteCandidates:                make(map[NetworkType][]Candidate),
 		pairsByID:                       make(map[uint64]*CandidatePair),
@@ -1485,7 +1489,7 @@ func (a *Agent) GracefulClose() error {
 
 func (a *Agent) close(graceful bool) error {
 	// the loop is safe to wait on no matter what
-	a.loop.Close()
+	a.loop.CloseWithPreStop(a.abortStartedCandidateIO)
 
 	// but we are in less control of the notifiers, so we will
 	// pass through `graceful`.
@@ -1494,6 +1498,36 @@ func (a *Agent) close(graceful bool) error {
 	a.selectedCandidatePairNotifier.Close(graceful)
 
 	return nil
+}
+
+func (a *Agent) registerStartedCandidate(c *candidateBase) {
+	a.startedCandidatesMu.Lock()
+	defer a.startedCandidatesMu.Unlock()
+
+	if a.startedCandidates == nil {
+		a.startedCandidates = make(map[*candidateBase]struct{})
+	}
+	a.startedCandidates[c] = struct{}{}
+}
+
+func (a *Agent) unregisterStartedCandidate(c *candidateBase) {
+	a.startedCandidatesMu.Lock()
+	defer a.startedCandidatesMu.Unlock()
+
+	delete(a.startedCandidates, c)
+}
+
+func (a *Agent) abortStartedCandidateIO() {
+	a.startedCandidatesMu.Lock()
+	candidates := make([]*candidateBase, 0, len(a.startedCandidates))
+	for c := range a.startedCandidates {
+		candidates = append(candidates, c)
+	}
+	a.startedCandidatesMu.Unlock()
+
+	for _, c := range candidates {
+		_ = c.abortIO()
+	}
 }
 
 // Remove all candidates. This closes any listening sockets
