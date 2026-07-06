@@ -4,21 +4,15 @@
 package ice
 
 import (
+	"context"
 	"io"
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
-)
-
-type udpMuxedConnState int
-
-const (
-	udpMuxedConnOpen udpMuxedConnState = iota
-	udpMuxedConnWaiting
-	udpMuxedConnClosed
 )
 
 type udpMuxedConnParams struct {
@@ -39,8 +33,13 @@ type udpMuxedConn struct {
 	bufHead, bufTail *bufferHolder
 	notify           chan struct{}
 	closedChan       chan struct{}
-	state            udpMuxedConnState
-	mu               sync.Mutex
+
+	readWaiting atomic.Int32
+	closed      bool
+	mu          sync.Mutex
+
+	// refs counts outstanding sharedPacketConn wrappers handed out by the mux.
+	refs atomic.Int32
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
@@ -51,7 +50,11 @@ func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
 	}
 }
 
-func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
+func (c *udpMuxedConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	return c.readFromContext(context.Background(), b)
+}
+
+func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (n int, rAddr net.Addr, err error) {
 	for {
 		c.mu.Lock()
 		if c.bufTail != nil {
@@ -76,19 +79,28 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (n int, rAddr net.Addr, err error) {
 			return n, rAddr, err
 		}
 
-		if c.state == udpMuxedConnClosed {
+		if c.closed {
 			c.mu.Unlock()
 
 			return 0, nil, io.EOF
 		}
 
-		c.state = udpMuxedConnWaiting
+		c.readWaiting.Add(1)
 		c.mu.Unlock()
 
 		select {
 		case <-c.notify:
 		case <-c.closedChan:
-			return 0, nil, io.EOF
+			err = io.EOF
+
+		case <-ctx.Done():
+			err = ctx.Err()
+		}
+
+		c.readWaiting.Add(-1)
+
+		if err != nil {
+			return 0, nil, err
 		}
 	}
 }
@@ -141,7 +153,7 @@ func (c *udpMuxedConn) CloseChannel() <-chan struct{} {
 func (c *udpMuxedConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.state != udpMuxedConnClosed {
+	if !c.closed {
 		for pkt := c.bufTail; pkt != nil; {
 			next := pkt.next
 
@@ -153,7 +165,7 @@ func (c *udpMuxedConn) Close() error {
 		c.bufHead = nil
 		c.bufTail = nil
 
-		c.state = udpMuxedConnClosed
+		c.closed = true
 		close(c.closedChan)
 	}
 
@@ -164,7 +176,7 @@ func (c *udpMuxedConn) isClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.state == udpMuxedConnClosed
+	return c.closed
 }
 
 func (c *udpMuxedConn) getAddresses() []ipPort {
@@ -218,7 +230,7 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 	pkt.addr = addr
 
 	c.mu.Lock()
-	if c.state == udpMuxedConnClosed {
+	if c.closed {
 		c.mu.Unlock()
 
 		pkt.reset()
@@ -236,11 +248,10 @@ func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
 		c.bufTail = pkt
 	}
 
-	state := c.state
-	c.state = udpMuxedConnOpen
+	notify := c.readWaiting.Load() > 0
 	c.mu.Unlock()
 
-	if state == udpMuxedConnWaiting {
+	if notify {
 		select {
 		case c.notify <- struct{}{}:
 		default:

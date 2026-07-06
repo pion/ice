@@ -32,7 +32,7 @@ import (
 	transport "github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
 	"github.com/pion/transport/v4/vnet"
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
@@ -3496,6 +3496,272 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 		assert.Equal(t, "10.0.0.3", addresses[0].Address())
 		assert.Equal(t, 1, mux.connCount())
 	})
+}
+
+func TestGatherAddressRewriteAppendHostTCPMux(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{
+		Listener:       listener,
+		Logger:         loggerFactory.NewLogger("ice"),
+		ReadBufferSize: 20,
+	})
+	defer func() {
+		_ = tcpMux.Close()
+	}()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithTCPMux(tcpMux),
+		WithIncludeLoopback(),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"198.51.100.1"},
+			Local:           "127.0.0.1",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteAppend,
+		}),
+	)
+	require.NoError(t, err)
+	defer func() {
+		_ = agent.Close()
+	}()
+
+	done := make(chan struct{})
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+		}
+	}))
+	require.NoError(t, agent.GatherCandidates())
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "gather did not complete")
+	}
+
+	cands, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, cands, 2, "expected both alias TCP host candidates")
+	assert.ElementsMatch(t,
+		[]string{"127.0.0.1", "198.51.100.1"},
+		[]string{cands[0].Address(), cands[1].Address()},
+	)
+	for _, c := range cands {
+		assert.Equal(t, CandidateTypeHost, c.Type())
+		assert.Equal(t, NetworkTypeTCP4, c.NetworkType())
+		assert.Equal(t, TCPTypePassive, c.TCPType())
+		assert.Equal(t, listenerAddr.Port, c.Port())
+	}
+
+	// Each alias holds its own wrapper around one underlying tcpPacketConn.
+	hostA, ok := cands[0].(*CandidateHost)
+	require.True(t, ok)
+	hostB, ok := cands[1].(*CandidateHost)
+	require.True(t, ok)
+	wrapA, ok := hostA.conn.(*sharedPacketConn)
+	require.True(t, ok, "candidate conn must be a *sharedPacketConn")
+	wrapB, ok := hostB.conn.(*sharedPacketConn)
+	require.True(t, ok)
+	require.NotSame(t, wrapA, wrapB, "aliases must hold distinct wrappers")
+	require.Same(t, wrapA.underlying, wrapB.underlying,
+		"alias wrappers must share one underlying tcpPacketConn")
+	underlying, ok := wrapA.underlying.(*tcpPacketConn)
+	require.True(t, ok)
+	require.Equal(t, int32(2), underlying.refs.Load(),
+		"refcount must reflect both alias candidates")
+
+	// Closing the agent must drain every refcount the mux handed out so
+	// gather doesn't leak wrappers — particularly important since alias
+	// gather acquires multiple wrappers from one underlying conn.
+	require.NoError(t, agent.Close())
+	require.Equal(t, int32(0), underlying.refs.Load(),
+		"agent.Close must release every alias wrapper's reference")
+}
+
+func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	const numMuxes = 2
+	muxes := make([]TCPMux, 0, numMuxes)
+	expectedPorts := make([]int, 0, numMuxes)
+	for range numMuxes {
+		l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+		require.NoError(t, err)
+		lAddr, ok := l.Addr().(*net.TCPAddr)
+		require.True(t, ok)
+		expectedPorts = append(expectedPorts, lAddr.Port)
+		muxes = append(muxes, NewTCPMuxDefault(TCPMuxParams{
+			Listener:       l,
+			Logger:         loggerFactory.NewLogger("ice"),
+			ReadBufferSize: 20,
+		}))
+	}
+	multi := NewMultiTCPMuxDefault(muxes...)
+	defer func() { _ = multi.Close() }()
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithTCPMux(multi),
+		WithIncludeLoopback(),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"198.51.100.1"},
+			Local:           "127.0.0.1",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteAppend,
+		}),
+	)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+		}
+	}))
+	require.NoError(t, agent.GatherCandidates())
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "gather did not complete")
+	}
+
+	cands, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, cands, 2*numMuxes, "expected M*N alias TCP candidates")
+
+	byPort := map[int][]*CandidateHost{}
+	for _, c := range cands {
+		h, ok := c.(*CandidateHost)
+		require.True(t, ok)
+		require.Equal(t, NetworkTypeTCP4, h.NetworkType())
+		require.Equal(t, TCPTypePassive, h.TCPType())
+		byPort[h.Port()] = append(byPort[h.Port()], h)
+	}
+	require.Len(t, byPort, numMuxes, "expected one port per child mux")
+	underlyings := make([]*tcpPacketConn, 0, numMuxes)
+	for _, port := range expectedPorts {
+		group := byPort[port]
+		require.Len(t, group, 2, "expected 2 alias candidates for port %d", port)
+		wrapA, ok := group[0].conn.(*sharedPacketConn)
+		require.True(t, ok)
+		wrapB, ok := group[1].conn.(*sharedPacketConn)
+		require.True(t, ok)
+		require.Same(t, wrapA.underlying, wrapB.underlying,
+			"aliases on the same mux port must share one tcpPacketConn")
+		muxedConn, ok := wrapA.underlying.(*tcpPacketConn)
+		require.True(t, ok)
+		require.Equal(t, int32(2), muxedConn.refs.Load())
+		underlyings = append(underlyings, muxedConn)
+		addrs := []string{group[0].Address(), group[1].Address()}
+		assert.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, addrs)
+	}
+	require.NotSame(t, underlyings[0], underlyings[1],
+		"conns from different child muxes must be distinct")
+
+	require.NoError(t, agent.Close())
+	for _, u := range underlyings {
+		require.Equal(t, int32(0), u.refs.Load(),
+			"agent.Close must release every alias wrapper's reference")
+	}
+}
+
+func TestGatherAddressRewriteAppendHostMultiUDPMux(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+
+	const numMuxes = 2
+	muxes := make([]UDPMux, 0, numMuxes)
+	expectedPorts := make([]int, 0, numMuxes)
+	for range numMuxes {
+		udpConn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		require.NoError(t, err)
+		uAddr, ok := udpConn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		expectedPorts = append(expectedPorts, uAddr.Port)
+		muxes = append(muxes, NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn}))
+	}
+	multi := NewMultiUDPMuxDefault(muxes...)
+	defer func() { _ = multi.Close() }()
+
+	agent, err := NewAgentWithOptions(
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithUDPMux(multi),
+		WithIncludeLoopback(),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"198.51.100.1"},
+			Local:           "127.0.0.1",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteAppend,
+		}),
+	)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			close(done)
+		}
+	}))
+	require.NoError(t, agent.GatherCandidates())
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "gather did not complete")
+	}
+
+	cands, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, cands, 2*numMuxes, "expected M*N alias UDP candidates")
+
+	byPort := map[int][]*CandidateHost{}
+	for _, c := range cands {
+		h, ok := c.(*CandidateHost)
+		require.True(t, ok)
+		require.Equal(t, NetworkTypeUDP4, h.NetworkType())
+		byPort[h.Port()] = append(byPort[h.Port()], h)
+	}
+	require.Len(t, byPort, numMuxes, "expected one port per child mux")
+	underlyings := make([]*udpMuxedConn, 0, numMuxes)
+	for _, port := range expectedPorts {
+		group := byPort[port]
+		require.Len(t, group, 2, "expected 2 alias candidates for port %d", port)
+		wrapA, ok := group[0].conn.(*sharedPacketConn)
+		require.True(t, ok)
+		wrapB, ok := group[1].conn.(*sharedPacketConn)
+		require.True(t, ok)
+		require.Same(t, wrapA.underlying, wrapB.underlying,
+			"aliases on the same mux port must share one udpMuxedConn")
+		muxedConn, ok := wrapA.underlying.(*udpMuxedConn)
+		require.True(t, ok)
+		require.Equal(t, int32(2), muxedConn.refs.Load())
+		underlyings = append(underlyings, muxedConn)
+		addrs := []string{group[0].Address(), group[1].Address()}
+		assert.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, addrs)
+	}
+	require.NotSame(t, underlyings[0], underlyings[1],
+		"conns from different child muxes must be distinct")
+
+	require.NoError(t, agent.Close())
+	for _, u := range underlyings {
+		require.Equal(t, int32(0), u.refs.Load(),
+			"agent.Close must release every alias wrapper's reference")
+	}
 }
 
 func TestGatherAddressRewriteSrflxModes(t *testing.T) {

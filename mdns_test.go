@@ -8,6 +8,7 @@ package ice
 import (
 	"context"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
@@ -16,6 +17,10 @@ import (
 )
 
 func TestMulticastDNSOnlyConnection(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("mDNS multicast bind is unreliable on the macOS CI runner")
+	}
+
 	defer test.CheckRoutines(t)()
 
 	// Limit runtime in case of deadlocks

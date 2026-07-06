@@ -84,16 +84,20 @@ func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 	// order to nominate a candidate pair (Section 8.1.1).  The controlled
 	// agent MUST NOT include the USE-CANDIDATE attribute in a Binding
 	// request.
-	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+	attributes := []stun.Setter{
+		stun.BindingRequest,
+		stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		UseCandidate(),
 		AttrControlling(s.agent.tieBreaker),
 		PriorityAttr(pair.Local.Priority()),
+	}
+	attributes = append(attributes,
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
-		stun.Fingerprint,
-	)
+		stun.Fingerprint)
+	msg, err := stun.Build(attributes...)
 	if err != nil {
-		s.log.Error(err.Error())
+		s.log.Errorf("failed to build binding request for nomination: %w", err)
 
 		return
 	}
@@ -191,15 +195,20 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 }
 
 func (s *controllingSelector) PingCandidate(local, remote Candidate) {
-	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+	attributes := []stun.Setter{
+		stun.BindingRequest,
+		stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		AttrControlling(s.agent.tieBreaker),
 		PriorityAttr(local.Priority()),
+	}
+	attributes = append(attributes,
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
-		stun.Fingerprint,
-	)
+		stun.Fingerprint)
+
+	msg, err := stun.Build(attributes...)
 	if err != nil {
-		s.log.Error(err.Error())
+		s.log.Errorf("failed to build binding request for ping (controlling): %w", err)
 
 		return
 	}
@@ -338,15 +347,20 @@ func (s *controlledSelector) ContactCandidates() {
 }
 
 func (s *controlledSelector) PingCandidate(local, remote Candidate) {
-	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-		stun.NewUsername(s.agent.remoteUfrag+":"+s.agent.localUfrag),
+	attributes := []stun.Setter{
+		stun.BindingRequest,
+		stun.TransactionID,
+		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		AttrControlled(s.agent.tieBreaker),
 		PriorityAttr(local.Priority()),
+	}
+	attributes = append(attributes,
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
-		stun.Fingerprint,
-	)
+		stun.Fingerprint)
+
+	msg, err := stun.Build(attributes...)
 	if err != nil {
-		s.log.Error(err.Error())
+		s.log.Errorf("failed to build binding request for ping (controlled): %w", err)
 
 		return
 	}

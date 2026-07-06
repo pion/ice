@@ -65,7 +65,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}()
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
-			agent.selector = &controllingSelector{agent: agent, log: agent.log}
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
 
 			hostConfig := CandidateHostConfig{
 				Network:   "udp",
@@ -115,7 +116,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}()
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
-			agent.selector = &controllingSelector{agent: agent, log: agent.log}
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
 
 			local, err := NewCandidateHost(&CandidateHostConfig{
 				Network:   "udp",
@@ -159,7 +161,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}()
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
-			agent.selector = &controllingSelector{agent: agent, log: agent.log}
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
 
 			local, err := NewCandidateHost(&CandidateHostConfig{
 				Network:   "udp",
@@ -194,7 +197,13 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Equal(t, prflx, pair.Remote)
 
 			local.addRemoteCandidateCache(prflx, remote)
+			prflx.seen(false)
+			prflx.seen(true)
+			oldLastReceived := prflx.LastReceived()
+			oldLastSent := prflx.LastSent()
 			oldPriority := pair.priority()
+			agent.setSelectedPair(pair)
+			sel.nominatedPair = pair
 
 			host, err := NewCandidateHost(&CandidateHostConfig{
 				Network:   "udp",
@@ -209,9 +218,22 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Len(t, set, 1)
 			require.Equal(t, CandidateTypeHost, set[0].Type())
 			require.Equal(t, host, set[0])
-			require.Equal(t, host, pair.Remote)
-			require.Equal(t, oldPriority, pair.priority())
-			require.Equal(t, host, local.remoteCandidateCaches[toAddrPort(remote)])
+
+			updatedPair := agent.findPair(local, host)
+			require.NotNil(t, updatedPair)
+			require.NotSame(t, pair, updatedPair)
+			require.Equal(t, host, updatedPair.Remote)
+			require.Equal(t, oldPriority, updatedPair.priority())
+			require.False(t, updatedPair.Remote.LastReceived().IsZero())
+			require.WithinDuration(t, oldLastReceived, updatedPair.Remote.LastReceived(), 10*time.Millisecond)
+			require.False(t, updatedPair.Remote.LastSent().IsZero())
+			require.WithinDuration(t, oldLastSent, updatedPair.Remote.LastSent(), 10*time.Millisecond)
+			require.Equal(t, prflx, pair.Remote)
+			require.Same(t, updatedPair, agent.getSelectedPair())
+			require.Same(t, updatedPair, sel.nominatedPair)
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			require.True(t, ok)
+			require.Equal(t, host, cached)
 		}))
 	})
 
@@ -275,9 +297,16 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Len(t, set, 1)
 			require.Equal(t, CandidateTypeServerReflexive, set[0].Type())
 			require.Equal(t, srflx, set[0])
-			require.Equal(t, srflx, pair.Remote)
-			require.Equal(t, oldPriority, pair.priority())
-			require.Equal(t, srflx, local.remoteCandidateCaches[toAddrPort(remote)])
+
+			updatedPair := agent.findPair(local, srflx)
+			require.NotNil(t, updatedPair)
+			require.NotSame(t, pair, updatedPair)
+			require.Equal(t, srflx, updatedPair.Remote)
+			require.Equal(t, oldPriority, updatedPair.priority())
+			require.Equal(t, prflx, pair.Remote)
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			require.True(t, ok)
+			require.Equal(t, srflx, cached)
 		}))
 	})
 
@@ -341,9 +370,16 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Len(t, set, 1)
 			require.Equal(t, CandidateTypeRelay, set[0].Type())
 			require.Equal(t, relay, set[0])
-			require.Equal(t, relay, pair.Remote)
-			require.Equal(t, oldPriority, pair.priority())
-			require.Equal(t, relay, local.remoteCandidateCaches[toAddrPort(remote)])
+
+			updatedPair := agent.findPair(local, relay)
+			require.NotNil(t, updatedPair)
+			require.NotSame(t, pair, updatedPair)
+			require.Equal(t, relay, updatedPair.Remote)
+			require.Equal(t, oldPriority, updatedPair.priority())
+			require.Equal(t, prflx, pair.Remote)
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			require.True(t, ok)
+			require.Equal(t, relay, cached)
 		}))
 	})
 
@@ -403,16 +439,21 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			})
 			require.NoError(t, err)
 			agent.addRemoteCandidate(signaled) // nolint:contextcheck
-			require.Equal(t, signaled, pair.Remote)
-			require.Equal(t, CandidateTypeHost, pair.Remote.Type())
+
+			updatedPair := agent.findPair(local, signaled)
+			require.NotNil(t, updatedPair)
+			require.NotSame(t, pair, updatedPair)
+			require.Equal(t, CandidateTypePeerReflexive, pair.Remote.Type())
+			require.Equal(t, signaled, updatedPair.Remote)
+			require.Equal(t, CandidateTypeHost, updatedPair.Remote.Type())
 
 			// Now the (updated) pair should be nominatable and become nominated.
 			sel.ContactCandidates()
 			require.NotNil(t, sel.nominatedPair)
-			require.Same(t, pair, sel.nominatedPair)
+			require.Same(t, updatedPair, sel.nominatedPair)
 			require.Equal(t, CandidateTypeHost, sel.nominatedPair.Local.Type())
 			require.Equal(t, CandidateTypeHost, sel.nominatedPair.Remote.Type())
-			require.True(t, pair.nominated)
+			require.True(t, updatedPair.nominated)
 		}))
 	})
 

@@ -16,7 +16,7 @@ import (
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v4/test"
 	"github.com/pion/transport/v4/vnet"
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -452,12 +452,12 @@ func TestGatherRelayWithVNet(t *testing.T) {
 				RelayAddressGenerator: relayGenerator,
 			},
 		},
-		AuthHandler: func(username, realm string, srcAddr net.Addr) ([]byte, bool) {
-			if username != turnUser {
-				return nil, false
+		AuthHandler: func(ra *turn.RequestAttributes) (userID string, key []byte, ok bool) {
+			if ra.Username != turnUser {
+				return "", nil, false
 			}
 
-			return turn.GenerateAuthKey(username, realm, turnPass), true
+			return ra.Username, turn.GenerateAuthKey(ra.Username, ra.Realm, turnPass), true
 		},
 	})
 	require.NoError(t, err)

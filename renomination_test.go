@@ -385,6 +385,19 @@ func TestSendNominationRequest(t *testing.T) {
 		err = nomination.GetFrom(msg)
 		assert.NoError(t, err)
 		assert.Equal(t, nominationValue, nomination.Value)
+
+		attributeIndexes := make(map[stun.AttrType]int)
+		for i, attr := range msg.Attributes {
+			attributeIndexes[attr.Type] = i
+		}
+		nominationIndex, hasNomination := attributeIndexes[agent.nominationAttribute]
+		integrityIndex, hasIntegrity := attributeIndexes[stun.AttrMessageIntegrity]
+		fingerprintIndex, hasFingerprint := attributeIndexes[stun.AttrFingerprint]
+		assert.True(t, hasNomination)
+		assert.True(t, hasIntegrity)
+		assert.True(t, hasFingerprint)
+		assert.Less(t, nominationIndex, integrityIndex)
+		assert.Less(t, integrityIndex, fingerprintIndex)
 	})
 
 	t.Run("STUN message without nomination when disabled", func(t *testing.T) {

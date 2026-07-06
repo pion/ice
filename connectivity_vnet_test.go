@@ -17,7 +17,7 @@ import (
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v4/test"
 	"github.com/pion/transport/v4/vnet"
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -172,12 +172,12 @@ func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.S
 		return nil, err
 	}
 	server, err := turn.NewServer(turn.ServerConfig{
-		AuthHandler: func(username, realm string, _ net.Addr) (key []byte, ok bool) {
-			if pw, ok := credMap[username]; ok {
-				return turn.GenerateAuthKey(username, realm, pw), true
+		AuthHandler: func(ra *turn.RequestAttributes) (userID string, key []byte, ok bool) {
+			if pw, found := credMap[ra.Username]; found {
+				return ra.Username, turn.GenerateAuthKey(ra.Username, ra.Realm, pw), true
 			}
 
-			return nil, false
+			return "", nil, false
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{

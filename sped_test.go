@@ -50,6 +50,14 @@ func TestDtlsInStunAckAttribute_GetFrom(t *testing.T) {
 	require.NoError(t, dtlsInStunAck1.GetFrom(m))
 	require.Equal(t, expectedValue, []uint32(dtlsInStunAck1))
 
+	// Test with the maximum valid size.
+	m4 := new(stun.Message)
+	maxValue := make([]byte, ackSizeBytes)
+	m4.Add(stun.AttrDtlsInStunAck, maxValue)
+	var dtlsInStunAck4 DtlsInStunAckAttribute
+	require.NoError(t, dtlsInStunAck4.GetFrom(m4))
+	require.Len(t, dtlsInStunAck4, ackSizeValues)
+
 	// Test with invalid size (not multiple of 4)
 	m2 := new(stun.Message)
 	m2.Add(stun.AttrDtlsInStunAck, []byte{0x01, 0x02, 0x03})

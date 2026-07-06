@@ -19,6 +19,7 @@ import (
 	"github.com/pion/ice/v4/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
+	"github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
 	"github.com/stretchr/testify/require"
 )
@@ -366,6 +367,53 @@ func TestUDPMuxedConn_ReadFrom_WaitingThenClosedEOF(t *testing.T) {
 	}
 }
 
+func TestUDPMuxedConn_TwoReadersWokenByTwoWrites(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 10).Stop()
+
+	conn := secondTestMuxedConn(t, 1500)
+	remote := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 5678}
+
+	type readResult struct {
+		data []byte
+		err  error
+	}
+	results := make(chan readResult, 2)
+	read := func() {
+		buf := make([]byte, 1500)
+		n, _, err := conn.ReadFrom(buf)
+		results <- readResult{data: append([]byte(nil), buf[:n]...), err: err}
+	}
+	go read()
+	go read()
+
+	// Both readers must be parked before we write.
+	require.Eventually(t, func() bool {
+		return conn.readWaiting.Load() == 2
+	}, 2*time.Second, time.Millisecond, "both readers must block on the empty queue")
+
+	// First write wakes exactly one reader, which drains the single packet.
+	require.NoError(t, conn.writePacket([]byte("p1"), remote))
+	first := <-results
+	require.NoError(t, first.err)
+	require.Equal(t, []byte("p1"), first.data)
+
+	// The other reader is still parked; the first has decremented on unpark.
+	require.Eventually(t, func() bool {
+		return conn.readWaiting.Load() == 1
+	}, 2*time.Second, time.Millisecond, "the second reader must still be parked")
+
+	// Second write wakes the remaining reader.
+	require.NoError(t, conn.writePacket([]byte("p2"), remote))
+	second := <-results
+	require.NoError(t, second.err)
+	require.Equal(t, []byte("p2"), second.data)
+
+	// Both readers returned and the counter is balanced.
+	require.Equal(t, int32(0), conn.readWaiting.Load(),
+		"readWaiting must be 0 after both readers are woken")
+}
+
 func TestUDPMuxedConn_WriteTo_ClosedPipe(t *testing.T) {
 	conn := secondTestMuxedConn(t, 64)
 	require.NoError(t, conn.Close())
@@ -493,7 +541,7 @@ func TestUDPMuxedConn_writePacket_ClosedState(t *testing.T) {
 
 	// closed state before write
 	conn.mu.Lock()
-	conn.state = udpMuxedConnClosed
+	conn.closed = true
 	conn.mu.Unlock()
 
 	err := conn.writePacket([]byte{1, 2, 3}, addr) // fits in cap
@@ -511,10 +559,8 @@ func TestUDPMuxedConn_writePacket_NotifyDefaultBranch(t *testing.T) {
 	// fill notify channel so send would block
 	conn.notify <- struct{}{}
 
-	// set pre-state to waiting so the post-unlock select triggers
-	conn.mu.Lock()
-	conn.state = udpMuxedConnWaiting
-	conn.mu.Unlock()
+	// mark a reader as parked so writePacket attempts the (now blocked) notify
+	conn.readWaiting.Store(1)
 
 	// write should take default branch
 	err := conn.writePacket([]byte("hello"), addr)
@@ -810,9 +856,130 @@ func TestUDPMux_connWorker_WritePacketError(t *testing.T) {
 	ipport, err := newIPPort(remote.IP, remote.Zone, 5555)
 	require.NoError(t, err)
 
-	cInner, ok := c.(*udpMuxedConn)
-	require.True(t, ok, "expected *udpMuxedConn from UDPMuxDefault.GetConn")
-	mux.registerConnForAddress(cInner, ipport)
+	cInner, ok := c.(*sharedPacketConn)
+	require.True(t, ok, "expected *sharedPacketConn from UDPMuxDefault.GetConn")
+	muxedConn, ok := cInner.underlying.(*udpMuxedConn)
+	require.True(t, ok, "expected sharedPacketConn to wrap *udpMuxedConn")
+	mux.registerConnForAddress(muxedConn, ipport)
+}
+
+// Two GetConn calls with the same ufrag/network must return distinct wrappers
+// backed by one underlying udpMuxedConn. Closing one wrapper leaves the
+// underlying alive; closing both releases it.
+func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	udpConn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() { _ = udpConn.Close() }()
+
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() { _ = mux.Close() }()
+
+	addr := mux.LocalAddr()
+	connA, err := mux.GetConn("shared-ufrag", addr)
+	require.NoError(t, err)
+	connB, err := mux.GetConn("shared-ufrag", addr)
+	require.NoError(t, err)
+
+	wrapperA, ok := connA.(*sharedPacketConn)
+	require.True(t, ok, "GetConn must return *sharedPacketConn")
+	wrapperB, ok := connB.(*sharedPacketConn)
+	require.True(t, ok)
+	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
+	require.Same(t, wrapperA.underlying, wrapperB.underlying,
+		"wrappers must share one underlying udpMuxedConn")
+
+	underlying, ok := wrapperA.underlying.(*udpMuxedConn)
+	require.True(t, ok)
+	require.Equal(t, int32(2), underlying.refs.Load())
+
+	require.NoError(t, connA.Close())
+	require.Equal(t, int32(1), underlying.refs.Load())
+	require.False(t, underlying.isClosed(), "underlying must stay open while a wrapper holds a reference")
+
+	require.NoError(t, connB.Close())
+	require.Equal(t, int32(0), underlying.refs.Load())
+	select {
+	case <-underlying.CloseChannel():
+	case <-time.After(time.Second):
+		require.FailNow(t, "underlying must close when the last wrapper is released")
+	}
+}
+
+type mutableNet struct {
+	transport.Net
+	mu     sync.Mutex
+	ifaces []*transport.Interface
+}
+
+func (m *mutableNet) Interfaces() ([]*transport.Interface, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.ifaces, nil
+}
+
+func (m *mutableNet) setInterfaces(ifaces []*transport.Interface) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ifaces = ifaces
+}
+
+// Verify that that GetListenAddresses is able to reflect interface changes.
+func TestUDPMuxDefault_GetListenAddresses_ReflectsInterfaceChanges(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4zero})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	wantPort := udpAddr.Port
+
+	makeIface := func(name string, ip net.IP) *transport.Interface {
+		ifc := transport.NewInterface(net.Interface{
+			Index: 1,
+			MTU:   1500,
+			Name:  name,
+			Flags: net.FlagUp | net.FlagMulticast,
+		})
+		ifc.AddAddress(&net.IPNet{IP: ip, Mask: net.CIDRMask(24, 32)})
+
+		return ifc
+	}
+
+	ip1 := net.IPv4(10, 0, 0, 1).To4()
+	mn := &mutableNet{ifaces: []*transport.Interface{makeIface("eth0", ip1)}}
+
+	mux := NewUDPMuxDefault(UDPMuxParams{
+		Logger:  nil,
+		UDPConn: conn,
+		Net:     mn,
+	})
+	require.NotNil(t, mux)
+	defer func() { _ = mux.Close() }()
+
+	// first call: should expose ip1.
+	addrs := mux.GetListenAddresses()
+	require.Len(t, addrs, 1, "expected exactly one listen address for the initial interface")
+	ua, ok := addrs[0].(*net.UDPAddr)
+	require.True(t, ok)
+	require.Equal(t, wantPort, ua.Port)
+	require.True(t, ua.IP.Equal(ip1), "expected %s, got %s", ip1, ua.IP)
+
+	// simulate a network change: replace ip1 with ip2.
+	ip2 := net.IPv4(10, 0, 0, 2).To4()
+	mn.setInterfaces([]*transport.Interface{makeIface("eth1", ip2)})
+
+	// second call: must reflect the new interface without requiring a restart.
+	addrs = mux.GetListenAddresses()
+	require.Len(t, addrs, 1, "expected exactly one listen address after interface change")
+	ua, ok = addrs[0].(*net.UDPAddr)
+	require.True(t, ok)
+	require.Equal(t, wantPort, ua.Port)
+	require.True(t, ua.IP.Equal(ip2), "GetListenAddresses must not cache: expected %s, got %s", ip2, ua.IP)
 }
 
 func TestNewUDPMuxDefault_UnspecifiedAddr_AutoInitNet(t *testing.T) {

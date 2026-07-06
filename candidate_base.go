@@ -45,7 +45,7 @@ type candidateBase struct {
 
 	relayLocalPreference uint16
 
-	remoteCandidateCaches map[AddrPort]Candidate
+	remoteCandidateCaches sync.Map // map[AddrPort]Candidate
 	isLocationTracked     bool
 	extensions            []CandidateExtension
 }
@@ -287,8 +287,13 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 }
 
 func (c *candidateBase) validateSTUNTrafficCache(addr net.Addr) bool {
-	if candidate, ok := c.remoteCandidateCaches[toAddrPort(addr)]; ok {
-		candidate.seen(false)
+	if candidate, ok := c.remoteCandidateCaches.Load(toAddrPort(addr)); ok {
+		remoteCandidate, ok := candidate.(Candidate)
+		if !ok {
+			return false
+		}
+
+		remoteCandidate.seen(false)
 
 		return true
 	}
@@ -300,15 +305,18 @@ func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net
 	if c.validateSTUNTrafficCache(srcAddr) {
 		return
 	}
-	c.remoteCandidateCaches[toAddrPort(srcAddr)] = candidate
+	c.remoteCandidateCaches.Store(toAddrPort(srcAddr), candidate)
 }
 
 func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate) {
-	for k, v := range c.remoteCandidateCaches {
-		if v == oldRemote {
-			c.remoteCandidateCaches[k] = newRemote
+	c.remoteCandidateCaches.Range(func(key, value any) bool {
+		candidate, ok := value.(Candidate)
+		if ok && candidate == oldRemote {
+			c.remoteCandidateCaches.Store(key, newRemote)
 		}
-	}
+
+		return true
+	})
 }
 
 func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
