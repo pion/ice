@@ -191,6 +191,10 @@ type AgentConfig struct {
 	// remote candidate IP addresses before they are added to the agent.
 	RemoteIPFilter func(net.IP) (keep bool)
 
+	// LocalCandidateFilter is called before a gathered local candidate is added to the agent.
+	// Candidates for which this function returns false are discarded.
+	LocalCandidateFilter func(Candidate) (keep bool)
+
 	// InsecureSkipVerify controls if self-signed certificates are accepted when connecting
 	// to TURN servers via TLS or DTLS
 	InsecureSkipVerify bool

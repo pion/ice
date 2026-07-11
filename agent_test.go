@@ -2098,6 +2098,173 @@ func TestGetLocalCandidates(t *testing.T) {
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 }
 
+func TestLocalCandidateFilter(t *testing.T) {
+	t.Run("accepts and notifies", func(t *testing.T) {
+		filterCalls := 0
+		notified := make(chan Candidate, 1)
+		agent, err := NewAgent(&AgentConfig{
+			LocalCandidateFilter: func(Candidate) bool {
+				filterCalls++
+
+				return true
+			},
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, agent.Close()) }()
+		require.NoError(t, agent.OnCandidate(func(candidate Candidate) {
+			if candidate != nil {
+				notified <- candidate
+			}
+		}))
+
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: "192.0.2.1", Port: 41000, Component: 1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, agent.addCandidate(t.Context(), candidate, &fakenet.MockPacketConn{}))
+
+		actual, err := agent.GetLocalCandidates()
+		require.NoError(t, err)
+		require.Equal(t, 1, filterCalls)
+		require.Equal(t, []Candidate{candidate}, actual)
+		require.Equal(t, candidate, <-notified)
+	})
+
+	t.Run("rejects candidates before insertion pairs checks and notification", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			candidate func(t *testing.T, onClose func() error) Candidate
+		}{
+			{
+				name: "host",
+				candidate: func(t *testing.T, _ func() error) Candidate {
+					candidate, err := NewCandidateHost(&CandidateHostConfig{
+						Network: "udp", Address: "192.0.2.2", Port: 41001, Component: 1,
+					})
+					require.NoError(t, err)
+
+					return candidate
+				},
+			},
+			{
+				name: "server reflexive",
+				candidate: func(t *testing.T, _ func() error) Candidate {
+					candidate, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
+						Network: "udp", Address: "192.0.2.3", Port: 41002, Component: 1,
+						RelAddr: "10.0.0.1", RelPort: 41002,
+					})
+					require.NoError(t, err)
+
+					return candidate
+				},
+			},
+			{
+				name: "relay",
+				candidate: func(t *testing.T, onClose func() error) Candidate {
+					candidate, err := NewCandidateRelay(&CandidateRelayConfig{
+						Network: "udp", Address: "192.0.2.4", Port: 41003, Component: 1,
+						RelAddr: "10.0.0.1", RelPort: 41003, OnClose: onClose,
+					})
+					require.NoError(t, err)
+
+					return candidate
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				filterCalls := 0
+				relayClosed := false
+				agent, err := NewAgent(&AgentConfig{
+					LocalCandidateFilter: func(Candidate) bool {
+						filterCalls++
+
+						return false
+					},
+				})
+				require.NoError(t, err)
+				defer func() { require.NoError(t, agent.Close()) }()
+				notified := make(chan struct{}, 1)
+				require.NoError(t, agent.OnCandidate(func(Candidate) { notified <- struct{}{} }))
+				remote, err := NewCandidateHost(&CandidateHostConfig{
+					Network: "udp", Address: "198.51.100.1", Port: 42000, Component: 1,
+				})
+				require.NoError(t, err)
+				agent.remoteCandidates[NetworkTypeUDP4] = []Candidate{remote}
+
+				candidate := tt.candidate(t, func() error {
+					relayClosed = true
+
+					return nil
+				})
+				conn := &candidateFilterPacketConn{}
+				require.NoError(t, agent.addCandidate(t.Context(), candidate, conn))
+
+				actual, err := agent.GetLocalCandidates()
+				require.NoError(t, err)
+				require.Empty(t, actual)
+				require.Empty(t, agent.checklist)
+				require.Equal(t, 1, filterCalls)
+				require.True(t, conn.closed)
+				select {
+				case <-notified:
+					t.Fatal("rejected candidate was notified")
+				default:
+				}
+				if tt.name == "relay" {
+					require.True(t, relayClosed)
+				}
+				select {
+				case <-agent.forceCandidateContact:
+					t.Fatal("rejected candidate requested a connectivity check")
+				default:
+				}
+			})
+		}
+	})
+
+	t.Run("duplicate does not invoke filter", func(t *testing.T) {
+		filterCalls := 0
+		agent, err := NewAgent(&AgentConfig{
+			LocalCandidateFilter: func(Candidate) bool {
+				filterCalls++
+
+				return true
+			},
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, agent.Close()) }()
+
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: "192.0.2.5", Port: 41004, Component: 1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, agent.addCandidate(t.Context(), candidate, &fakenet.MockPacketConn{}))
+		require.Equal(t, 1, filterCalls)
+
+		duplicate, err := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: "192.0.2.5", Port: 41004, Component: 1,
+		})
+		require.NoError(t, err)
+		duplicateConn := &candidateFilterPacketConn{}
+		require.NoError(t, agent.addCandidate(t.Context(), duplicate, duplicateConn))
+		require.Equal(t, 1, filterCalls)
+		require.True(t, duplicateConn.closed)
+	})
+}
+
+type candidateFilterPacketConn struct {
+	fakenet.MockPacketConn
+	closed bool
+}
+
+func (c *candidateFilterPacketConn) Close() error {
+	c.closed = true
+
+	return nil
+}
+
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 

@@ -511,6 +511,20 @@ func WithRemoteIPFilter(filter func(net.IP) bool) AgentOption {
 	}
 }
 
+// WithLocalCandidateFilter sets a filter for gathered local candidates.
+// Candidates for which this function returns false are discarded.
+func WithLocalCandidateFilter(filter func(Candidate) bool) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.localCandidateFilter = filter
+
+		return nil
+	}
+}
+
 // WithNet sets the underlying network implementation for the agent.
 func WithNet(net transport.Net) AgentOption {
 	return func(a *Agent) error {

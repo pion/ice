@@ -222,6 +222,23 @@ func TestWithRemoteIPFilterOption(t *testing.T) {
 	assert.False(t, agent.remoteIPFilter(net.IPv4(203, 0, 113, 1)))
 }
 
+func TestWithLocalCandidateFilterOption(t *testing.T) {
+	filter := func(candidate Candidate) bool {
+		return candidate.Type() == CandidateTypeHost
+	}
+
+	agent, err := NewAgentWithOptions(WithLocalCandidateFilter(filter))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	require.NotNil(t, agent.localCandidateFilter)
+	candidate, err := NewCandidateHost(&CandidateHostConfig{
+		Network: "udp", Address: "192.0.2.1", Port: 41000, Component: 1,
+	})
+	require.NoError(t, err)
+	require.True(t, agent.localCandidateFilter(candidate))
+}
+
 func TestWithNetOption(t *testing.T) {
 	stub := newStubNet(t)
 

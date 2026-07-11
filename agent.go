@@ -151,10 +151,11 @@ type Agent struct {
 	udpMux      UDPMux
 	udpMuxSrflx UniversalUDPMux
 
-	interfaceFilter func(string) (keep bool)
-	ipFilter        func(net.IP) (keep bool)
-	remoteIPFilter  func(net.IP) (keep bool)
-	includeLoopback bool
+	interfaceFilter      func(string) (keep bool)
+	ipFilter             func(net.IP) (keep bool)
+	remoteIPFilter       func(net.IP) (keep bool)
+	localCandidateFilter func(Candidate) (keep bool)
+	includeLoopback      bool
 
 	insecureSkipVerify bool
 
@@ -379,6 +380,7 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		interfaceFilter:                 config.InterfaceFilter,
 		ipFilter:                        config.IPFilter,
 		remoteIPFilter:                  config.RemoteIPFilter,
+		localCandidateFilter:            config.LocalCandidateFilter,
 		insecureSkipVerify:              config.InsecureSkipVerify,
 		includeLoopback:                 config.IncludeLoopback,
 		disableActiveTCP:                config.DisableActiveTCP,
@@ -1341,6 +1343,18 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 
 				return
 			}
+		}
+
+		if a.localCandidateFilter != nil && !a.localCandidateFilter(cand) {
+			a.log.Debugf("Ignore filtered local candidate: %s", cand)
+			if err := cand.close(); err != nil {
+				a.log.Warnf("Failed to close filtered local candidate: %v", err)
+			}
+			if err := candidateConn.Close(); err != nil {
+				a.log.Warnf("Failed to close filtered local candidate connection: %v", err)
+			}
+
+			return
 		}
 
 		a.setCandidateExtensions(cand)
