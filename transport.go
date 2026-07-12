@@ -141,7 +141,7 @@ func (c *Conn) Write(packet []byte) (int, error) {
 		}
 
 		if pair == nil {
-			return 0, err
+			return 0, ErrNoCandidatePairs
 		}
 	}
 

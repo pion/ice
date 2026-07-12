@@ -7,6 +7,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync/atomic"
@@ -790,7 +791,9 @@ func TestWriteUseValidPair(t *testing.T) {
 	go func() {
 		for {
 			if _, writeErr := (&Conn{agent: controllingAgent}).Write(testMessage); writeErr != nil {
-				return
+				if !errors.Is(writeErr, ErrNoCandidatePairs) {
+					return
+				}
 			}
 
 			time.Sleep(20 * time.Millisecond)
