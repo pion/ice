@@ -451,10 +451,10 @@ func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 	}
-	a, err := NewAgent(cfg)
+	agent, err := NewAgent(cfg)
 	require.NoError(t, err)
 	defer func() {
-		require.NoError(t, a.Close())
+		require.NoError(t, agent.Close())
 	}()
 
 	b, err := NewAgent(cfg)
@@ -466,7 +466,7 @@ func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 	bUfrag, bPwd, err := b.GetLocalUserCredentials()
 	require.NoError(t, err)
 
-	conn, err := a.StartDial(bUfrag, bPwd)
+	conn, err := agent.StartDial(bUfrag, bPwd)
 	require.NoError(t, err)
 
 	n, werr := conn.Write([]byte("early application data"))
