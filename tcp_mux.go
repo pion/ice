@@ -120,7 +120,9 @@ func (m *TCPMuxDefault) LocalAddr() net.Addr {
 	return m.params.Listener.Addr()
 }
 
-// GetConnByUfrag retrieves an existing or creates a new net.PacketConn.
+// GetConnByUfrag retrieves an existing or creates a new net.PacketConn. The returned conn
+// is a refcounted — repeat calls return connection with increased refcount, so
+// the connection's Close method should be called for each GetConn call to avoid leaks.
 func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) (net.PacketConn, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -129,13 +131,18 @@ func (m *TCPMuxDefault) GetConnByUfrag(ufrag string, isIPv6 bool, local net.IP) 
 		return nil, io.ErrClosedPipe
 	}
 
-	if conn, ok := m.getConn(ufrag, isIPv6, local); ok {
+	conn, ok := m.getConn(ufrag, isIPv6, local)
+	if ok {
 		conn.ClearAliveTimer()
-
-		return conn, nil
+	} else {
+		var err error
+		conn, err = m.createConn(ufrag, isIPv6, local, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return m.createConn(ufrag, isIPv6, local, false)
+	return newSharedPacketConn(conn, &conn.refs), nil
 }
 
 func (m *TCPMuxDefault) createConn(ufrag string, isIPv6 bool, local net.IP, fromStun bool) (*tcpPacketConn, error) {

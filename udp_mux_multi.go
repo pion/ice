@@ -90,7 +90,7 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 	if params.net == nil {
 		var err error
 		if params.net, err = stdnet.NewNet(); err != nil {
-			return nil, fmt.Errorf("failed to get create network: %w", err)
+			return nil, fmt.Errorf("failed to create network: %w", err)
 		}
 	}
 
