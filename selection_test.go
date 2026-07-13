@@ -1583,6 +1583,32 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 			"lite controlled agent must not send triggered checks when pair is connected")
 	})
 
+	t.Run("CustomHandlerSelectionPromotesPair", func(t *testing.T) {
+		agent, local, remote, pair := setupAgent(t)
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		var handlerCalled bool
+		agent.userBindingRequestHandler = func(message *stun.Message, _, _ Candidate, handlerPair *CandidatePair) bool {
+			handlerCalled = true
+			assert.False(t, message.Contains(stun.AttrUseCandidate), "test must exercise an ordinary Binding request")
+			assert.Equal(t, pair, handlerPair)
+
+			return true
+		}
+
+		msg := buildMsg(t, agent)
+		ls.HandleBindingRequest(msg, local, remote)
+
+		assert.True(t, handlerCalled)
+		assert.Equal(t, pair, agent.getSelectedPair())
+		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+		assert.True(t, pair.nominated)
+		assert.Equal(t, uint64(0), pair.RequestsSent())
+	})
+
 	t.Run("NominationStillAccepted", func(t *testing.T) {
 		// RFC 8445 §7.3.2: the lite agent must accept USE-CANDIDATE and select the
 		// pair directly, even when the pair has never reached Succeeded state via a

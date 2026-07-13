@@ -134,10 +134,25 @@ func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local,
 		}
 	}
 
-	if s.agent.userBindingRequestHandler != nil {
-		if shouldSwitch := s.agent.userBindingRequestHandler(message, local, remote, pair); shouldSwitch {
-			s.agent.setSelectedPair(pair)
+	s.agent.handleBindingRequestWithCustomHandler(message, local, remote, pair)
+}
+
+func (a *Agent) handleBindingRequestWithCustomHandler(
+	message *stun.Message,
+	local, remote Candidate,
+	pair *CandidatePair,
+) {
+	if a.userBindingRequestHandler == nil {
+		return
+	}
+
+	if shouldSwitch := a.userBindingRequestHandler(message, local, remote, pair); shouldSwitch {
+		if a.lite {
+			// Lite agents do not send triggered checks, so a handler-approved
+			// custom selection must put the pair in the valid list directly.
+			pair.state = CandidatePairStateSucceeded
 		}
+		a.setSelectedPair(pair)
 	}
 }
 
@@ -489,11 +504,7 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 		s.PingCandidate(local, remote)
 	}
 
-	if s.agent.userBindingRequestHandler != nil {
-		if shouldSwitch := s.agent.userBindingRequestHandler(message, local, remote, pair); shouldSwitch {
-			s.agent.setSelectedPair(pair)
-		}
-	}
+	s.agent.handleBindingRequestWithCustomHandler(message, local, remote, pair)
 }
 
 type liteSelector struct {
