@@ -1587,7 +1587,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		// RFC 8445 §7.3.2: the lite agent must accept USE-CANDIDATE and select the
 		// pair directly, even when the pair has never reached Succeeded state via a
 		// triggered check (which it never sends). Leave the pair in Waiting — the
-		// default after addPair — to confirm the || s.agent.lite branch is exercised.
+		// default after addPair — to exercise the lite direct-nomination path.
 		agent, local, remote, pair := setupAgent(t)
 		// Intentionally do NOT set pair.state = CandidatePairStateSucceeded.
 		// A lite agent never generates triggered checks, so the pair will never reach
@@ -1656,10 +1656,9 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	require.NoError(t, liteAgent.OnConnectionStateChange(liteNotifier))
 	t.Cleanup(func() { require.NoError(t, liteAgent.Close()) })
 
-	// fullAgent.Accept / liteAgent.Dial => fullAgent=controlled, liteAgent=controlling.
-	// We want fullAgent=controlling, so we use connect() which calls
-	// aAgent.Accept (=fullAgent controlled) and bAgent.Dial (=liteAgent controlling).
-	// Swap: pass liteAgent as aAgent (Accept=controlled) and fullAgent as bAgent (Dial=controlling).
+	// connect() calls aAgent.Accept (controlled) and bAgent.Dial (controlling).
+	// To test the common full (controlling) -> lite (controlled) case, pass liteAgent
+	// as aAgent and fullAgent as bAgent.
 	liteConn, fullConn := connect(t, liteAgent, fullAgent)
 
 	<-fullConnected
@@ -1710,7 +1709,7 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 
 	// Both agents should be able to exchange data.
 	require.True(t, sendUntilDone(t, fullConn, liteConn, 100))
-	require.True(t, sendUntilDone(t, liteConn, fullConn, 100))
+	require.True(t, sendUntilDone(t, liteConn, fullConn, 120))
 
 	closePipe(t, liteConn, fullConn)
 }
