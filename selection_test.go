@@ -1494,3 +1494,248 @@ func TestControllingSideRenomination(t *testing.T) {
 			"Controlling agent should NOT switch with standard nomination when pair already selected")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Lite mode tests
+// ---------------------------------------------------------------------------
+
+// TestLiteControlledSelector_NoPingCandidate verifies that a lite controlled
+// agent NEVER sends triggered connectivity checks (PingCandidate), regardless
+// of the pair state. Per RFC 8445 §7, a lite implementation only acts as a
+// STUN server and does not generate connectivity checks.
+func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
+	buildMsg := func(t *testing.T, a *Agent) *stun.Message {
+		t.Helper()
+		msg, err := stun.Build(stun.BindingRequest,
+			stun.TransactionID,
+			stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
+			stun.NewShortTermIntegrity(a.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		return msg
+	}
+
+	setupAgent := func(t *testing.T) (*Agent, *pingNoIOCand, *pingNoIOCand, *CandidatePair) {
+		t.Helper()
+		liteAgent := bareAgentForPing()
+		liteAgent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+		liteAgent.remoteUfrag = selectionTestRemoteUfrag
+		liteAgent.localUfrag = selectionTestLocalUfrag
+		liteAgent.remotePwd = selectionTestPassword
+		liteAgent.localPwd = selectionTestPassword
+		liteAgent.tieBreaker = 1
+		liteAgent.lite = true
+		liteAgent.isControlling.Store(false)
+		liteAgent.onConnected = make(chan struct{})
+		liteAgent.setSelector()
+
+		local := newPingNoIOCand()
+		local.candidateBase.networkType = NetworkTypeUDP4
+		local.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+
+		remote := newPingNoIOCand()
+		remote.candidateBase.networkType = NetworkTypeUDP4
+		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+
+		pair := liteAgent.addPair(local, remote)
+
+		return liteAgent, local, remote, pair
+	}
+
+	t.Run("NoTriggeredCheckWhileChecking", func(t *testing.T) {
+		// Pair is in Waiting state (ICE checking phase). A full controlled agent
+		// would send a triggered check here; a lite one must not.
+		agent, local, remote, pair := setupAgent(t)
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok, "expected liteSelector as top-level selector")
+		_, ok = ls.pairCandidateSelector.(*controlledSelector)
+		require.True(t, ok, "expected controlledSelector inside liteSelector")
+
+		sentBefore := pair.RequestsSent()
+		msg := buildMsg(t, agent)
+
+		for range 5 {
+			ls.HandleBindingRequest(msg, local, remote)
+		}
+
+		assert.Equal(t, sentBefore, pair.RequestsSent(),
+			"lite controlled agent must not send triggered checks during ICE checking")
+	})
+
+	t.Run("NoTriggeredCheckWhenSucceededAndSelected", func(t *testing.T) {
+		// Pair is Succeeded and selected. Even a full agent suppresses checks here,
+		// but we verify the lite path also stays clean.
+		agent, local, remote, pair := setupAgent(t)
+		pair.state = CandidatePairStateSucceeded
+		agent.setSelectedPair(pair)
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		sentBefore := pair.RequestsSent()
+		msg := buildMsg(t, agent)
+		ls.HandleBindingRequest(msg, local, remote)
+
+		assert.Equal(t, sentBefore, pair.RequestsSent(),
+			"lite controlled agent must not send triggered checks when pair is connected")
+	})
+
+	t.Run("CustomHandlerSelectionPromotesPair", func(t *testing.T) {
+		agent, local, remote, pair := setupAgent(t)
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		var handlerCalled bool
+		agent.userBindingRequestHandler = func(message *stun.Message, _, _ Candidate, handlerPair *CandidatePair) bool {
+			handlerCalled = true
+			assert.False(t, message.Contains(stun.AttrUseCandidate), "test must exercise an ordinary Binding request")
+			assert.Equal(t, pair, handlerPair)
+
+			return true
+		}
+
+		msg := buildMsg(t, agent)
+		ls.HandleBindingRequest(msg, local, remote)
+
+		assert.True(t, handlerCalled)
+		assert.Equal(t, pair, agent.getSelectedPair())
+		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+		assert.True(t, pair.nominated)
+		assert.Equal(t, uint64(0), pair.RequestsSent())
+	})
+
+	t.Run("NominationStillAccepted", func(t *testing.T) {
+		// RFC 8445 §7.3.2: the lite agent must accept USE-CANDIDATE and select the
+		// pair directly, even when the pair has never reached Succeeded state via a
+		// triggered check (which it never sends). Leave the pair in Waiting — the
+		// default after addPair — to exercise the lite direct-nomination path.
+		agent, local, remote, pair := setupAgent(t)
+		// Intentionally do NOT set pair.state = CandidatePairStateSucceeded.
+		// A lite agent never generates triggered checks, so the pair will never reach
+		// Succeeded that way. The nomination must be accepted regardless.
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		assert.Nil(t, agent.getSelectedPair(), "no pair selected yet")
+
+		msg, err := stun.Build(stun.BindingRequest,
+			stun.TransactionID,
+			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			UseCandidate(),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		ls.HandleBindingRequest(msg, local, remote)
+
+		assert.Equal(t, pair, agent.getSelectedPair(),
+			"lite controlled agent must accept nomination even when pair has not reached Succeeded")
+		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+		assert.True(t, pair.nominated)
+		// Still no triggered check emitted
+		assert.Equal(t, uint64(0), pair.RequestsSent())
+	})
+}
+
+// TestLiteMode_FullToLite_Integration is an end-to-end test for the most common
+// lite mode deployment: a full ICE agent (controlling) connects to a lite agent
+// (controlled). The full agent performs connectivity checks and nominates; the
+// lite agent responds to STUN but never generates checks of its own.
+func TestLiteMode_FullToLite_Integration(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	oneHour := time.Hour
+	keepaliveInterval := time.Millisecond * 20
+
+	// Full agent — will become the controlling agent (Dial).
+	fullNotifier, fullConnected := onConnected()
+	fullAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		KeepaliveInterval: &keepaliveInterval,
+		CheckInterval:     &oneHour,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fullAgent.OnConnectionStateChange(fullNotifier))
+	t.Cleanup(func() { require.NoError(t, fullAgent.Close()) })
+
+	// Lite agent — will become the controlled agent (Accept).
+	liteNotifier, liteConnected := onConnected()
+	liteAgent, err := NewAgent(&AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		KeepaliveInterval: &keepaliveInterval,
+		CheckInterval:     &oneHour,
+		Lite:              true,
+		CandidateTypes:    []CandidateType{CandidateTypeHost},
+	})
+	require.NoError(t, err)
+	require.NoError(t, liteAgent.OnConnectionStateChange(liteNotifier))
+	t.Cleanup(func() { require.NoError(t, liteAgent.Close()) })
+
+	// connect() calls aAgent.Accept (controlled) and bAgent.Dial (controlling).
+	// To test the common full (controlling) -> lite (controlled) case, pass liteAgent
+	// as aAgent and fullAgent as bAgent.
+	liteConn, fullConn := connect(t, liteAgent, fullAgent)
+
+	<-fullConnected
+	<-liteConnected
+
+	// Verify the lite agent never sent its own connectivity checks.
+	err = liteAgent.loop.Run(liteAgent.loop, func(_ context.Context) {
+		for _, pair := range liteAgent.checklist {
+			assert.Equal(t, uint64(0), pair.RequestsSent(),
+				"lite agent must not send any connectivity checks")
+		}
+	})
+	require.NoError(t, err)
+
+	var selectedPairID uint64
+	err = liteAgent.loop.Run(liteAgent.loop, func(_ context.Context) {
+		selectedPair := liteAgent.getSelectedPair()
+		require.NotNil(t, selectedPair)
+		selectedPairID = selectedPair.id
+	})
+	require.NoError(t, err)
+
+	var foundSelectedPair bool
+	for _, info := range liteConn.GetCandidatePairsInfo() {
+		if info.ID != selectedPairID {
+			continue
+		}
+
+		foundSelectedPair = true
+		assert.Equal(t, CandidatePairStateSucceeded, info.State)
+		assert.True(t, info.Nominated)
+
+		break
+	}
+	require.True(t, foundSelectedPair, "selected lite pair must be reported")
+
+	testData := []byte("lite WriteToPair")
+	n, err := liteConn.WriteToPair(selectedPairID, testData)
+	require.NoError(t, err)
+	require.Equal(t, len(testData), n)
+
+	require.NoError(t, fullConn.SetReadDeadline(time.Now().Add(time.Second)))
+	buf := make([]byte, len(testData))
+	n, err = fullConn.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, testData, buf[:n])
+	require.NoError(t, fullConn.SetReadDeadline(time.Time{}))
+
+	// Both agents should be able to exchange data.
+	require.True(t, sendUntilDone(t, fullConn, liteConn, 100))
+	require.True(t, sendUntilDone(t, liteConn, fullConn, 120))
+
+	closePipe(t, liteConn, fullConn)
+}
