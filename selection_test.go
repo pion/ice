@@ -141,8 +141,10 @@ func TestBindingRequestHandler(t *testing.T) {
 	assert.NotNil(t, candidatePair)
 	assert.NoError(t, err)
 
-	// Sending will fail, we no longer have a selected candidate pair
-	require.False(t, sendUntilDone(t, controlledConn, controllingConn, 20))
+	// Sending will fail, we no longer have a selected candidate pair.
+	n, writeErr := controlledConn.Write([]byte("Hello World"))
+	require.Zero(t, n)
+	require.ErrorIs(t, writeErr, ErrNoCandidatePairs)
 
 	// Send STUN Binding requests until a new Selected Candidate Pair has been set by BindingRequestHandler
 	switchToNewCandidatePair.Store(true)
