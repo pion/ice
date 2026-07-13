@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -50,7 +51,11 @@ type UDPMuxDefault struct {
 	// whether the UDP connection listens on an unspecified address
 	isUnspecified bool
 
-	// writeState packs write in-flight count.
+	// writeState coordinates context cancellation for WriteTo calls.
+	// Low bits count writes currently inside UDPConn.WriteTo. blocked means an
+	// abort arming the shared write deadline, so new writes wait.
+	// deadline means SetWriteDeadline(time.Now()) succeeded and the last
+	// in-flight writer must clear it before new writes can enter.
 	writeState atomic.Uint64
 }
 
@@ -269,13 +274,53 @@ func (m *UDPMuxDefault) Close() error {
 }
 
 func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
-	m.startWrite()
+	return m.writeToContext(context.Background(), buf, rAddr)
+}
+
+func (m *UDPMuxDefault) writeToContext(ctx context.Context, buf []byte, rAddr net.Addr) (n int, err error) {
+	if err = m.startWriteContext(ctx); err != nil {
+		return 0, err
+	}
 
 	defer func() {
 		err = m.finishWrite(err)
 	}()
 
-	return m.params.UDPConn.WriteTo(buf, rAddr)
+	if err = ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	if done := ctx.Done(); done != nil {
+		// net.PacketConn writes cannot be canceled directly. If ctx is
+		// canceled while WriteTo is blocked, abortWrite interrupts it by
+		// temporarily setting the shared socket write deadline to now.
+		stopAbort := make(chan struct{})
+		var stopped atomic.Bool
+		defer func() {
+			stopped.Store(true)
+			close(stopAbort)
+		}()
+		go func() {
+			select {
+			case <-done:
+				if !stopped.Load() {
+					if abortErr := m.abortWrite(); abortErr != nil {
+						m.params.Logger.Warnf("Failed to abort UDP write: %v", abortErr)
+					}
+				}
+			case <-stopAbort:
+			}
+		}()
+	}
+
+	n, err = m.params.UDPConn.WriteTo(buf, rAddr)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return n, ctxErr
+		}
+	}
+
+	return n, err
 }
 
 func (m *UDPMuxDefault) abortWrite() error {
@@ -289,6 +334,8 @@ func (m *UDPMuxDefault) abortWrite() error {
 			continue
 		}
 
+		// The deadline applies to the shared UDPConn, so blocked stays set
+		// until the final in-flight writer clears the deadline in finishWrite.
 		if err := m.params.UDPConn.SetWriteDeadline(time.Now()); err != nil {
 			m.clearWriteAbortState()
 
@@ -301,8 +348,12 @@ func (m *UDPMuxDefault) abortWrite() error {
 	}
 }
 
-func (m *UDPMuxDefault) startWrite() {
+func (m *UDPMuxDefault) startWriteContext(ctx context.Context) error {
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		state := m.writeState.Load()
 		if state&udpMuxWriteBlockedBit != 0 {
 			runtime.Gosched()
@@ -311,7 +362,7 @@ func (m *UDPMuxDefault) startWrite() {
 		}
 
 		if m.writeState.CompareAndSwap(state, state+1) {
-			return
+			return nil
 		}
 	}
 }
@@ -357,6 +408,8 @@ func (m *UDPMuxDefault) clearWriteDeadlineAfterAbort(writeErr error) error {
 			return writeErr
 		}
 		if state&udpMuxWriteDeadlineBit == 0 {
+			// The last writer can race with abortWrite after blocked is set but
+			// before SetWriteDeadline returns.
 			runtime.Gosched()
 
 			continue

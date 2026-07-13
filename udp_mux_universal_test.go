@@ -403,3 +403,73 @@ func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_NoAddr(t *testing.T) {
 	require.Nil(t, addr)
 	require.ErrorIs(t, err, errNoXorAddrMapping)
 }
+
+func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_DeletedMapping(t *testing.T) {
+	serverAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478}
+	waitCh := make(chan struct{})
+
+	var mux *UniversalUDPMuxDefault
+	pc := &writeHookPacketConn{
+		local: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
+		onWrite: func() {
+			mux.mu.Lock()
+			mappedAddr := mux.xorMappedMap[serverAddr.String()]
+			mappedAddr.closeWaiters()
+			delete(mux.xorMappedMap, serverAddr.String())
+			mux.mu.Unlock()
+		},
+	}
+	mux = &UniversalUDPMuxDefault{
+		UDPMuxDefault: &UDPMuxDefault{},
+		params: UniversalUDPMuxParams{
+			UDPConn: pc,
+		},
+		xorMappedMap: map[string]*xorMapped{
+			serverAddr.String(): {
+				waitAddrReceived: waitCh,
+				expiresAt:        time.Now().Add(time.Minute),
+			},
+		},
+	}
+
+	addr, err := mux.GetXORMappedAddr(serverAddr, time.Second)
+	require.Nil(t, addr)
+	require.ErrorIs(t, err, errNoXorAddrMapping)
+}
+
+type writeHookPacketConn struct {
+	local   net.Addr
+	onWrite func()
+}
+
+func (w *writeHookPacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	return 0, w.local, io.EOF
+}
+
+func (w *writeHookPacketConn) WriteTo(p []byte, _ net.Addr) (int, error) {
+	if w.onWrite != nil {
+		w.onWrite()
+	}
+
+	return len(p), nil
+}
+
+func (w *writeHookPacketConn) Close() error {
+	return nil
+}
+
+func (w *writeHookPacketConn) LocalAddr() net.Addr {
+	return w.local
+}
+
+func (w *writeHookPacketConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (w *writeHookPacketConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (w *writeHookPacketConn) SetWriteDeadline(time.Time) error {
+	return nil
+}

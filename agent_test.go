@@ -376,6 +376,134 @@ func TestAgentCloseAbortsBlockedUDPMuxWrite(t *testing.T) {
 	require.NoError(t, <-runErr)
 }
 
+func TestAgentCloseAbortsBlockedUDPMuxSrflxGatherWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	udpConn := newDeadlineBlockingPacketConn()
+	udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{UDPConn: udpConn})
+	defer func() {
+		_ = udpMux.Close()
+	}()
+
+	agent, err := NewAgent(&AgentConfig{
+		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+		Urls: []*stun.URI{{
+			Scheme: stun.SchemeTypeSTUN,
+			Host:   "192.0.2.2",
+			Port:   3478,
+		}},
+		UDPMuxSrflx: udpMux,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent.GatherCandidates())
+
+	select {
+	case <-udpConn.writeStarted:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for UDP mux srflx gather write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent.Close()
+	}()
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "agent close did not abort blocked UDP mux srflx gather write")
+	}
+}
+
+func TestAgentCloseDoesNotAbortOtherAgentUDPMuxSrflxGatherWrite(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(2 * time.Second).Stop()
+
+	udpConn := newDeadlineBlockingPacketConn()
+	udpMux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{UDPConn: udpConn})
+	defer func() {
+		_ = udpMux.Close()
+	}()
+
+	newSrflxAgent := func(t *testing.T) *Agent {
+		t.Helper()
+
+		agent, err := NewAgent(&AgentConfig{
+			NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+			CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
+			Urls: []*stun.URI{{
+				Scheme: stun.SchemeTypeSTUN,
+				Host:   "192.0.2.2",
+				Port:   3478,
+			}},
+			UDPMuxSrflx: udpMux,
+		})
+		require.NoError(t, err)
+
+		return agent
+	}
+
+	agent1 := newSrflxAgent(t)
+	defer func() {
+		_ = agent1.Close()
+	}()
+
+	agent2 := newSrflxAgent(t)
+	defer func() {
+		_ = agent2.Close()
+	}()
+
+	require.NoError(t, agent2.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent2.GatherCandidates())
+
+	select {
+	case <-udpConn.writeStarted:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for second agent UDP mux srflx gather write to block")
+	}
+
+	closeErr := make(chan error, 1)
+	go func() {
+		closeErr <- agent1.Close()
+	}()
+
+	select {
+	case err := <-closeErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "first agent close blocked")
+	}
+
+	select {
+	case <-udpConn.writeDeadlineSet:
+		require.FailNow(t, "first agent close aborted another agent's UDP mux srflx gather write")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	secondCloseErr := make(chan error, 1)
+	go func() {
+		secondCloseErr <- agent2.Close()
+	}()
+
+	select {
+	case <-udpConn.writeDeadlineSet:
+	case <-time.After(time.Second):
+		require.FailNow(t, "second agent close did not abort its own UDP mux srflx gather write")
+	}
+
+	select {
+	case err := <-secondCloseErr:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		require.FailNow(t, "second agent close blocked")
+	}
+}
+
 func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(2 * time.Second).Stop()

@@ -1522,7 +1522,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 			},
 		}),
 		WithInterfaceFilter(func(iface string) bool {
-			return iface == "eth0"
+			return iface == "eth0" //nolint:goconst
 		}),
 		WithIncludeLoopback(),
 	)

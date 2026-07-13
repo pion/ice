@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -177,55 +178,83 @@ func (m *UniversalUDPMuxDefault) GetXORMappedAddr(
 	serverAddr net.Addr,
 	deadline time.Duration,
 ) (*stun.XORMappedAddress, error) {
-	m.mu.Lock()
-	mappedAddr, ok := m.xorMappedMap[serverAddr.String()]
-	// If we already have a mapping for this STUN server (address already received)
-	// and if it is not too old we return it without making a new request to STUN server
-	if ok {
-		if mappedAddr.expired() {
-			mappedAddr.closeWaiters()
-			delete(m.xorMappedMap, serverAddr.String())
-			ok = false
-		} else if mappedAddr.pending() {
-			ok = false
-		}
-	}
-	m.mu.Unlock()
-	if ok {
-		return mappedAddr.addr, nil
+	return m.GetXORMappedAddrContext(context.Background(), serverAddr, deadline)
+}
+
+func (m *UniversalUDPMuxDefault) GetXORMappedAddrContext(
+	ctx context.Context,
+	serverAddr net.Addr,
+	deadline time.Duration,
+) (*stun.XORMappedAddress, error) {
+	if mappedAddr, ok := m.cachedXORMappedAddr(serverAddr); ok {
+		return mappedAddr, nil
 	}
 
 	// Otherwise, make a STUN request to discover the address
 	// or wait for already sent request to complete
-	waitAddrReceived, err := m.writeSTUN(serverAddr)
+	waitAddrReceived, err := m.writeSTUN(ctx, serverAddr)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+
 		return nil, fmt.Errorf("%w: %s", errWriteSTUNMessage, err) //nolint:errorlint
 	}
+
+	timer := time.NewTimer(deadline)
+	defer timer.Stop()
 
 	// Block until response was handled by the connWorker routine and XORMappedAddress was updated
 	select {
 	case <-waitAddrReceived:
 		// When channel closed, addr was obtained
 		m.mu.Lock()
-		mappedAddr := *m.xorMappedMap[serverAddr.String()]
-		m.mu.Unlock()
-		if mappedAddr.addr == nil {
+		mappedAddr, ok := m.xorMappedMap[serverAddr.String()]
+		if !ok || mappedAddr.addr == nil {
+			m.mu.Unlock()
+
 			return nil, errNoXorAddrMapping
 		}
+		addr := mappedAddr.addr
+		m.mu.Unlock()
 
-		return mappedAddr.addr, nil
-	case <-time.After(deadline):
+		return addr, nil
+	case <-timer.C:
 		return nil, errXORMappedAddrTimeout
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
+}
+
+func (m *UniversalUDPMuxDefault) cachedXORMappedAddr(serverAddr net.Addr) (*stun.XORMappedAddress, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	mappedAddr, ok := m.xorMappedMap[serverAddr.String()]
+	// If we already have a mapping for this STUN server (address already received)
+	// and if it is not too old we return it without making a new request to STUN server
+	if !ok {
+		return nil, false
+	}
+	if mappedAddr.expired() {
+		mappedAddr.closeWaiters()
+		delete(m.xorMappedMap, serverAddr.String())
+
+		return nil, false
+	}
+	if mappedAddr.pending() {
+		return nil, false
+	}
+
+	return mappedAddr.addr, true
 }
 
 // writeSTUN sends a STUN request via UDP conn.
 //
 // The returned channel is closed when the STUN response has been received.
 // Method is safe for concurrent use.
-func (m *UniversalUDPMuxDefault) writeSTUN(serverAddr net.Addr) (chan struct{}, error) {
+func (m *UniversalUDPMuxDefault) writeSTUN(ctx context.Context, serverAddr net.Addr) (chan struct{}, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// If record present in the map, we already sent a STUN request,
 	// just wait when waitAddrReceived will be closed
@@ -237,17 +266,27 @@ func (m *UniversalUDPMuxDefault) writeSTUN(serverAddr net.Addr) (chan struct{}, 
 		}
 		m.xorMappedMap[serverAddr.String()] = addrMap
 	}
+	waitAddrReceived := addrMap.waitAddrReceived
+	m.mu.Unlock()
 
 	req, err := stun.Build(stun.BindingRequest, stun.TransactionID)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err = m.params.UDPConn.WriteTo(req.Raw, serverAddr); err != nil {
+	if _, err = m.writePacket(ctx, req.Raw, serverAddr); err != nil {
 		return nil, err
 	}
 
-	return addrMap.waitAddrReceived, nil
+	return waitAddrReceived, nil
+}
+
+func (m *UniversalUDPMuxDefault) writePacket(ctx context.Context, packet []byte, addr net.Addr) (int, error) {
+	if m.UDPMuxDefault != nil && m.UDPMuxDefault.params.UDPConn != nil {
+		return m.UDPMuxDefault.writeToContext(ctx, packet, addr)
+	}
+
+	return m.params.UDPConn.WriteTo(packet, addr)
 }
 
 type xorMapped struct {
