@@ -445,16 +445,20 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 	}
 	pair.UpdateRequestReceived()
 
-	if message.Contains(stun.AttrUseCandidate) || message.Contains(s.agent.nominationAttribute) { //nolint:nestif
-		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
-
-		// Check for renomination attribute
-		var nominationValue *uint32
+	hasUseCandidate := message.Contains(stun.AttrUseCandidate)
+	hasValidNomination := false
+	var nominationValue *uint32
+	if message.Contains(s.agent.nominationAttribute) {
 		var nomination NominationAttribute
 		if err := nomination.GetFromWithType(message, s.agent.nominationAttribute); err == nil {
 			nominationValue = &nomination.Value
+			hasValidNomination = true
 			s.log.Tracef("Received nomination with value %d", nomination.Value)
 		}
+	}
+
+	if hasUseCandidate || hasValidNomination { //nolint:nestif
+		// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 
 		// Check if we should accept this nomination based on renomination rules
 		if !s.shouldAcceptNomination(nominationValue) {

@@ -31,6 +31,12 @@ const (
 	selectionTestLocalUfrag  = "local"
 )
 
+type stunSetterFunc func(*stun.Message) error
+
+func (f stunSetterFunc) AddTo(m *stun.Message) error {
+	return f(m)
+}
+
 func sendUntilDone(t *testing.T, writingConn, readingConn net.Conn, maxAttempts int) bool {
 	t.Helper()
 
@@ -1517,6 +1523,33 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		return msg
 	}
 
+	buildMalformedNominationMsg := func(t *testing.T, agent *Agent, useCandidate bool) *stun.Message {
+		t.Helper()
+
+		setters := []stun.Setter{
+			stun.BindingRequest,
+			stun.TransactionID,
+			stun.NewUsername(agent.localUfrag + ":" + agent.remoteUfrag),
+		}
+		if useCandidate {
+			setters = append(setters, UseCandidate())
+		}
+		setters = append(setters,
+			stunSetterFunc(func(m *stun.Message) error {
+				m.Add(agent.nominationAttribute, []byte{0x01, 0x02})
+
+				return nil
+			}),
+			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.Fingerprint,
+		)
+
+		msg, err := stun.Build(setters...)
+		require.NoError(t, err)
+
+		return msg
+	}
+
 	setupAgent := func(t *testing.T) (*Agent, *pingNoIOCand, *pingNoIOCand, *CandidatePair) {
 		t.Helper()
 		liteAgent := bareAgentForPing()
@@ -1641,6 +1674,47 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
 		assert.True(t, pair.nominated)
 		// Still no triggered check emitted
+		assert.Equal(t, uint64(0), pair.RequestsSent())
+	})
+
+	t.Run("MalformedNominationOnlyDoesNotNominate", func(t *testing.T) {
+		agent, local, remote, pair := setupAgent(t)
+		agent.nominationAttribute = stun.AttrType(0x0030)
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		msg := buildMalformedNominationMsg(t, agent, false)
+		require.False(t, msg.Contains(stun.AttrUseCandidate), "test must not include USE-CANDIDATE")
+
+		ls.HandleBindingRequest(msg, local, remote)
+
+		require.Nil(t, agent.getSelectedPair())
+		assert.Equal(t, CandidatePairStateWaiting, pair.state)
+		assert.False(t, pair.nominated)
+		assert.False(t, pair.nominateOnBindingSuccess)
+		assert.Equal(t, uint16(0), pair.bindingRequestCount)
+		assert.Equal(t, uint64(0), pair.RequestsSent())
+	})
+
+	t.Run("UseCandidateWithMalformedNominationStillAccepted", func(t *testing.T) {
+		agent, local, remote, pair := setupAgent(t)
+		agent.nominationAttribute = stun.AttrType(0x0030)
+		require.Equal(t, CandidatePairStateWaiting, pair.state, "pair must start in Waiting")
+
+		ls, ok := agent.getSelector().(*liteSelector)
+		require.True(t, ok)
+
+		msg := buildMalformedNominationMsg(t, agent, true)
+		require.True(t, msg.Contains(stun.AttrUseCandidate), "test must include USE-CANDIDATE")
+
+		ls.HandleBindingRequest(msg, local, remote)
+
+		assert.Equal(t, pair, agent.getSelectedPair())
+		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+		assert.True(t, pair.nominated)
+		assert.Equal(t, uint16(0), pair.bindingRequestCount)
 		assert.Equal(t, uint64(0), pair.RequestsSent())
 	})
 }
