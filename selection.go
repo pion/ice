@@ -449,10 +449,14 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 			return
 		}
 
-		if pair.state == CandidatePairStateSucceeded || s.agent.lite {
-			// For full agents: pair reached Succeeded via a triggered check (RFC 8445 §7.3.1.5).
-			// For lite agents: RFC 8445 §7.3.2 — the lite agent directly constructs the pair,
-			// places it in the valid list, and sets the nominated flag; no triggered check needed.
+		if s.agent.lite {
+			// Pion represents membership in the valid list as Succeeded. RFC 8445
+			// Section 7.3.2 puts an accepted lite nomination directly into the
+			// valid list without an outbound triggered check.
+			pair.state = CandidatePairStateSucceeded
+		}
+
+		if pair.state == CandidatePairStateSucceeded {
 			selectedPair := s.agent.getSelectedPair()
 			if s.shouldSwitchSelectedPair(pair, selectedPair, nominationValue) {
 				s.log.Tracef("Accepting nomination for pair %s", pair)

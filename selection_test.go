@@ -1610,6 +1610,8 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 		assert.Equal(t, pair, agent.getSelectedPair(),
 			"lite controlled agent must accept nomination even when pair has not reached Succeeded")
+		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
+		assert.True(t, pair.nominated)
 		// Still no triggered check emitted
 		assert.Equal(t, uint64(0), pair.RequestsSent())
 	})
@@ -1669,6 +1671,40 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 		}
 	})
 	require.NoError(t, err)
+
+	var selectedPairID uint64
+	err = liteAgent.loop.Run(liteAgent.loop, func(_ context.Context) {
+		selectedPair := liteAgent.getSelectedPair()
+		require.NotNil(t, selectedPair)
+		selectedPairID = selectedPair.id
+	})
+	require.NoError(t, err)
+
+	var foundSelectedPair bool
+	for _, info := range liteConn.GetCandidatePairsInfo() {
+		if info.ID != selectedPairID {
+			continue
+		}
+
+		foundSelectedPair = true
+		assert.Equal(t, CandidatePairStateSucceeded, info.State)
+		assert.True(t, info.Nominated)
+
+		break
+	}
+	require.True(t, foundSelectedPair, "selected lite pair must be reported")
+
+	testData := []byte("lite WriteToPair")
+	n, err := liteConn.WriteToPair(selectedPairID, testData)
+	require.NoError(t, err)
+	require.Equal(t, len(testData), n)
+
+	require.NoError(t, fullConn.SetReadDeadline(time.Now().Add(time.Second)))
+	buf := make([]byte, len(testData))
+	n, err = fullConn.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, testData, buf[:n])
+	require.NoError(t, fullConn.SetReadDeadline(time.Time{}))
 
 	// Both agents should be able to exchange data.
 	require.True(t, sendUntilDone(t, fullConn, liteConn, 100))
