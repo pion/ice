@@ -1953,9 +1953,10 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 
 	var err error
 	if runErr := a.loop.Run(a.loop, func(_ context.Context) {
-		if a.gatheringState == GatheringStateGathering {
-			a.gatherCandidateCancel()
-		}
+		// Cancel unconditionally: a gather goroutine that has started but not yet
+		// marked Gathering would otherwise outlive the restart and later
+		// overwrite the fresh New state.
+		a.gatherCandidateCancel()
 
 		// Clear all agent needed to take back to fresh state
 		a.removeUfragFromMux()
@@ -1983,15 +1984,23 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	return err
 }
 
-func (a *Agent) setGatheringState(newState GatheringState) error {
+// setGatheringState applies newState for the gather cycle owning gatherCtx. A
+// write from a canceled cycle (e.g. superseded by Restart) is dropped, so it
+// cannot clobber the New state Restart set and wedge the next gather.
+func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringState) error {
 	done := make(chan struct{})
 	if err := a.loop.Run(a.loop, func(context.Context) {
+		defer close(done)
+
+		if gatherCtx.Err() != nil {
+			return
+		}
+
 		if a.gatheringState != newState && newState == GatheringStateComplete {
 			a.candidateNotifier.EnqueueCandidate(nil)
 		}
 
 		a.gatheringState = newState
-		close(done)
 	}); err != nil {
 		return err
 	}
