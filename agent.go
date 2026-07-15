@@ -1989,7 +1989,7 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 // cannot clobber the New state Restart set and wedge the next gather.
 func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringState) error {
 	done := make(chan struct{})
-	if err := a.loop.Run(a.loop, func(context.Context) {
+	if err := a.loop.Run(a.loop, func(context.Context) { //nolint:contextcheck
 		defer close(done)
 
 		if gatherCtx.Err() != nil {
