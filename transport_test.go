@@ -191,52 +191,52 @@ func stressDuplex(t *testing.T) {
 	require.NoError(t, test.StressDuplex(ca, cb, opt))
 }
 
-func gatherAndExchangeCandidates(t *testing.T, aAgent, bAgent *Agent) {
-	t.Helper()
+func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent) {
+	tb.Helper()
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	require.NoError(t, aAgent.OnCandidate(func(candidate Candidate) {
+	require.NoError(tb, aAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	require.NoError(t, aAgent.GatherCandidates())
+	require.NoError(tb, aAgent.GatherCandidates())
 
-	require.NoError(t, bAgent.OnCandidate(func(candidate Candidate) {
+	require.NoError(tb, bAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	require.NoError(t, bAgent.GatherCandidates())
+	require.NoError(tb, bAgent.GatherCandidates())
 
 	wg.Wait()
 
 	candidates, err := aAgent.GetLocalCandidates()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	for _, c := range candidates {
 		if addr, parseErr := netip.ParseAddr(c.Address()); parseErr == nil {
-			require.False(t, shouldFilterLocationTrackedIP(addr))
+			require.False(tb, shouldFilterLocationTrackedIP(addr))
 		}
 		candidateCopy, copyErr := c.copy()
-		require.NoError(t, copyErr)
-		require.NoError(t, bAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(tb, copyErr)
+		require.NoError(tb, bAgent.AddRemoteCandidate(candidateCopy))
 	}
 
 	candidates, err = bAgent.GetLocalCandidates()
 
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	for _, c := range candidates {
 		candidateCopy, copyErr := c.copy()
-		require.NoError(t, copyErr)
-		require.NoError(t, aAgent.AddRemoteCandidate(candidateCopy))
+		require.NoError(tb, copyErr)
+		require.NoError(tb, aAgent.AddRemoteCandidate(candidateCopy))
 	}
 }
 
-func connect(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
-	t.Helper()
-	gatherAndExchangeCandidates(t, aAgent, bAgent)
+func connect(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	tb.Helper()
+	gatherAndExchangeCandidates(tb, aAgent, bAgent)
 
 	accepted := make(chan struct{})
 	var aConn *Conn
@@ -244,15 +244,15 @@ func connect(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
 	go func() {
 		var acceptErr error
 		bUfrag, bPwd, acceptErr := bAgent.GetLocalUserCredentials()
-		require.NoError(t, acceptErr)
+		require.NoError(tb, acceptErr)
 		aConn, acceptErr = aAgent.Accept(context.TODO(), bUfrag, bPwd)
-		require.NoError(t, acceptErr)
+		require.NoError(tb, acceptErr)
 		close(accepted)
 	}()
 	aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	bConn, err := bAgent.Dial(context.TODO(), aUfrag, aPwd)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	// Ensure accepted
 	<-accepted
@@ -260,8 +260,8 @@ func connect(t *testing.T, aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
-	t.Helper()
+func pipe(tb testing.TB, defaultConfig *AgentConfig) (*Conn, *Conn) {
+	tb.Helper()
 	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
@@ -276,21 +276,21 @@ func pipe(t *testing.T, defaultConfig *AgentConfig) (*Conn, *Conn) {
 	cfg.NetworkTypes = supportedNetworkTypes()
 
 	aAgent, err := NewAgent(cfg)
-	require.NoError(t, err)
-	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-	t.Cleanup(func() {
-		require.NoError(t, aAgent.Close())
+	require.NoError(tb, err)
+	require.NoError(tb, aAgent.OnConnectionStateChange(aNotifier))
+	tb.Cleanup(func() {
+		require.NoError(tb, aAgent.Close())
 	})
 
 	bAgent, err := NewAgent(cfg)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
-	t.Cleanup(func() {
-		require.NoError(t, bAgent.Close())
+	require.NoError(tb, bAgent.OnConnectionStateChange(bNotifier))
+	tb.Cleanup(func() {
+		require.NoError(tb, bAgent.Close())
 	})
 
-	aConn, bConn := connect(t, aAgent, bAgent)
+	aConn, bConn := connect(tb, aAgent, bAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -664,4 +664,72 @@ func TestConn_WriteToPair_Success(t *testing.T) {
 	n, err = cb.Read(buf)
 	require.NoError(t, err)
 	require.Equal(t, testData, buf[:n])
+}
+
+type discardPacketConn struct {
+	deadlinePacketConn
+}
+
+func (*discardPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
+	return len(b), nil
+}
+
+// TestConnWriteDoesNotAllocateAbovePacketConn pins Write's fast path at zero
+// heap allocations per packet, from the selected pair down to the candidate's
+// net.PacketConn. The discarding conn excludes the socket write itself.
+func TestConnWriteDoesNotAllocateAbovePacketConn(t *testing.T) {
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	newCandidate := func(port int) *CandidateHost {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2.1",
+			Port:      port,
+			Component: ComponentRTP,
+		})
+		require.NoError(t, err)
+
+		return candidate
+	}
+	local, remote := newCandidate(19000), newCandidate(19001)
+	local.conn = &discardPacketConn{}
+
+	agent.selectedPair.Store(newCandidatePair(local, remote, false))
+
+	conn := &Conn{agent: agent}
+	packet := make([]byte, 1200)
+
+	var writeErr error
+	allocs := testing.AllocsPerRun(1000, func() {
+		if _, err := conn.Write(packet); err != nil {
+			writeErr = err
+		}
+	})
+
+	require.NoError(t, writeErr)
+	require.Zero(t, allocs)
+	require.Positive(t, conn.BytesSent())
+}
+
+func BenchmarkConnWriteRead(b *testing.B) {
+	ca, cb := pipe(b, nil)
+
+	// Note: this loop needs to keep the writes and reads synchronous to keep
+	// the allocation benchmark deterministic. Otherwise, if reads fall behind
+	// writes and packets get dropped, the allocations could get underreported.
+	packet := make([]byte, 1200)
+	readBuf := make([]byte, 2000)
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := ca.Write(packet); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := cb.Read(readBuf); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

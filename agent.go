@@ -1167,8 +1167,8 @@ func replacePairRemote(pair *CandidatePair, remote Candidate) *CandidatePair {
 	atomic.StoreUint64(&replacement.responsesReceived, atomic.LoadUint64(&pair.responsesReceived))
 	atomic.StoreUint64(&replacement.responsesSent, atomic.LoadUint64(&pair.responsesSent))
 
-	copyAtomicValue(&replacement.lastPacketSentAt, &pair.lastPacketSentAt)
-	copyAtomicValue(&replacement.lastPacketReceivedAt, &pair.lastPacketReceivedAt)
+	replacement.lastPacketSentAt.Store(pair.lastPacketSentAt.Load())
+	replacement.lastPacketReceivedAt.Store(pair.lastPacketReceivedAt.Load())
 	copyAtomicValue(&replacement.firstRequestSentAt, &pair.firstRequestSentAt)
 	copyAtomicValue(&replacement.lastRequestSentAt, &pair.lastRequestSentAt)
 	copyAtomicValue(&replacement.firstResponseReceivedAt, &pair.firstResponseReceivedAt)

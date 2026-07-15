@@ -134,11 +134,21 @@ func (c *Conn) Write(packet []byte) (int, error) {
 
 	pair := c.agent.getSelectedPair()
 	if pair == nil {
+		// Note: the closure must capture p and not pair. Whether a variable
+		// is heap-allocated is a static decision across all code paths, and
+		// the allocation happens where the variable is declared. If we were
+		// to capture pair directly in this closure, then pair would be heap
+		// allocated on every single packet write, even when there is already
+		// a selected pair. By declaring a new variable inside the fallback,
+		// we avoid allocating on most writes and only allocate when no pair
+		// is currently selected.
+		var p *CandidatePair
 		if err = c.agent.loop.Run(c.agent.loop, func(_ context.Context) {
-			pair = c.agent.getBestValidCandidatePair()
+			p = c.agent.getBestValidCandidatePair()
 		}); err != nil {
 			return 0, err
 		}
+		pair = p
 
 		if pair == nil {
 			return 0, ErrNoCandidatePairs

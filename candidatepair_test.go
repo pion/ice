@@ -5,6 +5,7 @@ package ice
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -186,4 +187,18 @@ func TestCandidatePair_ID(t *testing.T) {
 	// Set ID
 	pair.id = 42
 	require.Equal(t, uint64(42), pair.ID())
+}
+
+func TestCandidatePairPacketTimestamps(t *testing.T) {
+	pair := newCandidatePair(hostCandidate(), hostCandidate(), false)
+
+	require.Zero(t, pair.LastPacketSentAt())
+	require.Zero(t, pair.LastPacketReceivedAt())
+
+	now := time.Now()
+	pair.UpdatePacketSent(1)
+	pair.UpdatePacketReceived(1)
+
+	require.WithinDuration(t, now, pair.LastPacketSentAt(), 10*time.Millisecond)
+	require.WithinDuration(t, now, pair.LastPacketReceivedAt(), 10*time.Millisecond)
 }
