@@ -1984,11 +1984,12 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	return err
 }
 
-// setGatheringState applies newState for the gather cycle owning gatherCtx. A
-// write from a canceled cycle (e.g. superseded by Restart) is dropped, so it
-// cannot clobber the New state Restart set and wedge the next gather.
-func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringState) error {
+// setGatheringState applies newState and reports whether it was applied. A write
+// from a cycle canceled by Restart is dropped and reported false, so it can't
+// clobber the fresh New state and wedge the next gather.
+func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringState) (bool, error) {
 	done := make(chan struct{})
+	applied := false
 	if err := a.loop.Run(a.loop, func(context.Context) { //nolint:contextcheck
 		defer close(done)
 
@@ -2001,13 +2002,14 @@ func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringS
 		}
 
 		a.gatheringState = newState
+		applied = true
 	}); err != nil {
-		return err
+		return false, err
 	}
 
 	<-done
 
-	return nil
+	return applied, nil
 }
 
 func (a *Agent) needsToCheckPriorityOnNominated() bool {
