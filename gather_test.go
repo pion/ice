@@ -214,6 +214,28 @@ func TestGatherConcurrency(t *testing.T) {
 	<-candidateGathered.Done()
 }
 
+// TestAgentRestartThenGatherRepeatedly guards a gathering-state race where
+// restarting mid-gather leaves gatheringState wedged, so subsequent
+// GatherCandidates calls fail with ErrMultipleGatherAttempted.
+func TestAgentRestartThenGatherRepeatedly(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent.GatherCandidates())
+
+	// Restart immediately, before the previous cycle has settled, many times.
+	const restarts = 300
+	for range restarts {
+		require.NoError(t, agent.Restart("", ""))
+		require.NoError(t, agent.GatherCandidates())
+	}
+}
+
 func TestLoopbackCandidate(t *testing.T) {
 	defer test.CheckRoutines(t)()
 

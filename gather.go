@@ -143,9 +143,14 @@ func (a *Agent) GatherCandidates() error {
 
 func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //nolint:cyclop
 	defer close(done)
-	if err := a.setGatheringState(GatheringStateGathering); err != nil { //nolint:contextcheck
+	applied, err := a.setGatheringState(ctx, GatheringStateGathering)
+	if err != nil {
 		a.log.Warnf("Failed to set gatheringState to GatheringStateGathering: %v", err)
 
+		return
+	}
+	// The cycle was canceled before it started, so skip its gathering.
+	if !applied {
 		return
 	}
 
@@ -153,7 +158,7 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}) { //no
 
 	switch a.continualGatheringPolicy {
 	case GatherOnce:
-		if err := a.setGatheringState(GatheringStateComplete); err != nil { //nolint:contextcheck
+		if _, err := a.setGatheringState(ctx, GatheringStateComplete); err != nil {
 			a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
 		}
 	case GatherContinually:
