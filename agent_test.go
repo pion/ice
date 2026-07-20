@@ -25,16 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type BadAddr struct{}
-
-func (ba *BadAddr) Network() string {
-	return "xxx"
-}
-
-func (ba *BadAddr) String() string {
-	return "yyy"
-}
-
 type recordingSelector struct {
 	handledBindingRequest bool
 	handledSuccess        bool
@@ -46,7 +36,7 @@ func (r *recordingSelector) ContactCandidates() {}
 
 func (r *recordingSelector) PingCandidate(Candidate, Candidate) {}
 
-func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, net.Addr) {
+func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, netip.AddrPort) {
 	r.handledSuccess = true
 }
 
@@ -675,7 +665,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			require.NoError(t, err)
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
@@ -705,6 +695,67 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}))
 	})
 
+	t.Run("Resolved mDNS candidate is matched instead of creating prflx", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
+
+			local, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			})
+			require.NoError(t, err)
+			local.conn = &fakenet.MockPacketConn{}
+
+			remoteMDNS, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "1f4712db-ea17-4bcf-a596-105139dfd8bf.local",
+				Port:      999,
+				Component: 1,
+			})
+			require.NoError(t, err)
+			// Resolve and register the candidate with the same calls
+			// resolveAndAddMulticastCandidate makes after its mDNS query
+			// returns; only the query itself is skipped here.
+			require.NoError(t, remoteMDNS.setIPAddr(netip.MustParseAddr("172.17.0.3")))
+			// nolint: contextcheck
+			require.True(t, agent.addRemoteCandidate(remoteMDNS))
+
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				UseCandidate(),
+				AttrControlling(agent.tieBreaker),
+				PriorityAttr(local.Priority()),
+				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.Fingerprint,
+			)
+			require.NoError(t, err)
+
+			// nolint: contextcheck
+			agent.handleInbound(msg, local, netip.MustParseAddrPort("172.17.0.3:999"))
+
+			// The inbound traffic must match the resolved mDNS candidate by
+			// transport address rather than surfacing a duplicate prflx
+			// candidate for the same remote.
+			// See:
+			//  - https://datatracker.ietf.org/doc/html/rfc8445#section-7.3.1.3
+			//  - https://datatracker.ietf.org/doc/html/rfc8445#section-4
+			//  - (expired draft) https://datatracker.ietf.org/doc/html/draft-ietf-mmusic-mdns-ice-candidates-03#section-3.2.1
+			set := agent.remoteCandidates[local.NetworkType()]
+			require.Len(t, set, 1)
+			require.Same(t, Candidate(remoteMDNS), set[0])
+			require.Equal(t, "1f4712db-ea17-4bcf-a596-105139dfd8bf.local", set[0].Address())
+		}))
+	})
+
 	t.Run("prflx candidate priority comes from inbound PRIORITY", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
 		require.NoError(t, err)
@@ -725,7 +776,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.NoError(t, err)
 			local.conn = &fakenet.MockPacketConn{}
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			remotePriority := uint32(123456)
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
@@ -771,7 +822,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			agent.localCandidates[local.NetworkType()] = []Candidate{local}
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
@@ -828,7 +879,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Equal(t, prflx, pair.Remote)
 			require.Same(t, updatedPair, agent.getSelectedPair())
 			require.Same(t, updatedPair, sel.nominatedPair)
-			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPortKey(remote))
 			require.True(t, ok)
 			require.Equal(t, host, cached)
 		}))
@@ -854,7 +905,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			agent.localCandidates[local.NetworkType()] = []Candidate{local}
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
@@ -901,7 +952,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Equal(t, srflx, updatedPair.Remote)
 			require.Equal(t, oldPriority, updatedPair.priority())
 			require.Equal(t, prflx, pair.Remote)
-			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPortKey(remote))
 			require.True(t, ok)
 			require.Equal(t, srflx, cached)
 		}))
@@ -927,7 +978,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			agent.localCandidates[local.NetworkType()] = []Candidate{local}
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
@@ -974,7 +1025,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.Equal(t, relay, updatedPair.Remote)
 			require.Equal(t, oldPriority, updatedPair.priority())
 			require.Equal(t, prflx, pair.Remote)
-			cached, ok := local.remoteCandidateCaches.Load(toAddrPort(remote))
+			cached, ok := local.remoteCandidateCaches.Load(toAddrPortKey(remote))
 			require.True(t, ok)
 			require.Equal(t, relay, cached)
 		}))
@@ -1073,10 +1124,8 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local, err := NewCandidateHost(&hostConfig)
 			require.NoError(t, err)
 
-			remote := &BadAddr{}
-
 			// nolint: contextcheck
-			agent.handleInbound(nil, local, remote)
+			agent.handleInbound(nil, local, netip.AddrPort{})
 			require.Len(t, agent.remoteCandidates, 0)
 		}))
 	})
@@ -1103,7 +1152,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			require.NoError(t, err)
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
 				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
@@ -1134,7 +1183,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			tID := [stun.TransactionIDSize]byte{}
 			copy(tID[:], "ABC")
 			agent.pendingBindingRequests = []bindingRequest{
-				{time.Now(), tID, &net.UDPAddr{}, false, nil},
+				{timestamp: time.Now(), transactionID: tID, destination: netip.AddrPort{}},
 			}
 
 			hostConfig := CandidateHostConfig{
@@ -1147,7 +1196,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.conn = &fakenet.MockPacketConn{}
 			require.NoError(t, err)
 
-			remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
 				stun.NewShortTermIntegrity(agent.remotePwd),
 				stun.Fingerprint,
@@ -1394,7 +1443,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 		return msg
 	}
 
-	remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+	remote := netip.MustParseAddrPort("172.17.0.3:999")
 	hostConfig := CandidateHostConfig{
 		Network:   "udp",
 		Address:   "192.168.0.2",
@@ -1496,7 +1545,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 		local.conn = &fakenet.MockPacketConn{}
 		require.NoError(t, err)
 
-		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		remote := netip.MustParseAddrPort("172.17.0.3:999")
 		tID := [stun.TransactionIDSize]byte{}
 		copy(tID[:], "ABC")
 		msg, err := stun.Build(stun.BindingSuccess, stun.NewTransactionIDSetter(tID),
@@ -1541,7 +1590,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		}
 		remoteCandidate, err := NewCandidateHost(remoteConfig)
 		require.NoError(t, err)
-		remoteAddr := &net.UDPAddr{IP: net.ParseIP(remoteCandidate.Address()), Port: remoteCandidate.Port()}
+		remoteAddr := remoteCandidate.addrPort()
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
 			agent.addRemoteCandidate(remoteCandidate) //nolint:contextcheck
@@ -1564,7 +1613,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 
 		local := newHostLocal(t)
 		local.conn = &fakenet.MockPacketConn{}
-		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		remote := netip.MustParseAddrPort("172.17.0.3:999")
 		selector := &recordingSelector{}
 		agent.selector = selector
 		agent.isControlling.Store(true)
@@ -1597,7 +1646,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		agent.handleInbound(msg, local, &BadAddr{})
+		agent.handleInbound(msg, local, netip.AddrPort{})
 		require.Len(t, agent.remoteCandidates, 0)
 	})
 
@@ -1614,7 +1663,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		remote := &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999}
+		remote := netip.MustParseAddrPort("172.17.0.3:999")
 		agent.handleInbound(msg, nil, remote)
 		require.Len(t, agent.remoteCandidates, 0)
 	})
@@ -1634,7 +1683,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		}
 		remoteCandidate, err := NewCandidateHost(remoteConfig)
 		require.NoError(t, err)
-		remoteAddr := &net.UDPAddr{IP: net.ParseIP(remoteCandidate.Address()), Port: remoteCandidate.Port()}
+		remoteAddr := remoteCandidate.addrPort()
 		transactionID := stun.NewTransactionID()
 		remotePwd := "remotekey"
 
@@ -1647,6 +1696,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 				timestamp:     time.Now(),
 				transactionID: transactionID,
 				destination:   remoteAddr,
+				networkType:   remoteCandidate.NetworkType(),
 			}}
 			agent.remotePwd = remotePwd
 		}))
@@ -1690,7 +1740,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 44), Port: 9999}
+		remote := netip.AddrPortFrom(netip.AddrFrom4([4]byte{172, 17, 0, 44}), 9999)
 		agent.handleInbound(msg, local, remote)
 
 		require.False(t, selector.handledBindingRequest)
@@ -1726,7 +1776,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		require.NoError(t, err)
 
 		remote := &net.UDPAddr{IP: net.IPv4(172, 17, 0, 45), Port: 9999}
-		agent.handleInbound(msg, local, remote)
+		agent.handleInbound(msg, local, remote.AddrPort())
 
 		require.Equal(t, 1, filterCalls)
 		require.False(t, selector.handledBindingRequest)

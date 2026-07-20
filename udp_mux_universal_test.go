@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -61,6 +62,9 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	defer func() {
 		_ = remoteConn.Close()
 	}()
+	remoteAddr, ok := remoteConn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	remoteAddrPort := canonicalAddrPort(remoteAddr.AddrPort())
 
 	// Use small value for TTL to check expiration of the address
 	udpMux.params.XORMappedAddrCacheTTL = time.Millisecond * 20
@@ -71,7 +75,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		address, e := udpMux.GetXORMappedAddr(remoteConn.LocalAddr(), time.Second)
+		address, e := udpMux.GetXORMappedAddr(remoteAddr, time.Second)
 		require.NoError(t, e)
 		require.NotNil(t, address)
 		require.True(t, address.IP.Equal(testXORIP))
@@ -83,7 +87,7 @@ func testMuxSrflxConnection(t *testing.T, udpMux *UniversalUDPMuxDefault, ufrag 
 
 	// Check that mapped address filled correctly after sent STUN
 	udpMux.mu.Lock()
-	mappedAddr, ok := udpMux.xorMappedMap[remoteConn.LocalAddr().String()]
+	mappedAddr, ok := udpMux.xorMappedMap[remoteAddrPort]
 	require.True(t, ok)
 	require.NotNil(t, mappedAddr)
 	require.True(t, mappedAddr.pending())
@@ -163,12 +167,11 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc2.Close()
 	}()
 
-	// GetConnForURL now hands out *sharedPacketConn wrappers around the
-	// per-(ufrag,url) underlying *udpMuxedConn; unwrap to compare identity.
-	w1, ok := pc1.(*sharedPacketConn)
-	require.True(t, ok, "pc1 is not *sharedPacketConn")
-	w2, ok := pc2.(*sharedPacketConn)
-	require.True(t, ok, "pc2 is not *sharedPacketConn")
+	// Unwrap the per-(ufrag,url) connections to compare identity.
+	w1, ok := pc1.(*sharedAddrPortConn)
+	require.True(t, ok, "pc1 is not *sharedAddrPortConn")
+	w2, ok := pc2.(*sharedAddrPortConn)
+	require.True(t, ok, "pc2 is not *sharedAddrPortConn")
 	c1, ok := w1.underlying.(*udpMuxedConn)
 	require.True(t, ok, "pc1 underlying is not *udpMuxedConn")
 	c2, ok := w2.underlying.(*udpMuxedConn)
@@ -181,8 +184,8 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc1b.Close()
 	}()
 
-	w1b, ok := pc1b.(*sharedPacketConn)
-	require.True(t, ok, "pc1b is not *sharedPacketConn")
+	w1b, ok := pc1b.(*sharedAddrPortConn)
+	require.True(t, ok, "pc1b is not *sharedAddrPortConn")
 	c1b, ok := w1b.underlying.(*udpMuxedConn)
 	require.True(t, ok, "pc1b underlying is not *udpMuxedConn")
 
@@ -271,6 +274,9 @@ func Test_udpConn_ReadFrom_XOR(t *testing.T) {
 	client, err := net.DialUDP("udp4", nil, srvAddr)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
+	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	clientAddrPort := canonicalAddrPort(clientAddr.AddrPort())
 
 	// success response + short XORMappedAddress value will make GetFrom() fail.
 	msg := stun.New()
@@ -280,8 +286,8 @@ func Test_udpConn_ReadFrom_XOR(t *testing.T) {
 
 	mux := &UniversalUDPMuxDefault{
 		UDPMuxDefault: &UDPMuxDefault{},
-		xorMappedMap: map[string]*xorMapped{
-			client.LocalAddr().String(): {
+		xorMappedMap: map[netip.AddrPort]*xorMapped{
+			clientAddrPort: {
 				waitAddrReceived: make(chan struct{}),
 				expiresAt:        time.Now().Add(time.Minute),
 			},
@@ -323,14 +329,41 @@ func Test_udpConn_ReadFrom_NonSTUN(t *testing.T) {
 func TestUniversalUDPMux_handleXORMappedResponse_NoMapping(t *testing.T) {
 	mux := &UniversalUDPMuxDefault{
 		UDPMuxDefault: &UDPMuxDefault{},
-		xorMappedMap:  make(map[string]*xorMapped),
+		xorMappedMap:  make(map[netip.AddrPort]*xorMapped),
 	}
 
 	stunSrv := &net.UDPAddr{IP: net.IPv4(1, 2, 3, 4), Port: 3478}
 	msg := stun.New()
 
-	err := mux.handleXORMappedResponse(stunSrv, msg)
+	err := mux.handleXORMappedResponse(canonicalAddrPort(stunSrv.AddrPort()), msg)
 	require.ErrorIs(t, err, errNoXorAddrMapping)
+}
+
+type wrappedUDPAddr struct {
+	*net.UDPAddr
+}
+
+func TestUniversalUDPMux_GetXORMappedAddr_CustomAddrCacheKey(t *testing.T) {
+	serverAddr := &wrappedUDPAddr{
+		UDPAddr: &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 3478},
+	}
+	serverAddrPort := canonicalAddrPort(serverAddr.UDPAddr.AddrPort())
+	waitAddrReceived := make(chan struct{})
+	mappedAddr := &stun.XORMappedAddress{IP: net.IPv4(203, 0, 113, 1), Port: 5000}
+	mux := &UniversalUDPMuxDefault{
+		UDPMuxDefault: &UDPMuxDefault{},
+		xorMappedMap: map[netip.AddrPort]*xorMapped{
+			serverAddrPort: {
+				addr:             mappedAddr,
+				waitAddrReceived: waitAddrReceived,
+				expiresAt:        time.Now().Add(time.Minute),
+			},
+		},
+	}
+
+	got, err := mux.GetXORMappedAddr(serverAddr, time.Second)
+	require.NoError(t, err)
+	require.Same(t, mappedAddr, got)
 }
 
 func newFakePC(t *testing.T) (*fakenet.PacketConn, net.Conn, net.Conn) {
@@ -344,6 +377,7 @@ func newFakePC(t *testing.T) (*fakenet.PacketConn, net.Conn, net.Conn) {
 
 func TestUniversalUDPMux_GetXORMappedAddr_Pending_WriteError(t *testing.T) {
 	serverAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478}
+	serverAddrPort := canonicalAddrPort(serverAddr.AddrPort())
 
 	pc, c1, c2 := newFakePC(t)
 	_ = c2.Close() // other end unused
@@ -354,8 +388,8 @@ func TestUniversalUDPMux_GetXORMappedAddr_Pending_WriteError(t *testing.T) {
 		params: UniversalUDPMuxParams{
 			UDPConn: pc, // writeSTUN will call WriteTo on this fakenet PacketConn
 		},
-		xorMappedMap: map[string]*xorMapped{
-			serverAddr.String(): {
+		xorMappedMap: map[netip.AddrPort]*xorMapped{
+			serverAddrPort: {
 				waitAddrReceived: make(chan struct{}),
 				expiresAt:        time.Now().Add(time.Minute),
 			},
@@ -369,6 +403,7 @@ func TestUniversalUDPMux_GetXORMappedAddr_Pending_WriteError(t *testing.T) {
 
 func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_NoAddr(t *testing.T) {
 	serverAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478}
+	serverAddrPort := canonicalAddrPort(serverAddr.AddrPort())
 
 	pc, c1, c2 := newFakePC(t)
 	drainDone := make(chan struct{})
@@ -390,8 +425,8 @@ func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_NoAddr(t *testing.T) {
 		params: UniversalUDPMuxParams{
 			UDPConn: pc,
 		},
-		xorMappedMap: map[string]*xorMapped{
-			serverAddr.String(): {
+		xorMappedMap: map[netip.AddrPort]*xorMapped{
+			serverAddrPort: {
 				addr:             nil,
 				waitAddrReceived: waitCh,
 				expiresAt:        time.Now().Add(time.Minute),
@@ -406,6 +441,7 @@ func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_NoAddr(t *testing.T) {
 
 func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_DeletedMapping(t *testing.T) {
 	serverAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478}
+	serverAddrPort := canonicalAddrPort(serverAddr.AddrPort())
 	waitCh := make(chan struct{})
 
 	var mux *UniversalUDPMuxDefault
@@ -413,9 +449,9 @@ func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_DeletedMapping(t *testing.T
 		local: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
 		onWrite: func() {
 			mux.mu.Lock()
-			mappedAddr := mux.xorMappedMap[serverAddr.String()]
+			mappedAddr := mux.xorMappedMap[serverAddrPort]
 			mappedAddr.closeWaiters()
-			delete(mux.xorMappedMap, serverAddr.String())
+			delete(mux.xorMappedMap, serverAddrPort)
 			mux.mu.Unlock()
 		},
 	}
@@ -424,8 +460,8 @@ func TestUniversalUDPMux_GetXORMappedAddr_WaitClosed_DeletedMapping(t *testing.T
 		params: UniversalUDPMuxParams{
 			UDPConn: pc,
 		},
-		xorMappedMap: map[string]*xorMapped{
-			serverAddr.String(): {
+		xorMappedMap: map[netip.AddrPort]*xorMapped{
+			serverAddrPort: {
 				waitAddrReceived: waitCh,
 				expiresAt:        time.Now().Add(time.Minute),
 			},

@@ -6,6 +6,7 @@ package ice
 import (
 	"context"
 	"net"
+	"net/netip"
 	"time"
 )
 
@@ -87,6 +88,7 @@ type Candidate interface {
 	transportAddressEqual(other Candidate) bool
 
 	addr() net.Addr
+	addrPort() netip.AddrPort
 	filterForLocationTracking() bool
 	agent() *Agent
 	context() context.Context
