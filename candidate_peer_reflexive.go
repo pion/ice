@@ -45,14 +45,13 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
-	return &CandidatePeerReflexive{
+	candidate := &CandidatePeerReflexive{
 		candidateBase: candidateBase{
 			id:                 candidateID,
 			networkType:        networkType,
 			candidateType:      CandidateTypePeerReflexive,
 			address:            config.Address,
 			port:               config.Port,
-			resolvedAddr:       createAddr(networkType, ipAddr, config.Port),
 			component:          config.Component,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,
@@ -61,5 +60,8 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 				Port:    config.RelPort,
 			},
 		},
-	}, nil
+	}
+	candidate.setResolvedAddr(createAddr(networkType, ipAddr, config.Port))
+
+	return candidate, nil
 }

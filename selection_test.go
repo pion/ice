@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -371,9 +372,172 @@ func TestControlledSelector_HandleSuccessResponse_UnknownTxID(t *testing.T) {
 	var m stun.Message
 	copy(m.TransactionID[:], []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
 
-	sel.HandleSuccessResponse(&m, local, remote, nil)
+	sel.HandleSuccessResponse(&m, local, remote, netip.AddrPort{})
 
 	require.True(t, logger.warned, "expected Warnf to be called for unknown TransactionID (hitting !ok branch)")
+}
+
+// TestResponseSymmetric covers the RFC 8445 §7.2.5.2.1 transport-address check.
+// A success response is symmetric only when it arrives on the same transport the
+// request was sent over (networkType) and from the same address it was sent to.
+func TestResponseSymmetric(t *testing.T) {
+	local := func(nt NetworkType) Candidate {
+		c := newPingNoIOCand()
+		c.candidateBase.networkType = nt
+
+		return c
+	}
+	mk := func(addr string, port uint16) netip.AddrPort {
+		return netip.AddrPortFrom(netip.MustParseAddr(addr), port)
+	}
+
+	tests := []struct {
+		name       string
+		reqNetwork NetworkType
+		localNT    NetworkType
+		dest       netip.AddrPort
+		remoteAddr netip.AddrPort
+		want       bool
+	}{
+		{
+			name:       "matching transport and address",
+			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
+			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20000),
+			want: true,
+		},
+		{
+			// netip.AddrPort carries no transport, so the network-type check is
+			// what rejects a response that arrived on a different transport.
+			name:       "network type mismatch",
+			reqNetwork: NetworkTypeUDP6, localNT: NetworkTypeUDP4,
+			dest: mk("2001:db8::2", 20000), remoteAddr: mk("2001:db8::2", 20000),
+			want: false,
+		},
+		{
+			name:       "source address mismatch",
+			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
+			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.9", 20000),
+			want: false,
+		},
+		{
+			name:       "source port mismatch",
+			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
+			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20001),
+			want: false,
+		},
+		{
+			name:       "IPv4-in-IPv6 source form still matches",
+			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
+			dest: mk("192.168.1.2", 20000), remoteAddr: mk("::ffff:192.168.1.2", 20000),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &bindingRequest{destination: tt.dest, networkType: tt.reqNetwork}
+			require.Equal(t, tt.want, responseSymmetric(req, local(tt.localNT), tt.remoteAddr))
+		})
+	}
+}
+
+// TestHandleSuccessResponse_AsymmetricDiscarded verifies that HandleSuccessResponse
+// honors the symmetry check: a success response with a known TransactionID but a
+// mismatched transport (different network type or source address) is discarded and
+// does not mark the pair succeeded.
+func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
+	newAgent := func(t *testing.T) (*Agent, *controllingSelector) {
+		t.Helper()
+		agent := bareAgentForPing()
+		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+		agent.remoteUfrag = selectionTestRemoteUfrag
+		agent.localUfrag = selectionTestLocalUfrag
+		agent.remotePwd = selectionTestPassword
+		agent.tieBreaker = 1
+		agent.isControlling.Store(true)
+		agent.onConnected = make(chan struct{})
+		agent.setSelector()
+
+		selector, ok := agent.getSelector().(*controllingSelector)
+		require.True(t, ok, "expected controllingSelector")
+
+		return agent, selector
+	}
+	newCand := func(nt NetworkType, ip string, port int) *pingNoIOCand {
+		c := newPingNoIOCand()
+		c.candidateBase.networkType = nt
+		c.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP(ip), Port: port})
+
+		return c
+	}
+	// sendRequest registers a pending binding request for (local, remote) and
+	// returns the matching success response.
+	sendRequest := func(t *testing.T, agent *Agent, local, remote Candidate) *stun.Message {
+		t.Helper()
+		req, err := stun.Build(stun.BindingRequest,
+			stun.TransactionID,
+			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
+			AttrControlling(agent.tieBreaker),
+			PriorityAttr(local.Priority()),
+			stun.NewShortTermIntegrity(agent.remotePwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+		agent.sendBindingRequest(req, local, remote)
+
+		resp, err := stun.Build(req, stun.BindingSuccess,
+			stun.NewShortTermIntegrity(agent.remotePwd),
+			stun.Fingerprint,
+		)
+		require.NoError(t, err)
+
+		return resp
+	}
+
+	t.Run("network type mismatch is discarded", func(t *testing.T) {
+		agent, selector := newAgent(t)
+		local := newCand(NetworkTypeUDP4, "192.168.1.1", 10000)
+		remote := newCand(NetworkTypeUDP6, "2001:db8::2", 20000)
+		pair := agent.addPair(local, remote)
+		pair.state = CandidatePairStateInProgress
+
+		resp := sendRequest(t, agent, local, remote)
+		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
+
+		require.Equal(t, CandidatePairStateInProgress, pair.state,
+			"pair must not be marked succeeded when the response transport does not match")
+		require.Nil(t, agent.getSelectedPair())
+	})
+
+	t.Run("source address mismatch is discarded", func(t *testing.T) {
+		agent, selector := newAgent(t)
+		local := newCand(NetworkTypeUDP4, "192.168.1.1", 10000)
+		remote := newCand(NetworkTypeUDP4, "192.168.1.2", 20000)
+		pair := agent.addPair(local, remote)
+		pair.state = CandidatePairStateInProgress
+
+		resp := sendRequest(t, agent, local, remote)
+		wrongSrc := netip.AddrPortFrom(netip.MustParseAddr("192.168.1.9"), 20000)
+		selector.HandleSuccessResponse(resp, local, remote, wrongSrc)
+
+		require.Equal(t, CandidatePairStateInProgress, pair.state,
+			"pair must not be marked succeeded when the response source does not match")
+		require.Nil(t, agent.getSelectedPair())
+	})
+
+	t.Run("matching transport is accepted", func(t *testing.T) {
+		agent, selector := newAgent(t)
+		local := newCand(NetworkTypeUDP4, "192.168.1.1", 10000)
+		remote := newCand(NetworkTypeUDP4, "192.168.1.2", 20000)
+		pair := agent.addPair(local, remote)
+		pair.state = CandidatePairStateInProgress
+
+		resp := sendRequest(t, agent, local, remote)
+		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
+
+		require.Equal(t, CandidatePairStateSucceeded, pair.state,
+			"pair must be marked succeeded when the response transport matches")
+	})
 }
 
 // TestControlledSelector_NoTriggeredCheckAfterConnected verifies that once a pair
@@ -397,11 +561,11 @@ func TestControlledSelector_NoTriggeredCheckAfterConnected(t *testing.T) {
 
 	local := newPingNoIOCand()
 	local.candidateBase.networkType = NetworkTypeUDP4
-	local.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+	local.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 	remote := newPingNoIOCand()
 	remote.candidateBase.networkType = NetworkTypeUDP4
-	remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+	remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 	pair := agent.addPair(local, remote)
 	pair.state = CandidatePairStateSucceeded
@@ -448,11 +612,11 @@ func TestControlledSelector_TriggeredCheckDuringChecking(t *testing.T) {
 
 	local := newPingNoIOCand()
 	local.candidateBase.networkType = NetworkTypeUDP4
-	local.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+	local.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 	remote := newPingNoIOCand()
 	remote.candidateBase.networkType = NetworkTypeUDP4
-	remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+	remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 	pair := agent.addPair(local, remote)
 	// Pair is in Waiting state (not Succeeded), no selected pair — normal ICE checking.
@@ -896,15 +1060,15 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 	createTestCandidates := func() (Candidate, Candidate, Candidate) {
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		return local1, local2, remote
 	}
@@ -1082,15 +1246,15 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		pair1 := agent.addPair(local1, remote)
 		pair1.state = CandidatePairStateSucceeded
@@ -1137,15 +1301,15 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Create two host candidates with same priority
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		// Create two pairs with the same priority (both host candidates)
 		pair1 := agent.addPair(local1, remote)
@@ -1203,17 +1367,17 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Create candidates - we'll simulate lower priority by using different types
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 		local1.candidateBase.candidateType = CandidateTypeHost // Higher priority
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 		local2.candidateBase.candidateType = CandidateTypeHost // Same priority
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 		remote.candidateBase.candidateType = CandidateTypeHost
 
 		pair1 := agent.addPair(local1, remote)
@@ -1263,19 +1427,19 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		local3 := newPingNoIOCand()
 		local3.candidateBase.networkType = NetworkTypeUDP4
-		local3.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.4"), Port: 10002}
+		local3.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.4"), Port: 10002})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		pair1 := agent.addPair(local1, remote)
 		pair1.state = CandidatePairStateSucceeded
@@ -1351,15 +1515,15 @@ func TestControllingSideRenomination(t *testing.T) {
 		// Create two host candidates
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		// Create two pairs
 		pair1 := agent.addPair(local1, remote)
@@ -1412,7 +1576,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.NoError(t, err)
 
 		// Handle the success response - this should switch to pair2
-		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addr())
+		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addrPort())
 
 		// The controlling agent should have switched to pair2
 		selectedPair := agent.getSelectedPair()
@@ -1439,15 +1603,15 @@ func TestControllingSideRenomination(t *testing.T) {
 		// Create two host candidates
 		local1 := newPingNoIOCand()
 		local1.candidateBase.networkType = NetworkTypeUDP4
-		local1.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local1.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		local2 := newPingNoIOCand()
 		local2.candidateBase.networkType = NetworkTypeUDP4
-		local2.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001}
+		local2.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.3"), Port: 10001})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		// Create two pairs
 		pair1 := agent.addPair(local1, remote)
@@ -1492,7 +1656,7 @@ func TestControllingSideRenomination(t *testing.T) {
 
 		// Handle the success response - this should NOT switch since it's standard nomination
 		// and a pair is already selected
-		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addr())
+		selector.HandleSuccessResponse(successMsg, local2, remote, remote.addrPort())
 
 		// The controlling agent should remain with pair1
 		selectedPair := agent.getSelectedPair()
@@ -1566,11 +1730,11 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 		local := newPingNoIOCand()
 		local.candidateBase.networkType = NetworkTypeUDP4
-		local.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000}
+		local.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.1"), Port: 10000})
 
 		remote := newPingNoIOCand()
 		remote.candidateBase.networkType = NetworkTypeUDP4
-		remote.candidateBase.resolvedAddr = &net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000}
+		remote.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP("192.168.1.2"), Port: 20000})
 
 		pair := liteAgent.addPair(local, remote)
 

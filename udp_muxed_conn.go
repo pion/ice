@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"net/netip"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -16,18 +17,18 @@ import (
 )
 
 type udpMuxedConnParams struct {
-	Mux       *UDPMuxDefault
-	AddrPool  *sync.Pool
-	Key       string
-	LocalAddr net.Addr
-	Logger    logging.LeveledLogger
+	Mux        *UDPMuxDefault
+	BufferPool *sync.Pool
+	Key        string
+	LocalAddr  net.Addr
+	Logger     logging.LeveledLogger
 }
 
 // udpMuxedConn represents a logical packet conn for a single remote as identified by ufrag.
 type udpMuxedConn struct {
 	params *udpMuxedConnParams
 	// Remote addresses that we have sent to on this conn
-	addresses []ipPort
+	addresses []netip.AddrPort
 
 	// FIFO queue holding incoming packets
 	bufHead, bufTail *bufferHolder
@@ -54,7 +55,34 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return c.readFromContext(context.Background(), b)
 }
 
-func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (n int, rAddr net.Addr, err error) {
+func (c *udpMuxedConn) ReadFromAddrPort(b []byte) (int, netip.AddrPort, error) {
+	return c.readFromAddrPortContext(context.Background(), b)
+}
+
+func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (int, net.Addr, error) {
+	n, addrPort, udpAddr, err := c.readPacket(ctx, b)
+	if udpAddr != nil {
+		return n, udpAddr, err
+	}
+
+	var rAddr net.Addr
+	if addrPort.IsValid() {
+		rAddr = net.UDPAddrFromAddrPort(addrPort)
+	}
+
+	return n, rAddr, err
+}
+
+func (c *udpMuxedConn) readFromAddrPortContext(ctx context.Context, b []byte) (int, netip.AddrPort, error) {
+	n, addrPort, _, err := c.readPacket(ctx, b)
+
+	return n, addrPort, err
+}
+
+func (c *udpMuxedConn) readPacket(
+	ctx context.Context,
+	b []byte,
+) (n int, addrPort netip.AddrPort, udpAddr *net.UDPAddr, err error) {
 	for {
 		c.mu.Lock()
 		if c.bufTail != nil {
@@ -70,19 +98,20 @@ func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (n int, rA
 				err = io.ErrShortBuffer
 			} else {
 				n = copy(b, pkt.buf)
-				rAddr = pkt.addr
+				addrPort = pkt.sourceAddrPort
+				udpAddr = pkt.sourceAddr
 			}
 
 			pkt.reset()
-			c.params.AddrPool.Put(pkt)
+			c.params.BufferPool.Put(pkt)
 
-			return n, rAddr, err
+			return n, addrPort, udpAddr, err
 		}
 
 		if c.closed {
 			c.mu.Unlock()
 
-			return 0, nil, io.EOF
+			return 0, netip.AddrPort{}, nil, io.EOF
 		}
 
 		c.readWaiting.Add(1)
@@ -100,7 +129,7 @@ func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (n int, rA
 		c.readWaiting.Add(-1)
 
 		if err != nil {
-			return 0, nil, err
+			return 0, netip.AddrPort{}, nil, err
 		}
 	}
 }
@@ -115,19 +144,36 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 		return 0, errFailedToCastUDPAddr
 	}
 
-	port := netUDPAddr.Port
-	if port < 0 || port > 0xFFFF {
+	if netUDPAddr.Port < 0 || netUDPAddr.Port > 0xFFFF {
 		return 0, ErrPort
 	}
-	ipAndPort, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(port))
-	if err != nil {
-		return 0, err
+	addrPort := netUDPAddr.AddrPort()
+	if !addrPort.IsValid() {
+		return 0, errInvalidIPAddress
 	}
-	if !c.containsAddress(ipAndPort) {
-		c.addAddress(ipAndPort)
-	}
+	c.registerAddress(canonicalAddrPort(addrPort))
 
 	return c.params.Mux.writeTo(buf, rAddr)
+}
+
+func (c *udpMuxedConn) WriteToAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	if c.isClosed() {
+		return 0, io.ErrClosedPipe
+	}
+	if !rAddr.IsValid() {
+		return 0, errInvalidIPAddress
+	}
+	c.registerAddress(canonicalAddrPort(rAddr))
+
+	return c.params.Mux.writeToUDPAddrPort(buf, rAddr)
+}
+
+// registerAddress registers addr with the mux the first time this conn
+// writes to it.
+func (c *udpMuxedConn) registerAddress(addr netip.AddrPort) {
+	if !c.containsAddress(addr) {
+		c.addAddress(addr)
+	}
 }
 
 func (c *udpMuxedConn) LocalAddr() net.Addr {
@@ -162,7 +208,7 @@ func (c *udpMuxedConn) Close() error {
 			next := pkt.next
 
 			pkt.reset()
-			c.params.AddrPool.Put(pkt)
+			c.params.BufferPool.Put(pkt)
 
 			pkt = next
 		}
@@ -183,16 +229,16 @@ func (c *udpMuxedConn) isClosed() bool {
 	return c.closed
 }
 
-func (c *udpMuxedConn) getAddresses() []ipPort {
+func (c *udpMuxedConn) getAddresses() []netip.AddrPort {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	addresses := make([]ipPort, len(c.addresses))
+	addresses := make([]netip.AddrPort, len(c.addresses))
 	copy(addresses, c.addresses)
 
 	return addresses
 }
 
-func (c *udpMuxedConn) addAddress(addr ipPort) {
+func (c *udpMuxedConn) addAddress(addr netip.AddrPort) {
 	c.mu.Lock()
 	c.addresses = append(c.addresses, addr)
 	c.mu.Unlock()
@@ -201,11 +247,11 @@ func (c *udpMuxedConn) addAddress(addr ipPort) {
 	c.params.Mux.registerConnForAddress(c, addr)
 }
 
-func (c *udpMuxedConn) removeAddress(addr ipPort) {
+func (c *udpMuxedConn) removeAddress(addr netip.AddrPort) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	newAddresses := make([]ipPort, 0, len(c.addresses))
+	newAddresses := make([]netip.AddrPort, 0, len(c.addresses))
 	for _, a := range c.addresses {
 		if a != addr {
 			newAddresses = append(newAddresses, a)
@@ -215,30 +261,35 @@ func (c *udpMuxedConn) removeAddress(addr ipPort) {
 	c.addresses = newAddresses
 }
 
-func (c *udpMuxedConn) containsAddress(addr ipPort) bool {
+func (c *udpMuxedConn) containsAddress(addr netip.AddrPort) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	return slices.Contains(c.addresses, addr)
 }
 
-func (c *udpMuxedConn) writePacket(data []byte, addr *net.UDPAddr) error {
-	pkt := c.params.AddrPool.Get().(*bufferHolder) //nolint:forcetypeassert
+func (c *udpMuxedConn) writePacket(
+	data []byte,
+	sourceAddrPort netip.AddrPort,
+	sourceAddr *net.UDPAddr,
+) error {
+	pkt := c.params.BufferPool.Get().(*bufferHolder) //nolint:forcetypeassert
 	if cap(pkt.buf) < len(data) {
-		c.params.AddrPool.Put(pkt)
+		c.params.BufferPool.Put(pkt)
 
 		return io.ErrShortBuffer
 	}
 
 	pkt.buf = append(pkt.buf[:0], data...)
-	pkt.addr = addr
+	pkt.sourceAddrPort = sourceAddrPort
+	pkt.sourceAddr = sourceAddr
 
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
 
 		pkt.reset()
-		c.params.AddrPool.Put(pkt)
+		c.params.BufferPool.Put(pkt)
 
 		return io.ErrClosedPipe
 	}

@@ -43,18 +43,13 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 		candidateID = globalCandidateIDGenerator.Generate()
 	}
 
-	return &CandidateServerReflexive{
+	candidate := &CandidateServerReflexive{
 		candidateBase: candidateBase{
-			id:            candidateID,
-			networkType:   networkType,
-			candidateType: CandidateTypeServerReflexive,
-			address:       config.Address,
-			port:          config.Port,
-			resolvedAddr: &net.UDPAddr{
-				IP:   ipAddr.AsSlice(),
-				Port: config.Port,
-				Zone: ipAddr.Zone(),
-			},
+			id:                 candidateID,
+			networkType:        networkType,
+			candidateType:      CandidateTypeServerReflexive,
+			address:            config.Address,
+			port:               config.Port,
 			component:          config.Component,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,
@@ -63,5 +58,12 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 				Port:    config.RelPort,
 			},
 		},
-	}, nil
+	}
+	candidate.setResolvedAddr(&net.UDPAddr{
+		IP:   ipAddr.AsSlice(),
+		Port: config.Port,
+		Zone: ipAddr.Zone(),
+	})
+
+	return candidate, nil
 }

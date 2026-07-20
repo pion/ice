@@ -75,7 +75,7 @@ func (c *CandidateHost) setIPAddr(addr netip.Addr) error {
 	}
 
 	c.candidateBase.networkType = networkType
-	c.candidateBase.resolvedAddr = createAddr(networkType, addr, c.port)
+	c.candidateBase.setResolvedAddr(createAddr(networkType, addr, c.port))
 
 	return nil
 }

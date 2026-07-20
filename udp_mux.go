@@ -41,10 +41,14 @@ type UDPMuxDefault struct {
 	connsIPv4, connsIPv6 map[string]*udpMuxedConn
 
 	addressMapMu sync.RWMutex
-	addressMap   map[ipPort]*udpMuxedConn
+	addressMap   map[netip.AddrPort]*udpMuxedConn
 
-	// Buffer pool to recycle buffers for net.UDPAddr encodes/decodes
-	pool *sync.Pool
+	// Pool of buffers used to queue packets for muxed connections.
+	bufferPool *sync.Pool
+
+	// addrPortConn is non-nil when params.UDPConn supports allocation-free
+	// netip.AddrPort reads and writes.
+	addrPortConn AddrPortReaderWriter
 
 	mu sync.Mutex
 
@@ -67,7 +71,10 @@ const (
 
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
-	Logger        logging.LeveledLogger
+	Logger logging.LeveledLogger
+	// UDPConn may implement AddrPortReaderWriter to opt in to
+	// allocation-free address handling. *net.UDPConn will be
+	// automatically adapted to implement AddrPortReaderWriter.
 	UDPConn       net.PacketConn
 	UDPConnString string
 
@@ -102,19 +109,20 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	params.UDPConnString = params.UDPConn.LocalAddr().String()
 
 	mux := &UDPMuxDefault{
-		addressMap: map[ipPort]*udpMuxedConn{},
+		addressMap: map[netip.AddrPort]*udpMuxedConn{},
 		params:     params,
 		connsIPv4:  make(map[string]*udpMuxedConn),
 		connsIPv6:  make(map[string]*udpMuxedConn),
 		closedChan: make(chan struct{}, 1),
-		pool: &sync.Pool{
+		bufferPool: &sync.Pool{
 			New: func() any {
-				// Big enough buffer to fit both packet and address
+				// Big enough buffer to fit a maximum-size packet.
 				return newBufferHolder(receiveMTU)
 			},
 		},
 		isUnspecified: isUnspecified,
 	}
+	mux.addrPortConn = asAddrPortReaderWriter(params.UDPConn)
 	go mux.connWorker()
 
 	return mux
@@ -203,6 +211,12 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 		}
 	}
 
+	// Preserve netip.AddrPort I/O only when the underlying connection supports
+	// both methods.
+	if m.addrPortConn != nil {
+		return newSharedAddrPortConn(muxedConn, &muxedConn.refs), nil
+	}
+
 	return newSharedPacketConn(muxedConn, &muxedConn.refs), nil
 }
 
@@ -275,6 +289,31 @@ func (m *UDPMuxDefault) Close() error {
 
 func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	return m.writeToContext(context.Background(), buf, rAddr)
+}
+
+// writeToUDPAddrPort writes without converting rAddr to net.Addr when
+// supported by the underlying connection. Callers should only invoke
+// this method when the underlying connection supports netip.AddrPort
+// reads and writes, otherwise an extra allocation occurs in the writeTo
+// fallback.
+func (m *UDPMuxDefault) writeToUDPAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	if m.addrPortConn == nil {
+		// GetConn does not expose netip.AddrPort writes in this case.
+		// This fallback only exists for defensive purposes and is not
+		// expected to be called, so the extra allocation here is not
+		// expected to occur.
+		return m.writeTo(buf, net.UDPAddrFromAddrPort(rAddr))
+	}
+
+	if err = m.startWriteContext(context.Background()); err != nil {
+		return 0, err
+	}
+
+	defer func() {
+		err = m.finishWrite(err)
+	}()
+
+	return m.addrPortConn.WriteToAddrPort(buf, rAddr)
 }
 
 func (m *UDPMuxDefault) writeToContext(ctx context.Context, buf []byte, rAddr net.Addr) (n int, err error) {
@@ -438,7 +477,7 @@ func (m *UDPMuxDefault) clearWriteAbortState() {
 	}
 }
 
-func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr ipPort) {
+func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr netip.AddrPort) {
 	if m.IsClosed() {
 		return
 	}
@@ -452,19 +491,49 @@ func (m *UDPMuxDefault) registerConnForAddress(conn *udpMuxedConn, addr ipPort) 
 	}
 	m.addressMap[addr] = conn
 
-	m.params.Logger.Debugf("Registered %s for %s", addr.addr.String(), conn.params.Key)
+	m.params.Logger.Debugf("Registered %s for %s", addr.Addr().String(), conn.params.Key)
 }
 
 func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
 	c := newUDPMuxedConn(&udpMuxedConnParams{
-		Mux:       m,
-		Key:       key,
-		AddrPool:  m.pool,
-		LocalAddr: m.LocalAddr(),
-		Logger:    m.params.Logger,
+		Mux:        m,
+		Key:        key,
+		BufferPool: m.bufferPool,
+		LocalAddr:  m.LocalAddr(),
+		Logger:     m.params.Logger,
 	})
 
 	return c
+}
+
+// readFromUDPConn tries reading with ReadFromAddrPort if available
+// and falls back to ReadFrom otherwise. addrPort is always returned
+// from both paths, but udpAddr is only returned in the fallback path
+// so that a later write can use the same address without allocating.
+func (m *UDPMuxDefault) readFromUDPConn(
+	buf []byte,
+) (n int, addrPort netip.AddrPort, udpAddr *net.UDPAddr, err error) {
+	if m.addrPortConn != nil {
+		n, addrPort, err = m.addrPortConn.ReadFromAddrPort(buf)
+	} else {
+		var addr net.Addr
+		n, addr, err = m.params.UDPConn.ReadFrom(buf)
+		if err != nil {
+			return 0, netip.AddrPort{}, nil, err
+		}
+
+		var ok bool
+		udpAddr, ok = addr.(*net.UDPAddr)
+		if !ok {
+			return 0, netip.AddrPort{}, nil, errFailedToCastUDPAddr
+		}
+		addrPort = udpAddr.AddrPort()
+	}
+	if err == nil && !addrPort.IsValid() {
+		return 0, netip.AddrPort{}, nil, errInvalidAddress
+	}
+
+	return
 }
 
 func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
@@ -476,35 +545,29 @@ func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
 
 	buf := make([]byte, receiveMTU)
 	for {
-		n, addr, err := m.params.UDPConn.ReadFrom(buf)
+		n, srcAddrPort, srcUDPAddr, err := m.readFromUDPConn(buf)
 		if m.IsClosed() {
 			return
 		} else if err != nil {
-			if os.IsTimeout(err) {
+			switch {
+			case os.IsTimeout(err):
 				continue
-			} else if !errors.Is(err, io.EOF) {
+			case errors.Is(err, errFailedToCastUDPAddr):
+				logger.Errorf("Underlying PacketConn did not return a UDPAddr")
+			case errors.Is(err, errInvalidAddress):
+				logger.Errorf("Underlying PacketConn returned an invalid UDP address")
+			case !errors.Is(err, io.EOF):
 				logger.Errorf("Failed to read UDP packet: %v", err)
 			}
 
 			return
 		}
 
-		netUDPAddr, ok := addr.(*net.UDPAddr)
-		if !ok {
-			logger.Errorf("Underlying PacketConn did not return a UDPAddr")
-
-			return
-		}
-		udpAddr, err := newIPPort(netUDPAddr.IP, netUDPAddr.Zone, uint16(netUDPAddr.Port)) //nolint:gosec
-		if err != nil {
-			logger.Errorf("Failed to create a new IP/Port host pair")
-
-			return
-		}
+		srcAddr := canonicalAddrPort(srcAddrPort)
 
 		// If we have already seen this address dispatch to the appropriate destination
 		m.addressMapMu.Lock()
-		destinationConn := m.addressMap[udpAddr]
+		destinationConn := m.addressMap[srcAddr]
 		m.addressMapMu.Unlock()
 
 		// If we haven't seen this address before but is a STUN packet lookup by ufrag
@@ -514,20 +577,20 @@ func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
 			}
 
 			if err = msg.Decode(); err != nil {
-				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", addr.String(), err)
+				m.params.Logger.Warnf("Failed to handle decode ICE from %s: %v", srcAddrPort, err)
 
 				continue
 			}
 
 			attr, stunAttrErr := msg.Get(stun.AttrUsername)
 			if stunAttrErr != nil {
-				m.params.Logger.Warnf("No Username attribute in STUN message from %s", addr.String())
+				m.params.Logger.Warnf("No Username attribute in STUN message from %s", srcAddrPort)
 
 				continue
 			}
 
 			ufrag := strings.Split(string(attr), ":")[0]
-			isIPv6 := netUDPAddr.IP.To4() == nil
+			isIPv6 := srcAddr.Addr().Is6()
 
 			m.mu.Lock()
 			destinationConn, _ = m.getConn(ufrag, isIPv6)
@@ -535,12 +598,12 @@ func (m *UDPMuxDefault) connWorker() { //nolint:cyclop
 		}
 
 		if destinationConn == nil {
-			m.params.Logger.Tracef("Dropping packet from %s, addr: %s", udpAddr.addr, addr)
+			m.params.Logger.Tracef("Dropping packet from %s", srcAddrPort)
 
 			continue
 		}
 
-		if err = destinationConn.writePacket(buf[:n], netUDPAddr); err != nil {
+		if err = destinationConn.writePacket(buf[:n], srcAddrPort, srcUDPAddr); err != nil {
 			m.params.Logger.Errorf("Failed to write packet: %v", err)
 		}
 	}
@@ -557,9 +620,10 @@ func (m *UDPMuxDefault) getConn(ufrag string, isIPv6 bool) (val *udpMuxedConn, o
 }
 
 type bufferHolder struct {
-	next *bufferHolder
-	buf  []byte
-	addr *net.UDPAddr
+	next           *bufferHolder
+	buf            []byte
+	sourceAddrPort netip.AddrPort
+	sourceAddr     *net.UDPAddr
 }
 
 func newBufferHolder(size int) *bufferHolder {
@@ -570,25 +634,6 @@ func newBufferHolder(size int) *bufferHolder {
 
 func (b *bufferHolder) reset() {
 	b.next = nil
-	b.addr = nil
-}
-
-type ipPort struct {
-	addr netip.Addr
-	port uint16
-}
-
-// newIPPort create a custom type of address based on netip.Addr and
-// port. The underlying ip address passed is converted to IPv6 format
-// to simplify ip address handling.
-func newIPPort(ip net.IP, zone string, port uint16) (ipPort, error) {
-	n, ok := netip.AddrFromSlice(ip.To16())
-	if !ok {
-		return ipPort{}, errInvalidIPAddress
-	}
-
-	return ipPort{
-		addr: n.WithZone(zone),
-		port: port,
-	}, nil
+	b.sourceAddrPort = netip.AddrPort{}
+	b.sourceAddr = nil
 }

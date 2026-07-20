@@ -7,6 +7,7 @@ package ice
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -273,7 +274,9 @@ func pipe(tb testing.TB, defaultConfig *AgentConfig) (*Conn, *Conn) {
 	}
 
 	cfg.Urls = urls
-	cfg.NetworkTypes = supportedNetworkTypes()
+	if cfg.NetworkTypes == nil {
+		cfg.NetworkTypes = supportedNetworkTypes()
+	}
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(tb, err)
@@ -666,6 +669,47 @@ func TestConn_WriteToPair_Success(t *testing.T) {
 	require.Equal(t, testData, buf[:n])
 }
 
+// TestUDPConnReadWriteDoesNotAllocate pins the data path at zero heap
+// allocations per packet in both directions: Conn.Write on one agent through
+// real UDP sockets to Conn.Read on the other.
+func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(30 * time.Second).Stop()
+
+	ca, cb := pipe(t, &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}})
+	defer closePipe(t, ca, cb)
+
+	packet := make([]byte, 1200)
+	readBuf := make([]byte, receiveMTU)
+
+	// Note: the read must stay synchronous with the write so the receive path
+	// runs exactly once per iteration; AllocsPerRun counts process-wide.
+	var failure error
+	roundTrip := func() {
+		if _, err := ca.Write(packet); err != nil && failure == nil {
+			failure = err
+		}
+		if _, err := cb.Read(readBuf); err != nil && failure == nil {
+			failure = err
+		}
+	}
+
+	// The first packets take slow paths that allocate (source validation and
+	// address registration); warm up so the measured loop runs steady state.
+	for range 100 {
+		roundTrip()
+	}
+	require.NoError(t, failure)
+
+	allocs := testing.AllocsPerRun(1000, roundTrip)
+	require.NoError(t, failure)
+	require.Zero(t, allocs)
+	require.Positive(t, ca.BytesSent())
+	require.Positive(t, cb.BytesReceived())
+}
+
+// discardPacketConn exercises the net.Addr fallback by implementing
+// a simple black-hole writer that only supports WriteTo.
 type discardPacketConn struct {
 	deadlinePacketConn
 }
@@ -674,10 +718,53 @@ func (*discardPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 	return len(b), nil
 }
 
-// TestConnWriteDoesNotAllocateAbovePacketConn pins Write's fast path at zero
-// heap allocations per packet, from the selected pair down to the candidate's
-// net.PacketConn. The discarding conn excludes the socket write itself.
-func TestConnWriteDoesNotAllocateAbovePacketConn(t *testing.T) {
+// addrPortCapablePacketConn is a black-hole writer that implements
+// support for the netip.AddrPort read/write variants.
+type addrPortCapablePacketConn struct {
+	deadlinePacketConn
+	writeToCalled         bool
+	writeToAddrPortCalled bool
+}
+
+func (c *addrPortCapablePacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
+	c.writeToCalled = true
+
+	return len(b), nil
+}
+
+func (*addrPortCapablePacketConn) ReadFromAddrPort([]byte) (int, netip.AddrPort, error) {
+	return 0, netip.AddrPort{}, io.EOF
+}
+
+func (c *addrPortCapablePacketConn) WriteToAddrPort(b []byte, _ netip.AddrPort) (int, error) {
+	c.writeToAddrPortCalled = true
+
+	return len(b), nil
+}
+
+// addrPortTCPMux simulates a custom TCPMux that returns PacketConns supporting
+// AddrPortReaderWriter.
+type addrPortTCPMux struct {
+	conn net.PacketConn
+}
+
+func (*addrPortTCPMux) Close() error             { return nil }
+func (*addrPortTCPMux) RemoveConnByUfrag(string) {}
+func (m *addrPortTCPMux) GetConnByUfrag(string, bool, net.IP) (net.PacketConn, error) {
+	return m.conn, nil
+}
+
+// TestConnWriteDoesNotAllocateOverStandardPacketConn pins Conn.Write at zero
+// heap allocations per packet, at least in this package, when the candidate's
+// PacketConn does not support netip.AddrPort writes. The write must reuse the
+// candidate's cached net.Addr rather than synthesizing a *net.UDPAddr from a
+// netip.AddrPort on every write.
+// Note that the *net.UDPConn implementation of WriteTo does allocate internally,
+// so a mock connection is used to isolate allocations to this package.
+func TestConnWriteDoesNotAllocateOverStandardPacketConn(t *testing.T) {
+	_, supportsAddrPort := any(&discardPacketConn{}).(AddrPortReaderWriter)
+	require.False(t, supportsAddrPort, "discardPacketConn must be a standard-only PacketConn")
+
 	agent, err := NewAgent(&AgentConfig{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -715,8 +802,35 @@ func TestConnWriteDoesNotAllocateAbovePacketConn(t *testing.T) {
 	require.Positive(t, conn.BytesSent())
 }
 
-func BenchmarkConnWriteRead(b *testing.B) {
-	ca, cb := pipe(b, nil)
+// TestCustomTCPMuxAddrPortCapability verifies that TCP candidates use
+// netip.AddrPort methods exposed by a custom mux.
+func TestCustomTCPMuxAddrPortCapability(t *testing.T) {
+	packetConn := &addrPortCapablePacketConn{}
+	mux := &addrPortTCPMux{conn: packetConn}
+	conn, err := mux.GetConnByUfrag("ufrag", false, net.IPv4(127, 0, 0, 1))
+	require.NoError(t, err)
+
+	addrPortConn, ok := conn.(AddrPortReaderWriter)
+	require.True(t, ok)
+
+	local := &candidateBase{
+		networkType:  NetworkTypeTCP4,
+		conn:         conn,
+		addrPortConn: addrPortConn,
+	}
+
+	remote := &candidateBase{}
+	remote.setResolvedAddr(&net.TCPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 5000})
+
+	_, err = local.writeTo([]byte("framed"), remote)
+	require.NoError(t, err)
+	require.True(t, packetConn.writeToAddrPortCalled)
+	require.False(t, packetConn.writeToCalled)
+}
+
+func BenchmarkUDPConnWriteRead(b *testing.B) {
+	ca, cb := pipe(b, &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}})
+	defer closePipe(b, ca, cb)
 
 	// Note: this loop needs to keep the writes and reads synchronous to keep
 	// the allocation benchmark deterministic. Otherwise, if reads fall behind

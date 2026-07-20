@@ -130,3 +130,59 @@ func TestAddrEqual_SameTypeIPPort(t *testing.T) {
 
 	require.True(t, addrEqual(a, b))
 }
+
+func TestAddrPortEqual(t *testing.T) {
+	mk := func(addr string, port uint16) netip.AddrPort {
+		return netip.AddrPortFrom(netip.MustParseAddr(addr), port)
+	}
+
+	tests := []struct {
+		name  string
+		a, b  netip.AddrPort
+		equal bool
+	}{
+		// Two zero values must NOT compare equal: a bare `a == b` would report
+		// true here and silently treat unset addresses as matching.
+		{name: "both zero values", a: netip.AddrPort{}, b: netip.AddrPort{}, equal: false},
+		{name: "valid vs zero value", a: mk("1.2.3.4", 5), b: netip.AddrPort{}, equal: false},
+		{name: "identical IPv4", a: mk("1.2.3.4", 5), b: mk("1.2.3.4", 5), equal: true},
+		// IPv4 and its IPv4-in-IPv6 form are the same transport address.
+		{name: "IPv4 vs IPv4-in-IPv6", a: mk("1.2.3.4", 5), b: mk("::ffff:1.2.3.4", 5), equal: true},
+		{name: "different address", a: mk("1.2.3.4", 5), b: mk("1.2.3.5", 5), equal: false},
+		{name: "different port", a: mk("1.2.3.4", 5), b: mk("1.2.3.4", 6), equal: false},
+		{name: "identical IPv6", a: mk("2001:db8::1", 5), b: mk("2001:db8::1", 5), equal: true},
+		// Zones only identify an interface for link-local addresses.
+		{name: "link-local zone is significant", a: mk("fe80::1%eth0", 5), b: mk("fe80::1%eth1", 5), equal: false},
+		{name: "matching link-local zone", a: mk("fe80::1%eth0", 5), b: mk("fe80::1%eth0", 5), equal: true},
+		{name: "non-link-local zone is ignored", a: mk("2001:db8::1%eth0", 5), b: mk("2001:db8::1", 5), equal: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.equal, addrPortEqual(tt.a, tt.b))
+			require.Equal(t, tt.equal, addrPortEqual(tt.b, tt.a), "addrPortEqual must be symmetric")
+		})
+	}
+}
+
+type embeddingUDPConnWrapper struct {
+	*net.UDPConn
+}
+
+func (c *embeddingUDPConnWrapper) ReadFrom(b []byte) (int, net.Addr, error) {
+	return c.UDPConn.ReadFrom(b)
+}
+
+func (c *embeddingUDPConnWrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
+	return c.UDPConn.WriteTo(b, addr)
+}
+
+func TestAsAddrPortReaderWriter(t *testing.T) {
+	udpConn := &net.UDPConn{}
+	require.NotNil(t, asAddrPortReaderWriter(udpConn))
+
+	// Embedding *net.UDPConn promotes its UDP-specific AddrPort methods, but
+	// must not implicitly opt the wrapper in to AddrPortReaderWriter.
+	wrapper := &embeddingUDPConnWrapper{UDPConn: udpConn}
+	require.Nil(t, asAddrPortReaderWriter(wrapper))
+}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,13 @@ import (
 type muxedPacketConn interface {
 	net.PacketConn
 	readFromContext(ctx context.Context, b []byte) (int, net.Addr, error)
+}
+
+// muxedAddrPortConn adds netip.AddrPort I/O to muxedPacketConn.
+type muxedAddrPortConn interface {
+	muxedPacketConn
+	AddrPortReaderWriter
+	readFromAddrPortContext(ctx context.Context, b []byte) (int, netip.AddrPort, error)
 }
 
 // sharedPacketConn is a reference-counted wrapper around an underlying
@@ -53,27 +61,47 @@ func newSharedPacketConn(u muxedPacketConn, refs *atomic.Int32) *sharedPacketCon
 	}
 }
 
-func (s *sharedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	ctx := s.ctx
+// readContext returns the context to use for a single read, arming the
+// configured read deadline if one is set. cancel is non-nil when the caller
+// must cancel after the read completes.
+func (s *sharedPacketConn) readContext() (ctx context.Context, cancel context.CancelFunc, err error) {
+	ctx = s.ctx
 	if ctx.Err() != nil {
-		return 0, nil, io.ErrClosedPipe
+		return nil, nil, io.ErrClosedPipe
 	}
 
 	if p := s.readDeadline.Load(); p != nil && !p.IsZero() {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(s.ctx, *p)
+	}
+
+	return ctx, cancel, nil
+}
+
+// mapContextError converts context termination errors to the net.Conn
+// equivalents callers expect.
+func mapContextError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return os.ErrDeadlineExceeded
+	}
+	if errors.Is(err, context.Canceled) {
+		return io.ErrClosedPipe
+	}
+
+	return err
+}
+
+func (s *sharedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	ctx, cancel, err := s.readContext()
+	if err != nil {
+		return 0, nil, err
+	}
+	if cancel != nil {
 		defer cancel()
 	}
 
 	n, addr, err := s.underlying.readFromContext(ctx, b)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return n, addr, os.ErrDeadlineExceeded
-	}
-	if errors.Is(err, context.Canceled) {
-		return n, addr, io.ErrClosedPipe
-	}
 
-	return n, addr, err
+	return n, addr, mapContextError(err)
 }
 
 func (s *sharedPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
@@ -138,4 +166,39 @@ func (s *sharedPacketConn) Close() error {
 	}
 
 	return err
+}
+
+// sharedAddrPortConn adds netip.AddrPort I/O to sharedPacketConn.
+type sharedAddrPortConn struct {
+	*sharedPacketConn
+	underlyingAddrPort muxedAddrPortConn
+}
+
+func newSharedAddrPortConn(u muxedAddrPortConn, refs *atomic.Int32) *sharedAddrPortConn {
+	return &sharedAddrPortConn{
+		sharedPacketConn:   newSharedPacketConn(u, refs),
+		underlyingAddrPort: u,
+	}
+}
+
+func (s *sharedAddrPortConn) ReadFromAddrPort(b []byte) (int, netip.AddrPort, error) {
+	ctx, cancel, err := s.readContext()
+	if err != nil {
+		return 0, netip.AddrPort{}, err
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+
+	n, addr, err := s.underlyingAddrPort.readFromAddrPortContext(ctx, b)
+
+	return n, addr, mapContextError(err)
+}
+
+func (s *sharedAddrPortConn) WriteToAddrPort(b []byte, addr netip.AddrPort) (int, error) {
+	if s.ctx.Err() != nil {
+		return 0, io.ErrClosedPipe
+	}
+
+	return s.underlyingAddrPort.WriteToAddrPort(b, addr)
 }
