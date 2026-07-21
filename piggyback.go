@@ -38,6 +38,7 @@ type piggybackingController struct {
 	acks         []uint32
 	dtlsCallback func(packet []byte, rAddr net.Addr)
 	newFlight    bool
+	connected    bool
 }
 
 // init sets the controller to its initial off state. SetDtlsCallback flips it
@@ -54,6 +55,7 @@ func (p *piggybackingController) init() {
 func (p *piggybackingController) flushOnConnected() []packetWithCrc {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.connected = true
 	if p.state != PiggybackingStateOff {
 		return nil
 	}
@@ -77,11 +79,12 @@ func (a *Agent) SetDtlsCallback(cb func(packet []byte, rAddr net.Addr)) {
 
 // Piggyback stores a packet to be picked in a round-robin fashion.
 // Returns `true` if packet is to be consumed.
+// A nil packet signals that the local DTLS handshake completed.
 func (a *Agent) Piggyback(packet []byte, end bool) bool {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
-	if a.piggyback.state == PiggybackingStateOff {
-		return a.connectionState != ConnectionStateConnected
+	if a.piggyback.state == PiggybackingStateOff && a.piggyback.connected {
+		return false
 	}
 
 	if packet != nil {
@@ -89,15 +92,16 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 		// to clear the outgoing list.
 		if a.piggyback.newFlight {
 			a.piggyback.packets = []packetWithCrc{}
+			a.piggyback.packetsIndex = 0
 		}
 		a.piggyback.newFlight = end
 		crc := crc32.ChecksumIEEE(packet)
 		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{packet, crc})
-	} else {
+	} else if a.piggyback.state != PiggybackingStateOff {
 		a.piggyback.state = PiggybackingStatePending
 	}
 	// If we are connected we could send DTLS plain.
-	return true // a.connectionState == ConnectionStateConnected
+	return true
 }
 
 // GetPiggybackDataAndAcks returns a packet from the stored list in a round-robin fashion and a list of acks.
