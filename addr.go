@@ -9,11 +9,17 @@ import (
 	"net/netip"
 )
 
+// isIPv6LinkLocal reports whether addr needs a zone to identify the interface
+// it belongs to.
+func isIPv6LinkLocal(addr netip.Addr) bool {
+	return addr.Is6() && (addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast())
+}
+
 func addrWithOptionalZone(addr netip.Addr, zone string) netip.Addr {
 	if zone == "" {
 		return addr
 	}
-	if addr.Is6() && (addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast()) {
+	if isIPv6LinkLocal(addr) {
 		return addr.WithZone(zone)
 	}
 
@@ -110,6 +116,41 @@ func createAddr(network NetworkType, ip netip.Addr, port int) net.Addr {
 	}
 }
 
+// netAddrToAddrPort converts an address to netip.AddrPort. UDP and TCP
+// addresses use their allocation-free conversions; other address types are
+// parsed from their string representation. Invalid addresses and ports return
+// the zero value.
+func netAddrToAddrPort(addr net.Addr) netip.AddrPort {
+	if addr == nil {
+		return netip.AddrPort{}
+	}
+	switch a := addr.(type) {
+	case *net.UDPAddr:
+		if a == nil || !portFitsInUint16(a.Port) {
+			return netip.AddrPort{}
+		}
+
+		return a.AddrPort()
+	case *net.TCPAddr:
+		if a == nil || !portFitsInUint16(a.Port) {
+			return netip.AddrPort{}
+		}
+
+		return a.AddrPort()
+	default:
+		addrPort, err := netip.ParseAddrPort(addr.String())
+		if err != nil {
+			return netip.AddrPort{}
+		}
+
+		return addrPort
+	}
+}
+
+func portFitsInUint16(port int) bool {
+	return port >= 0 && port <= 0xFFFF
+}
+
 func addrEqual(a, b net.Addr) bool {
 	aIP, aPort, aType, aErr := parseAddr(a)
 	if aErr != nil {
@@ -122,6 +163,25 @@ func addrEqual(a, b net.Addr) bool {
 	}
 
 	return aType == bType && aIP.Compare(bIP) == 0 && aPort == bPort
+}
+
+// canonicalAddr maps an address to a single representation for use as a map key
+// or in equality comparisons: IPv4-in-IPv6 is unmapped to IPv4, and a zone is
+// kept only where it identifies an interface (link-local IPv6).
+func canonicalAddr(addr netip.Addr) netip.Addr {
+	addr = addr.Unmap()
+	if isIPv6LinkLocal(addr) {
+		return addr
+	}
+
+	return addr.WithZone("")
+}
+
+// canonicalAddrPort applies canonicalAddr to the address so that the same
+// transport address produces one key regardless of the IPv4/IPv4-in-IPv6 form
+// it arrives in.
+func canonicalAddrPort(ap netip.AddrPort) netip.AddrPort {
+	return netip.AddrPortFrom(canonicalAddr(ap.Addr()), ap.Port())
 }
 
 // AddrPort is  an IP and a port number.
