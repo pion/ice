@@ -167,12 +167,11 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc2.Close()
 	}()
 
-	// GetConnForURL now hands out *sharedPacketConn wrappers around the
-	// per-(ufrag,url) underlying *udpMuxedConn; unwrap to compare identity.
-	w1, ok := pc1.(*sharedPacketConn)
-	require.True(t, ok, "pc1 is not *sharedPacketConn")
-	w2, ok := pc2.(*sharedPacketConn)
-	require.True(t, ok, "pc2 is not *sharedPacketConn")
+	// Unwrap the per-(ufrag,url) connections to compare identity.
+	w1, ok := pc1.(*sharedAddrPortConn)
+	require.True(t, ok, "pc1 is not *sharedAddrPortConn")
+	w2, ok := pc2.(*sharedAddrPortConn)
+	require.True(t, ok, "pc2 is not *sharedAddrPortConn")
 	c1, ok := w1.underlying.(*udpMuxedConn)
 	require.True(t, ok, "pc1 underlying is not *udpMuxedConn")
 	c2, ok := w2.underlying.(*udpMuxedConn)
@@ -185,8 +184,8 @@ func TestUniversalUDPMux_GetConnForURL_UniquePerURL(t *testing.T) {
 		_ = pc1b.Close()
 	}()
 
-	w1b, ok := pc1b.(*sharedPacketConn)
-	require.True(t, ok, "pc1b is not *sharedPacketConn")
+	w1b, ok := pc1b.(*sharedAddrPortConn)
+	require.True(t, ok, "pc1b is not *sharedAddrPortConn")
 	c1b, ok := w1b.underlying.(*udpMuxedConn)
 	require.True(t, ok, "pc1b underlying is not *udpMuxedConn")
 

@@ -151,6 +151,47 @@ func portFitsInUint16(port int) bool {
 	return port >= 0 && port <= 0xFFFF
 }
 
+// AddrPortReaderWriter is an optional net.PacketConn capability that avoids
+// allocating net.Addr values. Its methods must have the same packet-oriented
+// semantics as net.PacketConn.ReadFrom and net.PacketConn.WriteTo, except that
+// addresses are represented by netip.AddrPort. Custom UDP and framed TCP
+// connections may implement it to opt in to the allocation-free path.
+type AddrPortReaderWriter interface {
+	ReadFromAddrPort(b []byte) (int, netip.AddrPort, error)
+	WriteToAddrPort(b []byte, addr netip.AddrPort) (int, error)
+}
+
+// udpAddrPortReaderWriter adapts the allocation-free methods provided by a
+// raw *net.UDPConn to the transport-neutral AddrPortReaderWriter interface.
+type udpAddrPortReaderWriter struct {
+	conn *net.UDPConn
+}
+
+func (c *udpAddrPortReaderWriter) ReadFromAddrPort(b []byte) (int, netip.AddrPort, error) {
+	return c.conn.ReadFromUDPAddrPort(b)
+}
+
+func (c *udpAddrPortReaderWriter) WriteToAddrPort(b []byte, addr netip.AddrPort) (int, error) {
+	return c.conn.WriteToUDPAddrPort(b, addr)
+}
+
+// asAddrPortReaderWriter checks whether conn implements the
+// AddrPortReaderWriter interface and, if so, returns a reference to
+// the AddrPort-capable connection. *net.UDPConn is automatically adapted
+// to AddrPortReaderWriter. If conn does not support AddrPort
+// reads and writes, nil is returned.
+func asAddrPortReaderWriter(conn net.PacketConn) AddrPortReaderWriter {
+	// Match only the concrete type so wrappers embedding *net.UDPConn do not
+	// accidentally bypass their ReadFrom and WriteTo implementations.
+	if udpConn, ok := conn.(*net.UDPConn); ok {
+		return &udpAddrPortReaderWriter{conn: udpConn}
+	}
+
+	addrPortConn, _ := conn.(AddrPortReaderWriter)
+
+	return addrPortConn
+}
+
 func addrEqual(a, b net.Addr) bool {
 	aIP, aPort, aType, aErr := parseAddr(a)
 	if aErr != nil {

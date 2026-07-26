@@ -55,6 +55,10 @@ func (c *udpMuxedConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	return c.readFromContext(context.Background(), b)
 }
 
+func (c *udpMuxedConn) ReadFromAddrPort(b []byte) (int, netip.AddrPort, error) {
+	return c.readFromAddrPortContext(context.Background(), b)
+}
+
 func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (int, net.Addr, error) {
 	n, addrPort, udpAddr, err := c.readPacket(ctx, b)
 	if udpAddr != nil {
@@ -67,6 +71,12 @@ func (c *udpMuxedConn) readFromContext(ctx context.Context, b []byte) (int, net.
 	}
 
 	return n, rAddr, err
+}
+
+func (c *udpMuxedConn) readFromAddrPortContext(ctx context.Context, b []byte) (int, netip.AddrPort, error) {
+	n, addrPort, _, err := c.readPacket(ctx, b)
+
+	return n, addrPort, err
 }
 
 func (c *udpMuxedConn) readPacket(
@@ -144,6 +154,18 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	c.registerAddress(canonicalAddrPort(addrPort))
 
 	return c.params.Mux.writeTo(buf, rAddr)
+}
+
+func (c *udpMuxedConn) WriteToAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	if c.isClosed() {
+		return 0, io.ErrClosedPipe
+	}
+	if !rAddr.IsValid() {
+		return 0, errInvalidIPAddress
+	}
+	c.registerAddress(canonicalAddrPort(rAddr))
+
+	return c.params.Mux.writeToUDPAddrPort(buf, rAddr)
 }
 
 // registerAddress registers addr with the mux the first time this conn

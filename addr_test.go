@@ -164,3 +164,25 @@ func TestAddrPortEqual(t *testing.T) {
 		})
 	}
 }
+
+type embeddingUDPConnWrapper struct {
+	*net.UDPConn
+}
+
+func (c *embeddingUDPConnWrapper) ReadFrom(b []byte) (int, net.Addr, error) {
+	return c.UDPConn.ReadFrom(b)
+}
+
+func (c *embeddingUDPConnWrapper) WriteTo(b []byte, addr net.Addr) (int, error) {
+	return c.UDPConn.WriteTo(b, addr)
+}
+
+func TestAsAddrPortReaderWriter(t *testing.T) {
+	udpConn := &net.UDPConn{}
+	require.NotNil(t, asAddrPortReaderWriter(udpConn))
+
+	// Embedding *net.UDPConn promotes its UDP-specific AddrPort methods, but
+	// must not implicitly opt the wrapper in to AddrPortReaderWriter.
+	wrapper := &embeddingUDPConnWrapper{UDPConn: udpConn}
+	require.Nil(t, asAddrPortReaderWriter(wrapper))
+}

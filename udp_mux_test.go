@@ -1045,9 +1045,9 @@ func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
 	connB, err := mux.GetConn("shared-ufrag", addr)
 	require.NoError(t, err)
 
-	wrapperA, ok := connA.(*sharedPacketConn)
-	require.True(t, ok, "GetConn must return *sharedPacketConn")
-	wrapperB, ok := connB.(*sharedPacketConn)
+	wrapperA, ok := connA.(*sharedAddrPortConn)
+	require.True(t, ok, "GetConn must return *sharedAddrPortConn")
+	wrapperB, ok := connB.(*sharedAddrPortConn)
 	require.True(t, ok)
 	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
 	require.Same(t, wrapperA.underlying, wrapperB.underlying,
@@ -1068,6 +1068,105 @@ func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
 	case <-time.After(time.Second):
 		require.FailNow(t, "underlying must close when the last wrapper is released")
 	}
+}
+
+// TestUDPMux_AddrPortReadWrite exercises the netip.AddrPort read/write path
+// through the mux: writes register the remote address and reads report the
+// packet source without materializing a net.Addr.
+func TestUDPMux_AddrPortReadWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	udpConn, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() {
+		_ = mux.Close()
+		_ = udpConn.Close()
+	}()
+
+	pc, err := mux.GetConn("ufrag-addrport", mux.LocalAddr())
+	require.NoError(t, err)
+	defer func() { _ = pc.Close() }()
+
+	conn, ok := pc.(*sharedAddrPortConn)
+	require.True(t, ok, "GetConn must expose AddrPort writes when the socket supports them")
+
+	remote, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	defer func() { _ = remote.Close() }()
+
+	remoteAddr, ok := remote.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+
+	// The remote deliberately uses ordinary UDP methods; only the mux side is
+	// exercising the netip.AddrPort variants. Writing also registers the remote
+	// address so subsequent non-STUN packets from it route back to this conn.
+	payload := []byte("addrport payload")
+	n, err := conn.WriteToAddrPort(payload, remoteAddr.AddrPort())
+	require.NoError(t, err)
+	require.Equal(t, len(payload), n)
+
+	buf := make([]byte, receiveMTU)
+	n, _, err = remote.ReadFromUDP(buf)
+	require.NoError(t, err)
+	require.Equal(t, payload, buf[:n])
+
+	muxAddr, ok := mux.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+
+	reply := []byte("addrport reply")
+	_, err = remote.WriteToUDP(reply, muxAddr)
+	require.NoError(t, err)
+
+	// The registration above lets the mux route the reply to this logical conn.
+	n, src, err := conn.ReadFromAddrPort(buf)
+	require.NoError(t, err)
+	require.Equal(t, reply, buf[:n])
+	require.Equal(t, remoteAddr.AddrPort(), src)
+}
+
+// TestUDPMuxGetConnAddrPortCapability verifies that the mux only exposes
+// netip.AddrPort I/O when the underlying connection supports both methods.
+func TestUDPMuxGetConnAddrPortCapability(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	t.Run("standard-only conn", func(t *testing.T) {
+		udpConn, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		require.NoError(t, err)
+		pc := &embeddingUDPConnWrapper{UDPConn: udpConn}
+		mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
+		defer func() { _ = mux.Close() }()
+
+		conn, err := mux.GetConn("ufrag", mux.LocalAddr())
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		_, isAddrPortWrapper := conn.(*sharedAddrPortConn)
+		require.False(t, isAddrPortWrapper, "standard-only conn must not get the AddrPort wrapper")
+		_, supportsAddrPort := conn.(AddrPortReaderWriter)
+		require.False(t, supportsAddrPort, "standard-only conn must not advertise AddrPort I/O")
+	})
+
+	t.Run("UDPConn supports AddrPort I/O", func(t *testing.T) {
+		udpConn, err := net.ListenUDP(udp4, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		require.NoError(t, err)
+		mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+		defer func() {
+			_ = mux.Close()
+			_ = udpConn.Close()
+		}()
+
+		conn, err := mux.GetConn("ufrag", mux.LocalAddr())
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+
+		_, isAddrPortWrapper := conn.(*sharedAddrPortConn)
+		require.True(t, isAddrPortWrapper, "AddrPort-capable socket must get the specialized wrapper")
+		_, supportsAddrPort := conn.(AddrPortReaderWriter)
+		require.True(t, supportsAddrPort, "wrapper must advertise AddrPort I/O")
+	})
 }
 
 type mutableNet struct {
