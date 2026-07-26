@@ -625,9 +625,8 @@ func TestCandidateWriteTo(t *testing.T) {
 		},
 	}
 
-	c2 := &candidateBase{
-		resolvedAddr: listener.Addr(),
-	}
+	c2 := &candidateBase{}
+	c2.setResolvedAddr(listener.Addr())
 
 	_, err = c1.writeTo([]byte("test"), c2)
 	require.NoError(t, err, "writing to open conn")

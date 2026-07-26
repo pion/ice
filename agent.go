@@ -33,7 +33,8 @@ import (
 type bindingRequest struct {
 	timestamp       time.Time
 	transactionID   [stun.TransactionIDSize]byte
-	destination     net.Addr
+	destination     netip.AddrPort
+	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
 	isUseCandidate  bool
 	nominationValue *uint32 // Tracks nomination value for renomination requests
 }
@@ -1553,10 +1554,10 @@ func (a *Agent) deleteAllCandidates() {
 	}
 }
 
-func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
+func (a *Agent) findRemoteCandidate(networkType NetworkType, addr netip.AddrPort) Candidate {
 	set := a.remoteCandidates[networkType]
 	for _, c := range set {
-		if addrEqual(c.addr(), addr) {
+		if addrPortEqual(c.addrPort(), addr) {
 			return c
 		}
 	}
@@ -1578,7 +1579,8 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
 		timestamp:       time.Now(),
 		transactionID:   msg.TransactionID,
-		destination:     remote.addr(),
+		destination:     remote.addrPort(),
+		networkType:     remote.NetworkType(),
 		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
 		nominationValue: nominationValue,
 	})
@@ -1694,7 +1696,7 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 }
 
 // handleInbound processes STUN traffic from a remote candidate.
-func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote net.Addr) {
+func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote netip.AddrPort) {
 	if msg == nil || local == nil {
 		return
 	}
@@ -1733,7 +1735,7 @@ func canHandleInbound(msg *stun.Message) bool {
 }
 
 func (a *Agent) handleInboundResponse(
-	remoteCandidate, local Candidate, remote net.Addr, msg *stun.Message,
+	remoteCandidate, local Candidate, remote netip.AddrPort, msg *stun.Message,
 ) bool {
 	if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
 		a.log.Warnf("Discard success response with broken integrity from (%s), %v", remote, err)
@@ -1753,7 +1755,7 @@ func (a *Agent) handleInboundResponse(
 }
 
 func (a *Agent) handleInboundRequest(
-	remoteCandidate, local Candidate, remote net.Addr, msg *stun.Message,
+	remoteCandidate, local Candidate, remote netip.AddrPort, msg *stun.Message,
 ) (remoteCand Candidate, ok bool) {
 	a.log.Tracef(
 		"Inbound STUN (Request) from %s to %s, useCandidate: %v",
@@ -1773,17 +1775,20 @@ func (a *Agent) handleInboundRequest(
 	}
 
 	if remoteCandidate == nil {
-		ip, port, networkType, err := parseAddr(remote)
+		// Use the local candidate's transport to determine the network
+		// type. Peer-reflexive candidates by definition are reached
+		// over the same transport as the local candidate.
+		networkType, err := determineNetworkType(local.NetworkType().NetworkShort(), remote.Addr())
 		if err != nil {
-			a.log.Errorf("Failed to create parse remote net.Addr when creating remote prflx candidate: %s", err)
+			a.log.Errorf("Failed to determine network type for remote prflx candidate: %s", err)
 
 			return nil, false
 		}
 
 		prflxCandidateConfig := CandidatePeerReflexiveConfig{
 			Network:   networkType.String(),
-			Address:   ip.String(),
-			Port:      port,
+			Address:   canonicalAddr(remote.Addr()).String(),
+			Port:      int(remote.Port()),
 			Component: local.Component(),
 			RelAddr:   "",
 			RelPort:   0,
@@ -1827,7 +1832,7 @@ func (a *Agent) handleInboundRequest(
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,
 // and returns true if it is an actual remote candidate.
-func (a *Agent) validateNonSTUNTraffic(local Candidate, remote net.Addr) (Candidate, bool) {
+func (a *Agent) validateNonSTUNTraffic(local Candidate, remote netip.AddrPort) (Candidate, bool) {
 	var remoteCandidate Candidate
 	if err := a.loop.Run(local.context(), func(context.Context) {
 		remoteCandidate = a.findRemoteCandidate(local.NetworkType(), remote)
