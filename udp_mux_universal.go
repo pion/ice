@@ -39,7 +39,10 @@ type UniversalUDPMuxDefault struct {
 
 // UniversalUDPMuxParams are parameters for UniversalUDPMux server reflexive.
 type UniversalUDPMuxParams struct {
-	Logger                logging.LeveledLogger
+	Logger logging.LeveledLogger
+	// UDPConn may implement AddrPortReaderWriter to opt in to allocation-free
+	// address handling. *net.UDPConn will automatically be adapted to
+	// implement AddrPortReaderWriter.
 	UDPConn               net.PacketConn
 	XORMappedAddrCacheTTL time.Duration
 	Net                   transport.Net
@@ -61,11 +64,19 @@ func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDef
 
 	// Wrap UDP connection, process server reflexive messages
 	// before they are passed to the UDPMux connection handler (connWorker)
-	mux.params.UDPConn = &udpConn{
+	baseConn := &udpConn{
 		PacketConn: params.UDPConn,
 		mux:        mux,
 		logger:     params.Logger,
 	}
+	var wrappedConn net.PacketConn = baseConn
+	if addrPortConn := asAddrPortReaderWriter(params.UDPConn); addrPortConn != nil {
+		wrappedConn = &udpAddrPortConn{
+			udpConn:      baseConn,
+			addrPortConn: addrPortConn,
+		}
+	}
+	mux.params.UDPConn = wrappedConn
 
 	// Embed UDPMux
 	udpMuxParams := UDPMuxParams{
@@ -117,6 +128,29 @@ func (c *udpConn) ReadFrom(buf []byte) (n int, addr net.Addr, err error) {
 	}
 
 	return n, addr, nil
+}
+
+// udpAddrPortConn preserves netip.AddrPort I/O while udpConn intercepts STUN packets.
+type udpAddrPortConn struct {
+	*udpConn
+	addrPortConn AddrPortReaderWriter
+}
+
+func (c *udpAddrPortConn) ReadFromAddrPort(buf []byte) (n int, addrPort netip.AddrPort, err error) {
+	n, addrPort, err = c.addrPortConn.ReadFromAddrPort(buf)
+	if err != nil {
+		return n, addrPort, err
+	}
+
+	if stun.IsMessage(buf[:n]) {
+		c.handleSTUNMessage(buf[:n], addrPort)
+	}
+
+	return n, addrPort, nil
+}
+
+func (c *udpAddrPortConn) WriteToAddrPort(buf []byte, addr netip.AddrPort) (int, error) {
+	return c.addrPortConn.WriteToAddrPort(buf, addr)
 }
 
 // handleSTUNMessage intercepts XOR-mapped-address responses coming from known

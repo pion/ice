@@ -46,6 +46,10 @@ type UDPMuxDefault struct {
 	// Pool of buffers used to queue packets for muxed connections.
 	bufferPool *sync.Pool
 
+	// addrPortConn is non-nil when params.UDPConn supports allocation-free
+	// netip.AddrPort reads and writes.
+	addrPortConn AddrPortReaderWriter
+
 	mu sync.Mutex
 
 	// whether the UDP connection listens on an unspecified address
@@ -67,7 +71,10 @@ const (
 
 // UDPMuxParams are parameters for UDPMux.
 type UDPMuxParams struct {
-	Logger        logging.LeveledLogger
+	Logger logging.LeveledLogger
+	// UDPConn may implement AddrPortReaderWriter to opt in to
+	// allocation-free address handling. *net.UDPConn will be
+	// automatically adapted to implement AddrPortReaderWriter.
 	UDPConn       net.PacketConn
 	UDPConnString string
 
@@ -115,6 +122,7 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		},
 		isUnspecified: isUnspecified,
 	}
+	mux.addrPortConn = asAddrPortReaderWriter(params.UDPConn)
 	go mux.connWorker()
 
 	return mux
@@ -203,6 +211,12 @@ func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, er
 		}
 	}
 
+	// Preserve netip.AddrPort I/O only when the underlying connection supports
+	// both methods.
+	if m.addrPortConn != nil {
+		return newSharedAddrPortConn(muxedConn, &muxedConn.refs), nil
+	}
+
 	return newSharedPacketConn(muxedConn, &muxedConn.refs), nil
 }
 
@@ -275,6 +289,31 @@ func (m *UDPMuxDefault) Close() error {
 
 func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	return m.writeToContext(context.Background(), buf, rAddr)
+}
+
+// writeToUDPAddrPort writes without converting rAddr to net.Addr when
+// supported by the underlying connection. Callers should only invoke
+// this method when the underlying connection supports netip.AddrPort
+// reads and writes, otherwise an extra allocation occurs in the writeTo
+// fallback.
+func (m *UDPMuxDefault) writeToUDPAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	if m.addrPortConn == nil {
+		// GetConn does not expose netip.AddrPort writes in this case.
+		// This fallback only exists for defensive purposes and is not
+		// expected to be called, so the extra allocation here is not
+		// expected to occur.
+		return m.writeTo(buf, net.UDPAddrFromAddrPort(rAddr))
+	}
+
+	if err = m.startWriteContext(context.Background()); err != nil {
+		return 0, err
+	}
+
+	defer func() {
+		err = m.finishWrite(err)
+	}()
+
+	return m.addrPortConn.WriteToAddrPort(buf, rAddr)
 }
 
 func (m *UDPMuxDefault) writeToContext(ctx context.Context, buf []byte, rAddr net.Addr) (n int, err error) {
@@ -467,25 +506,30 @@ func (m *UDPMuxDefault) createMuxedConn(key string) *udpMuxedConn {
 	return c
 }
 
-// readFromUDPConn reads a packet from the underlying connection, returning
-// the source as both netip.AddrPort and *net.UDPAddr so that a later write
-// can use the same address without allocating.
+// readFromUDPConn tries reading with ReadFromAddrPort if available
+// and falls back to ReadFrom otherwise. addrPort is always returned
+// from both paths, but udpAddr is only returned in the fallback path
+// so that a later write can use the same address without allocating.
 func (m *UDPMuxDefault) readFromUDPConn(
 	buf []byte,
 ) (n int, addrPort netip.AddrPort, udpAddr *net.UDPAddr, err error) {
-	var addr net.Addr
-	n, addr, err = m.params.UDPConn.ReadFrom(buf)
-	if err != nil {
-		return 0, netip.AddrPort{}, nil, err
-	}
+	if m.addrPortConn != nil {
+		n, addrPort, err = m.addrPortConn.ReadFromAddrPort(buf)
+	} else {
+		var addr net.Addr
+		n, addr, err = m.params.UDPConn.ReadFrom(buf)
+		if err != nil {
+			return 0, netip.AddrPort{}, nil, err
+		}
 
-	var ok bool
-	udpAddr, ok = addr.(*net.UDPAddr)
-	if !ok {
-		return 0, netip.AddrPort{}, nil, errFailedToCastUDPAddr
+		var ok bool
+		udpAddr, ok = addr.(*net.UDPAddr)
+		if !ok {
+			return 0, netip.AddrPort{}, nil, errFailedToCastUDPAddr
+		}
+		addrPort = udpAddr.AddrPort()
 	}
-	addrPort = udpAddr.AddrPort()
-	if !addrPort.IsValid() {
+	if err == nil && !addrPort.IsValid() {
 		return 0, netip.AddrPort{}, nil, errInvalidAddress
 	}
 

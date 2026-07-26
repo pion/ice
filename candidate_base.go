@@ -38,6 +38,9 @@ type candidateBase struct {
 	lastReceived atomic.Int64
 	conn         net.PacketConn
 
+	// addrPortConn is non-nil when conn opts in to AddrPortReaderWriter.
+	addrPortConn AddrPortReaderWriter
+
 	currAgent *Agent
 	closeCh   chan struct{}
 	closedCh  chan struct{}
@@ -248,6 +251,7 @@ func (c *candidateBase) start(a *Agent, conn net.PacketConn, initializedCh <-cha
 	}
 	c.currAgent = a
 	c.conn = conn
+	c.addrPortConn = asAddrPortReaderWriter(conn)
 	c.closeCh = make(chan struct{})
 	c.closedCh = make(chan struct{})
 	a.registerStartedCandidate(c)
@@ -282,7 +286,18 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	buf := *bufPtr
 
 	for {
-		n, netAddr, err := c.conn.ReadFrom(buf)
+		var n int
+		var srcAddr netip.AddrPort
+		var err error
+		if c.addrPortConn != nil {
+			n, srcAddr, err = c.addrPortConn.ReadFromAddrPort(buf)
+		} else {
+			var netAddr net.Addr
+			n, netAddr, err = c.conn.ReadFrom(buf)
+			if err == nil {
+				srcAddr = netAddrToAddrPort(netAddr)
+			}
+		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
@@ -290,7 +305,6 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 
 			return
 		}
-		srcAddr := netAddrToAddrPort(netAddr)
 
 		c.handleInboundPacket(buf[:n], srcAddr)
 	}
@@ -333,25 +347,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) 
 	agent := c.agent()
 
 	if stun.IsMessage(buf) {
-		msg := &stun.Message{
-			Raw: make([]byte, len(buf)),
-		}
-
-		// Explicitly copy raw buffer so Message can own the memory.
-		copy(msg.Raw, buf)
-
-		if err := msg.Decode(); err != nil {
-			agent.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
-
-			return
-		}
-
-		if err := agent.loop.Run(c, func(_ context.Context) {
-			// nolint: contextcheck
-			agent.handleInbound(msg, c, srcAddr)
-		}); err != nil {
-			agent.log.Warnf("Failed to handle message: %v", err)
-		}
+		c.handleInboundSTUNMessage(buf, srcAddr)
 
 		return
 	}
@@ -379,6 +375,34 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) 
 		if sp := agent.getSelectedPair(); sp != nil {
 			sp.UpdatePacketReceived(n)
 		}
+	}
+}
+
+// handleInboundSTUNMessage decodes buf and hands it to the agent loop.
+// Note: keep this out of handleInboundPacket. The closure captures srcAddr,
+// which would otherwise be heap-allocated on every inbound packet instead of
+// only for STUN messages.
+func (c *candidateBase) handleInboundSTUNMessage(buf []byte, srcAddr netip.AddrPort) {
+	agent := c.agent()
+
+	msg := &stun.Message{
+		Raw: make([]byte, len(buf)),
+	}
+
+	// Explicitly copy raw buffer so Message can own the memory.
+	copy(msg.Raw, buf)
+
+	if err := msg.Decode(); err != nil {
+		agent.log.Warnf("Failed to handle decode ICE from %s to %s: %v", c.addr(), srcAddr, err)
+
+		return
+	}
+
+	if err := agent.loop.Run(c, func(_ context.Context) {
+		// nolint: contextcheck
+		agent.handleInbound(msg, c, srcAddr)
+	}); err != nil {
+		agent.log.Warnf("Failed to handle message: %v", err)
 	}
 }
 
@@ -432,7 +456,13 @@ func (c *candidateBase) abortIO() error {
 }
 
 func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
-	n, err := c.conn.WriteTo(raw, dst.addr())
+	var n int
+	var err error
+	if ap := dst.addrPort(); c.addrPortConn != nil && ap.IsValid() {
+		n, err = c.addrPortConn.WriteToAddrPort(raw, ap)
+	} else {
+		n, err = c.conn.WriteTo(raw, dst.addr())
+	}
 	if err != nil {
 		// If the connection is closed, we should return the error
 		if errors.Is(err, io.ErrClosedPipe) {

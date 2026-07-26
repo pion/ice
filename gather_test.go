@@ -3763,9 +3763,9 @@ func TestGatherAddressRewriteAppendHostMultiUDPMux(t *testing.T) { //nolint:cycl
 	for _, port := range expectedPorts {
 		group := byPort[port]
 		require.Len(t, group, 2, "expected 2 alias candidates for port %d", port)
-		wrapA, ok := group[0].conn.(*sharedPacketConn)
+		wrapA, ok := group[0].conn.(*sharedAddrPortConn)
 		require.True(t, ok)
-		wrapB, ok := group[1].conn.(*sharedPacketConn)
+		wrapB, ok := group[1].conn.(*sharedAddrPortConn)
 		require.True(t, ok)
 		require.Same(t, wrapA.underlying, wrapB.underlying,
 			"aliases on the same mux port must share one udpMuxedConn")
