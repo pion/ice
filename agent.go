@@ -1554,16 +1554,9 @@ func (a *Agent) deleteAllCandidates() {
 }
 
 func (a *Agent) findRemoteCandidate(networkType NetworkType, addr net.Addr) Candidate {
-	ip, port, _, err := parseAddr(addr)
-	if err != nil {
-		a.log.Warnf("Failed to parse address: %s; error: %s", addr, err)
-
-		return nil
-	}
-
 	set := a.remoteCandidates[networkType]
 	for _, c := range set {
-		if c.Address() == ip.String() && c.Port() == port {
+		if addrEqual(c.addr(), addr) {
 			return c
 		}
 	}

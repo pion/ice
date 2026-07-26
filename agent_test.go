@@ -705,6 +705,67 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 		}))
 	})
 
+	t.Run("Resolved mDNS candidate is matched instead of creating prflx", func(t *testing.T) {
+		agent, err := NewAgent(&AgentConfig{})
+		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, agent.Close())
+		}()
+
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
+
+			local, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "192.168.0.2",
+				Port:      777,
+				Component: 1,
+			})
+			require.NoError(t, err)
+			local.conn = &fakenet.MockPacketConn{}
+
+			remoteMDNS, err := NewCandidateHost(&CandidateHostConfig{
+				Network:   "udp",
+				Address:   "1f4712db-ea17-4bcf-a596-105139dfd8bf.local",
+				Port:      999,
+				Component: 1,
+			})
+			require.NoError(t, err)
+			// Resolve and register the candidate with the same calls
+			// resolveAndAddMulticastCandidate makes after its mDNS query
+			// returns; only the query itself is skipped here.
+			require.NoError(t, remoteMDNS.setIPAddr(netip.MustParseAddr("172.17.0.3")))
+			// nolint: contextcheck
+			require.True(t, agent.addRemoteCandidate(remoteMDNS))
+
+			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
+				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				UseCandidate(),
+				AttrControlling(agent.tieBreaker),
+				PriorityAttr(local.Priority()),
+				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.Fingerprint,
+			)
+			require.NoError(t, err)
+
+			// nolint: contextcheck
+			agent.handleInbound(msg, local, &net.UDPAddr{IP: net.ParseIP("172.17.0.3"), Port: 999})
+
+			// The inbound traffic must match the resolved mDNS candidate by
+			// transport address rather than surfacing a duplicate prflx
+			// candidate for the same remote.
+			// See:
+			//  - https://datatracker.ietf.org/doc/html/rfc8445#section-7.3.1.3
+			//  - https://datatracker.ietf.org/doc/html/rfc8445#section-4
+			//  - (expired draft) https://datatracker.ietf.org/doc/html/draft-ietf-mmusic-mdns-ice-candidates-03#section-3.2.1
+			set := agent.remoteCandidates[local.NetworkType()]
+			require.Len(t, set, 1)
+			require.Same(t, Candidate(remoteMDNS), set[0])
+			require.Equal(t, "1f4712db-ea17-4bcf-a596-105139dfd8bf.local", set[0].Address())
+		}))
+	})
+
 	t.Run("prflx candidate priority comes from inbound PRIORITY", func(t *testing.T) {
 		agent, err := NewAgent(&AgentConfig{})
 		require.NoError(t, err)
