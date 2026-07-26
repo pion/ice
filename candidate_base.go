@@ -10,6 +10,7 @@ import (
 	"hash/crc32"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,7 +31,8 @@ type candidateBase struct {
 	relatedAddress *CandidateRelatedAddress
 	tcpType        TCPType
 
-	resolvedAddr net.Addr
+	resolvedAddr     net.Addr
+	resolvedAddrPort netip.AddrPort
 
 	lastSent     atomic.Int64
 	lastReceived atomic.Int64
@@ -280,7 +282,7 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 	buf := *bufPtr
 
 	for {
-		n, srcAddr, err := c.conn.ReadFrom(buf)
+		n, netAddr, err := c.conn.ReadFrom(buf)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				agent.log.Warnf("Failed to read from candidate %s: %v", c, err)
@@ -288,13 +290,14 @@ func (c *candidateBase) recvLoop(initializedCh <-chan struct{}) {
 
 			return
 		}
+		srcAddr := netAddrToAddrPort(netAddr)
 
 		c.handleInboundPacket(buf[:n], srcAddr)
 	}
 }
 
-func (c *candidateBase) validateSTUNTrafficCache(addr net.Addr) bool {
-	if candidate, ok := c.remoteCandidateCaches.Load(toAddrPort(addr)); ok {
+func (c *candidateBase) validateSTUNTrafficCache(addr netip.AddrPort) bool {
+	if candidate, ok := c.remoteCandidateCaches.Load(toAddrPortKey(addr)); ok {
 		remoteCandidate, ok := candidate.(Candidate)
 		if !ok {
 			return false
@@ -308,11 +311,11 @@ func (c *candidateBase) validateSTUNTrafficCache(addr net.Addr) bool {
 	return false
 }
 
-func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net.Addr) {
+func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr netip.AddrPort) {
 	if c.validateSTUNTrafficCache(srcAddr) {
 		return
 	}
-	c.remoteCandidateCaches.Store(toAddrPort(srcAddr), candidate)
+	c.remoteCandidateCaches.Store(toAddrPortKey(srcAddr), candidate)
 }
 
 func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate) {
@@ -326,7 +329,7 @@ func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote C
 	})
 }
 
-func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr net.Addr) {
+func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) {
 	agent := c.agent()
 
 	if stun.IsMessage(buf) {
@@ -562,6 +565,15 @@ func (c *candidateBase) seen(outbound bool) {
 
 func (c *candidateBase) addr() net.Addr {
 	return c.resolvedAddr
+}
+
+func (c *candidateBase) addrPort() netip.AddrPort {
+	return c.resolvedAddrPort
+}
+
+func (c *candidateBase) setResolvedAddr(addr net.Addr) {
+	c.resolvedAddr = addr
+	c.resolvedAddrPort = netAddrToAddrPort(addr)
 }
 
 func (c *candidateBase) filterForLocationTracking() bool {

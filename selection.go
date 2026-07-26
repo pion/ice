@@ -4,7 +4,7 @@
 package ice
 
 import (
-	"net"
+	"net/netip"
 	"time"
 
 	"github.com/pion/logging"
@@ -15,8 +15,14 @@ type pairCandidateSelector interface {
 	Start()
 	ContactCandidates()
 	PingCandidate(local, remote Candidate)
-	HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr)
+	HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort)
 	HandleBindingRequest(m *stun.Message, local, remote Candidate)
+}
+
+// responseSymmetric implements the transport-address check in RFC 8445 §7.2.5.2.1.
+func responseSymmetric(pendingRequest *bindingRequest, local Candidate, remoteAddr netip.AddrPort) bool {
+	return pendingRequest.networkType == local.NetworkType() &&
+		addrPortEqual(pendingRequest.destination, remoteAddr)
 }
 
 type controllingSelector struct {
@@ -156,7 +162,9 @@ func (a *Agent) handleBindingRequestWithCustomHandler(
 	}
 }
 
-func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+func (s *controllingSelector) HandleSuccessResponse(
+	m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort,
+) {
 	ok, pendingRequest, rtt := s.agent.handleInboundBindingSuccess(m.TransactionID)
 	if !ok {
 		s.log.Warnf("Discard success response from (%s), unknown TransactionID 0x%x", remote, m.TransactionID)
@@ -164,14 +172,12 @@ func (s *controllingSelector) HandleSuccessResponse(m *stun.Message, local, remo
 		return
 	}
 
-	transactionAddr := pendingRequest.destination
-
 	// Assert that NAT is not symmetric
 	// https://tools.ietf.org/html/rfc8445#section-7.2.5.2.1
-	if !addrEqual(transactionAddr, remoteAddr) {
+	if !responseSymmetric(pendingRequest, local, remoteAddr) {
 		s.log.Debugf(
 			"Discard message: transaction source and destination does not match expected(%s), actual(%s)",
-			transactionAddr,
+			pendingRequest.destination,
 			remote,
 		)
 
@@ -383,7 +389,9 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 	s.agent.sendBindingRequest(msg, local, remote)
 }
 
-func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr net.Addr) {
+func (s *controlledSelector) HandleSuccessResponse(
+	m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort,
+) {
 	//nolint:godox
 	// TODO according to the standard we should specifically answer a failed nomination:
 	// https://tools.ietf.org/html/rfc8445#section-7.3.1.5
@@ -399,14 +407,12 @@ func (s *controlledSelector) HandleSuccessResponse(m *stun.Message, local, remot
 		return
 	}
 
-	transactionAddr := pendingRequest.destination
-
 	// Assert that NAT is not symmetric
 	// https://tools.ietf.org/html/rfc8445#section-7.2.5.2.1
-	if !addrEqual(transactionAddr, remoteAddr) {
+	if !responseSymmetric(pendingRequest, local, remoteAddr) {
 		s.log.Debugf(
 			"Discard message: transaction source and destination does not match expected(%s), actual(%s)",
-			transactionAddr,
+			pendingRequest.destination,
 			remote,
 		)
 

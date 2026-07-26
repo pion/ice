@@ -165,6 +165,11 @@ func addrEqual(a, b net.Addr) bool {
 	return aType == bType && aIP.Compare(bIP) == 0 && aPort == bPort
 }
 
+// addrPortEqual compares IP and port using the same normalization as addrEqual.
+func addrPortEqual(a, b netip.AddrPort) bool {
+	return a.IsValid() && b.IsValid() && canonicalAddrPort(a) == canonicalAddrPort(b)
+}
+
 // canonicalAddr maps an address to a single representation for use as a map key
 // or in equality comparisons: IPv4-in-IPv6 is unmapped to IPv4, and a zone is
 // kept only where it identifies an interface (link-local IPv6).
@@ -187,18 +192,16 @@ func canonicalAddrPort(ap netip.AddrPort) netip.AddrPort {
 // AddrPort is  an IP and a port number.
 type AddrPort [18]byte
 
-func toAddrPort(addr net.Addr) AddrPort {
+func toAddrPortKey(addr netip.AddrPort) AddrPort {
 	var ap AddrPort
-	switch addr := addr.(type) {
-	case *net.UDPAddr:
-		copy(ap[:16], addr.IP.To16())
-		ap[16] = uint8(addr.Port >> 8) //nolint:gosec // G115  false positive
-		ap[17] = uint8(addr.Port)      //nolint:gosec // G115  false positive
-	case *net.TCPAddr:
-		copy(ap[:16], addr.IP.To16())
-		ap[16] = uint8(addr.Port >> 8) //nolint:gosec // G115 false positive
-		ap[17] = uint8(addr.Port)      //nolint:gosec // G115 false positive
+	if !addr.IsValid() {
+		return ap
 	}
+
+	addr16 := addr.Addr().As16()
+	copy(ap[:16], addr16[:])
+	ap[16] = uint8(addr.Port() >> 8)
+	ap[17] = uint8(addr.Port() & 0xFF)
 
 	return ap
 }
