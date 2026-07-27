@@ -1443,7 +1443,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 	var cand Candidate
 	select {
@@ -1506,7 +1506,7 @@ func TestGatherCandidatesRelayUsesTurnNet(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 	select {
 	case cand := <-candCh:
@@ -1561,7 +1561,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 	listenAddrs := netCapture.listenAddresses()
 	require.NotEmpty(t, listenAddrs)
@@ -1614,7 +1614,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
 			}
 		}))
 
-		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+		agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 		select {
 		case cand := <-candCh:
@@ -1664,7 +1664,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) {
 			}
 		}))
 
-		agent.gatherCandidatesRelay(context.Background(), agent.urls)
+		agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 		select {
 		case <-candidateCh:
@@ -1708,7 +1708,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 	select {
 	case <-candidateCh:
@@ -1871,7 +1871,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), agent.urls)
+	agent.gatherCandidatesRelay(context.Background(), agent.urls, agent.currentGeneration)
 
 	select {
 	case relay := <-relayCandidateCh:
@@ -1927,7 +1927,7 @@ func TestGatherCandidatesSrflxMappedPortRangeError(t *testing.T) {
 
 	agent.portMin = 9000
 	agent.portMax = 8000
-	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 	localCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -1942,7 +1942,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background())
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.currentGeneration)
 		require.ErrorIs(t, err, errUDPMuxDisabled)
 	})
 
@@ -1963,7 +1963,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background())
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.currentGeneration)
 		require.NoError(t, err)
 
 		candidates, err := agent.GetLocalCandidates()
@@ -2004,7 +2004,9 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxUDPMux(
+		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4}, agent.currentGeneration,
+	)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2047,7 +2049,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflx(context.Background(), agent.urls, []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflx(context.Background(), agent.urls, []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 	listenIPs := netCapture.listenCallIPs()
 	require.NotEmpty(t, listenIPs)
@@ -2091,7 +2093,7 @@ func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 			Host:   "127.0.0.1",
 			Port:   3478,
 		},
-	}, []NetworkType{NetworkTypeUDP4})
+	}, []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2211,7 +2213,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("test")
 
 	t.Run("no mapping", func(t *testing.T) {
-		agent := &Agent{log: logger}
+		agent := &Agent{log: logger, currentGeneration: &iceGeneration{}}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 10), relAddr: "198.51.100.1"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2229,6 +2231,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2252,6 +2255,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2274,6 +2278,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2295,6 +2300,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2315,6 +2321,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2335,6 +2342,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2358,6 +2366,7 @@ func TestResolveRelayAddresses(t *testing.T) {
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 			net:                  newHostGatherNet(&net.UDPAddr{IP: net.IPv4(198, 51, 100, 6)}),
@@ -2382,6 +2391,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 
 	t.Run("host no rule keeps original", func(t *testing.T) {
 		agent := &Agent{
+			currentGeneration: &iceGeneration{},
 			addressRewriteMapper: &addressRewriteMapper{
 				rulesByCandidateType: make(map[CandidateType][]*addressRewriteRuleMapping),
 			},
@@ -2406,6 +2416,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2429,6 +2440,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2451,6 +2463,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2474,6 +2487,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2501,6 +2515,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2523,6 +2538,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2544,6 +2560,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2568,6 +2585,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 			net:                  newHostGatherNet(&net.UDPAddr{IP: localIP}),
@@ -2595,6 +2613,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2608,6 +2627,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 
 	t.Run("srflx no mapper returns original", func(t *testing.T) {
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: nil,
 			log:                  logger,
 		}
@@ -2630,6 +2650,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2649,6 +2670,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		})
 		require.NoError(t, err)
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2669,6 +2691,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2694,6 +2717,7 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2715,6 +2739,7 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2736,6 +2761,7 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logger,
 		}
@@ -2760,6 +2786,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 	require.NoError(t, err)
 
 	agent := &Agent{
+		currentGeneration:    &iceGeneration{},
 		addressRewriteMapper: mapper,
 		log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
 		loop:                 taskloop.New(func() {}),
@@ -2786,7 +2813,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 		agent.loop.Close()
 	})
 
-	agent.addRelayCandidates(ctx, ep)
+	agent.addRelayCandidates(ctx, ep, agent.currentGeneration)
 
 	cands := agent.localCandidates[NetworkTypeUDP4]
 	require.Len(t, cands, 2)
@@ -2796,10 +2823,11 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 
 func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 	agent := &Agent{
-		log:              logging.NewDefaultLoggerFactory().NewLogger("test"),
-		localCandidates:  make(map[NetworkType][]Candidate),
-		remoteCandidates: make(map[NetworkType][]Candidate),
-		startedCh:        closedStartedCh(),
+		currentGeneration: &iceGeneration{},
+		log:               logging.NewDefaultLoggerFactory().NewLogger("test"),
+		localCandidates:   make(map[NetworkType][]Candidate),
+		remoteCandidates:  make(map[NetworkType][]Candidate),
+		startedCh:         closedStartedCh(),
 		candidateNotifier: &handlerNotifier{
 			candidateFunc: func(Candidate) {},
 			done:          make(chan struct{}),
@@ -2819,7 +2847,7 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 		relAddr: "198.51.100.1",
 		relPort: 5000,
 		conn:    nil,
-	})
+	}, agent.currentGeneration)
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
 	assert.Len(t, cands, 0)
@@ -2831,7 +2859,7 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 		relAddr: "198.51.100.1",
 		relPort: 5000,
 		conn:    newStubPacketConn(nil),
-	})
+	}, agent.currentGeneration)
 	cands, err = agent.GetLocalCandidates()
 	require.NoError(t, err)
 	assert.Len(t, cands, 0)
@@ -2850,6 +2878,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
 			localCandidates:      make(map[NetworkType][]Candidate),
@@ -2872,7 +2901,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			relAddr: "198.51.100.2",
 			relPort: 5000,
 			conn:    newStubPacketConn(nil),
-		})
+		}, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2889,6 +2918,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
 			localCandidates:      make(map[NetworkType][]Candidate),
@@ -2911,7 +2941,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			relAddr: "not-an-ip",
 			relPort: 5000,
 			conn:    newStubPacketConn(nil),
-		})
+		}, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2923,10 +2953,11 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 	t.Run("NewCandidateRelay failure skips and closes conn", func(t *testing.T) {
 		var closed bool
 		agent := &Agent{
-			log:              logging.NewDefaultLoggerFactory().NewLogger("test"),
-			localCandidates:  make(map[NetworkType][]Candidate),
-			remoteCandidates: make(map[NetworkType][]Candidate),
-			startedCh:        closedStartedCh(),
+			currentGeneration: &iceGeneration{},
+			log:               logging.NewDefaultLoggerFactory().NewLogger("test"),
+			localCandidates:   make(map[NetworkType][]Candidate),
+			remoteCandidates:  make(map[NetworkType][]Candidate),
+			startedCh:         closedStartedCh(),
 			candidateNotifier: &handlerNotifier{
 				candidateFunc: func(Candidate) {},
 				done:          make(chan struct{}),
@@ -2949,7 +2980,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 			},
 		}
 
-		agent.addRelayCandidates(context.Background(), ep)
+		agent.addRelayCandidates(context.Background(), ep, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2960,10 +2991,11 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 	t.Run("addCandidate failure triggers candidate close", func(t *testing.T) {
 		var onCloseCalled int
 		agent := &Agent{
-			log:              logging.NewDefaultLoggerFactory().NewLogger("test"),
-			localCandidates:  make(map[NetworkType][]Candidate),
-			remoteCandidates: make(map[NetworkType][]Candidate),
-			startedCh:        closedStartedCh(),
+			currentGeneration: &iceGeneration{},
+			log:               logging.NewDefaultLoggerFactory().NewLogger("test"),
+			localCandidates:   make(map[NetworkType][]Candidate),
+			remoteCandidates:  make(map[NetworkType][]Candidate),
+			startedCh:         closedStartedCh(),
 			candidateNotifier: &handlerNotifier{
 				candidateFunc: func(Candidate) {},
 				done:          make(chan struct{}),
@@ -2989,7 +3021,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 
 				return fmt.Errorf("close err") //nolint:err113
 			},
-		})
+		}, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3016,7 +3048,7 @@ func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 	})
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4})
+	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4}, agent.currentGeneration)
 
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -3041,7 +3073,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		})
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.currentGeneration))
 
 		assert.True(t, mux.conn.closed)
 		cands, err := agent.GetLocalCandidates()
@@ -3067,7 +3099,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		agent.includeLoopback = true
 		agent.mDNSName = "invalid-mdns" // no .local suffix -> NewCandidateHost parse fails
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3093,7 +3125,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 		agent.loop.Close()
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 		agent.loop.Run(agent.loop, func(context.Context) { //nolint:errcheck,gosec
 			assert.Empty(t, agent.localCandidates[NetworkTypeUDP4])
@@ -3113,6 +3145,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		require.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			net:                  newHostGatherNet(&net.UDPAddr{IP: net.IPv4(192, 0, 2, 10)}),
 			networkTypes:         []NetworkType{NetworkTypeUDP4},
 			includeLoopback:      true,
@@ -3127,7 +3160,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4})
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3156,7 +3189,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			})
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.currentGeneration))
 
 			cands, err := agent.GetLocalCandidates()
 			require.NoError(t, err)
@@ -3228,6 +3261,7 @@ func TestApplyHostRewriteForUDPMuxErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	agent := &Agent{
+		currentGeneration:    &iceGeneration{},
 		addressRewriteMapper: mapper,
 		log:                  rec,
 	}
@@ -3928,7 +3962,7 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			relPort:  4000,
 			protocol: udp,
 			conn:     newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 10}, Port: 4000}),
-		})
+		}, agent.currentGeneration)
 
 		local, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3962,7 +3996,7 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			relPort:  5000,
 			protocol: udp,
 			conn:     newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 20}, Port: 5000}),
-		})
+		}, agent.currentGeneration)
 
 		local, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -4214,7 +4248,7 @@ func TestGatherCandidatesSrflxMappedMissingExternalIPs(t *testing.T) {
 		},
 	}
 
-	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4})
+	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.currentGeneration)
 
 	localCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -4561,4 +4595,82 @@ func (m *mockUniversalUDPMux) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr
 
 func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
 	return m.mockUDPMux.GetConn(ufrag+url, addr)
+}
+
+// blockingUDPMux holds a gather cycle inside GetConn until Release is called,
+// signaling entry on entered — letting a test keep a gather goroutine
+// genuinely in flight across a Restart and a Close.
+type blockingUDPMux struct {
+	addrs       []net.Addr
+	entered     chan struct{}
+	enteredOnce sync.Once
+	release     chan struct{}
+	releaseOnce sync.Once
+}
+
+func newBlockingUDPMux(addr net.Addr) *blockingUDPMux {
+	return &blockingUDPMux{
+		addrs:   []net.Addr{addr},
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (m *blockingUDPMux) GetConn(string, net.Addr) (net.PacketConn, error) {
+	m.enteredOnce.Do(func() { close(m.entered) })
+	<-m.release
+
+	return newStubPacketConn(m.addrs[0]), nil
+}
+
+func (m *blockingUDPMux) RemoveConnByUfrag(string)       {}
+func (m *blockingUDPMux) GetListenAddresses() []net.Addr { return m.addrs }
+func (m *blockingUDPMux) Close() error                   { return nil }
+func (m *blockingUDPMux) Release()                       { m.releaseOnce.Do(func() { close(m.release) }) }
+
+// TestCloseJoinsGatherSupersededByRestart: Close joins a gather goroutine that
+// a Restart superseded (no re-gather), since cancel/done are agent-level.
+func TestCloseJoinsGatherSupersededByRestart(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	mux := newBlockingUDPMux(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 4000})
+	// Always let the blocked goroutine finish, even if an assertion fails early.
+	defer mux.Release()
+
+	agent, err := NewAgent(&AgentConfig{
+		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+		CandidateTypes: []CandidateType{CandidateTypeHost},
+		UDPMux:         mux,
+	})
+	require.NoError(t, err)
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	// Start a gather cycle and block it inside the mux, so the cycle is genuinely in flight.
+	require.NoError(t, agent.GatherCandidates())
+	<-mux.entered
+
+	// A restart supersedes the in-flight cycle's generation without starting a new gather.
+	require.NoError(t, agent.Restart("", ""))
+
+	closed := make(chan struct{})
+	go func() {
+		assert.NoError(t, agent.Close())
+		close(closed)
+	}()
+
+	// Close cannot return while the gather goroutine is still blocked in the mux.
+	select {
+	case <-closed:
+		require.FailNow(t, "Close returned before the superseded in-flight gather cycle finished")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Releasing the mux lets the gather goroutine finish, after which Close returns.
+	mux.Release()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "Close did not return after the superseded gather cycle drained")
+	}
 }

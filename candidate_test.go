@@ -28,6 +28,7 @@ func TestCandidateTypePreference(t *testing.T) {
 
 	for _, tcpOffset := range tcpOffsets {
 		agent := &Agent{
+			currentGeneration: &iceGeneration{},
 			tcpPriorityOffset: tcpOffset,
 		}
 
@@ -621,7 +622,8 @@ func TestCandidateWriteTo(t *testing.T) {
 	c1 := &candidateBase{
 		conn: packetConn,
 		currAgent: &Agent{
-			log: loggerFactory.NewLogger("agent"),
+			currentGeneration: &iceGeneration{},
+			log:               loggerFactory.NewLogger("agent"),
 		},
 	}
 

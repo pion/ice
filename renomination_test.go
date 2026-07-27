@@ -219,8 +219,8 @@ func TestAgentRenominateCandidate(t *testing.T) {
 		}()
 
 		// Set up credentials for STUN authentication
-		agent.localUfrag = testLocalUfrag
-		agent.localPwd = testLocalPwd
+		agent.currentGeneration.localUfrag = testLocalUfrag
+		agent.currentGeneration.localPwd = testLocalPwd
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
@@ -329,8 +329,8 @@ func TestSendNominationRequest(t *testing.T) {
 		}()
 
 		// Set up credentials for STUN authentication
-		agent.localUfrag = testLocalUfrag
-		agent.localPwd = testLocalPwd
+		agent.currentGeneration.localUfrag = testLocalUfrag
+		agent.currentGeneration.localPwd = testLocalPwd
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
@@ -412,8 +412,8 @@ func TestSendNominationRequest(t *testing.T) {
 		}()
 
 		// Set up credentials
-		agent.localUfrag = testLocalUfrag
-		agent.localPwd = testLocalPwd
+		agent.currentGeneration.localUfrag = testLocalUfrag
+		agent.currentGeneration.localPwd = testLocalPwd
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
@@ -485,8 +485,8 @@ func TestRenominationErrorCases(t *testing.T) {
 		}()
 
 		// Set up minimal credentials but missing remote password
-		agent.localUfrag = "localufrag"
-		agent.localPwd = "localpwd"
+		agent.currentGeneration.localUfrag = "localufrag"
+		agent.currentGeneration.localPwd = "localpwd"
 		agent.remoteUfrag = "remoteufrag"
 		// agent.remotePwd = "" // Missing remote password
 
@@ -631,8 +631,8 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		}()
 
 		// Set up credentials for STUN
-		agent.localUfrag = testLocalUfrag
-		agent.localPwd = testLocalPwd
+		agent.currentGeneration.localUfrag = testLocalUfrag
+		agent.currentGeneration.localPwd = testLocalPwd
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
@@ -667,10 +667,10 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		msg, err := stun.Build(
 			stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			Nomination(5), // First nomination value
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		assert.NoError(t, err)
@@ -686,10 +686,10 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		msg2, err := stun.Build(
 			stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			Nomination(10), // Higher nomination value
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		assert.NoError(t, err)
@@ -704,10 +704,10 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		msg3, err := stun.Build(
 			stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			Nomination(7), // Lower nomination value
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		assert.NoError(t, err)
@@ -726,8 +726,8 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 			assert.NoError(t, agent.Close())
 		}()
 
-		agent.localUfrag = testLocalUfrag
-		agent.localPwd = testLocalPwd
+		agent.currentGeneration.localUfrag = testLocalUfrag
+		agent.currentGeneration.localPwd = testLocalPwd
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
@@ -760,10 +760,10 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		msg, err := stun.Build(
 			stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			// No nomination attribute
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		assert.NoError(t, err)

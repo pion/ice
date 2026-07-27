@@ -554,5 +554,5 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL})
+	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL}, aAgent.currentGeneration)
 }

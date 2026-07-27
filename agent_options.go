@@ -569,8 +569,8 @@ func WithLocalCredentials(ufrag, pwd string) AgentOption {
 			return ErrLocalPwdInsufficientBits
 		}
 
-		a.localUfrag = ufrag
-		a.localPwd = pwd
+		a.currentGeneration.localUfrag = ufrag
+		a.currentGeneration.localPwd = pwd
 
 		return nil
 	}
