@@ -351,17 +351,14 @@ func onConnected() (func(ConnectionState), chan struct{}) {
 	}, done
 }
 
-func randomPort(tb testing.TB) int {
+// portFromAddr returns the port of a bound socket address, so tests can bind
+// to port 0 and read the assigned port back instead of guessing a free one.
+func portFromAddr(tb testing.TB, addr net.Addr) int {
 	tb.Helper()
-	conn, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
-	if err != nil {
-		tb.Fatalf("failed to pickPort: %v", err)
-	}
-	defer func() {
-		_ = conn.Close()
-	}()
-	switch addr := conn.LocalAddr().(type) {
+	switch addr := addr.(type) {
 	case *net.UDPAddr:
+		return addr.Port
+	case *net.TCPAddr:
 		return addr.Port
 	default:
 		tb.Fatalf("unknown addr type %T", addr)
