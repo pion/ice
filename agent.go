@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1409,6 +1410,13 @@ func (a *Agent) setCandidateExtensions(cand Candidate, gen *iceGeneration) {
 	if err != nil {
 		a.log.Errorf("Failed to add ufrag extension to candidate: %v", err)
 	}
+
+	if err := cand.AddExtension(CandidateExtension{
+		Key:   "generation",
+		Value: strconv.FormatUint(gen.id, 10),
+	}); err != nil {
+		a.log.Errorf("Failed to add generation extension to candidate: %v", err)
+	}
 }
 
 // GetRemoteCandidates returns the remote candidates.
@@ -1959,6 +1967,9 @@ func (a *Agent) UpdateOptions(opts ...AgentOption) error {
 // cancel it.
 // After a Restart, the user must then call GatherCandidates explicitly
 // to start generating new ones.
+//
+// Each restart advances the gathering generation tagged on candidates
+// via the "generation" extension.
 func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	if ufrag == "" {
 		var err error

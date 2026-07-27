@@ -2751,6 +2751,41 @@ func TestGetLocalCandidates(t *testing.T) {
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 }
 
+func TestAddCandidateTagsCycleGeneration(t *testing.T) {
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	var config AgentConfig
+	agent, err := NewAgent(&config)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	// Capture generation 0, then let a restart move the agent to generation 1.
+	oldGen := agent.currentGeneration
+	require.NoError(t, agent.Restart("", ""))
+	require.Equal(t, uint64(1), agent.currentGeneration.id)
+
+	cand, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.0.2",
+		Port:      1000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	// Add under the old generation: the candidate should carry generation 0, not the current 1.
+	require.NoError(t, agent.addCandidate(context.Background(), cand, &net.UDPConn{}, oldGen))
+
+	got, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	ext, ok := got[0].GetExtension("generation")
+	require.True(t, ok)
+	require.Equal(t, "0", ext.Value)
+}
+
 func TestCandidateUfragScopedToGeneration(t *testing.T) {
 	defer test.TimeOut(time.Second * 30).Stop()
 

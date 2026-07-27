@@ -556,3 +556,60 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 
 	aAgent.gatherCandidatesRelay(context.Background(), []*stun.URI{turnServerURL}, aAgent.currentGeneration)
 }
+
+func TestVNetGatherCandidatesGenerationExtension(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	router, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "1.2.3.0/24",
+		LoggerFactory: logging.NewDefaultLoggerFactory(),
+	})
+	require.NoError(t, err)
+
+	nw, err := vnet.NewNet(&vnet.NetConfig{})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(nw))
+
+	agent, err := NewAgent(&AgentConfig{
+		Net:            nw,
+		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
+		CandidateTypes: []CandidateType{CandidateTypeHost},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	// A generous buffer so the notifier never blocks once a cycle is drained.
+	candCh := make(chan Candidate, 128)
+	require.NoError(t, agent.OnCandidate(func(c Candidate) { candCh <- c }))
+
+	// collect drains one gather cycle, up to the nil end-of-candidates marker.
+	collect := func() []Candidate {
+		var got []Candidate
+		for {
+			c := <-candCh
+			if c == nil {
+				return got
+			}
+			got = append(got, c)
+		}
+	}
+
+	assertGeneration := func(cands []Candidate, want string) {
+		t.Helper()
+		require.NotEmpty(t, cands, "expected at least one host candidate")
+		for _, c := range cands {
+			ext, ok := c.GetExtension("generation")
+			require.True(t, ok, "candidate is missing the generation extension: %s", c)
+			require.Equal(t, want, ext.Value)
+		}
+	}
+
+	require.NoError(t, agent.GatherCandidates())
+	assertGeneration(collect(), "0")
+
+	// A restart bumps the generation, so the next gather tags 1.
+	require.NoError(t, agent.Restart("", ""))
+	require.NoError(t, agent.GatherCandidates())
+	assertGeneration(collect(), "1")
+}
