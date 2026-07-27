@@ -134,9 +134,10 @@ func (a *Agent) GatherCandidates() error {
 		done := make(chan struct{})
 		a.gatherCandidateDone = done
 		generation := a.gatherGeneration
+		localUfrag := a.localUfrag
 		a.gatheringState = GatheringStateGathering
 
-		go a.gatherCandidates(ctx, done, generation)
+		go a.gatherCandidates(ctx, done, generation, localUfrag)
 	}); runErr != nil {
 		return runErr
 	}
@@ -144,13 +145,18 @@ func (a *Agent) GatherCandidates() error {
 	return gatherErr
 }
 
-func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}, generation uint64) { //nolint:cyclop
+func (a *Agent) gatherCandidates(
+	ctx context.Context,
+	done chan struct{},
+	generation uint64,
+	localUfrag string,
+) { //nolint:cyclop
 	defer close(done)
 	if ctx.Err() != nil {
 		return
 	}
 
-	a.gatherCandidatesInternal(ctx, generation)
+	a.gatherCandidatesInternal(ctx, generation, localUfrag)
 
 	switch a.continualGatheringPolicy {
 	case GatherOnce:
@@ -174,7 +180,7 @@ func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}, genera
 			}
 			a.log.Infof("Initialized network monitoring with %d IP addresses", len(addrs))
 		}
-		go a.startNetworkMonitoring(ctx, generation)
+		go a.startNetworkMonitoring(ctx, generation, localUfrag)
 	}
 }
 
@@ -259,18 +265,18 @@ func (a *Agent) applyHostRewriteForUDPMux(candidateIPs []net.IP, udpAddr *net.UD
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
-func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64) {
+func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64, localUfrag string) {
 	var wg sync.WaitGroup
 	for _, t := range a.candidateTypes {
 		switch t {
 		case CandidateTypeHost:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesLocal(ctx, a.networkTypes, generation)
+				a.gatherCandidatesLocal(ctx, a.networkTypes, generation, localUfrag)
 				wg.Done()
 			}()
 		case CandidateTypeServerReflexive:
-			a.gatherServerReflexiveCandidates(ctx, &wg, generation)
+			a.gatherServerReflexiveCandidates(ctx, &wg, generation, localUfrag)
 		case CandidateTypeRelay:
 			wg.Add(1)
 			go func() {
@@ -285,13 +291,18 @@ func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64)
 	wg.Wait()
 }
 
-func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.WaitGroup, generation uint64) {
+func (a *Agent) gatherServerReflexiveCandidates(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	generation uint64,
+	localUfrag string,
+) {
 	replaceSrflx := a.addressRewriteMapper != nil && a.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive)
 	if !replaceSrflx {
 		wg.Add(1)
 		go func() {
 			if a.udpMuxSrflx != nil {
-				a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes, generation)
+				a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes, generation, localUfrag)
 			} else {
 				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes, generation)
 			}
@@ -308,7 +319,12 @@ func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.Wa
 }
 
 //nolint:gocognit,gocyclo,cyclop,maintidx
-func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []NetworkType, generation uint64) {
+func (a *Agent) gatherCandidatesLocal(
+	ctx context.Context,
+	networkTypes []NetworkType,
+	generation uint64,
+	localUfrag string,
+) {
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
 		if networkType.IsTCP() {
@@ -320,7 +336,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 
 	// When UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
-		if err := a.gatherCandidatesLocalUDPMux(ctx, generation); err != nil {
+		if err := a.gatherCandidatesLocalUDPMux(ctx, generation, localUfrag); err != nil {
 			a.log.Warnf("Failed to create host candidate for UDPMux: %s", err)
 		}
 		delete(networks, udp)
@@ -388,20 +404,20 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					// Handle ICE TCP passive mode
 					var muxConns []net.PacketConn
 					if multi, ok := a.tcpMux.(AllConnsGetter); ok {
-						a.log.Debugf("GetAllConns by ufrag: %s", a.localUfrag)
+						a.log.Debugf("GetAllConns by ufrag: %s", localUfrag)
 						// Note: this is missing zone for IPv6 by just grabbing the IP slice
-						muxConns, err = multi.GetAllConns(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
+						muxConns, err = multi.GetAllConns(localUfrag, mappedIP.Is6(), addr.AsSlice())
 						if err != nil {
-							a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+							a.log.Warnf("Failed to get all TCP connections by ufrag: %s %s %s", network, addr, localUfrag)
 
 							continue
 						}
 					} else {
-						a.log.Debugf("GetConn by ufrag: %s", a.localUfrag)
+						a.log.Debugf("GetConn by ufrag: %s", localUfrag)
 						// Note: this is missing zone for IPv6 by just grabbing the IP slice
-						conn, err := a.tcpMux.GetConnByUfrag(a.localUfrag, mappedIP.Is6(), addr.AsSlice())
+						conn, err := a.tcpMux.GetConnByUfrag(localUfrag, mappedIP.Is6(), addr.AsSlice())
 						if err != nil {
-							a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, a.localUfrag)
+							a.log.Warnf("Failed to get TCP connections by ufrag: %s %s %s", network, addr, localUfrag)
 
 							continue
 						}
@@ -417,7 +433,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 								conn,
 								a.log,
 								"Failed to get port of connection from TCPMux: %s %s %s",
-								network, addr, a.localUfrag,
+								network, addr, localUfrag,
 							)
 						}
 					}
@@ -443,7 +459,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 					if udpConn, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 						conns = append(conns, connAndPort{conn, udpConn.Port})
 					} else {
-						a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, addr, a.localUfrag)
+						a.log.Warnf("Failed to get port of UDPAddr from ListenUDPInPortRange: %s %s %s", network, addr, localUfrag)
 
 						continue
 					}
@@ -512,7 +528,12 @@ func shouldFilterLocationTracked(candidateIP net.IP) bool {
 	return shouldFilterLocationTrackedIP(addr)
 }
 
-func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context, generation uint64) error { //nolint:gocognit,cyclop
+//nolint:gocognit,cyclop
+func (a *Agent) gatherCandidatesLocalUDPMux(
+	ctx context.Context,
+	generation uint64,
+	localUfrag string,
+) error {
 	if a.udpMux == nil {
 		return errUDPMuxDisabled
 	}
@@ -570,7 +591,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context, generation uint
 				continue
 			}
 
-			conn, err := a.udpMux.GetConn(a.localUfrag, udpAddr)
+			conn, err := a.udpMux.GetConn(localUfrag, udpAddr)
 			if err != nil {
 				return err
 			}
@@ -710,6 +731,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 	urls []*stun.URI,
 	networkTypes []NetworkType,
 	generation uint64,
+	localUfrag string,
 ) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -756,7 +778,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 						return
 					}
 
-					conn, err := a.udpMuxSrflx.GetConnForURL(a.localUfrag, url.String(), localAddr)
+					conn, err := a.udpMuxSrflx.GetConnForURL(localUfrag, url.String(), localAddr)
 					if err != nil {
 						a.log.Warnf("Failed to find connection in UDPMuxSrflx %s %s: %v", network, url, err)
 
@@ -1426,7 +1448,7 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 
 // startNetworkMonitoring starts a goroutine that periodically checks for network changes
 // and re-gathers candidates when changes are detected. This is only used with GatherContinually policy.
-func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64) {
+func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64, localUfrag string) {
 	ticker := time.NewTicker(a.networkMonitorInterval)
 	defer ticker.Stop()
 
@@ -1436,7 +1458,7 @@ func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64) {
 			return
 		case <-ticker.C:
 			if a.detectNetworkChanges() {
-				a.gatherCandidatesInternal(ctx, generation)
+				a.gatherCandidatesInternal(ctx, generation, localUfrag)
 			}
 		}
 	}

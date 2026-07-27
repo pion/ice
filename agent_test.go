@@ -539,7 +539,9 @@ func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { 
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration))
+		require.NoError(t, agent.gatherCandidatesLocalUDPMux(
+			context.Background(), agent.gatherGeneration, agent.localUfrag,
+		))
 
 		return agent
 	}
@@ -2655,6 +2657,7 @@ func TestAgentRestart(t *testing.T) {
 
 		aFirstGeneration := connA.agent.gatherGeneration
 		bFirstGeneration := connB.agent.gatherGeneration
+		require.Zero(t, aFirstGeneration)
 
 		connAFirstCandidates, err := connA.agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2675,8 +2678,7 @@ func TestAgentRestart(t *testing.T) {
 		require.NoError(t, connB.agent.Restart("", ""))
 
 		// Generation should change after Restart call
-		require.NotEqual(t, aFirstGeneration, connA.agent.gatherGeneration)
-		require.NotEqual(t, bFirstGeneration, connB.agent.gatherGeneration)
+		require.Equal(t, uint64(1), connA.agent.gatherGeneration)
 
 		// Exchange Candidates and Credentials
 		ufrag, pwd, err := connB.agent.GetLocalUserCredentials()
