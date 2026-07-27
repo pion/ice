@@ -291,7 +291,7 @@ func TestContinualRegatherKeepsGeneration(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		agent.startNetworkMonitoring(ctx, generation)
+		agent.startNetworkMonitoring(ctx, generation, agent.localUfrag)
 	}()
 
 	var candidate Candidate
@@ -2041,7 +2041,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration)
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag)
 		require.ErrorIs(t, err, errUDPMuxDisabled)
 	})
 
@@ -2062,7 +2062,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration)
+		err = agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag)
 		require.NoError(t, err)
 
 		candidates, err := agent.GetLocalCandidates()
@@ -2104,7 +2104,8 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
 	agent.gatherCandidatesSrflxUDPMux(
-		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration,
+		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4},
+		agent.gatherGeneration, agent.localUfrag,
 	)
 
 	candidates, err := agent.GetLocalCandidates()
@@ -2192,7 +2193,7 @@ func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 			Host:   "127.0.0.1",
 			Port:   3478,
 		},
-	}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
+	}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -3119,7 +3120,9 @@ func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 	})
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration)
+	agent.gatherCandidatesLocal(
+		context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration, agent.localUfrag,
+	)
 
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -3144,7 +3147,9 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		})
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration))
+		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(
+			context.Background(), agent.gatherGeneration, agent.localUfrag,
+		))
 
 		assert.True(t, mux.conn.closed)
 		cands, err := agent.GetLocalCandidates()
@@ -3170,7 +3175,9 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		agent.includeLoopback = true
 		agent.mDNSName = "invalid-mdns" // no .local suffix -> NewCandidateHost parse fails
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
+		agent.gatherCandidatesLocal(
+			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
+		)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3196,7 +3203,9 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 		agent.loop.Close()
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
+		agent.gatherCandidatesLocal(
+			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
+		)
 
 		agent.loop.Run(agent.loop, func(context.Context) { //nolint:errcheck,gosec
 			assert.Empty(t, agent.localCandidates[NetworkTypeUDP4])
@@ -3230,7 +3239,9 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
+		agent.gatherCandidatesLocal(
+			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
+		)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3259,7 +3270,9 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			})
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration))
+			require.NoError(t, agent.gatherCandidatesLocalUDPMux(
+				context.Background(), agent.gatherGeneration, agent.localUfrag,
+			))
 
 			cands, err := agent.GetLocalCandidates()
 			require.NoError(t, err)
@@ -4619,6 +4632,68 @@ func (m *mockUDPMux) connCount() int {
 	defer m.mu.Unlock()
 
 	return len(m.conns)
+}
+
+type gatedUDPMux struct {
+	addr        net.Addr
+	gathering   chan struct{}
+	release     chan struct{}
+	releaseOnce sync.Once
+	ufrag       chan string
+}
+
+func newGatedUDPMux(addr net.Addr) *gatedUDPMux {
+	return &gatedUDPMux{
+		addr:      addr,
+		gathering: make(chan struct{}),
+		release:   make(chan struct{}),
+		ufrag:     make(chan string, 1),
+	}
+}
+
+func (m *gatedUDPMux) GetConn(ufrag string, _ net.Addr) (net.PacketConn, error) {
+	m.ufrag <- ufrag
+
+	return newStubPacketConn(m.addr), nil
+}
+
+func (m *gatedUDPMux) RemoveConnByUfrag(string) {}
+
+func (m *gatedUDPMux) GetListenAddresses() []net.Addr {
+	close(m.gathering)
+	<-m.release
+
+	return []net.Addr{m.addr}
+}
+
+func (m *gatedUDPMux) Close() error { return nil }
+func (m *gatedUDPMux) Release()     { m.releaseOnce.Do(func() { close(m.release) }) }
+
+func TestGatherUsesStartingUfragAcrossRestart(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(5 * time.Second).Stop()
+
+	mux := newGatedUDPMux(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 4000})
+	agent, err := NewAgentWithOptions(
+		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithUDPMux(mux),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+	defer mux.Release()
+
+	startingUfrag, _, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent.GatherCandidates())
+	<-mux.gathering
+
+	require.NoError(t, agent.Restart("", ""))
+	mux.Release()
+	require.Equal(t, startingUfrag, <-mux.ufrag)
 }
 
 type invalidAddrUDPMux struct {

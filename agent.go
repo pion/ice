@@ -2178,7 +2178,9 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	if runErr := a.loop.Run(a.loop, func(_ context.Context) {
 		// Cancel the previous gather before resetting its state.
 		a.gatherCandidateCancel()
-		a.gatherGeneration++
+		if a.constructed {
+			a.gatherGeneration++
+		}
 		a.gatheringState = GatheringStateNew
 
 		// Clear all agent needed to take back to fresh state
