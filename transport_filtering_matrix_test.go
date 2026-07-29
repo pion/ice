@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -507,9 +506,9 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 func TestTransportFilteringSrflxMatrix(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":0") // nolint: noctx
 	require.NoError(t, err)
+	serverPort := portFromAddr(t, serverListener.LocalAddr())
 	defer func() {
 		_ = serverListener.Close()
 	}()
