@@ -38,7 +38,11 @@ type CandidateRelayConfig struct {
 	RelAddr       string
 	RelPort       int
 	RelayProtocol string
-	OnClose       func() error
+	// RelayLocalPreference controls the local preference component of the
+	// relay candidate priority. It is supplied by the relay implementation so
+	// custom relay transports do not need to be added to ICE's protocol switch.
+	RelayLocalPreference uint16
+	OnClose              func() error
 }
 
 // NewCandidateRelay creates a new relay candidate.
@@ -59,6 +63,14 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 		return nil, err
 	}
 
+	localPreference := config.RelayLocalPreference
+	// Candidates created without relay metadata retain the default preference.
+	// Built-in TURN candidates and custom providers with a protocol name supply
+	// their preference explicitly.
+	if config.RelayProtocol == "" && localPreference == 0 {
+		localPreference = defaultLocalPreference
+	}
+
 	candidate := &CandidateRelay{
 		candidateBase: candidateBase{
 			id:                 candidateID,
@@ -73,7 +85,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 				Address: config.RelAddr,
 				Port:    config.RelPort,
 			},
-			relayLocalPreference: relayProtocolPreference(config.RelayProtocol),
+			relayLocalPreference: localPreference,
 		},
 		relayProtocol: config.RelayProtocol,
 		onClose:       config.OnClose,

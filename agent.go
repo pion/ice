@@ -182,6 +182,8 @@ type Agent struct {
 	lastRenominationTime  time.Time
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
+
+	relayCandidateProviders []RelayCandidateProvider
 }
 
 // NewAgent creates a new Agent.
