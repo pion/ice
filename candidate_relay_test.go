@@ -7,7 +7,6 @@ package ice
 
 import (
 	"net"
-	"strconv"
 	"testing"
 	"time"
 
@@ -27,9 +26,9 @@ func TestRelayOnlyConnection(t *testing.T) {
 
 	defer test.CheckRoutines(t)()
 
-	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp", localhostIPStr+":"+strconv.Itoa(serverPort)) // nolint: noctx
+	serverListener, err := net.ListenPacket("udp", localhostIPStr+":0") // nolint: noctx
 	require.NoError(t, err)
+	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",

@@ -7,7 +7,6 @@ package ice
 
 import (
 	"net"
-	"strconv"
 	"testing"
 	"time"
 
@@ -23,9 +22,9 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	// Limit runtime in case of deadlocks
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	serverPort := randomPort(t)
-	serverListener, err := net.ListenPacket("udp4", "127.0.0.1:"+strconv.Itoa(serverPort)) // nolint: noctx
+	serverListener, err := net.ListenPacket("udp4", localhostIPStr+":0") // nolint: noctx
 	require.NoError(t, err)
+	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
 	server, err := turn.NewServer(turn.ServerConfig{
 		Realm:       "pion.ly",
