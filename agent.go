@@ -35,6 +35,7 @@ type bindingRequest struct {
 	transactionID   [stun.TransactionIDSize]byte
 	destination     netip.AddrPort
 	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
+	isControlling   bool        // Role advertised in this request.
 	isUseCandidate  bool
 	nominationValue *uint32 // Tracks nomination value for renomination requests
 }
@@ -668,10 +669,9 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 	a.log.Debugf("Started agent: isControlling? %t, remoteUfrag: %q, remotePwd: %q", isControlling, remoteUfrag, remotePwd)
 
 	return a.loop.Run(a.loop, func(_ context.Context) {
-		a.isControlling.Store(isControlling)
 		a.remoteUfrag = remoteUfrag
 		a.remotePwd = remotePwd
-		a.setSelector()
+		a.setRole(isControlling)
 
 		a.startedFn()
 
@@ -1662,6 +1662,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 		transactionID:   msg.TransactionID,
 		destination:     remote.addrPort(),
 		networkType:     remote.NetworkType(),
+		isControlling:   msg.Contains(stun.AttrICEControlling),
 		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
 		nominationValue: nominationValue,
 	})
@@ -1771,13 +1772,12 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 			a.sendSTUN(roleConflictMsg, local, remote)
 		}
 	} else {
-		a.isControlling.Store(!a.isControlling.Load())
-		a.setSelector()
+		a.setRole(!a.isControlling.Load())
 	}
 }
 
 // handleInbound processes STUN traffic from a remote candidate.
-func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote netip.AddrPort) {
+func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote netip.AddrPort) { //nolint:cyclop
 	if msg == nil || local == nil {
 		return
 	}
@@ -1800,6 +1800,10 @@ func (a *Agent) handleInbound(msg *stun.Message, local Candidate, remote netip.A
 		if remoteCandidate, ok = a.handleInboundRequest(remoteCandidate, local, remote, msg); !ok {
 			return
 		}
+	case stun.ClassErrorResponse:
+		a.handleInboundErrorResponse(remoteCandidate, local, remote, msg)
+
+		return
 	default:
 	}
 
@@ -1812,7 +1816,8 @@ func canHandleInbound(msg *stun.Message) bool {
 	return msg.Type.Method == stun.MethodBinding &&
 		(msg.Type.Class == stun.ClassSuccessResponse ||
 			msg.Type.Class == stun.ClassRequest ||
-			msg.Type.Class == stun.ClassIndication)
+			msg.Type.Class == stun.ClassIndication ||
+			msg.Type.Class == stun.ClassErrorResponse)
 }
 
 func (a *Agent) handleInboundResponse(
@@ -1909,6 +1914,76 @@ func (a *Agent) handleInboundRequest(
 	a.getSelector().HandleBindingRequest(msg, local, remoteCandidate)
 
 	return remoteCandidate, true
+}
+
+func (a *Agent) handleInboundErrorResponse(
+	remoteCandidate, local Candidate, remote netip.AddrPort, msg *stun.Message,
+) bool {
+	a.log.Tracef("Inbound STUN (Error) from %s to %s", remote, local)
+
+	// Verify message integrity
+	if err := stun.MessageIntegrity([]byte(a.remotePwd)).Check(msg); err != nil {
+		a.log.Warnf("Discard error response with broken integrity from (%s), %v", remote, err)
+
+		return false
+	}
+
+	// Extract error code from the message
+	var errCode stun.ErrorCodeAttribute
+	if err := errCode.GetFrom(msg); err != nil {
+		a.log.Warnf("Failed to get error code from error response: %v", err)
+
+		return false
+	}
+
+	if errCode.Code != stun.CodeRoleConflict {
+		a.log.Debugf("Received STUN error response %d (%s) from %s", errCode.Code, errCode.Reason, remote)
+
+		return false
+	}
+
+	a.log.Warnf("Received role conflict error (487) from %s, switching role", remote)
+
+	found, bindingReq, _ := a.handleInboundBindingSuccess(msg.TransactionID)
+	if !found {
+		a.log.Debugf("Received role conflict error for unknown transaction ID, ignoring")
+
+		return false
+	}
+
+	if !responseSymmetric(bindingReq, local, remote) {
+		a.log.Debugf(
+			"Discard message: transaction source and destination does not match expected(%s), actual(%s)",
+			bindingReq.destination,
+			remote,
+		)
+
+		return false
+	}
+
+	// The new role is determined by the role advertised in the request, not
+	// by the agent's current role. Other in-flight checks may have already
+	// caused the same role switch before this response arrives.
+	oldRole := a.role()
+	newIsControlling := !bindingReq.isControlling
+	if a.isControlling.Load() != newIsControlling {
+		a.setRole(newIsControlling)
+	}
+	a.tieBreaker = globalMathRandomGenerator.Uint64()
+
+	a.log.Debugf("Switched ICE role %s → %s after receiving 487 error", oldRole, a.role())
+
+	// Re-enqueue the candidate pair in the triggered-check queue per RFC 8445 §7.2.5.1.
+	if remoteCandidate == nil {
+		a.log.Warnf("Cannot re-enqueue candidate pair, remote candidate not found for %s", bindingReq.destination)
+	} else if pair := a.findPair(local, remoteCandidate); pair != nil {
+		pair.state = CandidatePairStateWaiting
+		pair.bindingRequestCount = 0
+	} else {
+		a.log.Warnf("Cannot re-enqueue candidate pair for %s, not found in checklist", bindingReq.destination)
+	}
+
+	return true
 }
 
 // validateNonSTUNTraffic processes non STUN traffic from a remote candidate,
@@ -2113,6 +2188,17 @@ func (a *Agent) role() Role {
 	}
 
 	return Controlled
+}
+
+func (a *Agent) setRole(isControlling bool) {
+	a.isControlling.Store(isControlling)
+	for _, pair := range a.checklist {
+		pair.iceRoleControlling = isControlling
+		// Overrides preserve a priority computed for the previous role. A role
+		// switch requires every pair priority to be recomputed.
+		pair.hasPriorityOverride = false
+	}
+	a.setSelector()
 }
 
 func (a *Agent) setSelector() {
