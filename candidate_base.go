@@ -976,15 +976,17 @@ func UnmarshalCandidate(raw string) (Candidate, error) { //nolint:cyclop
 		return candidate, nil
 	case "relay":
 		candidate, err := NewCandidateRelay(&CandidateRelayConfig{
-			CandidateID: "",
-			Network:     protocol,
-			Address:     address,
-			Port:        port,
-			Component:   uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
-			Priority:    uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
-			Foundation:  foundation,
-			RelAddr:     raddr,
-			RelPort:     rport,
+			"",
+			protocol,
+			address,
+			port,
+			uint16(component), //nolint:gosec // G115 no overflow we read 5 digits
+			uint32(priority),  //nolint:gosec // G115 no overflow we read 5 digits
+			foundation,
+			raddr,
+			rport,
+			"",
+			nil,
 		})
 		if err != nil {
 			return nil, err

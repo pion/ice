@@ -182,8 +182,6 @@ type Agent struct {
 	lastRenominationTime  time.Time
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
-
-	relayCandidateProviders []RelayCandidateProvider
 }
 
 // NewAgent creates a new Agent.
@@ -1003,6 +1001,19 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 	}()
 
 	return nil
+}
+
+// AddLocalCandidate adds a local candidate and the packet connection used to
+// send and receive packets for it.
+func (a *Agent) AddLocalCandidate(cand Candidate, candidateConn net.PacketConn) error {
+	if cand == nil {
+		return nil
+	}
+	if candidateConn == nil {
+		return fmt.Errorf("candidate packet connection is nil")
+	}
+
+	return a.addCandidate(a.loop, cand, candidateConn)
 }
 
 func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {

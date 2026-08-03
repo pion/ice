@@ -276,58 +276,17 @@ func (a *Agent) gatherCandidatesInternal(ctx context.Context) {
 		case CandidateTypeServerReflexive:
 			a.gatherServerReflexiveCandidates(ctx, &wg)
 		case CandidateTypeRelay:
-			// TURN and custom relay providers are independent gathering paths.
-			// Run them concurrently so a slow or unavailable TURN server does not
-			// delay candidates from another relay implementation.
-			wg.Add(1 + len(a.relayCandidateProviders))
+			wg.Add(1)
 			go func() {
-				defer wg.Done()
 				a.gatherCandidatesRelay(ctx, a.urls)
+				wg.Done()
 			}()
-			for _, provider := range a.relayCandidateProviders {
-				go func() {
-					defer wg.Done()
-					a.gatherCandidatesFromProvider(ctx, provider)
-				}()
-			}
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
 		}
 	}
 
 	// Block until all STUN and TURN URLs have been gathered (or timed out)
 	wg.Wait()
-}
-
-func (a *Agent) gatherCandidatesFromProvider(ctx context.Context, provider RelayCandidateProvider) {
-	candidates, err := provider.GatherCandidates(ctx, a.localUfrag, a.localPwd)
-	if err != nil {
-		a.log.Warnf("Failed to gather custom relay candidates: %v", err)
-
-		return
-	}
-
-	for _, item := range candidates {
-		if item.Conn == nil {
-			a.log.Warn("Ignoring custom relay candidate with nil packet connection")
-
-			continue
-		}
-		if item.Config.Component == 0 {
-			item.Config.Component = ComponentRTP
-		}
-		candidate, err := NewCandidateRelay(&item.Config)
-		if err != nil {
-			_ = item.Conn.Close()
-			a.log.Warnf("Failed to create custom relay candidate: %v", err)
-
-			continue
-		}
-		if err := a.addCandidate(ctx, candidate, item.Conn); err != nil {
-			_ = candidate.close()
-			_ = item.Conn.Close()
-			a.log.Warnf("Failed to add custom relay candidate: %v", err)
-		}
-	}
 }
 
 func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.WaitGroup) {
@@ -1269,15 +1228,14 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 					// Relay allocations currently produce UDP relay endpoints regardless of
 					// whether the TURN control connection uses UDP/TCP/TLS/DTLS.
 					a.addRelayCandidates(ctx, relayEndpoint{
-						network:         udp,
-						address:         rAddr.IP,
-						port:            rAddr.Port,
-						relAddr:         relAddr,
-						relPort:         relPort,
-						iface:           findIfaceForIP(ifaces, net.ParseIP(relAddr)),
-						protocol:        relayProtocol,
-						localPreference: relayProtocolPreference(relayProtocol),
-						conn:            relayConn,
+						network:  udp,
+						address:  rAddr.IP,
+						port:     rAddr.Port,
+						relAddr:  relAddr,
+						relPort:  relPort,
+						iface:    findIfaceForIP(ifaces, net.ParseIP(relAddr)),
+						protocol: relayProtocol,
+						conn:     relayConn,
 						onClose: func() error {
 							client.Close()
 
@@ -1292,17 +1250,16 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 }
 
 type relayEndpoint struct {
-	network         string
-	address         net.IP
-	port            int
-	relAddr         string
-	relPort         int
-	protocol        string
-	localPreference uint16
-	iface           string
-	conn            net.PacketConn
-	onClose         func() error
-	closeConn       func()
+	network   string
+	address   net.IP
+	port      int
+	relAddr   string
+	relPort   int
+	protocol  string
+	iface     string
+	conn      net.PacketConn
+	onClose   func() error
+	closeConn func()
 }
 
 func (a *Agent) resolveRelayAddresses(ep relayEndpoint) ([]net.IP, bool) {
@@ -1389,15 +1346,14 @@ func findIfaceForIP(ifaces []ifaceAddr, ip net.IP) string {
 
 func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip net.IP, onClose func() error) error {
 	relayConfig := CandidateRelayConfig{
-		Network:              ep.network,
-		Component:            ComponentRTP,
-		Address:              ip.String(),
-		Port:                 ep.port,
-		RelAddr:              ep.relAddr,
-		RelPort:              ep.relPort,
-		RelayProtocol:        ep.protocol,
-		RelayLocalPreference: ep.localPreference,
-		OnClose:              onClose,
+		Network:       ep.network,
+		Component:     ComponentRTP,
+		Address:       ip.String(),
+		Port:          ep.port,
+		RelAddr:       ep.relAddr,
+		RelPort:       ep.relPort,
+		RelayProtocol: ep.protocol,
+		OnClose:       onClose,
 	}
 	candidate, err := NewCandidateRelay(&relayConfig)
 	if err != nil {

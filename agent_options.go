@@ -949,32 +949,6 @@ func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 	}
 }
 
-// WithRelayCandidateProvider registers a provider for non-TURN relay
-// candidates. The provider is used in addition to the relay candidates
-// gathered from WithUrls and is ignored when relay candidates are disabled.
-func WithRelayCandidateProvider(provider RelayCandidateProvider) AgentOption {
-	return WithRelayCandidateProviders(provider)
-}
-
-// WithRelayCandidateProviders registers providers for non-TURN relay
-// candidates. Providers are called independently during candidate gathering,
-// so an application can add multiple relay transports without modifying ICE.
-func WithRelayCandidateProviders(providers ...RelayCandidateProvider) AgentOption {
-	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
-		for _, provider := range providers {
-			if provider != nil {
-				a.relayCandidateProviders = append(a.relayCandidateProviders, provider)
-			}
-		}
-
-		return nil
-	}
-}
-
 // WithAutomaticRenomination enables automatic renomination of candidate pairs
 // when better pairs become available after initial connection establishment.
 // This feature requires renomination to be enabled and both agents to support it.
