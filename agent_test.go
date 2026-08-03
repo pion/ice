@@ -3597,6 +3597,133 @@ func TestRoleConflict(t *testing.T) {
 	})
 }
 
+func TestRoleConflictErrorResponse(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(30 * time.Second).Stop()
+
+	for _, testCase := range []struct {
+		name          string
+		isControlling bool
+		aTieBreaker   uint64
+		bTieBreaker   uint64
+	}{
+		{name: "Controlled", isControlling: false, aTieBreaker: 2, bTieBreaker: 1},
+		{name: "Controlling", isControlling: true, aTieBreaker: 1, bTieBreaker: 2},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			const (
+				aIP = "192.168.0.1"
+				bIP = "192.168.0.2"
+			)
+
+			wan, err := vnet.NewRouter(&vnet.RouterConfig{
+				CIDR:          "0.0.0.0/0",
+				LoggerFactory: logging.NewDefaultLoggerFactory(),
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, wan.Stop()) }()
+
+			var allowBRequests, sawRoleConflict atomic.Bool
+			wan.AddChunkFilter(func(chunk vnet.Chunk) bool {
+				source, ok := chunk.SourceAddr().(*net.UDPAddr)
+				if !ok || !source.IP.Equal(net.ParseIP(bIP)) || !stun.IsMessage(chunk.UserData()) {
+					return true
+				}
+
+				msg := &stun.Message{Raw: chunk.UserData()}
+				if decodeErr := msg.Decode(); decodeErr != nil {
+					return true
+				}
+
+				if msg.Type.Class == stun.ClassRequest {
+					// Do not let B resolve A's conflict through the existing
+					// inbound-request path before A processes the 487.
+					return allowBRequests.Load()
+				}
+				if msg.Type.Class == stun.ClassErrorResponse {
+					var errorCode stun.ErrorCodeAttribute
+					if errorCode.GetFrom(msg) == nil && errorCode.Code == stun.CodeRoleConflict {
+						sawRoleConflict.Store(true)
+					}
+				}
+
+				return true
+			})
+
+			netA, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{aIP}})
+			require.NoError(t, err)
+			require.NoError(t, wan.AddNet(netA))
+			netB, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{bIP}})
+			require.NoError(t, err)
+			require.NoError(t, wan.AddNet(netB))
+			require.NoError(t, wan.Start())
+
+			checkInterval := 20 * time.Millisecond
+			newAgent := func(network *vnet.Net) *Agent {
+				agent, newErr := NewAgent(&AgentConfig{
+					NetworkTypes:     []NetworkType{NetworkTypeUDP4},
+					MulticastDNSMode: MulticastDNSModeDisabled,
+					CheckInterval:    &checkInterval,
+					Net:              network,
+				})
+				require.NoError(t, newErr)
+
+				return agent
+			}
+
+			aAgent := newAgent(netA)
+			defer func() { require.NoError(t, aAgent.Close()) }()
+			bAgent := newAgent(netB)
+			defer func() { require.NoError(t, bAgent.Close()) }()
+
+			gatherAndExchangeCandidates(t, aAgent, bAgent)
+			aUfrag, aPwd, err := aAgent.GetLocalUserCredentials()
+			require.NoError(t, err)
+			bUfrag, bPwd, err := bAgent.GetLocalUserCredentials()
+			require.NoError(t, err)
+
+			require.NoError(t, aAgent.loop.Run(context.Background(), func(context.Context) {
+				aAgent.tieBreaker = testCase.aTieBreaker
+			}))
+			require.NoError(t, bAgent.loop.Run(context.Background(), func(context.Context) {
+				bAgent.tieBreaker = testCase.bTieBreaker
+			}))
+
+			aConnected := make(chan struct{})
+			bConnected := make(chan struct{})
+			require.NoError(t, aAgent.OnConnectionStateChange(func(state ConnectionState) {
+				if state == ConnectionStateConnected {
+					close(aConnected)
+				}
+			}))
+			require.NoError(t, bAgent.OnConnectionStateChange(func(state ConnectionState) {
+				if state == ConnectionStateConnected {
+					close(bConnected)
+				}
+			}))
+
+			// Start B first so its role is established before A's request arrives.
+			// B's requests remain blocked until A switches solely from the 487.
+			require.NoError(t, bAgent.startConnectivityChecks(testCase.isControlling, aUfrag, aPwd))
+			require.NoError(t, aAgent.startConnectivityChecks(testCase.isControlling, bUfrag, bPwd))
+
+			require.Eventually(t, func() bool {
+				return sawRoleConflict.Load() &&
+					aAgent.isControlling.Load() == !testCase.isControlling
+			}, 5*time.Second, 10*time.Millisecond)
+
+			allowBRequests.Store(true)
+			for _, connected := range []<-chan struct{}{aConnected, bConnected} {
+				select {
+				case <-connected:
+				case <-time.After(5 * time.Second):
+					require.FailNow(t, "both agents did not reach Connected")
+				}
+			}
+		})
+	}
+}
+
 func TestDefaultCandidateTypes(t *testing.T) {
 	expected := []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
 
