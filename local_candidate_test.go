@@ -72,20 +72,22 @@ func TestAddLocalCandidateRegistersExternalRelay(t *testing.T) {
 	localCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
 	require.Len(t, localCandidates, 1)
-	require.Equal(t, "custom", localCandidates[0].(*CandidateRelay).RelayProtocol())
+	relayCandidate, ok := localCandidates[0].(*CandidateRelay)
+	require.True(t, ok)
+	require.Equal(t, "custom", relayCandidate.RelayProtocol())
 
 	select {
 	case got := <-candidates:
 		require.Equal(t, candidate, got)
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for local candidate callback")
+		require.FailNow(t, "timed out waiting for local candidate callback")
 	}
 
 	require.NoError(t, agent.GatherCandidates())
 	select {
 	case <-gatheringComplete:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for gathering completion")
+		require.FailNow(t, "timed out waiting for gathering completion")
 	}
 }
 

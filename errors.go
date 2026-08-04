@@ -64,6 +64,10 @@ var (
 	// ErrNoOnCandidateHandler indicates agent was started without OnCandidate.
 	ErrNoOnCandidateHandler = errors.New("no OnCandidate provided")
 
+	// ErrCandidatePacketConnNil indicates a local candidate was added without
+	// a packet connection.
+	ErrCandidatePacketConnNil = errors.New("candidate packet connection is nil")
+
 	// ErrMultipleGatherAttempted indicates GatherCandidates has been called multiple times.
 	ErrMultipleGatherAttempted = errors.New("attempting to gather candidates during gathering state")
 

@@ -1010,7 +1010,7 @@ func (a *Agent) AddLocalCandidate(cand Candidate, candidateConn net.PacketConn) 
 		return nil
 	}
 	if candidateConn == nil {
-		return fmt.Errorf("candidate packet connection is nil")
+		return ErrCandidatePacketConnNil
 	}
 
 	return a.addCandidate(a.loop, cand, candidateConn)
