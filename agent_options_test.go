@@ -248,7 +248,7 @@ func TestWithMulticastDNSOptions(t *testing.T) {
 }
 
 func TestWithLocalCredentials(t *testing.T) {
-	password := strings.Repeat("p", 16)
+	password := strings.Repeat("p", minLenPwd)
 
 	agent, err := NewAgentWithOptions(WithLocalCredentials("abcd", password))
 	require.NoError(t, err)
@@ -263,6 +263,57 @@ func TestWithLocalCredentials(t *testing.T) {
 	shortPassword := strings.Repeat("p", 10)
 	_, err = NewAgentWithOptions(WithLocalCredentials("abcd", shortPassword))
 	assert.ErrorIs(t, err, ErrLocalPwdInsufficientBits)
+}
+
+func TestLocalCredentialsLength(t *testing.T) {
+	ufrag, shortUfrag := strings.Repeat("u", minLenUFrag), strings.Repeat("u", minLenUFrag-1)
+	pwd, shortPwd := strings.Repeat("p", minLenPwd), strings.Repeat("p", minLenPwd-1)
+
+	tests := []struct {
+		name       string
+		ufrag, pwd string
+		expected   error
+	}{
+		{"ufrag too short", shortUfrag, pwd, ErrLocalUfragInsufficientBits},
+		{"ufrag at minimum", ufrag, pwd, nil},
+		{"pwd too short", ufrag, shortPwd, ErrLocalPwdInsufficientBits},
+		{"pwd at minimum", ufrag, pwd, nil},
+		{"stateless token", strings.Repeat("u", 24), strings.Repeat("p", 32), nil},
+		{"both empty", "", "", nil},
+	}
+
+	for _, test := range tests {
+		t.Run("WithLocalCredentials/"+test.name, func(t *testing.T) {
+			agent, err := NewAgentWithOptions(WithLocalCredentials(test.ufrag, test.pwd))
+			if test.expected != nil {
+				assert.ErrorIs(t, err, test.expected)
+
+				return
+			}
+			require.NoError(t, err)
+			defer agent.Close() //nolint:errcheck
+
+			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
+		})
+
+		t.Run("Restart/"+test.name, func(t *testing.T) {
+			agent, err := NewAgentWithOptions()
+			require.NoError(t, err)
+			defer agent.Close() //nolint:errcheck
+
+			err = agent.Restart(test.ufrag, test.pwd)
+			if test.expected != nil {
+				assert.ErrorIs(t, err, test.expected)
+
+				return
+			}
+			require.NoError(t, err)
+
+			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
+		})
+	}
 }
 
 func TestWithMuxOptions(t *testing.T) {

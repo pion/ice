@@ -2354,8 +2354,8 @@ func TestAgentCredentials(t *testing.T) {
 	defer func() {
 		require.NoError(t, agent.Close())
 	}()
-	require.GreaterOrEqual(t, len([]rune(agent.localUfrag))*8, 24)
-	require.GreaterOrEqual(t, len([]rune(agent.localPwd))*8, 128)
+	require.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
+	require.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
 
 	// Should honor RFC standards
 	// Local values MUST be unguessable, with at least 128 bits of

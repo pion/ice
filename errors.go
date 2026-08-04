@@ -29,12 +29,16 @@ var (
 	ErrPort = errors.New("invalid port")
 
 	// ErrLocalUfragInsufficientBits indicates local username fragment insufficient bits are provided.
-	// Have to be at least 24 bits long.
-	ErrLocalUfragInsufficientBits = errors.New("local username fragment is less than 24 bits long")
+	// Have to be at least 4 ice-chars, carrying the 24 bits of randomness RFC 8445 §5.3 requires.
+	ErrLocalUfragInsufficientBits = errors.New(
+		"local username fragment must be at least 4 ice-chars for 24 bits of randomness",
+	)
 
 	// ErrLocalPwdInsufficientBits indicates local password insufficient bits are provided.
-	// Have to be at least 128 bits long.
-	ErrLocalPwdInsufficientBits = errors.New("local password is less than 128 bits long")
+	// Have to be at least 22 ice-chars, carrying the 128 bits of randomness RFC 8445 §5.3 requires.
+	ErrLocalPwdInsufficientBits = errors.New(
+		"local password must be at least 22 ice-chars for 128 bits of randomness",
+	)
 
 	// ErrProtoType indicates an unsupported transport type was provided.
 	ErrProtoType = errors.New("invalid transport protocol type")
