@@ -1955,11 +1955,8 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		}
 	}
 
-	if len([]rune(ufrag))*8 < 24 {
-		return ErrLocalUfragInsufficientBits
-	}
-	if len([]rune(pwd))*8 < 128 {
-		return ErrLocalPwdInsufficientBits
+	if err := validateLocalCredentials(ufrag, pwd); err != nil {
+		return err
 	}
 
 	var err error
