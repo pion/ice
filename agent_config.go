@@ -23,6 +23,10 @@ const (
 	// defaultDisconnectedTimeout is the default time till an Agent transitions disconnected.
 	defaultDisconnectedTimeout = 5 * time.Second
 
+	// defaultLiteDisconnectedTimeout uses the RFC 7675 consent-expiry period as a
+	// conservative receive-idle window for lite Agents.
+	defaultLiteDisconnectedTimeout = 10 * time.Second
+
 	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected.
 	defaultFailedTimeout = 25 * time.Second
 
@@ -94,7 +98,10 @@ type AgentConfig struct {
 	// MulticastDNSHostName controls the hostname for this agent. If none is specified a random one will be generated
 	MulticastDNSHostName string
 
-	// DisconnectedTimeout defaults to 5 seconds when this property is nil.
+	// DisconnectedTimeout controls how long a selected pair may receive no traffic
+	// before the Agent transitions to disconnected. It defaults to 10 seconds for
+	// lite Agents and 5 seconds for full Agents when this property is nil. The
+	// longer lite default does not extend the default initial checking deadline.
 	// If the duration is 0, the ICE Agent will never go to disconnected
 	DisconnectedTimeout *time.Duration
 
@@ -295,6 +302,7 @@ func (config *AgentConfig) initWithDefaults(agent *Agent) { //nolint:cyclop
 	} else {
 		agent.disconnectedTimeout = *config.DisconnectedTimeout
 	}
+	agent.disconnectedTimeoutExplicit = config.DisconnectedTimeout != nil
 
 	if config.FailedTimeout == nil {
 		agent.failedTimeout = defaultFailedTimeout

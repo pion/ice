@@ -386,6 +386,7 @@ func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
 		}
 
 		a.disconnectedTimeout = timeout
+		a.disconnectedTimeoutExplicit = true
 
 		return nil
 	}
