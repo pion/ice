@@ -120,9 +120,10 @@ type Agent struct {
 
 	candidateTypes []CandidateType
 
-	// How long connectivity checks can fail before the ICE Agent
-	// goes to disconnected
-	disconnectedTimeout time.Duration
+	// How long the selected pair can receive no traffic before the ICE Agent
+	// goes to disconnected.
+	disconnectedTimeout         time.Duration
+	disconnectedTimeoutExplicit bool
 
 	// How long connectivity checks can fail before the ICE Agent
 	// goes to failed
@@ -503,6 +504,8 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 		}
 	}
 
+	agent.applyICELiteDisconnectedTimeoutDefault()
+
 	agent.connectionStateNotifier = &handlerNotifier{
 		connectionStateFunc: agent.onConnectionStateChange,
 		done:                make(chan struct{}),
@@ -610,6 +613,12 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	return agent, nil
 }
 
+func (a *Agent) applyICELiteDisconnectedTimeoutDefault() {
+	if a.lite && !a.disconnectedTimeoutExplicit {
+		a.disconnectedTimeout = defaultLiteDisconnectedTimeout
+	}
+}
+
 func mDNSLocalAddressFromTCPMux(tcpMux TCPMux, networkTypes []NetworkType) net.IP {
 	if tcpMux == nil || !allNetworkTypesTCP(networkTypes) {
 		return nil
@@ -703,6 +712,7 @@ func (a *Agent) startConnectivityChecks(isControlling bool, remoteUfrag, remoteP
 func (a *Agent) connectivityChecks() { //nolint:cyclop
 	lastConnectionState := ConnectionState(0)
 	checkingDuration := time.Time{}
+	checkingTimeout := a.initialCheckingTimeout()
 
 	contact := func() {
 		if err := a.loop.Run(a.loop, func(_ context.Context) {
@@ -721,8 +731,8 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 					checkingDuration = time.Now()
 				}
 
-				// We have been in checking longer then Disconnect+Failed timeout, set the connection to Failed
-				if time.Since(checkingDuration) > a.disconnectedTimeout+a.failedTimeout {
+				// The initial checking deadline has elapsed, so set the connection to Failed.
+				if time.Since(checkingDuration) > checkingTimeout {
 					a.updateConnectionState(ConnectionStateFailed)
 
 					return
@@ -775,6 +785,15 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 			return
 		}
 	}
+}
+
+func (a *Agent) initialCheckingTimeout() time.Duration {
+	disconnectedTimeout := a.disconnectedTimeout
+	if a.lite && !a.disconnectedTimeoutExplicit {
+		disconnectedTimeout = defaultDisconnectedTimeout
+	}
+
+	return disconnectedTimeout + a.failedTimeout
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
@@ -1986,11 +2005,8 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		}
 	}
 
-	if len([]rune(ufrag))*8 < 24 {
-		return ErrLocalUfragInsufficientBits
-	}
-	if len([]rune(pwd))*8 < 128 {
-		return ErrLocalPwdInsufficientBits
+	if err := validateLocalCredentials(ufrag, pwd); err != nil {
+		return err
 	}
 
 	var err error

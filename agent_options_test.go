@@ -170,6 +170,163 @@ func TestWithTimeoutOptions(t *testing.T) {
 	assert.Equal(t, 150*time.Millisecond, agent.checkInterval)
 }
 
+func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
+	explicitDisconnectedTimeout := 10 * time.Second
+	explicitFailedTimeout := 10 * time.Second
+
+	createFromConfig := func(t *testing.T, config *AgentConfig) *Agent {
+		t.Helper()
+		agent, err := NewAgent(config)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+		return agent
+	}
+
+	createFromOptions := func(t *testing.T, options ...AgentOption) *Agent {
+		t.Helper()
+		agent, err := NewAgentWithOptions(options...)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+		return agent
+	}
+
+	tests := []struct {
+		name                        string
+		config                      *AgentConfig
+		options                     []AgentOption
+		expectedDisconnectedTimeout time.Duration
+		expectedFailedTimeout       time.Duration
+		expectedCheckingTimeout     time.Duration
+	}{
+		{
+			name:                        "full config keeps full default",
+			config:                      &AgentConfig{},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite config uses lite default",
+			config: &AgentConfig{
+				Lite:           true,
+				CandidateTypes: []CandidateType{CandidateTypeHost},
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite config preserves explicit timeout",
+			config: &AgentConfig{
+				Lite:                true,
+				CandidateTypes:      []CandidateType{CandidateTypeHost},
+				DisconnectedTimeout: &explicitDisconnectedTimeout,
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name:                        "full options keep full default",
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite options use lite default",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit lite default value uses explicit checking deadline",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(defaultLiteDisconnectedTimeout),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultLiteDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite default combines with explicit failed timeout during checking",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithFailedTimeout(explicitFailedTimeout),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       explicitFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + explicitFailedTimeout,
+		},
+		{
+			name: "explicit option before lite is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithDisconnectedTimeout(explicitDisconnectedTimeout),
+				WithICELite(true),
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit option after lite is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(explicitDisconnectedTimeout),
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit zero is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(0),
+			},
+			expectedFailedTimeout:   defaultFailedTimeout,
+			expectedCheckingTimeout: defaultFailedTimeout,
+		},
+		{
+			name: "final full mode keeps full default",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithICELite(false),
+			},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			var agent *Agent
+			if testCase.config == nil {
+				agent = createFromOptions(t, testCase.options...)
+			} else {
+				agent = createFromConfig(t, testCase.config)
+			}
+			assert.Equal(t, testCase.expectedDisconnectedTimeout, agent.disconnectedTimeout)
+			assert.Equal(t, testCase.expectedCheckingTimeout, agent.initialCheckingTimeout())
+			assert.Equal(t, testCase.expectedFailedTimeout, agent.failedTimeout)
+			assert.Equal(t, defaultKeepaliveInterval, agent.keepaliveInterval)
+		})
+	}
+}
+
 func TestWithAcceptanceWaitOptions(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithHostAcceptanceMinWait(1*time.Second),
@@ -248,7 +405,7 @@ func TestWithMulticastDNSOptions(t *testing.T) {
 }
 
 func TestWithLocalCredentials(t *testing.T) {
-	password := strings.Repeat("p", 16)
+	password := strings.Repeat("p", minLenPwd)
 
 	agent, err := NewAgentWithOptions(WithLocalCredentials("abcd", password))
 	require.NoError(t, err)
@@ -263,6 +420,57 @@ func TestWithLocalCredentials(t *testing.T) {
 	shortPassword := strings.Repeat("p", 10)
 	_, err = NewAgentWithOptions(WithLocalCredentials("abcd", shortPassword))
 	assert.ErrorIs(t, err, ErrLocalPwdInsufficientBits)
+}
+
+func TestLocalCredentialsLength(t *testing.T) {
+	ufrag, shortUfrag := strings.Repeat("u", minLenUFrag), strings.Repeat("u", minLenUFrag-1)
+	pwd, shortPwd := strings.Repeat("p", minLenPwd), strings.Repeat("p", minLenPwd-1)
+
+	tests := []struct {
+		name       string
+		ufrag, pwd string
+		expected   error
+	}{
+		{"ufrag too short", shortUfrag, pwd, ErrLocalUfragInsufficientBits},
+		{"ufrag at minimum", ufrag, pwd, nil},
+		{"pwd too short", ufrag, shortPwd, ErrLocalPwdInsufficientBits},
+		{"pwd at minimum", ufrag, pwd, nil},
+		{"stateless token", strings.Repeat("u", 24), strings.Repeat("p", 32), nil},
+		{"both empty", "", "", nil},
+	}
+
+	for _, test := range tests {
+		t.Run("WithLocalCredentials/"+test.name, func(t *testing.T) {
+			agent, err := NewAgentWithOptions(WithLocalCredentials(test.ufrag, test.pwd))
+			if test.expected != nil {
+				assert.ErrorIs(t, err, test.expected)
+
+				return
+			}
+			require.NoError(t, err)
+			defer agent.Close() //nolint:errcheck
+
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
+		})
+
+		t.Run("Restart/"+test.name, func(t *testing.T) {
+			agent, err := NewAgentWithOptions()
+			require.NoError(t, err)
+			defer agent.Close() //nolint:errcheck
+
+			err = agent.Restart(test.ufrag, test.pwd)
+			if test.expected != nil {
+				assert.ErrorIs(t, err, test.expected)
+
+				return
+			}
+			require.NoError(t, err)
+
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
+		})
+	}
 }
 
 func TestWithMuxOptions(t *testing.T) {

@@ -2352,16 +2352,16 @@ func TestAgentCredentials(t *testing.T) {
 	log := logging.NewDefaultLoggerFactory()
 	log.DefaultLogLevel = logging.LogLevelDisabled
 
-	// Agent should not require any of the usernames and password to be set
-	// If set, they should follow the default 16/128 bits random number generator strategy
+	// Agent should not require either the username or password to be set.
+	// Generated credentials should satisfy the ICE grammar minimum lengths.
 
 	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
 	}()
-	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag))*8, 24)
-	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd))*8, 128)
+	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
 
 	// Should honor RFC standards
 	// Local values MUST be unguessable, with at least 128 bits of

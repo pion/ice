@@ -12,7 +12,25 @@ const (
 
 	lenUFrag = 16
 	lenPwd   = 32
+
+	// https://tools.ietf.org/html/rfc5245#section-15.4 (now RFC 8839 section 5.4):
+	// ufrag = 4*256ice-char, password = 22*256ice-char.
+	minLenUFrag = 4
+	minLenPwd   = 22
 )
+
+// validateLocalCredentials checks caller-supplied ICE credentials.
+// Empty values mean "generate one" to both call sites.
+func validateLocalCredentials(ufrag, pwd string) error {
+	if ufrag != "" && len([]rune(ufrag)) < minLenUFrag {
+		return ErrLocalUfragInsufficientBits
+	}
+	if pwd != "" && len([]rune(pwd)) < minLenPwd {
+		return ErrLocalPwdInsufficientBits
+	}
+
+	return nil
+}
 
 // Seeding random generator each time limits number of generated sequence to 31-bits,
 // and causes collision on low time accuracy environments.
