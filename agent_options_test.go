@@ -299,6 +299,24 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 			expectedCheckingTimeout: defaultFailedTimeout,
 		},
 		{
+			name: "zero failed timeout disables initial checking timeout",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithFailedTimeout(0),
+			},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedCheckingTimeout:     0,
+		},
+		{
+			name: "zero disconnected and failed timeouts disable initial checking timeout",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithDisconnectedTimeout(0),
+				WithFailedTimeout(0),
+			},
+			expectedCheckingTimeout: 0,
+		},
+		{
 			name: "final full mode keeps full default",
 			options: []AgentOption{
 				WithCandidateTypes([]CandidateType{CandidateTypeHost}),

@@ -703,7 +703,7 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 				}
 
 				// The initial checking deadline has elapsed, so set the connection to Failed.
-				if time.Since(checkingDuration) > checkingTimeout {
+				if checkingTimeout != 0 && time.Since(checkingDuration) > checkingTimeout {
 					a.updateConnectionState(ConnectionStateFailed)
 
 					return
@@ -759,6 +759,11 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 }
 
 func (a *Agent) initialCheckingTimeout() time.Duration {
+	// A zero value disables transitions to failed.
+	if a.failedTimeout == 0 {
+		return 0
+	}
+
 	disconnectedTimeout := a.disconnectedTimeout
 	if a.lite && !a.disconnectedTimeoutExplicit {
 		disconnectedTimeout = defaultDisconnectedTimeout
