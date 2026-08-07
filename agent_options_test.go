@@ -429,8 +429,8 @@ func TestWithLocalCredentials(t *testing.T) {
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
-	assert.Equal(t, "abcd", agent.localUfrag)
-	assert.Equal(t, password, agent.localPwd)
+	assert.Equal(t, "abcd", agent.currentGeneration.localUfrag)
+	assert.Equal(t, password, agent.currentGeneration.localPwd)
 
 	_, err = NewAgentWithOptions(WithLocalCredentials("ab", password))
 	assert.ErrorIs(t, err, ErrLocalUfragInsufficientBits)
@@ -468,8 +468,8 @@ func TestLocalCredentialsLength(t *testing.T) {
 			require.NoError(t, err)
 			defer agent.Close() //nolint:errcheck
 
-			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
-			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
 		})
 
 		t.Run("Restart/"+test.name, func(t *testing.T) {
@@ -485,8 +485,8 @@ func TestLocalCredentialsLength(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
-			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+			assert.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
 		})
 	}
 }
@@ -1570,8 +1570,9 @@ func TestWithAddressRewriteRulesIPv6(t *testing.T) {
 
 func TestAddressRewriteRulesRejectWithMDNSQueryAndGather(t *testing.T) {
 	agent := &Agent{
-		candidateTypes: []CandidateType{CandidateTypeHost},
-		mDNSMode:       MulticastDNSModeQueryAndGather,
+		currentGeneration: &iceGeneration{},
+		candidateTypes:    []CandidateType{CandidateTypeHost},
+		mDNSMode:          MulticastDNSModeQueryAndGather,
 		addressRewriteRules: []AddressRewriteRule{
 			{
 				External:        []string{"203.0.113.200"},
@@ -1669,6 +1670,7 @@ func TestAddressRewriteModeOverrides(t *testing.T) {
 		assert.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
 		}
@@ -1694,6 +1696,7 @@ func TestAddressRewriteModeOverrides(t *testing.T) {
 		assert.NoError(t, err)
 
 		agent := &Agent{
+			currentGeneration:    &iceGeneration{},
 			addressRewriteMapper: mapper,
 			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
 		}
@@ -1726,6 +1729,7 @@ func TestAddressRewriteMixedFamilyApplication(t *testing.T) {
 	assert.NoError(t, err)
 
 	agent := &Agent{
+		currentGeneration:    &iceGeneration{},
 		addressRewriteMapper: mapper,
 		log:                  logger,
 	}
