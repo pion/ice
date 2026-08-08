@@ -170,6 +170,181 @@ func TestWithTimeoutOptions(t *testing.T) {
 	assert.Equal(t, 150*time.Millisecond, agent.checkInterval)
 }
 
+func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
+	explicitDisconnectedTimeout := 10 * time.Second
+	explicitFailedTimeout := 10 * time.Second
+
+	createFromConfig := func(t *testing.T, config *AgentConfig) *Agent {
+		t.Helper()
+		agent, err := NewAgent(config)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+		return agent
+	}
+
+	createFromOptions := func(t *testing.T, options ...AgentOption) *Agent {
+		t.Helper()
+		agent, err := NewAgentWithOptions(options...)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+		return agent
+	}
+
+	tests := []struct {
+		name                        string
+		config                      *AgentConfig
+		options                     []AgentOption
+		expectedDisconnectedTimeout time.Duration
+		expectedFailedTimeout       time.Duration
+		expectedCheckingTimeout     time.Duration
+	}{
+		{
+			name:                        "full config keeps full default",
+			config:                      &AgentConfig{},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite config uses lite default",
+			config: &AgentConfig{
+				Lite:           true,
+				CandidateTypes: []CandidateType{CandidateTypeHost},
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite config preserves explicit timeout",
+			config: &AgentConfig{
+				Lite:                true,
+				CandidateTypes:      []CandidateType{CandidateTypeHost},
+				DisconnectedTimeout: &explicitDisconnectedTimeout,
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name:                        "full options keep full default",
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite options use lite default",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit lite default value uses explicit checking deadline",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(defaultLiteDisconnectedTimeout),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultLiteDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "lite default combines with explicit failed timeout during checking",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithFailedTimeout(explicitFailedTimeout),
+			},
+			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
+			expectedFailedTimeout:       explicitFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + explicitFailedTimeout,
+		},
+		{
+			name: "explicit option before lite is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithDisconnectedTimeout(explicitDisconnectedTimeout),
+				WithICELite(true),
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit option after lite is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(explicitDisconnectedTimeout),
+			},
+			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
+		},
+		{
+			name: "explicit zero is preserved",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithDisconnectedTimeout(0),
+			},
+			expectedFailedTimeout:   defaultFailedTimeout,
+			expectedCheckingTimeout: defaultFailedTimeout,
+		},
+		{
+			name: "zero failed timeout disables initial checking timeout",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithFailedTimeout(0),
+			},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedCheckingTimeout:     0,
+		},
+		{
+			name: "zero disconnected and failed timeouts disable initial checking timeout",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithDisconnectedTimeout(0),
+				WithFailedTimeout(0),
+			},
+			expectedCheckingTimeout: 0,
+		},
+		{
+			name: "final full mode keeps full default",
+			options: []AgentOption{
+				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+				WithICELite(true),
+				WithICELite(false),
+			},
+			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
+			expectedFailedTimeout:       defaultFailedTimeout,
+			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			var agent *Agent
+			if testCase.config == nil {
+				agent = createFromOptions(t, testCase.options...)
+			} else {
+				agent = createFromConfig(t, testCase.config)
+			}
+			assert.Equal(t, testCase.expectedDisconnectedTimeout, agent.disconnectedTimeout)
+			assert.Equal(t, testCase.expectedCheckingTimeout, agent.initialCheckingTimeout())
+			assert.Equal(t, testCase.expectedFailedTimeout, agent.failedTimeout)
+			assert.Equal(t, defaultKeepaliveInterval, agent.keepaliveInterval)
+		})
+	}
+}
+
 func TestWithAcceptanceWaitOptions(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithHostAcceptanceMinWait(1*time.Second),
