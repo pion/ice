@@ -68,6 +68,9 @@ var (
 	// a packet connection.
 	ErrCandidatePacketConnNil = errors.New("candidate packet connection is nil")
 
+	// ErrDuplicateCandidate indicates a local candidate has already been added.
+	ErrDuplicateCandidate = errors.New("candidate already added")
+
 	// ErrMultipleGatherAttempted indicates GatherCandidates has been called multiple times.
 	ErrMultipleGatherAttempted = errors.New("attempting to gather candidates during gathering state")
 
