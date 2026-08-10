@@ -6,6 +6,7 @@
 package ice
 
 import (
+	"errors"
 	"hash/crc32"
 	"net"
 	"slices"
@@ -17,6 +18,13 @@ import (
 type packetWithCrc struct {
 	data []byte
 	crc  uint32
+}
+
+const dtlsRecordHeaderLen = 13
+
+// isDtlsPacket determines whether the payload is a DTLS record.
+func isDtlsPacket(payload []byte) bool {
+	return len(payload) >= dtlsRecordHeaderLen && payload[0] > 19 && payload[0] < 64
 }
 
 type piggybackingState int
@@ -39,6 +47,7 @@ type piggybackingController struct {
 	dtlsCallback func(packet []byte, rAddr net.Addr)
 	newFlight    bool
 	connected    bool
+	isDtlsClient bool
 }
 
 // init sets the controller to its initial off state. SetDtlsCallback flips it
@@ -77,6 +86,24 @@ func (a *Agent) SetDtlsCallback(cb func(packet []byte, rAddr net.Addr)) {
 	}
 }
 
+// SetDtlsRole informs the controller whether we are the DTLS client. It needs to
+// be called before the local DTLS handshake completes.
+func (a *Agent) SetDtlsRole(isClient bool) {
+	a.piggyback.mu.Lock()
+	defer a.piggyback.mu.Unlock()
+	a.piggyback.isDtlsClient = isClient
+}
+
+// SetDtlsFailed disables piggybacking after the DTLS handshake failed.
+func (a *Agent) SetDtlsFailed() {
+	a.piggyback.mu.Lock()
+	defer a.piggyback.mu.Unlock()
+	if a.piggyback.state != PiggybackingStateComplete && a.piggyback.state != PiggybackingStateOff {
+		a.log.Info("DTLS failed during negotiation, disabling piggybacking")
+	}
+	a.piggyback.state = PiggybackingStateOff
+}
+
 // Piggyback stores a packet to be picked in a round-robin fashion.
 // Returns `true` if packet is to be consumed.
 // A nil packet signals that the local DTLS handshake completed.
@@ -88,6 +115,9 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 	}
 
 	if packet != nil {
+		if !isDtlsPacket(packet) {
+			return false
+		}
 		// If we receive a packet after the end of a flight we need
 		// to clear the outgoing list.
 		if a.piggyback.newFlight {
@@ -97,7 +127,14 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 		a.piggyback.newFlight = end
 		crc := crc32.ChecksumIEEE(packet)
 		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{packet, crc})
-	} else if a.piggyback.state != PiggybackingStateOff {
+	} else if a.piggyback.state != PiggybackingStateOff && a.piggyback.state != PiggybackingStateComplete {
+		// As DTLS 1.2 client we have nothing more to send while as server we
+		// need to keep the last flight around until it gets acknowledged.
+		// DTLS 1.3 reverses this.
+		if a.piggyback.isDtlsClient {
+			a.piggyback.packets = []packetWithCrc{}
+			a.piggyback.packetsIndex = 0
+		}
 		a.piggyback.state = PiggybackingStatePending
 	}
 	// If we are connected we could send DTLS plain.
@@ -113,17 +150,17 @@ func (a *Agent) GetPiggybackDataAndAcks() ([]byte, []uint32) {
 		return nil, nil
 	}
 	if len(a.piggyback.packets) == 0 {
-		return nil, a.piggyback.acks
+		return nil, slices.Clone(a.piggyback.acks)
 	}
 
 	packet := a.piggyback.packets[a.piggyback.packetsIndex]
 	a.piggyback.packetsIndex = (a.piggyback.packetsIndex + 1) % len(a.piggyback.packets)
 
-	// Return a copy to prevent external modification of the internal buffer
+	// Return copies to prevent external modification of the internal buffers.
 	result := make([]byte, len(packet.data))
 	copy(result, packet.data)
 
-	return result, a.piggyback.acks
+	return result, slices.Clone(a.piggyback.acks)
 }
 
 func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr) { //nolint:cyclop
@@ -143,8 +180,10 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 
 		return
 	}
-	if packet == nil && acks == nil && a.piggyback.acks != nil {
-		a.log.Infof("Done with the SPED handshake", a.piggyback.state)
+	// The peer may have stopped sending acks when it moved to the complete
+	// state. Move to the same state.
+	if packet == nil && acks == nil && a.piggyback.state == PiggybackingStatePending {
+		a.log.Info("Done with the SPED handshake")
 		a.piggyback.acks = nil
 		a.piggyback.state = PiggybackingStateComplete
 		a.piggyback.mu.Unlock()
@@ -170,8 +209,20 @@ func (a *Agent) ReportPiggybacking(packet []byte, acks []uint32, rAddr net.Addr)
 			a.piggyback.packetsIndex = 0
 		}
 	}
-	if len(packet) == 0 {
-		a.piggyback.acks = []uint32{}
+	// The response to the final flight will not contain DTLS data but an ack.
+	if packet == nil && acks != nil && a.piggyback.state == PiggybackingStatePending {
+		a.log.Info("Done with the SPED handshake")
+		a.piggyback.acks = nil
+		a.piggyback.state = PiggybackingStateComplete
+		a.piggyback.mu.Unlock()
+
+		return
+	}
+	if len(packet) > 0 && !isDtlsPacket(packet) {
+		a.log.Warn("Dropping non-DTLS data")
+		a.piggyback.mu.Unlock()
+
+		return
 	}
 
 	var dtlsCallback func(packet []byte, rAddr net.Addr)
@@ -217,7 +268,13 @@ func (a *Agent) reportPiggybackingFromMessage(message *stun.Message, remote Cand
 	var dtls DtlsInStunAttribute
 	_ = dtls.GetFrom(message)
 	var ack DtlsInStunAckAttribute
-	_ = ack.GetFrom(message)
+	// A malformed attribute must not be treated like an absent one which signals
+	// a peer without piggybacking support, drop the message instead.
+	if err := ack.GetFrom(message); err != nil && !errors.Is(err, stun.ErrAttributeNotFound) {
+		a.log.Warnf("Discarding malformed DTLS-in-STUN ack attribute: %v", err)
+
+		return
+	}
 	a.ReportPiggybacking(dtls, ack, remote.addr())
 }
 

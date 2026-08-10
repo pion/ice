@@ -1866,6 +1866,9 @@ func (a *Agent) handleInboundRequest(
 	remoteTieBreaker := &AttrControl{}
 	if err := remoteTieBreaker.GetFrom(msg); err == nil && remoteTieBreaker.Role == a.role() {
 		a.handleRoleConflict(msg, local, remoteCandidate, remoteTieBreaker)
+		// The selector does not get to see this message, report any piggybacked
+		// DTLS to avoid the peer having to retransmit it.
+		a.reportPiggybackingFromMessage(msg, remoteCandidate)
 
 		return nil, false
 	}
