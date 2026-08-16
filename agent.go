@@ -794,20 +794,31 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 	}
 
 	if newState == ConnectionStateConnected {
-		// If piggybacking has been discovered as not supported
-		// flush any pending DTLS packets.
-		if packets := a.piggyback.flushOnConnected(); len(packets) > 0 {
-			if pair := a.getSelectedPair(); pair != nil {
-				for _, p := range packets {
-					_, _ = pair.Write(p.data)
-				}
-			}
-		}
+		a.flushPiggyback()
 	}
 
 	a.log.Infof("Setting new connection state: %s", newState)
 	a.connectionState = newState
 	a.connectionStateNotifier.EnqueueConnectionState(newState)
+}
+
+// flushPiggyback sends any DTLS packets that were queued while piggybacking
+// turned out to be unsupported as plain DTLS over the selected pair once the
+// ICE connection is established.
+func (a *Agent) flushPiggyback() {
+	packets := a.piggyback.flushOnConnected()
+	if len(packets) == 0 {
+		return
+	}
+	pair := a.getSelectedPair()
+	if pair == nil {
+		return
+	}
+	for _, p := range packets {
+		if n, err := pair.Write(p.data); err == nil {
+			pair.UpdatePacketSent(n)
+		}
+	}
 }
 
 func (a *Agent) setSelectedPair(pair *CandidatePair) {

@@ -47,7 +47,6 @@ type piggybackingController struct {
 	dtlsCallback func(packet []byte, rAddr net.Addr)
 	newFlight    bool
 	connected    bool
-	isDtlsClient bool
 }
 
 // init sets the controller to its initial off state. SetDtlsCallback flips it
@@ -86,14 +85,6 @@ func (a *Agent) SetDtlsCallback(cb func(packet []byte, rAddr net.Addr)) {
 	}
 }
 
-// SetDtlsRole informs the controller whether we are the DTLS client. It needs to
-// be called before the local DTLS handshake completes.
-func (a *Agent) SetDtlsRole(isClient bool) {
-	a.piggyback.mu.Lock()
-	defer a.piggyback.mu.Unlock()
-	a.piggyback.isDtlsClient = isClient
-}
-
 // SetDtlsFailed disables piggybacking after the DTLS handshake failed.
 func (a *Agent) SetDtlsFailed() {
 	a.piggyback.mu.Lock()
@@ -104,9 +95,26 @@ func (a *Agent) SetDtlsFailed() {
 	a.piggyback.state = PiggybackingStateOff
 }
 
+// SetDtlsHandshakeComplete signals that the local DTLS handshake completed and
+// carries the negotiated DTLS role and version. The party that sends the last
+// flight has to keep it around until it gets acknowledged; that is the server
+// in DTLS 1.2 and the client in DTLS 1.3. The other party has nothing more to
+// send and drops its outgoing packets.
+func (a *Agent) SetDtlsHandshakeComplete(isClient, isDtls13 bool) {
+	a.piggyback.mu.Lock()
+	defer a.piggyback.mu.Unlock()
+	if a.piggyback.state == PiggybackingStateOff || a.piggyback.state == PiggybackingStateComplete {
+		return
+	}
+	if isClient != isDtls13 {
+		a.piggyback.packets = []packetWithCrc{}
+		a.piggyback.packetsIndex = 0
+	}
+	a.piggyback.state = PiggybackingStatePending
+}
+
 // Piggyback stores a packet to be picked in a round-robin fashion.
 // Returns `true` if packet is to be consumed.
-// A nil packet signals that the local DTLS handshake completed.
 func (a *Agent) Piggyback(packet []byte, end bool) bool {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
@@ -126,16 +134,10 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 		}
 		a.piggyback.newFlight = end
 		crc := crc32.ChecksumIEEE(packet)
-		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{packet, crc})
-	} else if a.piggyback.state != PiggybackingStateOff && a.piggyback.state != PiggybackingStateComplete {
-		// As DTLS 1.2 client we have nothing more to send while as server we
-		// need to keep the last flight around until it gets acknowledged.
-		// DTLS 1.3 reverses this.
-		if a.piggyback.isDtlsClient {
-			a.piggyback.packets = []packetWithCrc{}
-			a.piggyback.packetsIndex = 0
-		}
-		a.piggyback.state = PiggybackingStatePending
+		// Copy the packet as the caller may reuse the underlying buffer.
+		data := make([]byte, len(packet))
+		copy(data, packet)
+		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{data, crc})
 	}
 	// If we are connected we could send DTLS plain.
 	return true
