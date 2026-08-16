@@ -136,7 +136,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("Completes when the peer stops sending acks", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		require.True(t, agent.Piggyback(nil, true))
+		agent.SetDtlsHandshakeComplete(true, false)
 		require.Equal(t, PiggybackingStatePending, agent.piggyback.state)
 
 		agent.ReportPiggybacking(nil, nil, rAddr)
@@ -151,7 +151,8 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		require.True(t, agent.Piggyback(packet, true))
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		require.True(t, agent.Piggyback(nil, true))
+		// DTLS 1.2 server keeps the last flight until it is acknowledged.
+		agent.SetDtlsHandshakeComplete(false, false)
 
 		agent.ReportPiggybacking(nil, []uint32{packetCrc}, rAddr)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
@@ -160,11 +161,11 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("Does not move back to pending once complete", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		require.True(t, agent.Piggyback(nil, true))
+		agent.SetDtlsHandshakeComplete(true, false)
 		agent.ReportPiggybacking(nil, nil, rAddr)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
 
-		require.True(t, agent.Piggyback(nil, true))
+		agent.SetDtlsHandshakeComplete(true, false)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
 	})
 
@@ -193,18 +194,31 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		require.Empty(t, agent.piggyback.acks)
 	})
 
-	t.Run("The last flight is dropped by the DTLS client only", func(t *testing.T) {
-		for _, isClient := range []bool{true, false} {
-			agent := newPiggybackAgent(t)
-			agent.SetDtlsRole(isClient)
-			require.True(t, agent.Piggyback(packet, true))
-			require.True(t, agent.Piggyback(nil, true))
+	t.Run("The last flight is kept by the party that sends it", func(t *testing.T) {
+		// The party sending the last flight keeps it around until it gets
+		// acknowledged: the server in DTLS 1.2, the client in DTLS 1.3.
+		for _, tc := range []struct {
+			name     string
+			isClient bool
+			isDtls13 bool
+			keep     bool
+		}{
+			{"DTLS 1.2 client", true, false, false},
+			{"DTLS 1.2 server", false, false, true},
+			{"DTLS 1.3 client", true, true, true},
+			{"DTLS 1.3 server", false, true, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				agent := newPiggybackAgent(t)
+				require.True(t, agent.Piggyback(packet, true))
+				agent.SetDtlsHandshakeComplete(tc.isClient, tc.isDtls13)
 
-			if isClient {
-				require.Empty(t, agent.piggyback.packets)
-			} else {
-				require.Len(t, agent.piggyback.packets, 1)
-			}
+				if tc.keep {
+					require.Len(t, agent.piggyback.packets, 1)
+				} else {
+					require.Empty(t, agent.piggyback.packets)
+				}
+			})
 		}
 	})
 
