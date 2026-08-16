@@ -6,6 +6,7 @@
 package ice
 
 import (
+	"bytes"
 	"errors"
 	"hash/crc32"
 	"net"
@@ -135,8 +136,7 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 		a.piggyback.newFlight = end
 		crc := crc32.ChecksumIEEE(packet)
 		// Copy the packet as the caller may reuse the underlying buffer.
-		data := make([]byte, len(packet))
-		copy(data, packet)
+		data := bytes.Clone(packet)
 		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{data, crc})
 	}
 	// If we are connected we could send DTLS plain.
