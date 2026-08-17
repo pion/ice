@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/pion/dtls/v3/pkg/protocol"
 	"github.com/pion/stun/v3"
 )
 
@@ -101,13 +102,13 @@ func (a *Agent) SetDtlsFailed() {
 // flight has to keep it around until it gets acknowledged; that is the server
 // in DTLS 1.2 and the client in DTLS 1.3. The other party has nothing more to
 // send and drops its outgoing packets.
-func (a *Agent) SetDtlsHandshakeComplete(isClient, isDtls13 bool) {
+func (a *Agent) SetDtlsHandshakeComplete(isClient bool, version protocol.Version) {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
 	if a.piggyback.state == PiggybackingStateOff || a.piggyback.state == PiggybackingStateComplete {
 		return
 	}
-	if isClient != isDtls13 {
+	if isClient != version.Equal(protocol.Version1_3) {
 		a.piggyback.packets = []packetWithCrc{}
 		a.piggyback.packetsIndex = 0
 	}

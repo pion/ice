@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/pion/dtls/v3/pkg/protocol"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v4/test"
@@ -136,7 +137,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("Completes when the peer stops sending acks", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		agent.SetDtlsHandshakeComplete(true, false)
+		agent.SetDtlsHandshakeComplete(true, protocol.Version1_2)
 		require.Equal(t, PiggybackingStatePending, agent.piggyback.state)
 
 		agent.ReportPiggybacking(nil, nil, rAddr)
@@ -152,7 +153,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		require.True(t, agent.Piggyback(packet, true))
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
 		// DTLS 1.2 server keeps the last flight until it is acknowledged.
-		agent.SetDtlsHandshakeComplete(false, false)
+		agent.SetDtlsHandshakeComplete(false, protocol.Version1_2)
 
 		agent.ReportPiggybacking(nil, []uint32{packetCrc}, rAddr)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
@@ -161,11 +162,11 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("Does not move back to pending once complete", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		agent.SetDtlsHandshakeComplete(true, false)
+		agent.SetDtlsHandshakeComplete(true, protocol.Version1_2)
 		agent.ReportPiggybacking(nil, nil, rAddr)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
 
-		agent.SetDtlsHandshakeComplete(true, false)
+		agent.SetDtlsHandshakeComplete(true, protocol.Version1_2)
 		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
 	})
 
@@ -200,18 +201,18 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		for _, tc := range []struct {
 			name     string
 			isClient bool
-			isDtls13 bool
+			version  protocol.Version
 			keep     bool
 		}{
-			{"DTLS 1.2 client", true, false, false},
-			{"DTLS 1.2 server", false, false, true},
-			{"DTLS 1.3 client", true, true, true},
-			{"DTLS 1.3 server", false, true, false},
+			{"DTLS 1.2 client", true, protocol.Version1_2, false},
+			{"DTLS 1.2 server", false, protocol.Version1_2, true},
+			{"DTLS 1.3 client", true, protocol.Version1_3, true},
+			{"DTLS 1.3 server", false, protocol.Version1_3, false},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				agent := newPiggybackAgent(t)
 				require.True(t, agent.Piggyback(packet, true))
-				agent.SetDtlsHandshakeComplete(tc.isClient, tc.isDtls13)
+				agent.SetDtlsHandshakeComplete(tc.isClient, tc.version)
 
 				if tc.keep {
 					require.Len(t, agent.piggyback.packets, 1)
