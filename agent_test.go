@@ -3821,6 +3821,71 @@ func TestAgentUpdateOptions(t *testing.T) {
 	})
 }
 
+func TestAgentUpdateOptionsConcurrentWithGathering(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	firstURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 9, Proto: stun.ProtoTypeUDP}}
+	secondURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 10, Proto: stun.ProtoTypeUDP}}
+	agent, err := NewAgentWithOptions(
+		WithUrls(firstURLs),
+		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	updatesDone := make(chan error, 1)
+	go func() {
+		for index := range 256 {
+			urls := firstURLs
+			if index%2 == 0 {
+				urls = secondURLs
+			}
+			if updateErr := agent.UpdateOptions(WithUrls(urls)); updateErr != nil {
+				updatesDone <- updateErr
+
+				return
+			}
+		}
+		updatesDone <- nil
+	}()
+	for range 256 {
+		require.NoError(t, agent.Restart("", ""))
+		require.NoError(t, agent.GatherCandidates())
+	}
+	require.NoError(t, <-updatesDone)
+	require.NoError(t, agent.Close())
+}
+
+func TestAgentSnapshotURLs(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	firstURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 9, Proto: stun.ProtoTypeUDP}}
+	secondURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 10, Proto: stun.ProtoTypeUDP}}
+	agent, err := NewAgentWithOptions(
+		WithUrls(firstURLs),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+
+	urls, err := agent.snapshotURLs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, firstURLs, urls)
+	urls[0] = secondURLs[0]
+	urls, err = agent.snapshotURLs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, firstURLs, urls)
+
+	require.NoError(t, agent.UpdateOptions(WithUrls(secondURLs)))
+	urls, err = agent.snapshotURLs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, secondURLs, urls)
+
+	require.NoError(t, agent.Close())
+	_, err = agent.snapshotURLs(context.Background())
+	require.Error(t, err)
+}
+
 func TestRemoteDialIPForLocalInterface(t *testing.T) {
 	t.Run("adds local zone for zone-less link-local IPv6", func(t *testing.T) {
 		remote := netip.MustParseAddr("fe80::1234")
