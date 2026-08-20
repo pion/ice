@@ -183,6 +183,8 @@ type Agent struct {
 	lastRenominationTime  time.Time
 
 	turnClientFactory func(*turn.ClientConfig) (turnClient, error)
+
+	piggyback piggybackingController
 }
 
 // NewAgent creates a new Agent.
@@ -225,6 +227,10 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		}
 		agent.addressRewriteRules = rules
 	}
+
+	// Embedding DTLS in STUN. This is off by default and enabled
+	// by the use of `SetDtlsCallback`.
+	agent.piggyback.init()
 
 	return newAgentWithConfig(agent, opts...)
 }
@@ -773,20 +779,45 @@ func (a *Agent) initialCheckingTimeout() time.Duration {
 }
 
 func (a *Agent) updateConnectionState(newState ConnectionState) {
-	if a.connectionState != newState {
-		// Connection has gone to failed, release all gathered candidates
-		if newState == ConnectionStateFailed {
-			a.removeUfragFromMux()
-			a.checklist = make([]*CandidatePair, 0)
-			a.pairsByID = make(map[uint64]*CandidatePair)
-			a.pendingBindingRequests = make([]bindingRequest, 0)
-			a.setSelectedPair(nil)
-			a.deleteAllCandidates()
-		}
+	if a.connectionState == newState {
+		return
+	}
 
-		a.log.Infof("Setting new connection state: %s", newState)
-		a.connectionState = newState
-		a.connectionStateNotifier.EnqueueConnectionState(newState)
+	// Connection has gone to failed, release all gathered candidates
+	if newState == ConnectionStateFailed {
+		a.removeUfragFromMux()
+		a.checklist = make([]*CandidatePair, 0)
+		a.pairsByID = make(map[uint64]*CandidatePair)
+		a.pendingBindingRequests = make([]bindingRequest, 0)
+		a.setSelectedPair(nil)
+		a.deleteAllCandidates()
+	}
+
+	if newState == ConnectionStateConnected {
+		a.flushPiggyback()
+	}
+
+	a.log.Infof("Setting new connection state: %s", newState)
+	a.connectionState = newState
+	a.connectionStateNotifier.EnqueueConnectionState(newState)
+}
+
+// flushPiggyback sends any DTLS packets that were queued while piggybacking
+// turned out to be unsupported as plain DTLS over the selected pair once the
+// ICE connection is established.
+func (a *Agent) flushPiggyback() {
+	packets := a.piggyback.flushOnConnected()
+	if len(packets) == 0 {
+		return
+	}
+	pair := a.getSelectedPair()
+	if pair == nil {
+		return
+	}
+	for _, p := range packets {
+		if n, err := pair.Write(p.data); err == nil {
+			pair.UpdatePacketSent(n)
+		}
 	}
 }
 
@@ -1635,6 +1666,7 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 			Port: port,
 		},
 	}
+	attributes = a.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.localPwd),
 		stun.Fingerprint)
@@ -1845,6 +1877,9 @@ func (a *Agent) handleInboundRequest(
 	remoteTieBreaker := &AttrControl{}
 	if err := remoteTieBreaker.GetFrom(msg); err == nil && remoteTieBreaker.Role == a.role() {
 		a.handleRoleConflict(msg, local, remoteCandidate, remoteTieBreaker)
+		// The selector does not get to see this message, report any piggybacked
+		// DTLS to avoid the peer having to retransmit it.
+		a.reportPiggybackingFromMessage(msg, remoteCandidate)
 
 		return nil, false
 	}
@@ -2117,6 +2152,7 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 		a.log.Tracef("Sending renomination request from %s to %s with nomination value %d",
 			pair.Local, pair.Remote, nominationValue)
 	}
+	attributes = a.appendPiggybackAttributes(attributes)
 
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.remotePwd),
