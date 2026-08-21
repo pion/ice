@@ -313,7 +313,7 @@ func TestAgentCloseAbortsBlockedUDPMuxWrite(t *testing.T) {
 		_ = udpMux.Close()
 	}()
 
-	muxedConn, err := udpMux.GetConn(agent.localUfrag, udpConn.LocalAddr())
+	muxedConn, err := udpMux.GetConn(agent.currentGeneration.localUfrag, udpConn.LocalAddr())
 	require.NoError(t, err)
 
 	local, err := NewCandidateHost(&CandidateHostConfig{
@@ -515,7 +515,7 @@ func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { 
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background()))
+		require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.currentGeneration))
 
 		return agent
 	}
@@ -668,11 +668,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			remote := netip.MustParseAddrPort("172.17.0.3:999")
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(local.Priority()),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -730,11 +730,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			require.True(t, agent.addRemoteCandidate(remoteMDNS))
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(local.Priority()),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -780,11 +780,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			remotePriority := uint32(123456)
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(remotePriority),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -824,11 +824,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 
 			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(uint32(99999)),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -907,11 +907,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 
 			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(uint32(99999)),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -980,11 +980,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 
 			remote := netip.MustParseAddrPort("172.17.0.3:999")
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(uint32(99999)),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -1155,11 +1155,11 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			remote := netip.MustParseAddrPort("172.17.0.3:999")
 
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 				UseCandidate(),
 				AttrControlling(agent.tieBreaker),
 				PriorityAttr(local.Priority()),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 				stun.Fingerprint,
 			)
 			require.NoError(t, err)
@@ -1461,10 +1461,13 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 			require.NoError(t, agent.Close())
 		}()
 
-		agent.handleInbound(buildMsg(stun.ClassRequest, "invalid", agent.localPwd), local, remote)
+		agent.handleInbound(buildMsg(stun.ClassRequest, "invalid", agent.currentGeneration.localPwd), local, remote)
 		require.Len(t, agent.remoteCandidates, 0)
 
-		agent.handleInbound(buildMsg(stun.ClassRequest, agent.localUfrag+":"+agent.remoteUfrag, "Invalid"), local, remote)
+		agent.handleInbound(
+			buildMsg(stun.ClassRequest, agent.currentGeneration.localUfrag+":"+agent.remoteUfrag, "Invalid"),
+			local, remote,
+		)
 		require.Len(t, agent.remoteCandidates, 0)
 	})
 
@@ -1475,7 +1478,8 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 			require.NoError(t, a.Close())
 		}()
 
-		a.handleInbound(buildMsg(stun.ClassSuccessResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
+		username := a.currentGeneration.localUfrag + ":" + a.remoteUfrag
+		a.handleInbound(buildMsg(stun.ClassSuccessResponse, username, "Invalid"), local, remote)
 		require.Len(t, a.remoteCandidates, 0)
 	})
 
@@ -1486,7 +1490,8 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 			require.NoError(t, a.Close())
 		}()
 
-		a.handleInbound(buildMsg(stun.ClassErrorResponse, a.localUfrag+":"+a.remoteUfrag, "Invalid"), local, remote)
+		username := a.currentGeneration.localUfrag + ":" + a.remoteUfrag
+		a.handleInbound(buildMsg(stun.ClassErrorResponse, username, "Invalid"), local, remote)
 		require.Len(t, a.remoteCandidates, 0)
 	})
 
@@ -1499,8 +1504,9 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 
 		err = a.loop.Run(a.loop, func(_ context.Context) {
 			a.selector = &controllingSelector{agent: a, log: a.log}
+			username := a.currentGeneration.localUfrag + ":" + a.remoteUfrag
 			// nolint: contextcheck
-			a.handleInbound(buildMsg(stun.ClassRequest, a.localUfrag+":"+a.remoteUfrag, a.localPwd), local, remote)
+			a.handleInbound(buildMsg(stun.ClassRequest, username, a.currentGeneration.localPwd), local, remote)
 			require.Len(t, a.remoteCandidates, 1)
 		})
 
@@ -1517,8 +1523,8 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
 			agent.selector = &controllingSelector{agent: agent, log: agent.log}
 			msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-				stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-				stun.NewShortTermIntegrity(agent.localPwd),
+				stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+				stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			)
 			require.NoError(t, err)
 
@@ -1619,9 +1625,9 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		agent.isControlling.Store(true)
 
 		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			AttrControlling(agent.tieBreaker),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1640,8 +1646,8 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 
 		local := newHostLocal(t)
 		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1657,8 +1663,8 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		}()
 
 		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1734,8 +1740,8 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		agent.selector = selector
 
 		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1769,8 +1775,8 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 		agent.selector = selector
 
 		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -2346,16 +2352,16 @@ func TestAgentCredentials(t *testing.T) {
 	log := logging.NewDefaultLoggerFactory()
 	log.DefaultLogLevel = logging.LogLevelDisabled
 
-	// Agent should not require any of the usernames and password to be set
-	// If set, they should follow the default 16/128 bits random number generator strategy
+	// Agent should not require either the username or password to be set.
+	// Generated credentials should satisfy the ICE grammar minimum lengths.
 
 	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
 	}()
-	require.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
-	require.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
+	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localUfrag)), minLenUFrag)
+	require.GreaterOrEqual(t, len([]rune(agent.currentGeneration.localPwd)), minLenPwd)
 
 	// Should honor RFC standards
 	// Local values MUST be unguessable, with at least 128 bits of
@@ -2500,7 +2506,7 @@ func TestAgentRestart(t *testing.T) {
 			}
 		}))
 
-		connA.agent.gatheringState = GatheringStateGathering
+		connA.agent.currentGeneration.gatheringState = GatheringStateGathering
 		require.NoError(t, connA.agent.Restart("", ""))
 
 		<-ctx.Done()
@@ -2736,13 +2742,114 @@ func TestGetLocalCandidates(t *testing.T) {
 
 		expectedCandidates = append(expectedCandidates, cand)
 
-		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		err = agent.addCandidate(context.Background(), cand, dummyConn, agent.currentGeneration)
 		require.NoError(t, err)
 	}
 
 	actualCandidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
+}
+
+func TestAddCandidateTagsCycleGeneration(t *testing.T) {
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	var config AgentConfig
+	agent, err := NewAgent(&config)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	// Capture generation 0, then let a restart move the agent to generation 1.
+	oldGen := agent.currentGeneration
+	require.NoError(t, agent.Restart("", ""))
+	require.Equal(t, uint64(1), agent.currentGeneration.id)
+
+	cand, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.0.2",
+		Port:      1000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	// Add under the old generation: the candidate should carry generation 0, not the current 1.
+	require.NoError(t, agent.addCandidate(context.Background(), cand, &net.UDPConn{}, oldGen))
+
+	got, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	ext, ok := got[0].GetExtension("generation")
+	require.True(t, ok)
+	require.Equal(t, "0", ext.Value)
+}
+
+func TestCandidateUfragScopedToGeneration(t *testing.T) {
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	var config AgentConfig
+	agent, err := NewAgent(&config)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	oldGen := agent.currentGeneration
+	oldUfrag := oldGen.localUfrag
+	require.NoError(t, agent.Restart("", ""))
+	require.NotEqual(t, oldUfrag, agent.currentGeneration.localUfrag)
+
+	cand, err := NewCandidateHost(&CandidateHostConfig{
+		Network:   "udp",
+		Address:   "192.168.0.2",
+		Port:      1000,
+		Component: 1,
+	})
+	require.NoError(t, err)
+
+	// Add under the old generation: the ufrag tag should be the old generation's ufrag, not the current generation's.
+	require.NoError(t, agent.addCandidate(context.Background(), cand, &net.UDPConn{}, oldGen))
+
+	got, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	ext, ok := got[0].GetExtension("ufrag")
+	require.True(t, ok)
+	require.Equal(t, oldUfrag, ext.Value)
+}
+
+func TestSetGatheringStateDropsCancelledCycle(t *testing.T) {
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	agent, err := NewAgent(&AgentConfig{})
+	require.NoError(t, err)
+
+	var endOfCandidates atomic.Int32
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c == nil {
+			endOfCandidates.Add(1)
+		}
+	}))
+
+	// A canceled context is how both Restart and a re-gather supersede an
+	// in-flight cycle. The superseded cycle's write must be dropped: no state change, no end-of-candidates.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	applied, err := agent.setGatheringState(ctx, agent.currentGeneration, GatheringStateComplete)
+	require.NoError(t, err)
+	require.False(t, applied)
+
+	state, err := agent.GetGatheringState()
+	require.NoError(t, err)
+	require.Equal(t, GatheringStateNew, state)
+
+	// GracefulClose drains the notifier, so a stray end-of-candidates would have arrived by now.
+	require.NoError(t, agent.GracefulClose())
+	require.Zero(t, endOfCandidates.Load(), "canceled cycle must not emit end-of-candidates")
 }
 
 func TestCloseInConnectionStateCallback(t *testing.T) {
@@ -2975,6 +3082,7 @@ func TestLiteLifecycle(t *testing.T) {
 
 func TestValidateSelectedPairTransitions(t *testing.T) {
 	agent := &Agent{
+		currentGeneration:   &iceGeneration{},
 		disconnectedTimeout: time.Second,
 		failedTimeout:       time.Second,
 		connectionState:     ConnectionStateConnected,
@@ -3246,8 +3354,8 @@ func TestAcceptAggressiveNomination(t *testing.T) { //nolint:cyclop
 					_, err = cand.writeTo(
 						buildMsg(
 							stun.ClassRequest,
-							aAgent.localUfrag+":"+aAgent.remoteUfrag,
-							aAgent.localPwd,
+							aAgent.currentGeneration.localUfrag+":"+aAgent.remoteUfrag,
+							aAgent.currentGeneration.localPwd,
 							cand.Priority(),
 						).Raw,
 						bAgent.getSelectedPair().Remote,
@@ -3376,7 +3484,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 		cand, errCand := NewCandidateHost(&cfg)
 		require.NoError(t, errCand)
 
-		err = agent.addCandidate(context.Background(), cand, dummyConn)
+		err = agent.addCandidate(context.Background(), cand, dummyConn, agent.currentGeneration)
 		require.NoError(t, err)
 	}
 
@@ -3387,7 +3495,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 		ext, ok := candidate.GetExtension("ufrag")
 
 		require.True(t, ok)
-		require.Equal(t, agent.localUfrag, ext.Value)
+		require.Equal(t, agent.currentGeneration.localUfrag, ext.Value)
 	}
 }
 
@@ -3857,12 +3965,12 @@ func TestRemoteDialIPForLocalInterface(t *testing.T) {
 
 func TestMDNSQueryTimeout(t *testing.T) {
 	t.Run("falls back to default when unset", func(t *testing.T) {
-		agent := &Agent{}
+		agent := &Agent{currentGeneration: &iceGeneration{}}
 		require.Equal(t, defaultSTUNGatherTimeout, agent.mDNSQueryTimeout())
 	})
 
 	t.Run("uses configured stun gather timeout when set", func(t *testing.T) {
-		agent := &Agent{stunGatherTimeout: 3 * time.Second}
+		agent := &Agent{stunGatherTimeout: 3 * time.Second, currentGeneration: &iceGeneration{}}
 		require.Equal(t, 3*time.Second, agent.mDNSQueryTimeout())
 	})
 }
