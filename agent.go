@@ -1027,6 +1027,19 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 	return nil
 }
 
+// AddLocalCandidate adds a local candidate and the packet connection used to
+// send and receive packets for it.
+func (a *Agent) AddLocalCandidate(cand Candidate, candidateConn net.PacketConn) error {
+	if cand == nil {
+		return nil
+	}
+	if candidateConn == nil {
+		return ErrCandidatePacketConnNil
+	}
+
+	return a.addCandidate(a.loop, cand, candidateConn, true)
+}
+
 func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 	if a.mDNSConn == nil {
 		return
@@ -1351,15 +1364,21 @@ func (a *Agent) shouldAcceptRemoteCandidate(cand Candidate) bool {
 	return true
 }
 
-func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn, errorOnDuplicate bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	return a.loop.Run(ctx, func(context.Context) {
+	duplicate := false
+	err := a.loop.Run(ctx, func(context.Context) {
 		set := a.localCandidates[cand.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(cand) {
+				if errorOnDuplicate {
+					duplicate = true
+					return
+				}
+
 				a.log.Debugf("Ignore duplicate candidate: %s", cand)
 				if err := cand.close(); err != nil {
 					a.log.Warnf("Failed to close duplicate candidate: %v", err)
@@ -1390,6 +1409,14 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 			a.candidateNotifier.EnqueueCandidate(cand)
 		}
 	})
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return ErrDuplicateCandidate
+	}
+
+	return nil
 }
 
 func (a *Agent) setCandidateExtensions(cand Candidate) {
