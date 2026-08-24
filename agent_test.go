@@ -1429,6 +1429,75 @@ func TestConnectivityLite(t *testing.T) {
 	<-bConnected
 }
 
+// TestLiteAgentDoesNotSendConnectivityChecks verifies that an ICE-lite agent
+// responds to checks from a full agent without originating checks itself.
+func TestLiteAgentDoesNotSendConnectivityChecks(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	fullAgentNATType := &vnet.NATType{
+		MappingBehavior:   vnet.EndpointIndependent,
+		FilteringBehavior: vnet.EndpointIndependent,
+	}
+	liteAgentNATType := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+	virtualNet, err := buildVNet(fullAgentNATType, liteAgentNATType)
+	require.NoError(t, err)
+	defer virtualNet.close()
+
+	fullAgent, err := NewAgent(&AgentConfig{
+		Urls: []*stun.URI{{
+			Scheme: SchemeTypeSTUN,
+			Host:   vnetSTUNServerIP,
+			Port:   vnetSTUNServerPort,
+			Proto:  stun.ProtoTypeUDP,
+		}},
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              virtualNet.net0,
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, fullAgent.Close()) }()
+
+	liteAgent, err := NewAgent(&AgentConfig{
+		Lite:             true,
+		CandidateTypes:   []CandidateType{CandidateTypeHost},
+		NetworkTypes:     supportedNetworkTypes(),
+		MulticastDNSMode: MulticastDNSModeDisabled,
+		Net:              virtualNet.net1,
+		NAT1To1IPs:       []string{vnetGlobalIPB},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, liteAgent.Close()) }()
+
+	fullUfrag, fullPwd, err := fullAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	liteUfrag, litePwd, err := liteAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	gatherAndExchangeCandidates(t, fullAgent, liteAgent)
+
+	_, err = liteAgent.StartAccept(fullUfrag, fullPwd)
+	require.NoError(t, err)
+	_, err = fullAgent.StartDial(liteUfrag, litePwd)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, fullAgent.AwaitConnect(ctx))
+	require.NoError(t, liteAgent.AwaitConnect(ctx))
+
+	var fullRequestsSent, liteRequestsReceived, liteRequestsSent uint64
+	for _, stats := range fullAgent.GetCandidatePairsStats() {
+		fullRequestsSent += stats.RequestsSent
+	}
+	for _, stats := range liteAgent.GetCandidatePairsStats() {
+		liteRequestsReceived += stats.RequestsReceived
+		liteRequestsSent += stats.RequestsSent
+	}
+
+	require.NotZero(t, fullRequestsSent)
+	require.NotZero(t, liteRequestsReceived)
+	require.Zero(t, liteRequestsSent)
+}
+
 func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 

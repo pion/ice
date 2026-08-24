@@ -518,7 +518,11 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 }
 
 type liteSelector struct {
-	pairCandidateSelector
+	pairCandidateSelector pairCandidateSelector
+}
+
+func (s *liteSelector) Start() {
+	s.pairCandidateSelector.Start()
 }
 
 // A lite selector should not contact candidates.
@@ -532,4 +536,22 @@ func (s *liteSelector) ContactCandidates() {
 	} else if v, ok := s.pairCandidateSelector.(*controlledSelector); ok {
 		v.agent.validateSelectedPair()
 	}
+}
+
+func (s *liteSelector) PingCandidate(local, remote Candidate) {
+	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
+		s.pairCandidateSelector.PingCandidate(local, remote)
+	}
+}
+
+func (s *liteSelector) HandleSuccessResponse(
+	m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort,
+) {
+	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
+		s.pairCandidateSelector.HandleSuccessResponse(m, local, remote, remoteAddr)
+	}
+}
+
+func (s *liteSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) {
+	s.pairCandidateSelector.HandleBindingRequest(message, local, remote)
 }
