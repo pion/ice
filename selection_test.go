@@ -22,6 +22,7 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v4/test"
+	"github.com/pion/transport/v4/vnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1669,6 +1670,30 @@ func TestControllingSideRenomination(t *testing.T) {
 // Lite mode tests
 // ---------------------------------------------------------------------------
 
+func TestLiteControllingSelectorContactCandidates(t *testing.T) {
+	agent := bareAgentForPing()
+	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+	agent.lite = true
+	agent.isControlling.Store(true)
+	agent.onConnected = make(chan struct{})
+	agent.setSelector()
+
+	selector, ok := agent.getSelector().(*liteSelector)
+	require.True(t, ok)
+
+	selector.ContactCandidates()
+	require.Nil(t, agent.getSelectedPair())
+
+	pair := agent.addPair(newPingNoIOCand(), newPingNoIOCand())
+	selector.ContactCandidates()
+	require.Equal(t, pair, agent.getSelectedPair())
+	require.Equal(t, CandidatePairStateSucceeded, pair.state)
+	require.Zero(t, pair.RequestsSent())
+
+	selector.ContactCandidates()
+	require.Equal(t, pair, agent.getSelectedPair())
+}
+
 // TestLiteControlledSelector_NoPingCandidate verifies that a lite controlled
 // agent NEVER sends triggered connectivity checks (PingCandidate), regardless
 // of the pair state. Per RFC 8445 §7, a lite implementation only acts as a
@@ -1976,4 +2001,79 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	require.True(t, sendUntilDone(t, liteConn, fullConn, 120))
 
 	closePipe(t, liteConn, fullConn)
+}
+
+func TestLiteMode_LiteControlling_Integration(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(30 * time.Second).Stop()
+
+	virtualNet, err := buildVNet(
+		&vnet.NATType{Mode: vnet.NATModeNAT1To1},
+		&vnet.NATType{Mode: vnet.NATModeNAT1To1},
+	)
+	require.NoError(t, err)
+	defer virtualNet.close()
+
+	newLiteAgent := func(network *vnet.Net, externalIP string) *Agent {
+		agent, newAgentErr := NewAgent(&AgentConfig{
+			Lite:             true,
+			CandidateTypes:   []CandidateType{CandidateTypeHost},
+			NetworkTypes:     []NetworkType{NetworkTypeUDP4},
+			MulticastDNSMode: MulticastDNSModeDisabled,
+			Net:              network,
+			NAT1To1IPs:       []string{externalIP},
+		})
+		require.NoError(t, newAgentErr)
+
+		return agent
+	}
+
+	controlledAgent := newLiteAgent(virtualNet.net0, vnetGlobalIPA)
+	defer func() { require.NoError(t, controlledAgent.Close()) }()
+	controllingAgent := newLiteAgent(virtualNet.net1, vnetGlobalIPB)
+	defer func() { require.NoError(t, controllingAgent.Close()) }()
+	gatherAndExchangeCandidates(t, controlledAgent, controllingAgent)
+
+	controlledUfrag, controlledPwd, err := controlledAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	controlledConn, err := controlledAgent.StartAccept(controllingUfrag, controllingPwd)
+	require.NoError(t, err)
+	controllingConn, err := controllingAgent.StartDial(controlledUfrag, controlledPwd)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, controllingAgent.AwaitConnect(ctx))
+	require.Equal(t, Controlling, controllingAgent.role())
+	require.Equal(t, Controlled, controlledAgent.role())
+
+	for _, agent := range []*Agent{controlledAgent, controllingAgent} {
+		for _, stats := range agent.GetCandidatePairsStats() {
+			require.Zero(t, stats.RequestsSent)
+			require.Zero(t, stats.RequestsReceived)
+		}
+	}
+
+	request := []byte("lite controlling to lite controlled")
+	_, err = controllingConn.Write(request)
+	require.NoError(t, err)
+	require.NoError(t, controlledConn.SetReadDeadline(time.Now().Add(time.Second)))
+	buf := make([]byte, len(request))
+	n, err := controlledConn.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, request, buf[:n])
+
+	controlledPairs := controlledConn.GetCandidatePairsInfo()
+	require.NotEmpty(t, controlledPairs)
+	response := []byte("lite controlled to lite controlling")
+	_, err = controlledConn.WriteToPair(controlledPairs[0].ID, response)
+	require.NoError(t, err)
+	require.NoError(t, controllingConn.SetReadDeadline(time.Now().Add(time.Second)))
+	buf = make([]byte, len(response))
+	n, err = controllingConn.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, response, buf[:n])
 }

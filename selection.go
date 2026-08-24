@@ -525,32 +525,38 @@ func (s *liteSelector) Start() {
 	s.pairCandidateSelector.Start()
 }
 
-// A lite selector should not contact candidates.
 func (s *liteSelector) ContactCandidates() {
-	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
-		//nolint:godox
-		// https://github.com/pion/ice/issues/96
-		// TODO: implement lite controlling agent. For now falling back to full agent.
-		// This only happens if both peers are lite. See RFC 8445 S6.1.1 and S6.2
-		s.pairCandidateSelector.ContactCandidates()
-	} else if v, ok := s.pairCandidateSelector.(*controlledSelector); ok {
-		v.agent.validateSelectedPair()
+	if controlled, ok := s.pairCandidateSelector.(*controlledSelector); ok {
+		if !controlled.agent.validateSelectedPair() {
+			if pair := controlled.agent.getBestAvailableCandidatePair(); pair != nil {
+				pair.state = CandidatePairStateSucceeded
+			}
+		}
+
+		return
 	}
+
+	controlling, ok := s.pairCandidateSelector.(*controllingSelector)
+	if !ok || controlling.agent.getSelectedPair() != nil {
+		if ok {
+			controlling.agent.validateSelectedPair()
+		}
+
+		return
+	}
+
+	pair := controlling.agent.getBestAvailableCandidatePair()
+	if pair == nil {
+		return
+	}
+
+	pair.state = CandidatePairStateSucceeded
+	controlling.agent.setSelectedPair(pair)
 }
 
-func (s *liteSelector) PingCandidate(local, remote Candidate) {
-	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
-		s.pairCandidateSelector.PingCandidate(local, remote)
-	}
-}
+func (s *liteSelector) PingCandidate(_, _ Candidate) {}
 
-func (s *liteSelector) HandleSuccessResponse(
-	m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort,
-) {
-	if _, ok := s.pairCandidateSelector.(*controllingSelector); ok {
-		s.pairCandidateSelector.HandleSuccessResponse(m, local, remote, remoteAddr)
-	}
-}
+func (s *liteSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, netip.AddrPort) {}
 
 func (s *liteSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) {
 	s.pairCandidateSelector.HandleBindingRequest(message, local, remote)
