@@ -1380,11 +1380,12 @@ func TestConnectivityLite(t *testing.T) {
 		Proto:  stun.ProtoTypeUDP,
 	}
 
-	natType := &vnet.NATType{
+	fullAgentNATType := &vnet.NATType{
 		MappingBehavior:   vnet.EndpointIndependent,
 		FilteringBehavior: vnet.EndpointIndependent,
 	}
-	vent, err := buildVNet(natType, natType)
+	liteAgentNATType := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+	vent, err := buildVNet(fullAgentNATType, liteAgentNATType)
 	require.NoError(t, err, "should succeed")
 	defer vent.close()
 
@@ -1412,6 +1413,7 @@ func TestConnectivityLite(t *testing.T) {
 		NetworkTypes:     supportedNetworkTypes(),
 		MulticastDNSMode: MulticastDNSModeDisabled,
 		Net:              vent.net1,
+		NAT1To1IPs:       []string{vnetGlobalIPB},
 	}
 
 	bAgent, err := NewAgent(cfg1)
@@ -1421,7 +1423,7 @@ func TestConnectivityLite(t *testing.T) {
 	}()
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	connectWithVNet(t, aAgent, bAgent)
+	connectWithVNet(t, bAgent, aAgent)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
