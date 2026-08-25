@@ -153,6 +153,12 @@ func (a *Agent) GetPiggybackDataAndAcks() ([]byte, []uint32) {
 		return nil, nil
 	}
 	if len(a.piggyback.packets) == 0 {
+		// An empty data attribute tells the peer we support this but have
+		// nothing to send, which is not the same as being done.
+		if a.piggyback.state == PiggybackingStateConfirmed {
+			return []byte{}, slices.Clone(a.piggyback.acks)
+		}
+
 		return nil, slices.Clone(a.piggyback.acks)
 	}
 
