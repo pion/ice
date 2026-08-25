@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
+	"github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/stdnet"
 	"github.com/pion/transport/v4/test"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,8 @@ func TestMultiUDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 30).Stop()
+	stdNet, err := stdnet.NewNet()
+	require.NoError(t, err)
 
 	conn1, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
@@ -57,15 +60,15 @@ func TestMultiUDPMux(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag1", udp)
+		testMultiUDPMuxConnections(t, udpMuxMulti, stdNet, nil, "ufrag1", udp)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
+		testMultiUDPMuxConnections(t, udpMuxMulti, stdNet, nil, "ufrag2", udp4)
 	}()
 
-	testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
+	testMultiUDPMuxConnections(t, udpMuxMulti, stdNet, nil, "ufrag3", udp6)
 
 	wg.Wait()
 
@@ -76,7 +79,14 @@ func TestMultiUDPMux(t *testing.T) {
 	require.Error(t, err)
 }
 
-func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, ufrag string, network string) {
+func testMultiUDPMuxConnections(
+	t *testing.T,
+	udpMuxMulti *MultiUDPMuxDefault,
+	networkNet transport.Net,
+	localIP net.IP,
+	ufrag string,
+	network string,
+) {
 	t.Helper()
 
 	addrs := udpMuxMulti.GetListenAddresses()
@@ -101,9 +111,16 @@ func testMultiUDPMuxConnections(t *testing.T, udpMuxMulti *MultiUDPMuxDefault, u
 
 	// Try talking with each PacketConn
 	for _, pktConn := range pktConns {
-		remoteConn, err := net.DialUDP(network, nil, pktConn.LocalAddr().(*net.UDPAddr)) // nolint
+		remoteAddr, ok := pktConn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		remoteConn, err := networkNet.DialUDP(
+			network,
+			&net.UDPAddr{IP: localIP},
+			remoteAddr,
+		)
 		require.NoError(t, err, "error dialing test UDP connection")
 		testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
+		require.NoError(t, remoteConn.Close())
 	}
 }
 
@@ -111,33 +128,18 @@ func TestUnspecifiedUDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 30).Stop()
+	muxNet, remoteNet, stop := newUDPMuxTestVNet(t, udpMuxTestIP1, udpMuxTestIP2)
+	defer stop()
 
-	muxPort := 7778
-	udpMuxMulti, err := NewMultiUDPMuxFromPort(muxPort, UDPMuxFromPortWithInterfaceFilter(problematicNetworkInterfaces))
+	udpMuxMulti, err := NewMultiUDPMuxFromPort(
+		7778,
+		UDPMuxFromPortWithNet(muxNet),
+		UDPMuxFromPortWithNetworks(NetworkTypeUDP4),
+	)
 	require.NoError(t, err)
+	require.Len(t, udpMuxMulti.muxes, 2)
 
-	require.GreaterOrEqual(t, len(udpMuxMulti.muxes), 1, "at least have 1 muxes")
-	defer func() {
-		_ = udpMuxMulti.Close()
-	}()
-
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag1", udp)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag2", udp4)
-	}()
-
-	testMultiUDPMuxConnections(t, udpMuxMulti, "ufrag3", udp6)
-
-	wg.Wait()
-
+	testMultiUDPMuxConnections(t, udpMuxMulti, remoteNet, net.ParseIP(udpMuxTestPeerIP), "ufrag", udp4)
 	require.NoError(t, udpMuxMulti.Close())
 }
 

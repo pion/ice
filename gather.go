@@ -895,7 +895,14 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 			}
 		}()
 
-		xorAddr, err := stunx.GetXORMappedAddr(conn, serverAddr, a.stunGatherTimeout)
+		transaction, err := stunx.NewXORMappedAddrTransaction()
+		if err != nil {
+			closeConnAndLog(conn, a.log, "failed to create STUN transaction for %s %s: %v", network, url, err)
+
+			return
+		}
+
+		xorAddr, err := transaction.RunPacketConn(ctx, conn, serverAddr, a.stunGatherTimeout)
 		if err != nil {
 			closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v", network, url, err)
 
