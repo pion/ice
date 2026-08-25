@@ -24,72 +24,64 @@ import (
 	"github.com/pion/stun/v3"
 	"github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
+	"github.com/pion/transport/v4/vnet"
 	"github.com/stretchr/testify/require"
 )
 
-func TestUDPMux(t *testing.T) { //nolint:cyclop
+const (
+	udpMuxTestIP1    = "192.0.2.1"
+	udpMuxTestIP2    = "192.0.2.2"
+	udpMuxTestPeerIP = "192.0.2.3"
+)
+
+type udpMuxTestCase struct {
+	name      string
+	network   string
+	listenIP  net.IP
+	connectIP net.IP
+}
+
+func newUDPMuxTestVNet(t *testing.T, muxIPs ...string) (*vnet.Net, *vnet.Net, func()) {
+	t.Helper()
+	router, err := vnet.NewRouter(&vnet.RouterConfig{
+		CIDR:          "192.0.2.0/24",
+		LoggerFactory: logging.NewDefaultLoggerFactory(),
+	})
+	require.NoError(t, err)
+	muxNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: muxIPs})
+	require.NoError(t, err)
+	peerNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{udpMuxTestPeerIP}})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(muxNet))
+	require.NoError(t, router.AddNet(peerNet))
+	require.NoError(t, router.Start())
+
+	return muxNet, peerNet, func() { require.NoError(t, router.Stop()) }
+}
+
+func TestUDPMux(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 30).Stop()
-
-	conn4, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	muxNet, err := vnet.NewNet(&vnet.NetConfig{})
 	require.NoError(t, err)
 
-	conn6, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6loopback})
-	if err != nil {
-		t.Log("IPv6 is not supported on this machine")
-	}
-
-	connUnspecified, err := net.ListenUDP(udp, nil)
-	require.NoError(t, err)
-
-	conn4Unspecified, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4zero})
-	require.NoError(t, err)
-
-	conn6Unspecified, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv6unspecified})
-	if err != nil {
-		t.Log("IPv6 is not supported on this machine")
-	}
-
-	type testCase struct {
-		name    string
-		conn    net.PacketConn
-		network string
-	}
-
-	testCases := []testCase{
-		{name: "IPv4loopback", conn: conn4, network: udp4},
-		{name: "IPv6loopback", conn: conn6, network: udp6},
-		{name: "Unspecified", conn: connUnspecified, network: udp},
-		{name: "IPv4Unspecified", conn: conn4Unspecified, network: udp4},
-		{name: "IPv6Unspecified", conn: conn6Unspecified, network: udp6},
-	}
-
-	if ipv6Available(t) {
-		addr6 := getLocalIPAddress(t, NetworkTypeUDP6)
-
-		conn6Unspecified, listenEerr := net.ListenUDP(udp, &net.UDPAddr{
-			IP:   addr6.AsSlice(),
-			Zone: addr6.Zone(),
-		})
-		if listenEerr != nil {
-			t.Log("IPv6 is not supported on this machine")
-		}
-
-		testCases = append(testCases,
-			testCase{name: "IPv6Specified", conn: conn6Unspecified, network: udp6},
-		)
+	testCases := []udpMuxTestCase{
+		{name: "IPv4Loopback", network: udp4, listenIP: net.IPv4(127, 0, 0, 1), connectIP: net.IPv4(127, 0, 0, 1)},
+		{name: "IPv6Loopback", network: udp6, listenIP: net.IPv6loopback, connectIP: net.IPv6loopback},
+		{name: "Unspecified", network: udp, connectIP: net.IPv4(127, 0, 0, 1)},
+		{name: "UnspecifiedIPv6", network: udp, listenIP: net.IPv6unspecified, connectIP: net.IPv6loopback},
+		{name: "IPv4Unspecified", network: udp4, listenIP: net.IPv4zero, connectIP: net.IPv4(127, 0, 0, 1)},
+		{name: "IPv6Unspecified", network: udp6, listenIP: net.IPv6unspecified, connectIP: net.IPv6loopback},
 	}
 
 	for _, subTest := range testCases {
-		network, conn := subTest.network, subTest.conn
-		if udpConn, ok := conn.(*net.UDPConn); !ok || udpConn == nil {
-			continue
-		}
 		t.Run(subTest.name, func(t *testing.T) {
+			conn, err := muxNet.ListenUDP(subTest.network, &net.UDPAddr{IP: subTest.listenIP})
+			require.NoError(t, err)
 			udpMux := NewUDPMuxDefault(UDPMuxParams{
-				Logger:  nil,
 				UDPConn: conn,
+				Net:     muxNet,
 			})
 
 			defer func() {
@@ -104,21 +96,9 @@ func TestUDPMux(t *testing.T) { //nolint:cyclop
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				testMuxConnection(t, udpMux, "ufrag1", udp)
+				testMuxConnection(t, udpMux, muxNet, subTest, "ufrag1")
 			}()
-
-			const ptrSize = 32 << (^uintptr(0) >> 63)
-			if network == udp {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					testMuxConnection(t, udpMux, "ufrag2", udp4)
-				}()
-
-				testMuxConnection(t, udpMux, "ufrag3", udp6)
-			} else if ptrSize != 32 || network != udp6 {
-				testMuxConnection(t, udpMux, "ufrag2", network)
-			}
+			testMuxConnection(t, udpMux, muxNet, subTest, "ufrag2")
 
 			wg.Wait()
 
@@ -131,7 +111,7 @@ func TestUDPMux(t *testing.T) { //nolint:cyclop
 	}
 }
 
-func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, network string) {
+func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport.Net, testCase udpMuxTestCase, ufrag string) { //nolint:lll
 	t.Helper()
 
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
@@ -142,16 +122,19 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, ufrag string, networ
 
 	addr, ok := pktConn.LocalAddr().(*net.UDPAddr)
 	require.True(t, ok, "pktConn.LocalAddr() is not a net.UDPAddr")
-	if addr.IP.IsUnspecified() {
-		addr = &net.UDPAddr{Port: addr.Port}
-	}
-	remoteConn, err := net.DialUDP(network, nil, addr)
+	addr = &net.UDPAddr{IP: testCase.connectIP, Port: addr.Port}
+	remoteConn, err := networkNet.DialUDP(
+		testCase.network,
+		&net.UDPAddr{IP: testCase.connectIP},
+		addr,
+	)
 	require.NoError(t, err, "error dialing test UDP connection")
+	defer remoteConn.Close() //nolint:errcheck
 
 	testMuxConnectionPair(t, pktConn, remoteConn, ufrag)
 }
 
-func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn *net.UDPConn, ufrag string) {
+func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn transport.UDPConn, ufrag string) {
 	t.Helper()
 
 	// Initial messages are dropped
