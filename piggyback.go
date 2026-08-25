@@ -140,8 +140,8 @@ func (a *Agent) Piggyback(packet []byte, end bool) bool {
 		data := bytes.Clone(packet)
 		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{data, crc})
 	}
-	// If we are connected we could send DTLS plain.
-	return true
+	// If we are connected also send DTLS plain.
+	return !a.piggyback.connected
 }
 
 // GetPiggybackDataAndAcks returns a packet from the stored list in a round-robin fashion and a list of acks.
