@@ -113,6 +113,7 @@ type Agent struct {
 
 	remoteUfrag      string
 	remotePwd        string
+	remoteLite       bool
 	remoteCandidates map[NetworkType][]Candidate
 
 	checklist  []*CandidatePair
@@ -1921,6 +1922,15 @@ func (a *Agent) SetRemoteCredentials(remoteUfrag, remotePwd string) error {
 	})
 }
 
+// SetRemoteICELite sets whether signaling indicated that the remote agent uses ICE-lite.
+// Call this before starting connectivity checks. Remote agents are assumed to use full ICE by default.
+func (a *Agent) SetRemoteICELite(lite bool) error {
+	return a.loop.Run(a.loop, func(_ context.Context) {
+		a.remoteLite = lite
+		a.requestConnectivityCheck()
+	})
+}
+
 // UpdateOptions applies the given options to the agent at runtime.
 // Only a subset of options can be updated after agent creation:
 //   - WithUrls: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
@@ -2054,7 +2064,7 @@ func (a *Agent) setSelector() {
 		s = &controlledSelector{agent: a, log: a.log}
 	}
 	if a.lite {
-		s = &liteSelector{pairCandidateSelector: s}
+		s = &liteSelector{pairCandidateSelector: s, agent: a}
 	}
 
 	s.Start()

@@ -518,46 +518,24 @@ func (s *controlledSelector) HandleBindingRequest(message *stun.Message, local, 
 }
 
 type liteSelector struct {
-	pairCandidateSelector pairCandidateSelector
-}
-
-func (s *liteSelector) Start() {
-	s.pairCandidateSelector.Start()
+	pairCandidateSelector
+	agent *Agent
 }
 
 func (s *liteSelector) ContactCandidates() {
-	if controlled, ok := s.pairCandidateSelector.(*controlledSelector); ok {
-		if !controlled.agent.validateSelectedPair() {
-			if pair := controlled.agent.getBestAvailableCandidatePair(); pair != nil {
-				pair.state = CandidatePairStateSucceeded
-			}
-		}
-
+	if s.agent.validateSelectedPair() || !s.agent.remoteLite {
 		return
 	}
 
-	controlling, ok := s.pairCandidateSelector.(*controllingSelector)
-	if !ok || controlling.agent.getSelectedPair() != nil {
-		if ok {
-			controlling.agent.validateSelectedPair()
-		}
-
-		return
-	}
-
-	pair := controlling.agent.getBestAvailableCandidatePair()
+	pair := s.agent.getBestAvailableCandidatePair()
 	if pair == nil {
 		return
 	}
 
 	pair.state = CandidatePairStateSucceeded
-	controlling.agent.setSelectedPair(pair)
+	s.agent.setSelectedPair(pair)
 }
 
 func (s *liteSelector) PingCandidate(_, _ Candidate) {}
 
 func (s *liteSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, netip.AddrPort) {}
-
-func (s *liteSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) {
-	s.pairCandidateSelector.HandleBindingRequest(message, local, remote)
-}

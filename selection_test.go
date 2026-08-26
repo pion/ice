@@ -1674,6 +1674,7 @@ func TestLiteControllingSelectorContactCandidates(t *testing.T) {
 	agent := bareAgentForPing()
 	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 	agent.lite = true
+	agent.remoteLite = true
 	agent.isControlling.Store(true)
 	agent.onConnected = make(chan struct{})
 	agent.setSelector()
@@ -1765,6 +1766,17 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 		return liteAgent, local, remote, pair
 	}
+
+	t.Run("ContactCandidatesDoesNotValidatePair", func(t *testing.T) {
+		agent, local, remote, pair := setupAgent(t)
+		selector := agent.getSelector()
+		selector.ContactCandidates()
+		selector.PingCandidate(local, remote)
+
+		require.Equal(t, CandidatePairStateWaiting, pair.state)
+		require.Zero(t, pair.RequestsSent())
+		require.Nil(t, agent.getSelectedPair())
+	})
 
 	t.Run("NoTriggeredCheckWhileChecking", func(t *testing.T) {
 		// Pair is in Waiting state (ICE checking phase). A full controlled agent
@@ -2032,6 +2044,8 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	defer func() { require.NoError(t, controlledAgent.Close()) }()
 	controllingAgent := newLiteAgent(virtualNet.net1, vnetGlobalIPB)
 	defer func() { require.NoError(t, controllingAgent.Close()) }()
+	require.NoError(t, controlledAgent.SetRemoteICELite(true))
+	require.NoError(t, controllingAgent.SetRemoteICELite(true))
 	gatherAndExchangeCandidates(t, controlledAgent, controllingAgent)
 
 	controlledUfrag, controlledPwd, err := controlledAgent.GetLocalUserCredentials()
@@ -2046,7 +2060,8 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	require.NoError(t, controllingAgent.AwaitConnect(ctx))
+	require.NoError(t, controllingAgent.AwaitConnect(ctx), "controlling ICE-lite agent must connect")
+	require.NoError(t, controlledAgent.AwaitConnect(ctx), "controlled ICE-lite agent must connect")
 	require.Equal(t, Controlling, controllingAgent.role())
 	require.Equal(t, Controlled, controlledAgent.role())
 
@@ -2057,23 +2072,6 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 		}
 	}
 
-	request := []byte("lite controlling to lite controlled")
-	_, err = controllingConn.Write(request)
-	require.NoError(t, err)
-	require.NoError(t, controlledConn.SetReadDeadline(time.Now().Add(time.Second)))
-	buf := make([]byte, len(request))
-	n, err := controlledConn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, request, buf[:n])
-
-	controlledPairs := controlledConn.GetCandidatePairsInfo()
-	require.NotEmpty(t, controlledPairs)
-	response := []byte("lite controlled to lite controlling")
-	_, err = controlledConn.WriteToPair(controlledPairs[0].ID, response)
-	require.NoError(t, err)
-	require.NoError(t, controllingConn.SetReadDeadline(time.Now().Add(time.Second)))
-	buf = make([]byte, len(response))
-	n, err = controllingConn.Read(buf)
-	require.NoError(t, err)
-	require.Equal(t, response, buf[:n])
+	require.True(t, sendUntilDone(t, controllingConn, controlledConn, 100))
+	require.True(t, sendUntilDone(t, controlledConn, controllingConn, 120))
 }
