@@ -61,8 +61,7 @@ func (c *blockingPacketConn) SetDeadline(deadline time.Time) error {
 func newSTUNTestNetwork(
 	t *testing.T,
 	dropRequests int32,
-	reflexiveIP net.IP,
-	includeMappedAddr bool,
+	mappedAddr stun.Setter,
 	sendInvalidPackets bool,
 ) *stunTestNetwork {
 	t.Helper()
@@ -130,8 +129,8 @@ func newSTUNTestNetwork(
 				stun.NewTransactionIDSetter(req.TransactionID),
 				stun.BindingSuccess,
 			}
-			if includeMappedAddr {
-				setters = append(setters, &stun.XORMappedAddress{IP: reflexiveIP, Port: 51234})
+			if mappedAddr != nil {
+				setters = append(setters, mappedAddr)
 			}
 			res := stun.MustBuild(setters...)
 			if sendInvalidPackets {
@@ -149,19 +148,26 @@ func newSTUNTestNetwork(
 func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 	reflexiveIP := net.IPv4(203, 0, 113, 7)
 	const reflexivePort = 51234
+	xorMappedAddr := &stun.XORMappedAddress{IP: reflexiveIP, Port: reflexivePort}
 
 	for _, testCase := range []struct {
 		name           string
 		dropped        int32
 		requests       int32
+		mappedAddr     stun.Setter
 		invalidPackets bool
 	}{
-		{name: "NoLoss", requests: 1},
-		{name: "RecoversFromConsecutiveLosses", dropped: 2, requests: 3},
-		{name: "DiscardsInvalidPackets", requests: 1, invalidPackets: true},
+		{name: "NoLoss", requests: 1, mappedAddr: xorMappedAddr},
+		{name: "RecoversFromConsecutiveLosses", dropped: 2, requests: 3, mappedAddr: xorMappedAddr},
+		{
+			name:       "LegacyMappedAddress",
+			requests:   1,
+			mappedAddr: &stun.MappedAddress{IP: reflexiveIP, Port: reflexivePort},
+		},
+		{name: "DiscardsInvalidPackets", requests: 1, mappedAddr: xorMappedAddr, invalidPackets: true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			network := newSTUNTestNetwork(t, testCase.dropped, reflexiveIP, true, testCase.invalidPackets)
+			network := newSTUNTestNetwork(t, testCase.dropped, testCase.mappedAddr, testCase.invalidPackets)
 			transaction, err := NewXORMappedAddrTransaction()
 			require.NoError(t, err)
 
@@ -179,7 +185,7 @@ func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 	}
 
 	t.Run("TimeoutBoundsTransaction", func(t *testing.T) {
-		network := newSTUNTestNetwork(t, -1, reflexiveIP, true, false)
+		network := newSTUNTestNetwork(t, -1, xorMappedAddr, false)
 		transaction, err := NewXORMappedAddrTransaction()
 		require.NoError(t, err)
 
@@ -195,7 +201,7 @@ func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 	})
 
 	t.Run("MissingMappedAddressIsTerminal", func(t *testing.T) {
-		network := newSTUNTestNetwork(t, 0, reflexiveIP, false, false)
+		network := newSTUNTestNetwork(t, 0, nil, false)
 		transaction, err := NewXORMappedAddrTransaction()
 		require.NoError(t, err)
 
