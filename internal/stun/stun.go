@@ -244,9 +244,15 @@ func (t *XORMappedAddrTransaction) HandleResponse(msg *stun.Message) bool {
 	}
 
 	var addr stun.XORMappedAddress
-	if err := addr.GetFrom(msg); err != nil {
-		err = fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err) //nolint:errorlint
-		t.complete(nil, err)
+	err := addr.GetFrom(msg)
+	if errors.Is(err, stun.ErrAttributeNotFound) {
+		var mappedAddr stun.MappedAddress
+		if err = mappedAddr.GetFrom(msg); err == nil {
+			addr.IP, addr.Port = mappedAddr.IP, mappedAddr.Port
+		}
+	}
+	if err != nil {
+		t.complete(nil, fmt.Errorf("%w: %v", errGetXorMappedAddrResponse, err)) //nolint:errorlint
 
 		return true
 	}
