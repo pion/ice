@@ -5,6 +5,7 @@
 package stun
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -236,6 +237,7 @@ func (t *XORMappedAddrTransaction) HandleResponse(msg *stun.Message) bool {
 		var code stun.ErrorCodeAttribute
 		err := code.GetFrom(msg)
 		if err == nil {
+			code.Reason = bytes.Clone(code.Reason)
 			err = stun.TurnError{StunMessageType: msg.Type, ErrorCodeAttr: code}
 		}
 		t.complete(nil, err)

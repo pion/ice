@@ -4,6 +4,7 @@
 package stun
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"os"
@@ -286,17 +287,21 @@ func TestXORMappedAddrTransactionReportsErrorResponse(t *testing.T) {
 		stun.ErrorCodeAttribute{Code: stun.CodeBadRequest, Reason: []byte("Bad Request")},
 	)
 	require.NoError(t, err)
+	raw := bytes.Clone(response.Raw)
+	response = &stun.Message{Raw: raw}
+	require.NoError(t, response.Decode())
 
-	handled := false
+	require.True(t, transaction.HandleResponse(response))
+
+	clear(raw)
+
 	_, err = transaction.Get(context.Background(), time.Second, func(context.Context, []byte) error {
-		handled = transaction.HandleResponse(response)
-
 		return nil
 	})
 	var stunErr stun.TurnError
 	require.ErrorAs(t, err, &stunErr)
 	require.Equal(t, stun.CodeBadRequest, stunErr.ErrorCodeAttr.Code)
-	require.True(t, handled)
+	require.Equal(t, []byte("Bad Request"), stunErr.ErrorCodeAttr.Reason)
 }
 
 func TestXORMappedAddrTransactionPrefersCanceledContextToSendError(t *testing.T) {
