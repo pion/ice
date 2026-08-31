@@ -209,7 +209,7 @@ func TestControllingSelector_IsNominatable_LogsInvalidType(t *testing.T) {
 	loggerFactory := &testICELoggerFactory{logger: testLogger}
 
 	sel := &controllingSelector{
-		agent: &Agent{},
+		agent: &Agent{currentGeneration: &iceGeneration{}},
 		log:   loggerFactory.NewLogger("test"),
 	}
 	sel.Start()
@@ -234,10 +234,10 @@ func TestControllingSelector_NominatePair_BuildError(t *testing.T) {
 	long := strings.Repeat("x", 300) // > 255 each side
 	sel := &controllingSelector{
 		agent: &Agent{
-			remoteUfrag: long,
-			localUfrag:  long,
-			remotePwd:   "pwd", // any non-empty value is fine
-			tieBreaker:  0,
+			remoteUfrag:       long,
+			currentGeneration: &iceGeneration{localUfrag: long},
+			remotePwd:         "pwd", // any non-empty value is fine
+			tieBreaker:        0,
 		},
 		log: loggerFactory.NewLogger("test"),
 	}
@@ -264,6 +264,7 @@ func (d *pingNoIOCand) writeTo(b []byte, _ Candidate) (int, error) { return len(
 
 func bareAgentForPing() *Agent {
 	return &Agent{
+		currentGeneration:      &iceGeneration{},
 		hostAcceptanceMinWait:  time.Hour,
 		srflxAcceptanceMinWait: time.Hour,
 		prflxAcceptanceMinWait: time.Hour,
@@ -297,7 +298,7 @@ func TestControllingSelector_PingCandidate_BuildError(t *testing.T) {
 	a := bareAgentForPing()
 	// make Username really big so stun.Build returns an error.
 	a.remoteUfrag = bigStr()
-	a.localUfrag = bigStr()
+	a.currentGeneration.localUfrag = bigStr()
 	a.remotePwd = selectionTestPassword
 	a.tieBreaker = 1
 
@@ -316,7 +317,7 @@ func TestControllingSelector_PingCandidate_BuildError(t *testing.T) {
 func TestControlledSelector_PingCandidate_BuildError(t *testing.T) {
 	a := bareAgentForPing()
 	a.remoteUfrag = bigStr()
-	a.localUfrag = bigStr()
+	a.currentGeneration.localUfrag = bigStr()
 	a.remotePwd = selectionTestPassword
 	a.tieBreaker = 1
 
@@ -362,7 +363,7 @@ func (d *dummyNoIOCand) writeTo(p []byte, _ Candidate) (int, error) { return len
 func TestControlledSelector_HandleSuccessResponse_UnknownTxID(t *testing.T) {
 	logger := &warnTestLogger{}
 
-	ag := &Agent{log: logger}
+	ag := &Agent{log: logger, currentGeneration: &iceGeneration{}}
 
 	sel := &controlledSelector{agent: ag, log: logger}
 	sel.Start()
@@ -452,7 +453,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true)
@@ -477,7 +478,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		t.Helper()
 		req, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
+			stun.NewUsername(agent.remoteUfrag+":"+agent.currentGeneration.localUfrag),
 			AttrControlling(agent.tieBreaker),
 			PriorityAttr(local.Priority()),
 			stun.NewShortTermIntegrity(agent.remotePwd),
@@ -549,9 +550,9 @@ func TestControlledSelector_NoTriggeredCheckAfterConnected(t *testing.T) {
 	agent := bareAgentForPing()
 	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 	agent.remoteUfrag = selectionTestRemoteUfrag
-	agent.localUfrag = selectionTestLocalUfrag
+	agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 	agent.remotePwd = selectionTestPassword
-	agent.localPwd = selectionTestPassword
+	agent.currentGeneration.localPwd = selectionTestPassword
 	agent.tieBreaker = 1
 	agent.isControlling.Store(false)
 	agent.onConnected = make(chan struct{})
@@ -578,8 +579,8 @@ func TestControlledSelector_NoTriggeredCheckAfterConnected(t *testing.T) {
 	// Build a STUN Binding Request (no USE-CANDIDATE).
 	msg, err := stun.Build(stun.BindingRequest,
 		stun.TransactionID,
-		stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-		stun.NewShortTermIntegrity(agent.localPwd),
+		stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+		stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 		stun.Fingerprint,
 	)
 	require.NoError(t, err)
@@ -600,9 +601,9 @@ func TestControlledSelector_TriggeredCheckDuringChecking(t *testing.T) {
 	agent := bareAgentForPing()
 	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 	agent.remoteUfrag = selectionTestRemoteUfrag
-	agent.localUfrag = selectionTestLocalUfrag
+	agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 	agent.remotePwd = selectionTestPassword
-	agent.localPwd = selectionTestPassword
+	agent.currentGeneration.localPwd = selectionTestPassword
 	agent.tieBreaker = 1
 	agent.isControlling.Store(false)
 	agent.onConnected = make(chan struct{})
@@ -626,8 +627,8 @@ func TestControlledSelector_TriggeredCheckDuringChecking(t *testing.T) {
 
 	msg, err := stun.Build(stun.BindingRequest,
 		stun.TransactionID,
-		stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-		stun.NewShortTermIntegrity(agent.localPwd),
+		stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
+		stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 		stun.Fingerprint,
 	)
 	require.NoError(t, err)
@@ -1081,7 +1082,7 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 		agentWithoutAutoRenom := bareAgentForPing()
 		agentWithoutAutoRenom.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agentWithoutAutoRenom.remoteUfrag = selectionTestRemoteUfrag
-		agentWithoutAutoRenom.localUfrag = selectionTestLocalUfrag
+		agentWithoutAutoRenom.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agentWithoutAutoRenom.remotePwd = selectionTestPassword
 		agentWithoutAutoRenom.tieBreaker = 1
 		agentWithoutAutoRenom.isControlling.Store(true)
@@ -1110,7 +1111,7 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 		agentWithAutoRenom.enableRenomination = true
 		agentWithAutoRenom.renominationInterval = 100 * time.Millisecond
 		agentWithAutoRenom.remoteUfrag = selectionTestRemoteUfrag
-		agentWithAutoRenom.localUfrag = selectionTestLocalUfrag
+		agentWithAutoRenom.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agentWithAutoRenom.remotePwd = selectionTestPassword
 		agentWithAutoRenom.tieBreaker = 1
 		agentWithAutoRenom.isControlling.Store(true)
@@ -1143,7 +1144,7 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 		agent.enableRenomination = true
 		agent.renominationInterval = 100 * time.Millisecond
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true)
@@ -1177,7 +1178,7 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 		agent.enableRenomination = true
 		agent.renominationInterval = 100 * time.Millisecond
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true)
@@ -1203,7 +1204,7 @@ func TestKeepAliveCandidatesForRenomination(t *testing.T) {
 		agent.enableRenomination = true
 		agent.renominationInterval = 100 * time.Millisecond
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true)
@@ -1234,7 +1235,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(false) // Controlled agent
@@ -1267,12 +1268,12 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			NominationSetter{
 				Value:    100,
 				AttrType: agent.nominationAttribute,
 			},
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1288,7 +1289,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(false) // Controlled agent
@@ -1328,13 +1329,13 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		nominationValue := uint32(100)
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			NominationSetter{
 				Value:    nominationValue,
 				AttrType: agent.nominationAttribute,
 			},
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1355,7 +1356,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(false)
@@ -1393,9 +1394,9 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Build a standard nomination request WITHOUT nomination value for pair2
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1415,7 +1416,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(false)
@@ -1454,10 +1455,10 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Nominate pair1 with value 100
 		msg1, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			NominationSetter{Value: 100, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1467,10 +1468,10 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Try to nominate pair2 with a LOWER value (50) - should be rejected
 		msg2, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			NominationSetter{Value: 50, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1481,10 +1482,10 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Nominate pair3 with a HIGHER value (200) - should be accepted
 		msg3, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
 			NominationSetter{Value: 200, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1502,7 +1503,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true) // Controlling agent
@@ -1544,7 +1545,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		nominationValue := uint32(100)
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
+			stun.NewUsername(agent.remoteUfrag+":"+agent.currentGeneration.localUfrag),
 			UseCandidate(),
 			AttrControlling(agent.tieBreaker),
 			PriorityAttr(local2.Priority()),
@@ -1591,7 +1592,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		agent := bareAgentForPing()
 		agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		agent.remoteUfrag = selectionTestRemoteUfrag
-		agent.localUfrag = selectionTestLocalUfrag
+		agent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		agent.remotePwd = selectionTestPassword
 		agent.tieBreaker = 1
 		agent.isControlling.Store(true)
@@ -1628,7 +1629,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		// Build a standard nomination request WITHOUT nomination value for pair2
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
+			stun.NewUsername(agent.remoteUfrag+":"+agent.currentGeneration.localUfrag),
 			UseCandidate(),
 			AttrControlling(agent.tieBreaker),
 			PriorityAttr(local2.Priority()),
@@ -1704,8 +1705,8 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		t.Helper()
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
-			stun.NewShortTermIntegrity(a.localPwd),
+			stun.NewUsername(a.currentGeneration.localUfrag+":"+a.remoteUfrag),
+			stun.NewShortTermIntegrity(a.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)
@@ -1719,7 +1720,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		setters := []stun.Setter{
 			stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag + ":" + agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag + ":" + agent.remoteUfrag),
 		}
 		if useCandidate {
 			setters = append(setters, UseCandidate())
@@ -1730,7 +1731,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 				return nil
 			}),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 
@@ -1745,9 +1746,9 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		liteAgent := bareAgentForPing()
 		liteAgent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
 		liteAgent.remoteUfrag = selectionTestRemoteUfrag
-		liteAgent.localUfrag = selectionTestLocalUfrag
+		liteAgent.currentGeneration.localUfrag = selectionTestLocalUfrag
 		liteAgent.remotePwd = selectionTestPassword
-		liteAgent.localPwd = selectionTestPassword
+		liteAgent.currentGeneration.localPwd = selectionTestPassword
 		liteAgent.tieBreaker = 1
 		liteAgent.lite = true
 		liteAgent.isControlling.Store(false)
@@ -1861,9 +1862,9 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 		msg, err := stun.Build(stun.BindingRequest,
 			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
+			stun.NewUsername(agent.currentGeneration.localUfrag+":"+agent.remoteUfrag),
 			UseCandidate(),
-			stun.NewShortTermIntegrity(agent.localPwd),
+			stun.NewShortTermIntegrity(agent.currentGeneration.localPwd),
 			stun.Fingerprint,
 		)
 		require.NoError(t, err)

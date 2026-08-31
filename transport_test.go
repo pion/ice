@@ -154,8 +154,9 @@ func TestConnDeadlines(t *testing.T) {
 	candidate.conn = pc
 
 	agent := &Agent{
-		buf:  buf,
-		loop: loop,
+		currentGeneration: &iceGeneration{},
+		buf:               buf,
+		loop:              loop,
 	}
 	agent.selectedPair.Store(&CandidatePair{Local: candidate})
 

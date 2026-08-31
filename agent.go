@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +40,32 @@ type bindingRequest struct {
 	nominationValue *uint32 // Tracks nomination value for renomination requests
 }
 
+// iceGeneration holds the credentials and gathering state of one ICE
+// generation. Restart swaps in a new generation on the event loop and never
+// mutates the old generation. A gather goroutine captures the generation it
+// started under and reads the generation's credentials off-loop — safe because
+// the credentials are set before any gather goroutine can hold the generation
+// and are never written again. gatheringState is the one mutable field, read
+// and written only on the event loop.
+type iceGeneration struct {
+	id         uint64
+	localUfrag string
+	localPwd   string
+
+	gatheringState GatheringState
+}
+
+// newICEGeneration sets gatheringState to New in one place; the zero value
+// would be GatheringStateUnknown, not New.
+func newICEGeneration(id uint64, localUfrag, localPwd string) *iceGeneration {
+	return &iceGeneration{
+		id:             id,
+		localUfrag:     localUfrag,
+		localPwd:       localPwd,
+		gatheringState: GatheringStateNew,
+	}
+}
+
 // Agent represents the ICE agent.
 type Agent struct {
 	loop *taskloop.Loop
@@ -64,7 +91,9 @@ type Agent struct {
 	lite       bool
 
 	connectionState ConnectionState
-	gatheringState  GatheringState
+
+	// currentGeneration is only read or written on the agent event loop.
+	currentGeneration *iceGeneration
 
 	mDNSMode MulticastDNSMode
 	mDNSName string
@@ -107,8 +136,6 @@ type Agent struct {
 	// How often should we run our internal taskLoop to check for state changes when connecting
 	checkInterval time.Duration
 
-	localUfrag      string
-	localPwd        string
 	localCandidates map[NetworkType][]Candidate
 
 	remoteUfrag      string
@@ -142,6 +169,8 @@ type Agent struct {
 	// for STUN Binding Requests
 	userBindingRequestHandler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool
 
+	// Kept on the Agent, not the generation, so Close still joins an in-flight
+	// gather cycle that a Restart superseded before a new gather began.
 	gatherCandidateCancel func()
 	gatherCandidateDone   chan struct{}
 
@@ -208,8 +237,8 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 		return nil, err
 	}
 
-	agent.localUfrag = config.LocalUfrag
-	agent.localPwd = config.LocalPwd
+	agent.currentGeneration.localUfrag = config.LocalUfrag
+	agent.currentGeneration.localPwd = config.LocalPwd
 	if config.NAT1To1IPs != nil {
 		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
 			return nil, err
@@ -357,7 +386,8 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 	agent := &Agent{
 		tieBreaker:                      globalMathRandomGenerator.Uint64(),
 		lite:                            config.Lite,
-		gatheringState:                  GatheringStateNew,
+		currentGeneration:               newICEGeneration(0, "", ""),
+		gatherCandidateCancel:           func() {},
 		connectionState:                 ConnectionStateNew,
 		startedCandidates:               make(map[*candidateBase]struct{}),
 		localCandidates:                 make(map[NetworkType][]Candidate),
@@ -381,7 +411,6 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		udpMuxSrflx:                     config.UDPMuxSrflx,
 		mDNSMode:                        mDNSMode,
 		mDNSName:                        mDNSName,
-		gatherCandidateCancel:           func() {},
 		forceCandidateContact:           make(chan bool, 1),
 		interfaceFilter:                 config.InterfaceFilter,
 		ipFilter:                        config.IPFilter,
@@ -573,7 +602,7 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	})
 
 	// Restart is also used to initialize the agent for the first time
-	if err := agent.Restart(agent.localUfrag, agent.localPwd); err != nil {
+	if err := agent.Restart(agent.currentGeneration.localUfrag, agent.currentGeneration.localPwd); err != nil {
 		agent.closeMulticastConn()
 		_ = agent.Close()
 
@@ -1352,7 +1381,12 @@ func (a *Agent) shouldAcceptRemoteCandidate(cand Candidate) bool {
 	return true
 }
 
-func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+func (a *Agent) addCandidate(
+	ctx context.Context,
+	cand Candidate,
+	candidateConn net.PacketConn,
+	gen *iceGeneration,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1373,7 +1407,7 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 			}
 		}
 
-		a.setCandidateExtensions(cand)
+		a.setCandidateExtensions(cand, gen)
 		cand.start(a, candidateConn, a.startedCh)
 
 		set = append(set, cand)
@@ -1393,13 +1427,20 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 	})
 }
 
-func (a *Agent) setCandidateExtensions(cand Candidate) {
+func (a *Agent) setCandidateExtensions(cand Candidate, gen *iceGeneration) {
 	err := cand.AddExtension(CandidateExtension{
 		Key:   "ufrag",
-		Value: a.localUfrag,
+		Value: gen.localUfrag,
 	})
 	if err != nil {
 		a.log.Errorf("Failed to add ufrag extension to candidate: %v", err)
+	}
+
+	if err := cand.AddExtension(CandidateExtension{
+		Key:   "generation",
+		Value: strconv.FormatUint(gen.id, 10),
+	}); err != nil {
+		a.log.Errorf("Failed to add generation extension to candidate: %v", err)
 	}
 }
 
@@ -1448,7 +1489,7 @@ func (a *Agent) GetLocalCandidates() ([]Candidate, error) {
 func (a *Agent) GetGatheringState() (GatheringState, error) {
 	var state GatheringState
 	err := a.loop.Run(a.loop, func(_ context.Context) {
-		state = a.gatheringState
+		state = a.currentGeneration.gatheringState
 	})
 	if err != nil {
 		return GatheringStateUnknown, err
@@ -1461,8 +1502,8 @@ func (a *Agent) GetGatheringState() (GatheringState, error) {
 func (a *Agent) GetLocalUserCredentials() (frag string, pwd string, err error) {
 	valSet := make(chan struct{})
 	err = a.loop.Run(a.loop, func(_ context.Context) {
-		frag = a.localUfrag
-		pwd = a.localPwd
+		frag = a.currentGeneration.localUfrag
+		pwd = a.currentGeneration.localPwd
 		close(valSet)
 	})
 
@@ -1491,13 +1532,13 @@ func (a *Agent) GetRemoteUserCredentials() (frag string, pwd string, err error) 
 
 func (a *Agent) removeUfragFromMux() {
 	if a.tcpMux != nil {
-		a.tcpMux.RemoveConnByUfrag(a.localUfrag)
+		a.tcpMux.RemoveConnByUfrag(a.currentGeneration.localUfrag)
 	}
 	if a.udpMux != nil {
-		a.udpMux.RemoveConnByUfrag(a.localUfrag)
+		a.udpMux.RemoveConnByUfrag(a.currentGeneration.localUfrag)
 	}
 	if a.udpMuxSrflx != nil {
-		a.udpMuxSrflx.RemoveConnByUfrag(a.localUfrag)
+		a.udpMuxSrflx.RemoveConnByUfrag(a.currentGeneration.localUfrag)
 	}
 }
 
@@ -1637,7 +1678,7 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 		},
 	}
 	attributes = append(attributes,
-		stun.NewShortTermIntegrity(a.localPwd),
+		stun.NewShortTermIntegrity(a.currentGeneration.localPwd),
 		stun.Fingerprint)
 
 	if out, err := stun.Build(attributes...); err != nil {
@@ -1707,7 +1748,7 @@ func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, r
 				Code:   stun.CodeRoleConflict,
 				Reason: []byte("Role Conflict"),
 			},
-			stun.NewShortTermIntegrity(a.localPwd),
+			stun.NewShortTermIntegrity(a.currentGeneration.localPwd),
 			stun.Fingerprint,
 		); err != nil {
 			a.log.Warnf("Failed to generate Role Conflict message from: %s to: %s error: %s", local, remote, err)
@@ -1789,11 +1830,11 @@ func (a *Agent) handleInboundRequest(
 		msg.Contains(stun.AttrUseCandidate),
 	)
 
-	if err := stunx.AssertUsername(msg, a.localUfrag+":"+a.remoteUfrag); err != nil {
+	if err := stunx.AssertUsername(msg, a.currentGeneration.localUfrag+":"+a.remoteUfrag); err != nil {
 		a.log.Warnf("Discard request with wrong username from (%s), %v", remote, err)
 
 		return nil, false
-	} else if err := stun.MessageIntegrity([]byte(a.localPwd)).Check(msg); err != nil {
+	} else if err := stun.MessageIntegrity([]byte(a.currentGeneration.localPwd)).Check(msg); err != nil {
 		a.log.Warnf("Discard request with broken integrity from (%s), %v", remote, err)
 
 		return nil, false
@@ -1960,6 +2001,9 @@ func (a *Agent) UpdateOptions(opts ...AgentOption) error {
 // cancel it.
 // After a Restart, the user must then call GatherCandidates explicitly
 // to start generating new ones.
+//
+// Each restart advances the gathering generation tagged on candidates
+// via the "generation" extension.
 func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	if ufrag == "" {
 		var err error
@@ -1982,18 +2026,26 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 
 	var err error
 	if runErr := a.loop.Run(a.loop, func(_ context.Context) {
-		// Cancel unconditionally: a gather goroutine that has started but not yet
-		// marked Gathering would otherwise outlive the restart and later
-		// overwrite the fresh New state.
+		// Cancel unconditionally: a gather goroutine that started but hasn't yet
+		// marked Gathering would otherwise survive the restart and write to the
+		// now-superseded generation.
 		a.gatherCandidateCancel()
 
-		// Clear all agent needed to take back to fresh state
+		// Skip the construction-time restart so the first real gather is generation 0, matching libwebrtc.
+		nextID := a.currentGeneration.id
+		if a.constructed {
+			nextID++
+		}
+
+		// removeUfragFromMux runs before the generation swap, so the mux entry
+		// removed is the outgoing generation's ufrag, not the new generation's.
 		a.removeUfragFromMux()
-		a.localUfrag = ufrag
-		a.localPwd = pwd
+
+		a.currentGeneration = newICEGeneration(nextID, ufrag, pwd)
+
+		// Clear all agent needed to take back to fresh state
 		a.remoteUfrag = ""
 		a.remotePwd = ""
-		a.gatheringState = GatheringStateNew
 		a.checklist = make([]*CandidatePair, 0)
 		a.pairsByID = make(map[uint64]*CandidatePair)
 		a.pendingBindingRequests = make([]bindingRequest, 0)
@@ -2013,30 +2065,31 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 	return err
 }
 
-// setGatheringState applies newState and reports whether it was applied. A write
-// from a cycle canceled by Restart is dropped and reported false, so it can't
-// clobber the fresh New state and wedge the next gather.
-func (a *Agent) setGatheringState(gatherCtx context.Context, newState GatheringState) (bool, error) {
-	done := make(chan struct{})
+// setGatheringState applies newState to gen, unless the cycle's context has
+// been canceled. Both Restart and a re-gather cancel the previous cycle before
+// superseding it, so a canceled context is the signal that the cycle is stale;
+// dropping the write keeps the stale cycle from emitting a late
+// end-of-candidates or wedging the next gather.
+func (a *Agent) setGatheringState(
+	gatherCtx context.Context,
+	gen *iceGeneration,
+	newState GatheringState,
+) (bool, error) {
 	applied := false
 	if err := a.loop.Run(a.loop, func(context.Context) { //nolint:contextcheck
-		defer close(done)
-
 		if gatherCtx.Err() != nil {
 			return
 		}
 
-		if a.gatheringState != newState && newState == GatheringStateComplete {
+		if gen.gatheringState != newState && newState == GatheringStateComplete {
 			a.candidateNotifier.EnqueueCandidate(nil)
 		}
 
-		a.gatheringState = newState
+		gen.gatheringState = newState
 		applied = true
 	}); err != nil {
 		return false, err
 	}
-
-	<-done
 
 	return applied, nil
 }
@@ -2112,7 +2165,7 @@ func (a *Agent) RenominateCandidate(local, remote Candidate) error {
 func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint32) error {
 	attributes := []stun.Setter{
 		stun.TransactionID,
-		stun.NewUsername(a.remoteUfrag + ":" + a.localUfrag),
+		stun.NewUsername(a.remoteUfrag + ":" + a.currentGeneration.localUfrag),
 		UseCandidate(),
 		AttrControlling(a.tieBreaker),
 		PriorityAttr(pair.Local.Priority()),
