@@ -355,7 +355,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) 
 	if !c.validateSTUNTrafficCache(srcAddr) {
 		remoteCandidate, valid := agent.validateNonSTUNTraffic(c, srcAddr) //nolint:contextcheck
 		if !valid {
-			agent.log.Warnf("Discarded message from %s, not a valid remote candidate", c.addr())
+			agent.log.Warnf("Discarded message from %s, not a valid remote candidate", srcAddr)
 
 			return
 		}
@@ -513,6 +513,10 @@ func (c *candidateBase) Priority() uint32 {
 	return (1<<24)*uint32(c.TypePreference()) +
 		(1<<8)*uint32(c.LocalPreference()) +
 		(1<<0)*uint32(256-c.Component())
+}
+
+func (c *candidateBase) setPriority(priority uint32) {
+	c.priorityOverride = priority
 }
 
 // transportAddressEqual checks if the transport address (IP, Port, NetworkType, TCPType) is equal to another

@@ -2816,6 +2816,39 @@ func TestGetLocalCandidates(t *testing.T) {
 	require.ElementsMatch(t, expectedCandidates, actualCandidates)
 }
 
+func TestLiteLocalCandidatePrioritiesAreUnique(t *testing.T) {
+	agent := &Agent{
+		lite:            true,
+		localCandidates: make(map[NetworkType][]Candidate),
+	}
+
+	var previousPriority uint32
+	for i := range 3 {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2." + strconv.Itoa(i+1),
+			Port:      10000 + i,
+			Component: ComponentRTP,
+		})
+		require.NoError(t, err)
+
+		agent.setUniqueLiteCandidatePriority(candidate)
+		agent.localCandidates[candidate.NetworkType()] = append(
+			agent.localCandidates[candidate.NetworkType()],
+			candidate,
+		)
+
+		if i == 0 {
+			previousPriority = candidate.Priority()
+
+			continue
+		}
+
+		require.Equal(t, previousPriority-(1<<8), candidate.Priority())
+		previousPriority = candidate.Priority()
+	}
+}
+
 func TestCloseInConnectionStateCallback(t *testing.T) {
 	defer test.CheckRoutines(t)()
 

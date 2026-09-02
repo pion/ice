@@ -1685,14 +1685,30 @@ func TestLiteControllingSelectorContactCandidates(t *testing.T) {
 	selector.ContactCandidates()
 	require.Nil(t, agent.getSelectedPair())
 
-	pair := agent.addPair(newPingNoIOCand(), newPingNoIOCand())
+	local := newPingNoIOCand()
+	local.priorityOverride = 100
+	remote := newPingNoIOCand()
+	remote.priorityOverride = 100
+	pair := agent.addPair(local, remote)
 	selector.ContactCandidates()
 	require.Equal(t, pair, agent.getSelectedPair())
 	require.Equal(t, CandidatePairStateSucceeded, pair.state)
+	require.False(t, pair.Remote.LastReceived().IsZero())
 	require.Zero(t, pair.RequestsSent())
 
+	lowerPriorityLocal := newPingNoIOCand()
+	lowerPriorityLocal.priorityOverride = 50
+	lowerPriorityPair := agent.addPair(lowerPriorityLocal, remote)
 	selector.ContactCandidates()
 	require.Equal(t, pair, agent.getSelectedPair())
+	require.Equal(t, CandidatePairStateWaiting, lowerPriorityPair.state)
+
+	higherPriorityLocal := newPingNoIOCand()
+	higherPriorityLocal.priorityOverride = 200
+	higherPriorityPair := agent.addPair(higherPriorityLocal, remote)
+	selector.ContactCandidates()
+	require.Equal(t, higherPriorityPair, agent.getSelectedPair())
+	require.Equal(t, CandidatePairStateSucceeded, higherPriorityPair.state)
 }
 
 // TestLiteControlledSelector_NoPingCandidate verifies that a lite controlled

@@ -523,16 +523,27 @@ type liteSelector struct {
 }
 
 func (s *liteSelector) ContactCandidates() {
-	if s.agent.validateSelectedPair() || !s.agent.remoteLite {
+	if !s.agent.remoteLite {
+		s.agent.validateSelectedPair()
+
 		return
+	}
+	selectedPair := s.agent.getSelectedPair()
+	if selectedPair != nil {
+		s.agent.validateSelectedPair()
+		selectedPair = s.agent.getSelectedPair()
 	}
 
 	pair := s.agent.getBestAvailableCandidatePair()
-	if pair == nil {
+	if pair == nil || selectedPair == pair {
 		return
 	}
 
 	pair.state = CandidatePairStateSucceeded
+	// lite candidates pair becomes valid without a connectivity check. so we need to
+	// start its liveness window now so a later candidate update does not immediately
+	// fail a pair whose LastReceived timestamp is still zero.
+	pair.Remote.seen(false)
 	s.agent.setSelectedPair(pair)
 }
 

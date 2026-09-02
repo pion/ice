@@ -111,10 +111,11 @@ type Agent struct {
 	localPwd        string
 	localCandidates map[NetworkType][]Candidate
 
-	remoteUfrag      string
-	remotePwd        string
-	remoteLite       bool
-	remoteCandidates map[NetworkType][]Candidate
+	remoteUfrag               string
+	remotePwd                 string
+	remoteLite                bool
+	remoteCandidates          map[NetworkType][]Candidate
+	remoteCandidateGeneration uint64
 
 	checklist  []*CandidatePair
 	nextPairID uint64
@@ -997,21 +998,8 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 	}
 
 	// If we have a mDNS Candidate lets fully resolve it before adding it locally
-	if cand.Type() == CandidateTypeHost && strings.HasSuffix(cand.Address(), ".local") {
-		if a.mDNSMode == MulticastDNSModeDisabled {
-			a.log.Warnf("Remote mDNS candidate added, but mDNS is disabled: (%s)", cand.Address())
-
-			return nil
-		}
-
-		hostCandidate, ok := cand.(*CandidateHost)
-		if !ok {
-			return ErrAddressParseFailed
-		}
-
-		go a.resolveAndAddMulticastCandidate(hostCandidate)
-
-		return nil
+	if isMulticastDNSCandidate(cand) {
+		return a.addRemoteMulticastCandidate(cand)
 	}
 
 	go func() {
@@ -1020,15 +1008,40 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 			a.addRemoteCandidate(cand)
 		}); err != nil {
 			a.log.Warnf("Failed to add remote candidate %s: %v", cand.Address(), err)
-
-			return
 		}
 	}()
 
 	return nil
 }
 
-func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
+func isMulticastDNSCandidate(cand Candidate) bool {
+	return cand.Type() == CandidateTypeHost && strings.HasSuffix(cand.Address(), ".local")
+}
+
+func (a *Agent) addRemoteMulticastCandidate(cand Candidate) error {
+	if a.mDNSMode == MulticastDNSModeDisabled {
+		a.log.Warnf("Remote mDNS candidate added, but mDNS is disabled: (%s)", cand.Address())
+
+		return nil
+	}
+
+	hostCandidate, ok := cand.(*CandidateHost)
+	if !ok {
+		return ErrAddressParseFailed
+	}
+
+	var generation uint64
+	if err := a.loop.Run(a.loop, func(_ context.Context) {
+		generation = a.remoteCandidateGeneration
+	}); err != nil {
+		return err
+	}
+	go a.resolveAndAddMulticastCandidate(hostCandidate, generation)
+
+	return nil
+}
+
+func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation uint64) {
 	if a.mDNSConn == nil {
 		return
 	}
@@ -1050,6 +1063,10 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost) {
 	}
 
 	if err = a.loop.Run(a.loop, func(_ context.Context) {
+		if generation != a.remoteCandidateGeneration {
+			return
+		}
+
 		// nolint: contextcheck
 		a.addRemoteCandidate(cand)
 	}); err != nil {
@@ -1126,6 +1143,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 		}
 
 		localCandidate.start(a, conn, a.startedCh)
+		a.setUniqueLiteCandidatePriority(localCandidate)
 		a.localCandidates[localCandidate.NetworkType()] = append(
 			a.localCandidates[localCandidate.NetworkType()],
 			localCandidate,
@@ -1331,6 +1349,33 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 	return true
 }
 
+// setUniqueLiteCandidatePriority gives each local ICE-lite candidate a unique
+// priority.
+// https://datatracker.ietf.org/doc/html/rfc8445#section-5.1.2
+func (a *Agent) setUniqueLiteCandidatePriority(cand Candidate) {
+	if !a.lite {
+		return
+	}
+
+	used := make(map[uint32]struct{})
+	for _, candidates := range a.localCandidates {
+		for _, candidate := range candidates {
+			used[candidate.Priority()] = struct{}{}
+		}
+	}
+
+	priority := cand.Priority()
+	for {
+		if _, ok := used[priority]; !ok {
+			cand.setPriority(priority)
+
+			return
+		}
+
+		priority -= 1 << 8
+	}
+}
+
 func (a *Agent) shouldAcceptRemoteCandidate(cand Candidate) bool {
 	if a.remoteIPFilter == nil {
 		return true
@@ -1375,6 +1420,7 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 
 		a.setCandidateExtensions(cand)
 		cand.start(a, candidateConn, a.startedCh)
+		a.setUniqueLiteCandidatePriority(cand)
 
 		set = append(set, cand)
 		a.localCandidates[cand.NetworkType()] = set
@@ -1584,6 +1630,16 @@ func (a *Agent) findRemoteCandidate(networkType NetworkType, addr netip.AddrPort
 	for _, c := range set {
 		if addrPortEqual(c.addrPort(), addr) {
 			return c
+		}
+	}
+
+	return nil
+}
+
+func (a *Agent) findRemoteCandidateByIP(networkType NetworkType, addr netip.Addr) Candidate {
+	for _, candidate := range a.remoteCandidates[networkType] {
+		if candidate.addrPort().Addr() == addr {
+			return candidate
 		}
 	}
 
@@ -1861,6 +1917,12 @@ func (a *Agent) validateNonSTUNTraffic(local Candidate, remote netip.AddrPort) (
 	var remoteCandidate Candidate
 	if err := a.loop.Run(local.context(), func(context.Context) {
 		remoteCandidate = a.findRemoteCandidate(local.NetworkType(), remote)
+		if remoteCandidate == nil && a.lite && a.remoteLite {
+			// with no connectivity checks, a multi-candidate ICE-lite peer cannot
+			// discover that the the other peer emitted a packet from another
+			// advertised interface and source port
+			remoteCandidate = a.findRemoteCandidateByIP(local.NetworkType(), remote.Addr())
+		}
 		if remoteCandidate != nil {
 			remoteCandidate.seen(false)
 		}
@@ -1980,7 +2042,6 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		return err
 	}
 
-	var err error
 	if runErr := a.loop.Run(a.loop, func(_ context.Context) {
 		// Cancel unconditionally: a gather goroutine that has started but not yet
 		// marked Gathering would otherwise outlive the restart and later
@@ -1993,6 +2054,7 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		a.localPwd = pwd
 		a.remoteUfrag = ""
 		a.remotePwd = ""
+		a.remoteCandidateGeneration++
 		a.gatheringState = GatheringStateNew
 		a.checklist = make([]*CandidatePair, 0)
 		a.pairsByID = make(map[uint64]*CandidatePair)
@@ -2010,7 +2072,7 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		return runErr
 	}
 
-	return err
+	return nil
 }
 
 // setGatheringState applies newState and reports whether it was applied. A write
