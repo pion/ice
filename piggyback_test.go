@@ -41,7 +41,7 @@ func TestSped(t *testing.T) {
 		aAgent.SetDtlsCallback(func(packet []byte, rAddr net.Addr) {
 			toA = packet
 		})
-		require.True(t, aAgent.Piggyback(fromA, true))
+		require.True(t, aAgent.Piggyback([][]byte{fromA}, nil))
 
 		bNotifier, bConnected := onConnected()
 		bAgent, err := NewAgent(&AgentConfig{
@@ -55,7 +55,7 @@ func TestSped(t *testing.T) {
 		bAgent.SetDtlsCallback(func(packet []byte, rAddr net.Addr) {
 			toB = packet
 		})
-		require.True(t, bAgent.Piggyback(fromB, true))
+		require.True(t, bAgent.Piggyback([][]byte{fromB}, nil))
 
 		gatherAndExchangeCandidates(t, aAgent, bAgent)
 		go func() {
@@ -89,7 +89,7 @@ func TestSped(t *testing.T) {
 
 		fromA := fakeDtlsPacket("Hello from A")
 		aAgent.SetDtlsCallback(func([]byte, net.Addr) {})
-		require.True(t, aAgent.Piggyback(fromA, true))
+		require.True(t, aAgent.Piggyback([][]byte{fromA}, nil))
 
 		// bAgent does not support piggybacking.
 		bAgent, err := NewAgent(&AgentConfig{
@@ -150,7 +150,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 
 	t.Run("Completes on the ack of the final flight", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		require.True(t, agent.Piggyback(packet, true))
+		require.True(t, agent.Piggyback([][]byte{packet}, nil))
 		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
 		// DTLS 1.2 server keeps the last flight until it is acknowledged.
 		agent.SetDtlsHandshakeComplete(false, protocol.Version1_2)
@@ -181,7 +181,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 
 	t.Run("Non-DTLS packets are not embedded", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		require.False(t, agent.Piggyback([]byte("not a dtls packet"), true))
+		require.False(t, agent.Piggyback([][]byte{[]byte("not a dtls packet")}, nil))
 		require.Empty(t, agent.piggyback.packets)
 	})
 
@@ -211,7 +211,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				agent := newPiggybackAgent(t)
-				require.True(t, agent.Piggyback(packet, true))
+				require.True(t, agent.Piggyback([][]byte{packet}, nil))
 				agent.SetDtlsHandshakeComplete(tc.isClient, tc.version)
 
 				if tc.keep {
@@ -250,10 +250,10 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		agent := &Agent{log: logging.NewDefaultLoggerFactory().NewLogger("ice")}
 		agent.piggyback.init()
 
-		require.True(t, agent.Piggyback(packet, true))
-		require.True(t, agent.Piggyback(packet, true))
+		require.True(t, agent.Piggyback([][]byte{packet}, nil))
+		require.True(t, agent.Piggyback([][]byte{packet}, nil))
 		require.Len(t, agent.piggyback.flushOnConnected(), 1)
-		require.False(t, agent.Piggyback(packet, true))
+		require.False(t, agent.Piggyback([][]byte{packet}, nil))
 	})
 
 	t.Run("Malformed acks do not disable piggybacking", func(t *testing.T) {

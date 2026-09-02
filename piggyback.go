@@ -47,7 +47,6 @@ type piggybackingController struct {
 	packetsIndex int
 	acks         []uint32
 	dtlsCallback func(packet []byte, rAddr net.Addr)
-	newFlight    bool
 	connected    bool
 }
 
@@ -115,30 +114,30 @@ func (a *Agent) SetDtlsHandshakeComplete(isClient bool, version protocol.Version
 	a.piggyback.state = PiggybackingStatePending
 }
 
-// Piggyback stores a packet to be picked in a round-robin fashion.
-// Returns `true` if packet is to be consumed.
-func (a *Agent) Piggyback(packet []byte, end bool) bool {
+// Piggyback stores the datagrams of one DTLS flight, to be picked in a
+// round-robin fashion. Returns `true` if the flight is to be consumed.
+func (a *Agent) Piggyback(datagrams [][]byte, _ net.Addr) bool {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
 	if a.piggyback.state == PiggybackingStateOff && a.piggyback.connected {
 		return false
 	}
 
-	if packet != nil {
-		if !isDtlsPacket(packet) {
-			return false
+	if len(datagrams) > 0 {
+		// Refuse the whole flight rather than embed it in part.
+		for _, datagram := range datagrams {
+			if !isDtlsPacket(datagram) {
+				return false
+			}
 		}
-		// If we receive a packet after the end of a flight we need
-		// to clear the outgoing list.
-		if a.piggyback.newFlight {
-			a.piggyback.packets = []packetWithCrc{}
-			a.piggyback.packetsIndex = 0
+		// A new flight replaces the outgoing list.
+		a.piggyback.packets = a.piggyback.packets[:0]
+		a.piggyback.packetsIndex = 0
+		for _, datagram := range datagrams {
+			// Copy the datagram as the caller may reuse the underlying buffer.
+			a.piggyback.packets = append(a.piggyback.packets,
+				packetWithCrc{bytes.Clone(datagram), crc32.ChecksumIEEE(datagram)})
 		}
-		a.piggyback.newFlight = end
-		crc := crc32.ChecksumIEEE(packet)
-		// Copy the packet as the caller may reuse the underlying buffer.
-		data := bytes.Clone(packet)
-		a.piggyback.packets = append(a.piggyback.packets, packetWithCrc{data, crc})
 	}
 	// If we are connected also send DTLS plain.
 	return !a.piggyback.connected
