@@ -28,7 +28,7 @@ import (
 	"github.com/pion/dtls/v3/pkg/crypto/selfsign"
 	"github.com/pion/ice/v4/internal/taskloop"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 	transport "github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
 	"github.com/pion/transport/v4/vnet"

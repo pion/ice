@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 	transport "github.com/pion/transport/v4"
 	"github.com/pion/transport/v4/test"
 	"github.com/pion/turn/v5"

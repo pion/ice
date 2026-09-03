@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/pion/ice/v4/internal/taskloop"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 	"github.com/pion/transport/v4/packetio"
 	"github.com/pion/transport/v4/test"
 	"github.com/stretchr/testify/require"
