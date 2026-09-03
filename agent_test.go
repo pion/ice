@@ -3288,9 +3288,9 @@ func TestAcceptAggressiveNomination(t *testing.T) { //nolint:cyclop
 			buildMsg := func(class stun.MessageClass, username, key string, priority uint32) *stun.Message {
 				msg, err1 := stun.Build(stun.NewType(stun.MethodBinding, class), stun.TransactionID,
 					stun.NewUsername(username),
-					stun.NewShortTermIntegrity(key),
 					UseCandidate(),
 					PriorityAttr(priority),
+					stun.NewShortTermIntegrity(key),
 					stun.Fingerprint,
 				)
 				require.NoError(t, err1)
