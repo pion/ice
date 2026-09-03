@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/pion/dtls/v3 v3.1.8
 	github.com/pion/logging v0.2.4
-	github.com/pion/mdns/v2 v2.1.0
+	github.com/pion/mdns/v2 v2.2.0
 	github.com/pion/randutil v0.1.0
 	github.com/pion/stun/v4 v4.0.0
 	github.com/pion/transport/v4 v4.1.0
