@@ -1116,7 +1116,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 							return
 						}
 
-						conn, connectErr := dtls.ClientWithOptions(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(),
+						conn, connectErr := dtls.Client(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(),
 							dtls.WithServerName(url.Host),
 							dtls.WithInsecureSkipVerify(a.insecureSkipVerify), //nolint:gosec
 							dtls.WithLoggerFactory(a.loggerFactory),
