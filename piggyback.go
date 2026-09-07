@@ -107,7 +107,7 @@ func (a *Agent) SetDtlsHandshakeComplete(isClient bool, version protocol.Version
 	if a.piggyback.state == PiggybackingStateOff || a.piggyback.state == PiggybackingStateComplete {
 		return
 	}
-	if isClient != version.Equal(protocol.Version1_3) {
+	if isClient != (version == protocol.Version1_3) {
 		a.piggyback.packets = []packetWithCrc{}
 		a.piggyback.packetsIndex = 0
 	}
