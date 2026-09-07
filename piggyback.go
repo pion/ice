@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 )
 
 type packetWithCrc struct {
