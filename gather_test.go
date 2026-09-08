@@ -321,11 +321,11 @@ func TestLoopbackCandidate(t *testing.T) {
 			}()
 
 			candidateGathered, candidateGatheredFunc := context.WithCancel(context.Background())
-			var loopback int32
+			var loopback atomic.Int32
 			require.NoError(t, agent.OnCandidate(func(c Candidate) {
 				if c != nil {
 					if net.ParseIP(c.Address()).IsLoopback() {
-						atomic.StoreInt32(&loopback, 1)
+						loopback.Store(1)
 					}
 				} else {
 					candidateGatheredFunc()
@@ -338,7 +338,7 @@ func TestLoopbackCandidate(t *testing.T) {
 
 			<-candidateGathered.Done()
 
-			require.Equal(t, tcase.loExpected, atomic.LoadInt32(&loopback) == 1)
+			require.Equal(t, tcase.loExpected, loopback.Load() == 1)
 		})
 	}
 
@@ -1392,7 +1392,7 @@ func (s *stubTurnClient) Listen() error {
 	return nil
 }
 
-func (s *stubTurnClient) Allocate() (net.PacketConn, error) {
+func (s *stubTurnClient) AllocateWithContext(context.Context) (net.PacketConn, error) {
 	s.allocateCalled = true
 	if s.relayConn == nil {
 		s.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.IP{203, 0, 113, 5}, Port: 5000})
@@ -4617,5 +4617,40 @@ func (m *mockUniversalUDPMux) GetRelayedAddr(net.Addr, time.Duration) (*net.Addr
 }
 
 func (m *mockUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
-	return m.mockUDPMux.GetConn(ufrag+url, addr)
+	return m.GetConn(ufrag+url, addr)
+}
+
+func TestTURNContext(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 3).Stop()
+
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0") // nolint: noctx
+	skipOnPermission(t, err, "listening for TURN server")
+
+	turnPacketSeen, turnPacketSeenDone := context.WithCancel(context.Background())
+	go func() {
+		_, _, readErr := listener.ReadFrom(nil)
+		assert.NoError(t, readErr)
+		assert.NoError(t, listener.Close())
+		turnPacketSeenDone()
+	}()
+
+	agent, err := NewAgent(&AgentConfig{
+		NetworkTypes: supportedNetworkTypes(),
+		Urls: []*stun.URI{{
+			Scheme:   stun.SchemeTypeTURN,
+			Proto:    stun.ProtoTypeUDP,
+			Host:     localhostIPStr,
+			Port:     portFromAddr(t, listener.LocalAddr()),
+			Username: "username",
+			Password: "password",
+		}},
+		CandidateTypes: []CandidateType{CandidateTypeRelay},
+	})
+	require.NoError(t, err)
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	require.NoError(t, agent.GatherCandidates())
+	<-turnPacketSeen.Done()
+	assert.NoError(t, agent.Close())
 }

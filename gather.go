@@ -25,7 +25,7 @@ import (
 
 type turnClient interface {
 	Listen() error
-	Allocate() (net.PacketConn, error)
+	AllocateWithContext(context.Context) (net.PacketConn, error)
 	Close()
 }
 
@@ -1214,7 +1214,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI) {
 						return
 					}
 
-					relayConn, err := client.Allocate()
+					relayConn, err := client.AllocateWithContext(ctx)
 					if err != nil {
 						client.Close()
 						closeConnAndLog(locConn, a.log, "failed to allocate on TURN client %s %s", turnServerAddr, err)
