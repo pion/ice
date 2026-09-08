@@ -89,7 +89,8 @@ func NewUniversalUDPMuxDefault(params UniversalUDPMuxParams) *UniversalUDPMuxDef
 		UDPConn: mux.params.UDPConn,
 		Net:     mux.params.Net,
 	}
-	mux.UDPMuxDefault = NewUDPMuxDefault(udpMuxParams)
+	mux.UDPMuxDefault = newUDPMuxDefault(udpMuxParams)
+	go mux.connWorker()
 
 	return mux
 }

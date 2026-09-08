@@ -20,6 +20,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUniversalUDPMux_QueuedSTUNDuringInitialization(t *testing.T) {
+	for _, useAddrPort := range []bool{false, true} {
+		conn := &queuedSTUNPacketConn{
+			packet:  stun.MustBuild(stun.BindingRequest, stun.TransactionID).Raw,
+			drained: make(chan struct{}),
+		}
+		var packetConn net.PacketConn = conn
+		if useAddrPort {
+			packetConn = &queuedSTUNAddrPortConn{conn}
+		}
+		mux := NewUniversalUDPMuxDefault(UniversalUDPMuxParams{UDPConn: packetConn})
+		<-conn.drained
+		require.NoError(t, mux.Close())
+	}
+}
+
+type queuedSTUNPacketConn struct {
+	fakenet.MockPacketConn
+	packet  []byte
+	drained chan struct{}
+}
+
+func (c *queuedSTUNPacketConn) ReadFrom(buf []byte) (int, net.Addr, error) {
+	if c.packet == nil {
+		close(c.drained)
+
+		return 0, nil, net.ErrClosed
+	}
+	n := copy(buf, c.packet)
+	c.packet = nil
+
+	return n, c.LocalAddr(), nil
+}
+
+func (*queuedSTUNPacketConn) LocalAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+}
+
+type queuedSTUNAddrPortConn struct{ *queuedSTUNPacketConn }
+
+func (c *queuedSTUNAddrPortConn) ReadFromAddrPort(buf []byte) (int, netip.AddrPort, error) {
+	n, _, err := c.ReadFrom(buf)
+
+	return n, netip.MustParseAddrPort("127.0.0.1:12345"), err
+}
+
+func (*queuedSTUNAddrPortConn) WriteToAddrPort(buf []byte, _ netip.AddrPort) (int, error) {
+	return len(buf), nil
+}
+
 func TestUniversalUDPMux(t *testing.T) {
 	conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
