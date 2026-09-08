@@ -90,6 +90,13 @@ type UDPMuxParams struct {
 
 // NewUDPMuxDefault creates an implementation of UDPMux.
 func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
+	mux := newUDPMuxDefault(params)
+	go mux.connWorker()
+
+	return mux
+}
+
+func newUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	if params.Logger == nil {
 		params.Logger = logging.NewDefaultLoggerFactory().NewLogger("ice")
 	}
@@ -127,7 +134,6 @@ func NewUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 		isUnspecified: isUnspecified,
 	}
 	mux.addrPortConn = asAddrPortReaderWriter(params.UDPConn)
-	go mux.connWorker()
 
 	return mux
 }
