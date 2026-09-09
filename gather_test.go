@@ -548,7 +548,7 @@ func TestTURNConcurrency(t *testing.T) {
 		certificate, genErr := selfsign.GenerateSelfSigned()
 		require.NoError(t, genErr)
 
-		serverListener, err := dtls.ListenWithOptions(
+		serverListener, err := dtls.ListenAddr(
 			"udp",
 			&net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: 0},
 			dtls.WithCertificates(certificate),
