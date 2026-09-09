@@ -541,11 +541,15 @@ func TestCandidateMarshal(t *testing.T) {
 		{nil, "3$3 1 udp 500 " + localhostIPStr + " 80 typ host", true},
 		// invalid component; longer than 5 digits
 		{nil, "4207374051 123456 udp 500 " + localhostIPStr + " 0 typ host", true},
+		// invalid component; does not fit in a uint16
+		{nil, "4207374051 65536 udp 500 " + localhostIPStr + " 80 typ host", true},
 		// invalid priority; longer than 10 digits
-		{nil, "4207374051 99999 udp 12345678910 " + localhostIPStr + " 99999 typ host", true},
+		{nil, "4207374051 1 udp 12345678910 " + localhostIPStr + " 99999 typ host", true},
+		// invalid priority; does not fit in a uint32
+		{nil, "4207374051 1 udp 4294967296 " + localhostIPStr + " 80 typ host", true},
 		// invalid port;
-		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 65536 typ host", true},
-		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 999999 typ host", true},
+		{nil, "4207374051 1 udp 500 " + localhostIPStr + " 65536 typ host", true},
+		{nil, "4207374051 1 udp 500 " + localhostIPStr + " 999999 typ host", true},
 		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport 999999", true},
 
 		// bad byte-string in extension value
@@ -564,12 +568,12 @@ func TestCandidateMarshal(t *testing.T) {
 		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1 rport", true},
 		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr 192.168.0.1", true},
 		{nil, "848194626 1 udp 16777215 50.0.0.1 5000 typ relay raddr", true},
-		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 80 typ", true},
-		{nil, "4207374051 99999 udp 500 " + localhostIPStr + " 80", true},
-		{nil, "4207374051 99999 udp 500 " + localhostIPStr, true},
-		{nil, "4207374051 99999 udp 500 ", true},
-		{nil, "4207374051 99999 udp", true},
-		{nil, "4207374051 99999", true},
+		{nil, "4207374051 1 udp 500 " + localhostIPStr + " 80 typ", true},
+		{nil, "4207374051 1 udp 500 " + localhostIPStr + " 80", true},
+		{nil, "4207374051 1 udp 500 " + localhostIPStr, true},
+		{nil, "4207374051 1 udp 500 ", true},
+		{nil, "4207374051 1 udp", true},
+		{nil, "4207374051 1", true},
 		{nil, "4207374051", true},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
@@ -595,6 +599,32 @@ func TestCandidateMarshal(t *testing.T) {
 			} else {
 				require.Equal(t, test.marshaled, actualCandidate.Marshal())
 			}
+		})
+	}
+}
+
+func TestUnmarshalCandidateNumericBounds(t *testing.T) {
+	// The 1*5DIGIT and 1*10DIGIT length limits still admit values that do not
+	// fit in the uint16 and uint32 the Candidate API exposes.
+	for _, test := range []struct {
+		raw      string
+		expected bool
+	}{
+		{"4207374051 65535 udp 500 " + localhostIPStr + " 80 typ host", false},
+		{"4207374051 65536 udp 500 " + localhostIPStr + " 80 typ host", true},
+		{"4207374051 1 udp 4294967295 " + localhostIPStr + " 80 typ host", false},
+		{"4207374051 1 udp 4294967296 " + localhostIPStr + " 80 typ host", true},
+	} {
+		t.Run(test.raw, func(t *testing.T) {
+			candidate, err := UnmarshalCandidate(test.raw)
+			if test.expected {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.raw, candidate.Marshal())
 		})
 	}
 }
