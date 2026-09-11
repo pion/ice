@@ -1020,6 +1020,8 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 			return ErrAgentOptionNotUpdatable
 		}
 
+		// Logger factory will be passed down to objects created by the agent
+		a.loggerFactory = loggerFactory
 		a.log = loggerFactory.NewLogger("ice")
 
 		return nil

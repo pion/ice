@@ -802,6 +802,7 @@ func TestWithLoggerFactory(t *testing.T) {
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
+		assert.Equal(t, loggerFactory, agent.loggerFactory)
 		assert.NotNil(t, agent.log)
 	})
 
