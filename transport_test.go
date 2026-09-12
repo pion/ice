@@ -195,18 +195,19 @@ func stressDuplex(t *testing.T) {
 func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent) {
 	tb.Helper()
 	var wg sync.WaitGroup
+	var aDone, bDone sync.Once
 	wg.Add(2)
 
 	require.NoError(tb, aAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
-			wg.Done()
+			aDone.Do(wg.Done)
 		}
 	}))
 	require.NoError(tb, aAgent.GatherCandidates())
 
 	require.NoError(tb, bAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
-			wg.Done()
+			bDone.Do(wg.Done)
 		}
 	}))
 	require.NoError(tb, bAgent.GatherCandidates())
