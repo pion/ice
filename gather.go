@@ -485,7 +485,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, networkTypes []Networ
 						continue
 					}
 
-					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn); err != nil {
+					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn, false); err != nil {
 						if closeErr := candidateHost.close(); closeErr != nil {
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
@@ -594,7 +594,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(ctx context.Context) error { //nolin
 				continue
 			}
 
-			if err := a.addCandidate(ctx, c, conn); err != nil {
+			if err := a.addCandidate(ctx, c, conn, false); err != nil {
 				if closeErr := c.close(); closeErr != nil {
 					a.log.Warnf("Failed to close candidate: %v", closeErr)
 				}
@@ -709,7 +709,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					continue
 				}
 
-				if err := a.addCandidate(ctx, c, currentConn); err != nil {
+				if err := a.addCandidate(ctx, c, currentConn, false); err != nil {
 					if closeErr := c.close(); closeErr != nil {
 						a.log.Warnf("Failed to close candidate: %v", closeErr)
 					}
@@ -798,7 +798,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 						return
 					}
 
-					if err := a.addCandidate(ctx, c, conn); err != nil {
+					if err := a.addCandidate(ctx, c, conn, false); err != nil {
 						if closeErr := c.close(); closeErr != nil {
 							a.log.Warnf("Failed to close candidate: %v", closeErr)
 						}
@@ -929,7 +929,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 			return
 		}
 
-		if err := a.addCandidate(ctx, c, conn); err != nil {
+		if err := a.addCandidate(ctx, c, conn, false); err != nil {
 			if closeErr := c.close(); closeErr != nil {
 				a.log.Warnf("Failed to close candidate: %v", closeErr)
 			}
@@ -1379,7 +1379,7 @@ func (a *Agent) createRelayCandidate(ctx context.Context, ep relayEndpoint, ip n
 		return err
 	}
 
-	if err := a.addCandidate(ctx, candidate, ep.conn); err != nil {
+	if err := a.addCandidate(ctx, candidate, ep.conn, false); err != nil {
 		if closeErr := candidate.close(); closeErr != nil {
 			a.log.Warnf("Failed to close candidate: %v", closeErr)
 		}

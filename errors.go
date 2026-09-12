@@ -177,6 +177,8 @@ var (
 	ErrAgentOptionNotUpdatable = errors.New("option can only be set during agent construction")
 
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
+	errCandidatePacketConnNil        = errors.New("candidate packet connection is nil")
+	errDuplicateCandidate            = errors.New("candidate already added")
 	errClosingConnection             = errors.New("failed to close connection")
 	errConnectionAddrAlreadyExist    = errors.New("connection with same remote address already exists")
 	errInvalidAddress                = errors.New("invalid address")
