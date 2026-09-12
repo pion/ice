@@ -11,6 +11,12 @@ import (
 	"syscall"
 )
 
+const (
+	errAddressFamilyUnsupported = syscall.EAFNOSUPPORT
+	errNetworkUnreachable       = syscall.ENETUNREACH
+	errHostUnreachable          = syscall.EHOSTUNREACH
+)
+
 // IsAddrUnavailable reports whether err indicates that the address
 // is unavailable (as opposed to a specific port being busy).
 func IsAddrUnavailable(err error) bool {

@@ -6,6 +6,7 @@ package ice
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/pion/dtls/v3"
 	"github.com/pion/ice/v4/internal/fakenet"
+	"github.com/pion/ice/v4/internal/netutil"
 	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
@@ -111,6 +113,14 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 	if err := c.Close(); err != nil {
 		log.Warnf("Failed to close connection: %v", err)
 	}
+}
+
+func stunGatherErrorMessage(err error) string {
+	if reason := netutil.NetworkErrorReason(err); reason != "" {
+		return fmt.Sprintf("%v (%s; other ICE candidates may still connect)", err, reason)
+	}
+
+	return err.Error()
 }
 
 // GatherCandidates initiates the trickle based gathering process.
@@ -755,7 +765,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 					hostPort := net.JoinHostPort(url.Host, strconv.Itoa(url.Port))
 					serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 					if err != nil {
-						a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, err)
+						a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, stunGatherErrorMessage(err))
 
 						return
 					}
@@ -768,7 +778,7 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 
 					xorAddr, err := getXORMappedAddr(ctx, a.udpMuxSrflx, serverAddr, a.stunGatherTimeout)
 					if err != nil {
-						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
+						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, stunGatherErrorMessage(err))
 
 						return
 					}
@@ -859,7 +869,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 		hostPort := net.JoinHostPort(url.Host, strconv.Itoa(url.Port))
 		serverAddr, err := a.net.ResolveUDPAddr(network, hostPort)
 		if err != nil {
-			a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, err)
+			a.log.Debugf("Failed to resolve STUN host: %s %s: %v", network, hostPort, stunGatherErrorMessage(err))
 
 			return
 		}
@@ -879,7 +889,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 			listenAddr,
 		)
 		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to listen for %s: %v", serverAddr.String(), err)
+			closeConnAndLog(conn, a.log, "failed to listen for %s %s: %v", network, serverAddr, stunGatherErrorMessage(err))
 
 			return
 		}
@@ -905,7 +915,8 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 
 		xorAddr, err := transaction.RunPacketConn(ctx, conn, serverAddr, a.stunGatherTimeout)
 		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v", network, url, err)
+			closeConnAndLog(conn, a.log,
+				"failed to get server reflexive address %s %s: %v", network, url, stunGatherErrorMessage(err))
 
 			return
 		}

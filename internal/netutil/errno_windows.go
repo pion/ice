@@ -14,6 +14,12 @@ import (
 // match the raw Winsock errno returned by the kernel, so we check both.
 const wsaeaddrnotavail syscall.Errno = 10049
 
+const (
+	errAddressFamilyUnsupported syscall.Errno = 10047 // WSAEAFNOSUPPORT
+	errNetworkUnreachable       syscall.Errno = 10051 // WSAENETUNREACH
+	errHostUnreachable          syscall.Errno = 10065 // WSAEHOSTUNREACH
+)
+
 // IsAddrUnavailable reports whether err indicates that the address
 // is unavailable (as opposed to a specific port being busy).
 func IsAddrUnavailable(err error) bool {

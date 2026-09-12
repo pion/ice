@@ -2004,6 +2004,23 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 	})
 }
 
+func TestSTUNGatherErrorMessage(t *testing.T) {
+	for _, network := range []string{"udp4", "udp6"} {
+		t.Run(network, func(t *testing.T) {
+			cause := context.DeadlineExceeded
+			err := &net.OpError{Op: "dial", Net: network, Err: cause}
+			explained := stunGatherErrorMessage(err)
+			require.Contains(t, explained, err.Error())
+			require.Contains(t, explained,
+				"the operation timed out; check connectivity and server availability; other ICE candidates may still connect",
+			)
+
+			unknown := &net.OpError{Op: "read", Net: network, Err: io.ErrUnexpectedEOF}
+			require.Equal(t, unknown.Error(), stunGatherErrorMessage(unknown))
+		})
+	}
+}
+
 func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 	stunURI := &stun.URI{
 		Scheme: stun.SchemeTypeSTUN,
