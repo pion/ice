@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -768,7 +769,11 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(ctx context.Context, urls []*stun.UR
 
 					xorAddr, err := getXORMappedAddr(ctx, a.udpMuxSrflx, serverAddr, a.stunGatherTimeout)
 					if err != nil {
-						a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
+						if strings.HasPrefix(network, "udp6") {
+							a.log.Warnf("Failed get server reflexive address %s %s: %v (IPv6 might not be supported on this network, this warning can usually be ignored if IPv6 is not expected)", network, url, err)
+						} else {
+							a.log.Warnf("Failed get server reflexive address %s %s: %v", network, url, err)
+						}
 
 						return
 					}
@@ -905,7 +910,11 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, urls []*stun.URI, net
 
 		xorAddr, err := transaction.RunPacketConn(ctx, conn, serverAddr, a.stunGatherTimeout)
 		if err != nil {
-			closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v", network, url, err)
+			if strings.HasPrefix(network, "udp6") {
+				closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v (IPv6 might not be supported on this network, this warning can usually be ignored if IPv6 is not expected)", network, url, err)
+			} else {
+				closeConnAndLog(conn, a.log, "failed to get server reflexive address %s %s: %v", network, url, err)
+			}
 
 			return
 		}
