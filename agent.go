@@ -1014,6 +1014,19 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 	return nil
 }
 
+// AddVirtualCandidate registers a virtual candidate as a local ICE candidate,
+// using the supplied packet connection to send and receive packets.
+func (a *Agent) AddVirtualCandidate(cand Candidate, candidateConn net.PacketConn) error {
+	if cand == nil {
+		return nil
+	}
+	if candidateConn == nil {
+		return errCandidatePacketConnNil
+	}
+
+	return a.addCandidate(a.loop, cand, candidateConn, true)
+}
+
 func isMulticastDNSCandidate(cand Candidate) bool {
 	return cand.Type() == CandidateTypeHost && strings.HasSuffix(cand.Address(), ".local")
 }
@@ -1397,15 +1410,27 @@ func (a *Agent) shouldAcceptRemoteCandidate(cand Candidate) bool {
 	return true
 }
 
-func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn net.PacketConn) error {
+func (a *Agent) addCandidate(
+	ctx context.Context,
+	cand Candidate,
+	candidateConn net.PacketConn,
+	errorOnDuplicate bool,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	return a.loop.Run(ctx, func(context.Context) {
+	var addErr error
+	err := a.loop.Run(ctx, func(context.Context) {
 		set := a.localCandidates[cand.NetworkType()]
 		for _, candidate := range set {
 			if candidate.Equal(cand) {
+				if errorOnDuplicate {
+					addErr = errDuplicateCandidate
+
+					return
+				}
+
 				a.log.Debugf("Ignore duplicate candidate: %s", cand)
 				if err := cand.close(); err != nil {
 					a.log.Warnf("Failed to close duplicate candidate: %v", err)
@@ -1425,10 +1450,8 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 		set = append(set, cand)
 		a.localCandidates[cand.NetworkType()] = set
 
-		if remoteCandidates, ok := a.remoteCandidates[cand.NetworkType()]; ok {
-			for _, remoteCandidate := range remoteCandidates {
-				a.addPair(cand, remoteCandidate)
-			}
+		for _, remoteCandidate := range a.remoteCandidates[cand.NetworkType()] {
+			a.addPair(cand, remoteCandidate)
 		}
 
 		a.requestConnectivityCheck()
@@ -1437,6 +1460,11 @@ func (a *Agent) addCandidate(ctx context.Context, cand Candidate, candidateConn 
 			a.candidateNotifier.EnqueueCandidate(cand)
 		}
 	})
+	if err != nil {
+		return err
+	}
+
+	return addErr
 }
 
 func (a *Agent) setCandidateExtensions(cand Candidate) {
