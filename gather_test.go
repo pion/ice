@@ -3519,22 +3519,16 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithUDPMux(mux),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				Local:           "10.0.0.2",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteReplace,
+			}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
-
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.2",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
-		require.NoError(t, err)
-		agent.addressRewriteMapper = mapper
 
 		var (
 			mu        sync.Mutex
@@ -3574,22 +3568,16 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithUDPMux(mux),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{
+				Local:           "10.0.0.3",
+				AsCandidateType: CandidateTypeHost,
+				Mode:            AddressRewriteAppend,
+			}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
-
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.3",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
-		require.NoError(t, err)
-		agent.addressRewriteMapper = mapper
 
 		var (
 			mu        sync.Mutex
