@@ -7,8 +7,8 @@ package ice
 
 import (
 	"context"
-	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -112,139 +112,116 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 	})
 }
 
-func TestVNetGatherWithNAT1To1(t *testing.T) { //nolint:cyclop
+func gatherForRewriteTest(t *testing.T, agent *Agent) []Candidate {
+	t.Helper()
+
+	done := make(chan struct{})
+	var mu sync.Mutex
+	var emitted []string
+	require.NoError(t, agent.OnCandidate(func(candidate Candidate) {
+		mu.Lock()
+		defer mu.Unlock()
+		if candidate == nil {
+			close(done)
+
+			return
+		}
+		emitted = append(emitted, candidate.Marshal())
+	}))
+	require.NoError(t, agent.GatherCandidates())
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "candidate gathering did not complete")
+	}
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	stored := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		stored = append(stored, candidate.Marshal())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	require.ElementsMatch(t, emitted, stored, "callbacks must report every stored candidate")
+
+	return candidates
+}
+
+func TestVNetGatherNAT1To1SocketAddresses(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	loggerFactory := logging.NewDefaultLoggerFactory()
-	log := loggerFactory.NewLogger("test")
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
+	require.NoError(t, err)
+	nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1", "10.0.0.2"}})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(nw))
 
-	t.Run("gather 1:1 NAT external IPs as host candidates", func(t *testing.T) {
-		externalIP0 := "1.2.3.4"
-		externalIP1 := "1.2.3.5"
-		localIP0 := "10.0.0.1"
-		localIP1 := "10.0.0.2"
-		map0 := fmt.Sprintf("%s/%s", externalIP0, localIP0)
-		map1 := fmt.Sprintf("%s/%s", externalIP1, localIP1)
+	agent, err := NewAgent(&AgentConfig{Net: nw, NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: []string{"1.2.3.4/10.0.0.1", "1.2.3.5/10.0.0.2"}})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
 
-		wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
-		require.NoError(t, err, "should succeed")
+	candidates := gatherForRewriteTest(t, agent)
+	require.Len(t, candidates, 2)
+	want := map[string]string{"1.2.3.4": "10.0.0.1", "1.2.3.5": "10.0.0.2"}
+	for _, candidate := range candidates {
+		host, ok := candidate.(*CandidateHost)
+		require.True(t, ok)
+		localAddr, ok := host.conn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		require.Contains(t, want, candidate.Address())
+		require.Equal(t, want[candidate.Address()], localAddr.IP.String())
+		require.Equal(t, localAddr.Port, candidate.Port())
+		delete(want, candidate.Address())
+	}
+	require.Empty(t, want)
+}
 
-		lan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", StaticIPs: []string{map0, map1}, NATType: &vnet.NATType{Mode: vnet.NATModeNAT1To1}, LoggerFactory: loggerFactory})
-		require.NoError(t, err, "should succeed")
+func TestGatherAddressRewriteSrflxModes(t *testing.T) {
+	defer test.CheckRoutines(t)()
 
-		err = wan.AddRouter(lan)
-		require.NoError(t, err, "should succeed")
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
+	require.NoError(t, err)
+	nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1"}})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(nw))
 
-		nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{localIP0, localIP1}})
-		require.NoError(t, err)
+	for _, testCase := range []struct {
+		name string
+		mode AddressRewriteMode
+	}{
+		{name: "append", mode: AddressRewriteAppend},
+		{name: "replace", mode: AddressRewriteReplace},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			mux := newMockUniversalUDPMux([]net.Addr{&net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 2345}}, &stun.XORMappedAddress{IP: net.ParseIP("198.51.100.10"), Port: 5000})
+			agent, err := NewAgentWithOptions(
+				WithNet(nw),
+				WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+				WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+				WithMulticastDNSMode(MulticastDNSModeDisabled),
+				WithUDPMuxSrflx(mux),
+				WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 3478}}),
+				WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.50"}, AsCandidateType: CandidateTypeServerReflexive, Mode: testCase.mode}),
+			)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, agent.Close()) }()
 
-		err = lan.AddNet(nw)
-		require.NoError(t, err, "should succeed")
-
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, NAT1To1IPs: []string{map0, map1}, Net: nw})
-		require.NoError(t, err, "should succeed")
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		done := make(chan struct{})
-		err = agent.OnCandidate(func(c Candidate) {
-			if c == nil {
-				close(done)
+			candidates := gatherForRewriteTest(t, agent)
+			addresses := make([]string, 0, len(candidates))
+			for _, candidate := range candidates {
+				require.Equal(t, CandidateTypeServerReflexive, candidate.Type())
+				addresses = append(addresses, candidate.Address())
 			}
+			expected := []string{"203.0.113.50"}
+			if testCase.mode == AddressRewriteAppend {
+				expected = append(expected, "198.51.100.10")
+				require.Equal(t, 1, mux.connCount(), "append must still use STUN")
+			} else {
+				require.Zero(t, mux.connCount(), "replace must skip STUN")
+			}
+			require.ElementsMatch(t, expected, addresses)
 		})
-		require.NoError(t, err, "should succeed")
-
-		err = agent.GatherCandidates()
-		require.NoError(t, err, "should succeed")
-
-		log.Debug("Wait until gathering is complete...")
-		<-done
-		log.Debug("Gathering is done")
-
-		candidates, err := agent.GetLocalCandidates()
-		require.NoError(t, err, "should succeed")
-
-		require.Len(t, candidates, 2)
-
-		lAddr := [2]*net.UDPAddr{nil, nil}
-		for i, candi := range candidates {
-			lAddr[i] = candi.(*CandidateHost).conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-			require.Equal(t, candi.Port(), lAddr[i].Port)
-		}
-
-		if candidates[0].Address() == externalIP0 { //nolint:nestif
-			require.Equal(t, candidates[1].Address(), externalIP1)
-			require.Equal(t, lAddr[0].IP.String(), localIP0)
-			require.Equal(t, lAddr[1].IP.String(), localIP1)
-		} else if candidates[0].Address() == externalIP1 {
-			require.Equal(t, candidates[1].Address(), externalIP0)
-			require.Equal(t, lAddr[0].IP.String(), localIP1)
-			require.Equal(t, lAddr[1].IP.String(), localIP0)
-		}
-	})
-
-	t.Run("gather 1:1 NAT external IPs as srflx candidates", func(t *testing.T) {
-		wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
-		require.NoError(t, err, "should succeed")
-
-		lan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", StaticIPs: []string{"1.2.3.4/10.0.0.1"}, NATType: &vnet.NATType{Mode: vnet.NATModeNAT1To1}, LoggerFactory: loggerFactory})
-		require.NoError(t, err, "should succeed")
-
-		err = wan.AddRouter(lan)
-		require.NoError(t, err, "should succeed")
-
-		nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1"}})
-		require.NoError(t, err)
-
-		err = lan.AddNet(nw)
-		require.NoError(t, err, "should succeed")
-
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive, Net: nw})
-		require.NoError(t, err, "should succeed")
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		done := make(chan struct{})
-		err = agent.OnCandidate(func(c Candidate) {
-			if c == nil {
-				close(done)
-			}
-		})
-		require.NoError(t, err, "should succeed")
-
-		err = agent.GatherCandidates()
-		require.NoError(t, err, "should succeed")
-
-		log.Debug("Wait until gathering is complete...")
-		<-done
-		log.Debug("Gathering is done")
-
-		candidates, err := agent.GetLocalCandidates()
-		require.NoError(t, err, "should succeed")
-
-		require.Len(t, candidates, 2)
-
-		var candiHost *CandidateHost
-		var candiSrflx *CandidateServerReflexive
-
-		for _, candidate := range candidates {
-			switch candi := candidate.(type) {
-			case *CandidateHost:
-				candiHost = candi
-			case *CandidateServerReflexive:
-				candiSrflx = candi
-			default:
-				t.Fatal("Unexpected candidate type") // nolint
-			}
-		}
-
-		require.NotNil(t, candiHost, "should not be nil")
-		require.Equal(t, "10.0.0.1", candiHost.Address(), "should match")
-		require.NotNil(t, candiSrflx, "should not be nil")
-		require.Equal(t, "1.2.3.4", candiSrflx.Address(), "should match")
-	})
+	}
 }
 
 func TestVNetGatherWithInterfaceFilter(t *testing.T) {

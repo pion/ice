@@ -224,11 +224,7 @@ func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error
 			typ = config.NAT1To1IPCandidateType
 		}
 
-		rules, err := legacyNAT1To1Rules(config.NAT1To1IPs, typ)
-		if err != nil {
-			return nil, err
-		}
-		agent.addressRewriteRules = rules
+		agent.addressRewriteRules = legacyNAT1To1Rules(config.NAT1To1IPs, typ)
 	}
 
 	return newAgentWithConfig(agent, opts...)
@@ -287,7 +283,7 @@ func validateLegacyNAT1To1Entry(mapping string, hasIPv4CatchAll, hasIPv6CatchAll
 	return hasIPv4CatchAll, true, nil
 }
 
-func legacyNAT1To1Rules(ips []string, candidateType CandidateType) ([]AddressRewriteRule, error) {
+func legacyNAT1To1Rules(ips []string, candidateType CandidateType) []AddressRewriteRule {
 	var rules []AddressRewriteRule
 
 	for _, mapping := range ips {
@@ -297,37 +293,17 @@ func legacyNAT1To1Rules(ips []string, candidateType CandidateType) ([]AddressRew
 		}
 
 		parts := strings.Split(trimmed, "/")
-		switch len(parts) {
-		case 1:
-			rules = append(rules, AddressRewriteRule{
-				External:        []string{parts[0]},
-				AsCandidateType: candidateType,
-			})
-		case 2:
-			ext := strings.TrimSpace(parts[0])
-			local := strings.TrimSpace(parts[1])
-			if ext == "" || local == "" {
-				return nil, ErrInvalidNAT1To1IPMapping
-			}
-
-			if _, _, err := validateIPString(ext); err != nil {
-				return nil, err
-			}
-			if _, _, err := validateIPString(local); err != nil {
-				return nil, err
-			}
-
-			rules = append(rules, AddressRewriteRule{
-				External:        []string{ext},
-				Local:           local,
-				AsCandidateType: candidateType,
-			})
-		default:
-			return nil, ErrInvalidNAT1To1IPMapping
+		rule := AddressRewriteRule{
+			External:        []string{strings.TrimSpace(parts[0])},
+			AsCandidateType: candidateType,
 		}
+		if len(parts) == 2 {
+			rule.Local = strings.TrimSpace(parts[1])
+		}
+		rules = append(rules, rule)
 	}
 
-	return rules, nil
+	return rules
 }
 
 func createAgentBase(config *AgentConfig) (*Agent, error) {

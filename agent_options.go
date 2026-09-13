@@ -175,7 +175,6 @@ func sanitizeExternalIPs(ips []string) ([]string, error) {
 		seen[trimmed] = struct{}{}
 		sanitized = append(sanitized, trimmed)
 	}
-
 	if len(sanitized) == 0 {
 		return nil, ErrInvalidNAT1To1IPMapping
 	}
