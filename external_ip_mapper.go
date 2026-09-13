@@ -20,15 +20,8 @@ const (
 
 // AddressRewriteRule represents a rule for remapping candidate addresses.
 type AddressRewriteRule struct {
-	// External are the 1:1 external addresses to advertise for this rule.
-	// For replace mode, an empty list is treated as "drop the matched local
-	// address" (no candidate emitted). For append mode, an empty list is a
-	// no-op: the original candidate is kept.
-	// Empty External rules are intentional:
-	//   - Mode AddressRewriteReplace drops the matched candidate (deny-list style).
-	//   - Mode AddressRewriteAppend keeps the original candidate and adds nothing,
-	//     which is useful when you combine a catch-all replace with per-interface
-	//     allow rules.
+	// External are the 1:1 external addresses to advertise for this rule. At
+	// least one valid, non-empty IP address is required.
 	External []string
 	// Local optionally pins this rule to a specific local address. When set,
 	// external IPs map to that address regardless of IP family. When empty,
@@ -48,9 +41,6 @@ type AddressRewriteRule struct {
 	// If Mode is zero, the default is:
 	//   - CandidateTypeHost           -> AddressRewriteReplace
 	//   - CandidateTypeServerReflexive, CandidateTypeRelay -> AddressRewriteAppend
-	// For replace mode, a match with zero external IPs removes the candidate.
-	// For append mode, a match with zero external IPs leaves the original
-	// candidate untouched.
 	Mode AddressRewriteMode
 	// Networks is the optional networks to limit the rule to, nil/empty = all.
 	Networks []NetworkType
@@ -180,24 +170,6 @@ func cloneIPs(src []net.IP) []net.IP {
 	}
 
 	return cloned
-}
-
-func (m *ipMapping) findExternalIPs(locIP net.IP) []net.IP {
-	if !m.valid {
-		return nil
-	}
-
-	if m.ipMap != nil {
-		if extIPs, ok := m.ipMap[locIP.String()]; ok && len(extIPs) > 0 {
-			return cloneIPs(extIPs)
-		}
-	}
-
-	if len(m.ipSole) > 0 {
-		return cloneIPs(m.ipSole)
-	}
-
-	return nil
 }
 
 type addressRewriteRuleMapping struct {

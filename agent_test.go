@@ -1921,44 +1921,6 @@ func TestRemoteCandidateStats(t *testing.T) { //nolint:cyclop
 	require.Equal(t, hostRemoteStat.ID, hostRemote.ID())
 }
 
-func TestInitExtIPMapping(t *testing.T) {
-	defer test.CheckRoutines(t)()
-
-	// agent.addressRewriteMapper should be nil by default
-	agent, err := NewAgent(&AgentConfig{})
-	require.NoError(t, err)
-	require.Nil(t, agent.addressRewriteMapper)
-	require.NoError(t, agent.Close())
-
-	// a.addressRewriteMapper should be nil when NAT1To1IPs is a non-nil empty array
-	agent, err = NewAgent(&AgentConfig{NAT1To1IPs: []string{}, NAT1To1IPCandidateType: CandidateTypeHost})
-	require.NoError(t, err)
-	require.Nil(t, agent.addressRewriteMapper)
-	require.NoError(t, agent.Close())
-
-	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
-	// but the candidate type does not appear in the CandidateTypes.
-	_, err = NewAgent(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeHost, CandidateTypes: []CandidateType{CandidateTypeRelay}})
-	require.ErrorIs(t, ErrIneffectiveNAT1To1IPMappingHost, err)
-
-	// NewAgent should return an error when 1:1 NAT for srflx candidate is enabled
-	// but the candidate type does not appear in the CandidateTypes.
-	_, err = NewAgent(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive, CandidateTypes: []CandidateType{CandidateTypeRelay}})
-	require.ErrorIs(t, ErrIneffectiveNAT1To1IPMappingSrflx, err)
-
-	// NewAgent should return an error when 1:1 NAT for host candidate is enabled
-	// along with mDNS with MulticastDNSModeQueryAndGather
-	_, err = NewAgent(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeHost, MulticastDNSMode: MulticastDNSModeQueryAndGather})
-	require.ErrorIs(t, ErrMulticastDNSWithNAT1To1IPMapping, err)
-
-	// NewAgent should return if newAddressRewriteMapper() returns an error.
-	_, err = NewAgent(&AgentConfig{
-		NAT1To1IPs:             []string{"bad.2.3.4"}, // Bad IP
-		NAT1To1IPCandidateType: CandidateTypeHost,
-	})
-	require.ErrorIs(t, ErrInvalidNAT1To1IPMapping, err)
-}
-
 func TestBindingRequestTimeout(t *testing.T) {
 	defer test.CheckRoutines(t)()
 

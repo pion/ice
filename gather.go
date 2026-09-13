@@ -1398,6 +1398,8 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 
 	addresses, ok := a.resolveRelayAddresses(ep)
 	if !ok {
+		a.closeRelayEndpoint(ep)
+
 		return
 	}
 
@@ -1412,14 +1414,7 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 		return !slices.Contains(allowedNetworks, network)
 	})
 	if len(addresses) == 0 {
-		if ep.closeConn != nil {
-			ep.closeConn()
-		}
-		if ep.onClose != nil {
-			if err := ep.onClose(); err != nil {
-				a.log.Warnf("Failed to close filtered relay connection: %v", err)
-			}
-		}
+		a.closeRelayEndpoint(ep)
 
 		return
 	}
@@ -1442,6 +1437,17 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 			a.log.Warnf("failed to create additional relay candidate for %s: %v", ip, err)
 
 			continue
+		}
+	}
+}
+
+func (a *Agent) closeRelayEndpoint(ep relayEndpoint) {
+	if ep.closeConn != nil {
+		ep.closeConn()
+	}
+	if ep.onClose != nil {
+		if err := ep.onClose(); err != nil {
+			a.log.Warnf("Failed to close filtered relay connection: %v", err)
 		}
 	}
 }
