@@ -25,11 +25,7 @@ func TestConnectedState_String(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		require.Equal(t,
-			testCase.expectedString,
-			testCase.connectionState.String(),
-			"testCase: %d %v", i, testCase,
-		)
+		require.Equal(t, testCase.expectedString, testCase.connectionState.String(), "testCase: %d %v", i, testCase)
 	}
 }
 
@@ -45,10 +41,6 @@ func TestGatheringState_String(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		require.Equal(t,
-			testCase.expectedString,
-			testCase.gatheringState.String(),
-			"testCase: %d %v", i, testCase,
-		)
+		require.Equal(t, testCase.expectedString, testCase.gatheringState.String(), "testCase: %d %v", i, testCase)
 	}
 }

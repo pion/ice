@@ -194,8 +194,7 @@ func TestSharedPacketConn_ConcurrentLastCloserOnlyClosesUnderlying(t *testing.T)
 	wg.Wait()
 
 	require.Equal(t, int32(0), refs.Load())
-	require.Equal(t, int32(1), underlying.closeCount.Load(),
-		"underlying must close exactly once even under concurrent wrapper close")
+	require.Equal(t, int32(1), underlying.closeCount.Load(), "underlying must close exactly once even under concurrent wrapper close")
 }
 
 // SetReadDeadline on one wrapper must not affect concurrent reads on

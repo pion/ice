@@ -14,12 +14,7 @@ import (
 func newHostRemote(t *testing.T) *CandidateHost {
 	t.Helper()
 
-	remoteHostConfig := &CandidateHostConfig{
-		Network:   "udp",
-		Address:   "1.2.3.5",
-		Port:      12350,
-		Component: 1,
-	}
+	remoteHostConfig := &CandidateHostConfig{Network: "udp", Address: "1.2.3.5", Port: 12350, Component: 1}
 	hostRemote, err := NewCandidateHost(remoteHostConfig)
 	require.NoError(t, err)
 
@@ -29,14 +24,7 @@ func newHostRemote(t *testing.T) *CandidateHost {
 func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
 	t.Helper()
 
-	prflxConfig := &CandidatePeerReflexiveConfig{
-		Network:   "udp",
-		Address:   "10.10.10.2",
-		Port:      19217,
-		Component: 1,
-		RelAddr:   "4.3.2.1",
-		RelPort:   43211,
-	}
+	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, RelAddr: "4.3.2.1", RelPort: 43211}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	require.NoError(t, err)
 
@@ -46,14 +34,7 @@ func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
 func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
 	t.Helper()
 
-	srflxConfig := &CandidateServerReflexiveConfig{
-		Network:   "udp",
-		Address:   "10.10.10.2",
-		Port:      19218,
-		Component: 1,
-		RelAddr:   "4.3.2.1",
-		RelPort:   43212,
-	}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
@@ -63,14 +44,7 @@ func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
 func newRelayRemote(t *testing.T) *CandidateRelay {
 	t.Helper()
 
-	relayConfig := &CandidateRelayConfig{
-		Network:   "udp",
-		Address:   "1.2.3.4",
-		Port:      12340,
-		Component: 1,
-		RelAddr:   "4.3.2.1",
-		RelPort:   43210,
-	}
+	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 12340, Component: 1, RelAddr: "4.3.2.1", RelPort: 43210}
 	relayRemote, err := NewCandidateRelay(relayConfig)
 	require.NoError(t, err)
 
@@ -80,12 +54,7 @@ func newRelayRemote(t *testing.T) *CandidateRelay {
 func newHostLocal(t *testing.T) *CandidateHost {
 	t.Helper()
 
-	localHostConfig := &CandidateHostConfig{
-		Network:   "udp",
-		Address:   "192.168.1.1",
-		Port:      19216,
-		Component: 1,
-	}
+	localHostConfig := &CandidateHostConfig{Network: "udp", Address: "192.168.1.1", Port: 19216, Component: 1}
 	hostLocal, err := NewCandidateHost(localHostConfig)
 	require.NoError(t, err)
 

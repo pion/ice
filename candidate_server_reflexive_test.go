@@ -26,32 +26,13 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	require.NoError(t, err)
 	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"},
-			},
-		},
-	})
+	server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverListener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: "127.0.0.1"}}}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, server.Close())
 	}()
 
-	cfg := &AgentConfig{
-		NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		Urls: []*stun.URI{
-			{
-				Scheme: SchemeTypeSTUN,
-				Host:   "127.0.0.1",
-				Port:   serverPort,
-			},
-		},
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
-	}
+	cfg := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, Urls: []*stun.URI{{Scheme: SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}}
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)

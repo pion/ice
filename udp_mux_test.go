@@ -43,10 +43,7 @@ type udpMuxTestCase struct {
 
 func newUDPMuxTestVNet(t *testing.T, muxIPs ...string) (*vnet.Net, *vnet.Net, func()) {
 	t.Helper()
-	router, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "192.0.2.0/24",
-		LoggerFactory: logging.NewDefaultLoggerFactory(),
-	})
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "192.0.2.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
 	require.NoError(t, err)
 	muxNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: muxIPs})
 	require.NoError(t, err)
@@ -79,10 +76,7 @@ func TestUDPMux(t *testing.T) {
 		t.Run(subTest.name, func(t *testing.T) {
 			conn, err := muxNet.ListenUDP(subTest.network, &net.UDPAddr{IP: subTest.listenIP})
 			require.NoError(t, err)
-			udpMux := NewUDPMuxDefault(UDPMuxParams{
-				UDPConn: conn,
-				Net:     muxNet,
-			})
+			udpMux := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn, Net: muxNet})
 
 			defer func() {
 				_ = udpMux.Close()
@@ -127,10 +121,7 @@ func TestUDPMuxOnUnhandledPacket(t *testing.T) {
 	mux := NewUDPMuxDefault(UDPMuxParams{
 		UDPConn: udpConn,
 		OnUnhandledPacket: func(data []byte, addr netip.AddrPort) {
-			dropped <- droppedPacket{
-				data: append([]byte(nil), data...),
-				addr: addr,
-			}
+			dropped <- droppedPacket{data: append([]byte(nil), data...), addr: addr}
 		},
 	})
 	defer func() {
@@ -155,7 +146,7 @@ func TestUDPMuxOnUnhandledPacket(t *testing.T) {
 	}
 }
 
-func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport.Net, testCase udpMuxTestCase, ufrag string) { //nolint:lll
+func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport.Net, testCase udpMuxTestCase, ufrag string) {
 	t.Helper()
 
 	pktConn, err := udpMux.GetConn(ufrag, udpMux.LocalAddr())
@@ -167,11 +158,7 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport
 	addr, ok := pktConn.LocalAddr().(*net.UDPAddr)
 	require.True(t, ok, "pktConn.LocalAddr() is not a net.UDPAddr")
 	addr = &net.UDPAddr{IP: testCase.connectIP, Port: addr.Port}
-	remoteConn, err := networkNet.DialUDP(
-		testCase.network,
-		&net.UDPAddr{IP: testCase.connectIP},
-		addr,
-	)
+	remoteConn, err := networkNet.DialUDP(testCase.network, &net.UDPAddr{IP: testCase.connectIP}, addr)
 	require.NoError(t, err, "error dialing test UDP connection")
 	defer remoteConn.Close() //nolint:errcheck
 
@@ -284,10 +271,7 @@ func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
 
 func TestUDPMux_Agent_Restart(t *testing.T) {
 	oneSecond := time.Second
-	connA, connB := pipe(t, &AgentConfig{
-		DisconnectedTimeout: &oneSecond,
-		FailedTimeout:       &oneSecond,
-	})
+	connA, connB := pipe(t, &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond})
 	defer closePipe(t, connA, connB)
 
 	aNotifier, aConnected := onConnected()
@@ -326,10 +310,7 @@ func secondTestMuxedConn(t *testing.T, capBytes int) *udpMuxedConn {
 			return &bufferHolder{buf: make([]byte, capBytes)}
 		},
 	}
-	params := &udpMuxedConnParams{
-		BufferPool: pool,
-		LocalAddr:  &net.UDPAddr{IP: net.IPv4zero, Port: 0},
-	}
+	params := &udpMuxedConnParams{BufferPool: pool, LocalAddr: &net.UDPAddr{IP: net.IPv4zero, Port: 0}}
 
 	return newUDPMuxedConn(params)
 }
@@ -441,8 +422,7 @@ func TestUDPMuxedConn_TwoReadersWokenByTwoWrites(t *testing.T) {
 	require.Equal(t, []byte("p2"), second.data)
 
 	// Both readers returned and the counter is balanced.
-	require.Equal(t, int32(0), conn.readWaiting.Load(),
-		"readWaiting must be 0 after both readers are woken")
+	require.Equal(t, int32(0), conn.readWaiting.Load(), "readWaiting must be 0 after both readers are woken")
 }
 
 func TestUDPMuxedConn_WriteTo_ClosedPipe(t *testing.T) {
@@ -610,10 +590,7 @@ func TestNewUDPMuxDefault_LocalAddrNotUDPAddr(t *testing.T) {
 
 	pc := &fakenet.PacketConn{Conn: c1}
 
-	mux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:  logging.NewDefaultLoggerFactory().NewLogger("ice"),
-		UDPConn: pc,
-	})
+	mux := NewUDPMuxDefault(UDPMuxParams{Logger: logging.NewDefaultLoggerFactory().NewLogger("ice"), UDPConn: pc})
 	require.NotNil(t, mux)
 
 	defer func() { _ = mux.Close() }()
@@ -629,10 +606,7 @@ func TestUDPMuxDefault_GetConn_InvalidAddress(t *testing.T) {
 	connA, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 
-	udpMux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:  nil,
-		UDPConn: connA,
-	})
+	udpMux := NewUDPMuxDefault(UDPMuxParams{Logger: nil, UDPConn: connA})
 	defer func() {
 		_ = udpMux.Close()
 		_ = connA.Close()
@@ -1077,8 +1051,7 @@ func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
 	wrapperB, ok := connB.(*sharedAddrPortConn)
 	require.True(t, ok)
 	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
-	require.Same(t, wrapperA.underlying, wrapperB.underlying,
-		"wrappers must share one underlying udpMuxedConn")
+	require.Same(t, wrapperA.underlying, wrapperB.underlying, "wrappers must share one underlying udpMuxedConn")
 
 	underlying, ok := wrapperA.underlying.(*udpMuxedConn)
 	require.True(t, ok)
@@ -1228,12 +1201,7 @@ func TestUDPMuxDefault_GetListenAddresses_ReflectsInterfaceChanges(t *testing.T)
 	wantPort := udpAddr.Port
 
 	makeIface := func(name string, ip net.IP) *transport.Interface {
-		ifc := transport.NewInterface(net.Interface{
-			Index: 1,
-			MTU:   1500,
-			Name:  name,
-			Flags: net.FlagUp | net.FlagMulticast,
-		})
+		ifc := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: name, Flags: net.FlagUp | net.FlagMulticast})
 		ifc.AddAddress(&net.IPNet{IP: ip, Mask: net.CIDRMask(24, 32)})
 
 		return ifc
@@ -1242,11 +1210,7 @@ func TestUDPMuxDefault_GetListenAddresses_ReflectsInterfaceChanges(t *testing.T)
 	ip1 := net.IPv4(10, 0, 0, 1).To4()
 	mn := &mutableNet{ifaces: []*transport.Interface{makeIface("eth0", ip1)}}
 
-	mux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:  nil,
-		UDPConn: conn,
-		Net:     mn,
-	})
+	mux := NewUDPMuxDefault(UDPMuxParams{Logger: nil, UDPConn: conn, Net: mn})
 	require.NotNil(t, mux)
 	defer func() { _ = mux.Close() }()
 
@@ -1278,11 +1242,7 @@ func TestNewUDPMuxDefault_UnspecifiedAddr_AutoInitNet(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 
-	mux := NewUDPMuxDefault(UDPMuxParams{
-		Logger:  nil,
-		UDPConn: conn,
-		Net:     nil,
-	})
+	mux := NewUDPMuxDefault(UDPMuxParams{Logger: nil, UDPConn: conn, Net: nil})
 	require.NotNil(t, mux)
 	defer func() { _ = mux.Close() }()
 

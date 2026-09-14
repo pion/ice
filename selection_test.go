@@ -208,10 +208,7 @@ func TestControllingSelector_IsNominatable_LogsInvalidType(t *testing.T) {
 	testLogger := &testICELogger{}
 	loggerFactory := &testICELoggerFactory{logger: testLogger}
 
-	sel := &controllingSelector{
-		agent: &Agent{},
-		log:   loggerFactory.NewLogger("test"),
-	}
+	sel := &controllingSelector{agent: &Agent{}, log: loggerFactory.NewLogger("test")}
 	sel.Start()
 
 	c := hostCandidate()
@@ -253,12 +250,7 @@ func TestControllingSelector_NominatePair_BuildError(t *testing.T) {
 type pingNoIOCand struct{ candidateBase }
 
 func newPingNoIOCand() *pingNoIOCand {
-	return &pingNoIOCand{
-		candidateBase: candidateBase{
-			candidateType: CandidateTypeHost,
-			component:     ComponentRTP,
-		},
-	}
+	return &pingNoIOCand{candidateBase: candidateBase{candidateType: CandidateTypeHost, component: ComponentRTP}}
 }
 func (d *pingNoIOCand) writeTo(b []byte, _ Candidate) (int, error) { return len(b), nil }
 
@@ -350,12 +342,7 @@ func (l *warnTestLogger) Errorf(string, ...any) {}
 type dummyNoIOCand struct{ candidateBase }
 
 func newDummyNoIOCand(t CandidateType) *dummyNoIOCand {
-	return &dummyNoIOCand{
-		candidateBase: candidateBase{
-			candidateType: t,
-			component:     ComponentRTP,
-		},
-	}
+	return &dummyNoIOCand{candidateBase: candidateBase{candidateType: t, component: ComponentRTP}}
 }
 func (d *dummyNoIOCand) writeTo(p []byte, _ Candidate) (int, error) { return len(p), nil }
 
@@ -400,12 +387,7 @@ func TestResponseSymmetric(t *testing.T) {
 		remoteAddr netip.AddrPort
 		want       bool
 	}{
-		{
-			name:       "matching transport and address",
-			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
-			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20000),
-			want: true,
-		},
+		{name: "matching transport and address", reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4, dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20000), want: true},
 		{
 			// netip.AddrPort carries no transport, so the network-type check is
 			// what rejects a response that arrived on a different transport.
@@ -414,24 +396,9 @@ func TestResponseSymmetric(t *testing.T) {
 			dest: mk("2001:db8::2", 20000), remoteAddr: mk("2001:db8::2", 20000),
 			want: false,
 		},
-		{
-			name:       "source address mismatch",
-			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
-			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.9", 20000),
-			want: false,
-		},
-		{
-			name:       "source port mismatch",
-			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
-			dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20001),
-			want: false,
-		},
-		{
-			name:       "IPv4-in-IPv6 source form still matches",
-			reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4,
-			dest: mk("192.168.1.2", 20000), remoteAddr: mk("::ffff:192.168.1.2", 20000),
-			want: true,
-		},
+		{name: "source address mismatch", reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4, dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.9", 20000), want: false},
+		{name: "source port mismatch", reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4, dest: mk("192.168.1.2", 20000), remoteAddr: mk("192.168.1.2", 20001), want: false},
+		{name: "IPv4-in-IPv6 source form still matches", reqNetwork: NetworkTypeUDP4, localNT: NetworkTypeUDP4, dest: mk("192.168.1.2", 20000), remoteAddr: mk("::ffff:192.168.1.2", 20000), want: true},
 	}
 
 	for _, tt := range tests {
@@ -475,21 +442,11 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 	// returns the matching success response.
 	sendRequest := func(t *testing.T, agent *Agent, local, remote Candidate) *stun.Message {
 		t.Helper()
-		req, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
-			AttrControlling(agent.tieBreaker),
-			PriorityAttr(local.Priority()),
-			stun.NewShortTermIntegrity(agent.remotePwd),
-			stun.Fingerprint,
-		)
+		req, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag), AttrControlling(agent.tieBreaker), PriorityAttr(local.Priority()), stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 		agent.sendBindingRequest(req, local, remote)
 
-		resp, err := stun.Build(req, stun.BindingSuccess,
-			stun.NewShortTermIntegrity(agent.remotePwd),
-			stun.Fingerprint,
-		)
+		resp, err := stun.Build(req, stun.BindingSuccess, stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		return resp
@@ -505,8 +462,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		resp := sendRequest(t, agent, local, remote)
 		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
 
-		require.Equal(t, CandidatePairStateInProgress, pair.state,
-			"pair must not be marked succeeded when the response transport does not match")
+		require.Equal(t, CandidatePairStateInProgress, pair.state, "pair must not be marked succeeded when the response transport does not match")
 		require.Nil(t, agent.getSelectedPair())
 	})
 
@@ -521,8 +477,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		wrongSrc := netip.AddrPortFrom(netip.MustParseAddr("192.168.1.9"), 20000)
 		selector.HandleSuccessResponse(resp, local, remote, wrongSrc)
 
-		require.Equal(t, CandidatePairStateInProgress, pair.state,
-			"pair must not be marked succeeded when the response source does not match")
+		require.Equal(t, CandidatePairStateInProgress, pair.state, "pair must not be marked succeeded when the response source does not match")
 		require.Nil(t, agent.getSelectedPair())
 	})
 
@@ -536,8 +491,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		resp := sendRequest(t, agent, local, remote)
 		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
 
-		require.Equal(t, CandidatePairStateSucceeded, pair.state,
-			"pair must be marked succeeded when the response transport matches")
+		require.Equal(t, CandidatePairStateSucceeded, pair.state, "pair must be marked succeeded when the response transport matches")
 	})
 }
 
@@ -576,12 +530,7 @@ func TestControlledSelector_NoTriggeredCheckAfterConnected(t *testing.T) {
 	sentBefore := pair.RequestsSent()
 
 	// Build a STUN Binding Request (no USE-CANDIDATE).
-	msg, err := stun.Build(stun.BindingRequest,
-		stun.TransactionID,
-		stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-		stun.NewShortTermIntegrity(agent.localPwd),
-		stun.Fingerprint,
-	)
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 	require.NoError(t, err)
 
 	// Call HandleBindingRequest multiple times — simulates repeated inbound requests.
@@ -590,8 +539,7 @@ func TestControlledSelector_NoTriggeredCheckAfterConnected(t *testing.T) {
 	}
 
 	// No triggered checks should have been sent since the pair is already connected.
-	assert.Equal(t, sentBefore, pair.RequestsSent(),
-		"triggered check should not be sent for a succeeded+selected pair")
+	assert.Equal(t, sentBefore, pair.RequestsSent(), "triggered check should not be sent for a succeeded+selected pair")
 }
 
 // TestControlledSelector_TriggeredCheckDuringChecking verifies that a triggered
@@ -624,18 +572,12 @@ func TestControlledSelector_TriggeredCheckDuringChecking(t *testing.T) {
 
 	sentBefore := pair.RequestsSent()
 
-	msg, err := stun.Build(stun.BindingRequest,
-		stun.TransactionID,
-		stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-		stun.NewShortTermIntegrity(agent.localPwd),
-		stun.Fingerprint,
-	)
+	msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 	require.NoError(t, err)
 
 	selector.HandleBindingRequest(msg, local, remote)
 
-	assert.Greater(t, pair.RequestsSent(), sentBefore,
-		"triggered check should be sent during ICE checking phase")
+	assert.Greater(t, pair.RequestsSent(), sentBefore, "triggered check should be sent during ICE checking phase")
 }
 
 func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
@@ -644,10 +586,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 
 	t.Run("Configuration", func(t *testing.T) {
 		t.Run("WithAutomaticRenomination enables feature", func(t *testing.T) {
-			agent, err := NewAgentWithOptions(
-				WithRenomination(DefaultNominationValueGenerator()),
-				WithAutomaticRenomination(5*time.Second),
-			)
+			agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(5*time.Second))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -659,10 +598,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		})
 
 		t.Run("Default interval when zero", func(t *testing.T) {
-			agent, err := NewAgentWithOptions(
-				WithRenomination(DefaultNominationValueGenerator()),
-				WithAutomaticRenomination(0),
-			)
+			agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(0))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -680,40 +616,16 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			require.NoError(t, agent.Close())
 		}()
 
-		localHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.1",
-			Port:      10000,
-			Component: 1,
-		})
+		localHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.1", Port: 10000, Component: 1})
 		require.NoError(t, err)
 
-		remoteHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.2",
-			Port:      20000,
-			Component: 1,
-		})
+		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.1",
-			Port:      30000,
-			Component: 1,
-			RelAddr:   "192.168.1.1",
-			RelPort:   10000,
-		})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.2",
-			Port:      40000,
-			Component: 1,
-			RelAddr:   "192.168.1.2",
-			RelPort:   20000,
-		})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
 		require.NoError(t, err)
 
 		t.Run("Host pair scores higher than relay pair", func(t *testing.T) {
@@ -728,8 +640,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			hostScore := agent.evaluateCandidatePairQuality(hostPair)
 			relayScore := agent.evaluateCandidatePairQuality(relayPair)
 
-			assert.Greater(t, hostScore, relayScore,
-				"Host pair should score higher than relay pair with same RTT")
+			assert.Greater(t, hostScore, relayScore, "Host pair should score higher than relay pair with same RTT")
 		})
 
 		t.Run("Lower RTT scores higher", func(t *testing.T) {
@@ -744,8 +655,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			score1 := agent.evaluateCandidatePairQuality(pair1)
 			score2 := agent.evaluateCandidatePairQuality(pair2)
 
-			assert.Greater(t, score1, score2,
-				"Pair with lower RTT should score higher")
+			assert.Greater(t, score1, score2, "Pair with lower RTT should score higher")
 		})
 	})
 
@@ -756,40 +666,16 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			require.NoError(t, agent.Close())
 		}()
 
-		localHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.1",
-			Port:      10000,
-			Component: 1,
-		})
+		localHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.1", Port: 10000, Component: 1})
 		require.NoError(t, err)
 
-		remoteHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.2",
-			Port:      20000,
-			Component: 1,
-		})
+		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.1",
-			Port:      30000,
-			Component: 1,
-			RelAddr:   "192.168.1.1",
-			RelPort:   10000,
-		})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.2",
-			Port:      40000,
-			Component: 1,
-			RelAddr:   "192.168.1.2",
-			RelPort:   20000,
-		})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
 		require.NoError(t, err)
 
 		t.Run("Should renominate relay to host", func(t *testing.T) {
@@ -802,18 +688,12 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			hostPair.UpdateRoundTripTime(45 * time.Millisecond) // Similar RTT
 
 			shouldSwitch := agent.shouldRenominate(relayPair, hostPair)
-			assert.True(t, shouldSwitch,
-				"Should renominate from relay to host even with similar RTT")
+			assert.True(t, shouldSwitch, "Should renominate from relay to host even with similar RTT")
 		})
 
 		t.Run("Should renominate for RTT improvement > 10ms", func(t *testing.T) {
 			// Create different host candidates for pair2 to avoid same-pair check
-			localHost2, err := NewCandidateHost(&CandidateHostConfig{
-				Network:   "udp",
-				Address:   "192.168.1.3",
-				Port:      10001,
-				Component: 1,
-			})
+			localHost2, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.3", Port: 10001, Component: 1})
 			require.NoError(t, err)
 
 			pair1 := newCandidatePair(localHost, remoteHost, true)
@@ -825,18 +705,12 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			pair2.UpdateRoundTripTime(30 * time.Millisecond) // 20ms improvement
 
 			shouldSwitch := agent.shouldRenominate(pair1, pair2)
-			assert.True(t, shouldSwitch,
-				"Should renominate for RTT improvement > 10ms")
+			assert.True(t, shouldSwitch, "Should renominate for RTT improvement > 10ms")
 		})
 
 		t.Run("Should not renominate for small RTT improvement", func(t *testing.T) {
 			// Create different host candidates for pair2 to avoid same-pair check
-			localHost2, err := NewCandidateHost(&CandidateHostConfig{
-				Network:   "udp",
-				Address:   "192.168.1.3",
-				Port:      10001,
-				Component: 1,
-			})
+			localHost2, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.3", Port: 10001, Component: 1})
 			require.NoError(t, err)
 
 			pair1 := newCandidatePair(localHost, remoteHost, true)
@@ -848,8 +722,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			pair2.UpdateRoundTripTime(45 * time.Millisecond) // Only 5ms improvement
 
 			shouldSwitch := agent.shouldRenominate(pair1, pair2)
-			assert.False(t, shouldSwitch,
-				"Should not renominate for RTT improvement < 10ms")
+			assert.False(t, shouldSwitch, "Should not renominate for RTT improvement < 10ms")
 		})
 
 		t.Run("Should not renominate to same pair", func(t *testing.T) {
@@ -857,8 +730,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			pair.state = CandidatePairStateSucceeded
 
 			shouldSwitch := agent.shouldRenominate(pair, pair)
-			assert.False(t, shouldSwitch,
-				"Should not renominate to the same pair")
+			assert.False(t, shouldSwitch, "Should not renominate to the same pair")
 		})
 
 		t.Run("Should not renominate to non-succeeded pair", func(t *testing.T) {
@@ -869,8 +741,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			candidatePair.state = CandidatePairStateInProgress
 
 			shouldSwitch := agent.shouldRenominate(currentPair, candidatePair)
-			assert.False(t, shouldSwitch,
-				"Should not renominate to non-succeeded pair")
+			assert.False(t, shouldSwitch, "Should not renominate to non-succeeded pair")
 		})
 	})
 
@@ -882,40 +753,16 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		}()
 
 		// Create candidates
-		localHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.1",
-			Port:      10000,
-			Component: 1,
-		})
+		localHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.1", Port: 10000, Component: 1})
 		require.NoError(t, err)
 
-		remoteHost, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "192.168.1.2",
-			Port:      20000,
-			Component: 1,
-		})
+		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.1",
-			Port:      30000,
-			Component: 1,
-			RelAddr:   "192.168.1.1",
-			RelPort:   10000,
-		})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{
-			Network:   "udp",
-			Address:   "10.0.0.2",
-			Port:      40000,
-			Component: 1,
-			RelAddr:   "192.168.1.2",
-			RelPort:   20000,
-		})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
 		require.NoError(t, err)
 
 		ctx := context.Background()
@@ -932,8 +779,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 			// Find best should return host pair
 			best := agent.findBestCandidatePair()
 			assert.NotNil(t, best)
-			assert.Equal(t, hostPair, best,
-				"Best pair should be the host pair with lower latency")
+			assert.Equal(t, hostPair, best, "Best pair should be the host pair with lower latency")
 		})
 		require.NoError(t, err)
 	})
@@ -954,9 +800,7 @@ func TestAutomaticRenominationIntegration(t *testing.T) { //nolint:cyclop
 			require.NoError(t, aAgent.Close())
 		}()
 
-		bAgent, err := NewAgentWithOptions(
-			WithRenomination(DefaultNominationValueGenerator()),
-		)
+		bAgent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, bAgent.Close())
@@ -1265,22 +1109,12 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent.setSelectedPair(pair1)
 		assert.Equal(t, pair1, agent.getSelectedPair())
 
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			NominationSetter{
-				Value:    100,
-				AttrType: agent.nominationAttribute,
-			},
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), NominationSetter{Value: 100, AttrType: agent.nominationAttribute}, stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		selector.HandleBindingRequest(msg, local2, remote)
 
-		assert.Equal(t, pair2, agent.getSelectedPair(),
-			"Should switch pairs when nomination attribute is present without USE-CANDIDATE")
+		assert.Equal(t, pair2, agent.getSelectedPair(), "Should switch pairs when nomination attribute is present without USE-CANDIDATE")
 	})
 
 	t.Run("Accepts renomination with nomination value regardless of priority", func(t *testing.T) {
@@ -1326,17 +1160,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 
 		// Build a nomination request for the second pair with a nomination value
 		nominationValue := uint32(100)
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			NominationSetter{
-				Value:    nominationValue,
-				AttrType: agent.nominationAttribute,
-			},
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), NominationSetter{Value: nominationValue, AttrType: agent.nominationAttribute}, stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		// Handle the binding request with nomination value for pair2
@@ -1345,8 +1169,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// The controlled agent should accept the renomination even though
 		// pair2 has the same priority as pair1, because a nomination value is present
 		selectedPair := agent.getSelectedPair()
-		assert.Equal(t, pair2, selectedPair,
-			"Should switch to pair2 when renomination with nomination value is received")
+		assert.Equal(t, pair2, selectedPair, "Should switch to pair2 when renomination with nomination value is received")
 		assert.True(t, pair2.nominated)
 	})
 
@@ -1391,13 +1214,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		agent.setSelectedPair(pair1)
 
 		// Build a standard nomination request WITHOUT nomination value for pair2
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		// Handle the binding request for pair2 (same priority)
@@ -1407,8 +1224,7 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		// Since pair2 has equal priority to pair1, it should NOT be accepted
 		// (only higher priority pairs are accepted in standard ICE)
 		selectedPair := agent.getSelectedPair()
-		assert.Equal(t, pair1, selectedPair,
-			"Should NOT switch to pair2 with standard nomination when priority is equal")
+		assert.Equal(t, pair1, selectedPair, "Should NOT switch to pair2 with standard nomination when priority is equal")
 	})
 
 	t.Run("Higher nomination values override lower ones", func(t *testing.T) {
@@ -1452,45 +1268,22 @@ func TestRenominationAcceptance(t *testing.T) { //nolint:maintidx
 		pair3.state = CandidatePairStateSucceeded
 
 		// Nominate pair1 with value 100
-		msg1, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			NominationSetter{Value: 100, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg1, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), NominationSetter{Value: 100, AttrType: agent.nominationAttribute}, stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 		selector.HandleBindingRequest(msg1, local1, remote)
 		assert.Equal(t, pair1, agent.getSelectedPair())
 
 		// Try to nominate pair2 with a LOWER value (50) - should be rejected
-		msg2, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			NominationSetter{Value: 50, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg2, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), NominationSetter{Value: 50, AttrType: agent.nominationAttribute}, stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 		selector.HandleBindingRequest(msg2, local2, remote)
-		assert.Equal(t, pair1, agent.getSelectedPair(),
-			"Should reject nomination with lower value")
+		assert.Equal(t, pair1, agent.getSelectedPair(), "Should reject nomination with lower value")
 
 		// Nominate pair3 with a HIGHER value (200) - should be accepted
-		msg3, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			NominationSetter{Value: 200, AttrType: agent.nominationAttribute},
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg3, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), NominationSetter{Value: 200, AttrType: agent.nominationAttribute}, stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 		selector.HandleBindingRequest(msg3, local3, remote)
-		assert.Equal(t, pair3, agent.getSelectedPair(),
-			"Should accept nomination with higher value")
+		assert.Equal(t, pair3, agent.getSelectedPair(), "Should accept nomination with higher value")
 	})
 }
 
@@ -1548,10 +1341,7 @@ func TestControllingSideRenomination(t *testing.T) {
 			UseCandidate(),
 			AttrControlling(agent.tieBreaker),
 			PriorityAttr(local2.Priority()),
-			NominationSetter{
-				Value:    nominationValue,
-				AttrType: agent.nominationAttribute,
-			},
+			NominationSetter{Value: nominationValue, AttrType: agent.nominationAttribute},
 			stun.NewShortTermIntegrity(agent.remotePwd),
 			stun.Fingerprint,
 		)
@@ -1566,14 +1356,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.Equal(t, nominationValue, *agent.pendingBindingRequests[0].nominationValue)
 
 		// Build a success response
-		successMsg, err := stun.Build(msg, stun.BindingSuccess,
-			&stun.XORMappedAddress{
-				IP:   net.ParseIP("192.168.1.2").To4(),
-				Port: 20000,
-			},
-			stun.NewShortTermIntegrity(agent.remotePwd),
-			stun.Fingerprint,
-		)
+		successMsg, err := stun.Build(msg, stun.BindingSuccess, &stun.XORMappedAddress{IP: net.ParseIP("192.168.1.2").To4(), Port: 20000}, stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		// Handle the success response - this should switch to pair2
@@ -1581,8 +1364,7 @@ func TestControllingSideRenomination(t *testing.T) {
 
 		// The controlling agent should have switched to pair2
 		selectedPair := agent.getSelectedPair()
-		assert.Equal(t, pair2, selectedPair,
-			"Controlling agent should switch to pair2 after renomination success response")
+		assert.Equal(t, pair2, selectedPair, "Controlling agent should switch to pair2 after renomination success response")
 		assert.True(t, pair2.nominated)
 	})
 
@@ -1626,15 +1408,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		assert.Equal(t, pair1, agent.getSelectedPair())
 
 		// Build a standard nomination request WITHOUT nomination value for pair2
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag),
-			UseCandidate(),
-			AttrControlling(agent.tieBreaker),
-			PriorityAttr(local2.Priority()),
-			stun.NewShortTermIntegrity(agent.remotePwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag), UseCandidate(), AttrControlling(agent.tieBreaker), PriorityAttr(local2.Priority()), stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		// Simulate sending the binding request
@@ -1645,14 +1419,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.Nil(t, agent.pendingBindingRequests[0].nominationValue)
 
 		// Build a success response
-		successMsg, err := stun.Build(msg, stun.BindingSuccess,
-			&stun.XORMappedAddress{
-				IP:   net.ParseIP("192.168.1.2").To4(),
-				Port: 20000,
-			},
-			stun.NewShortTermIntegrity(agent.remotePwd),
-			stun.Fingerprint,
-		)
+		successMsg, err := stun.Build(msg, stun.BindingSuccess, &stun.XORMappedAddress{IP: net.ParseIP("192.168.1.2").To4(), Port: 20000}, stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		// Handle the success response - this should NOT switch since it's standard nomination
@@ -1661,8 +1428,7 @@ func TestControllingSideRenomination(t *testing.T) {
 
 		// The controlling agent should remain with pair1
 		selectedPair := agent.getSelectedPair()
-		assert.Equal(t, pair1, selectedPair,
-			"Controlling agent should NOT switch with standard nomination when pair already selected")
+		assert.Equal(t, pair1, selectedPair, "Controlling agent should NOT switch with standard nomination when pair already selected")
 	})
 }
 
@@ -1718,12 +1484,7 @@ func TestLiteControllingSelectorContactCandidates(t *testing.T) {
 func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 	buildMsg := func(t *testing.T, a *Agent) *stun.Message {
 		t.Helper()
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(a.localUfrag+":"+a.remoteUfrag),
-			stun.NewShortTermIntegrity(a.localPwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(a.localUfrag+":"+a.remoteUfrag), stun.NewShortTermIntegrity(a.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		return msg
@@ -1811,8 +1572,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 			ls.HandleBindingRequest(msg, local, remote)
 		}
 
-		assert.Equal(t, sentBefore, pair.RequestsSent(),
-			"lite controlled agent must not send triggered checks during ICE checking")
+		assert.Equal(t, sentBefore, pair.RequestsSent(), "lite controlled agent must not send triggered checks during ICE checking")
 	})
 
 	t.Run("NoTriggeredCheckWhenSucceededAndSelected", func(t *testing.T) {
@@ -1829,8 +1589,7 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 		msg := buildMsg(t, agent)
 		ls.HandleBindingRequest(msg, local, remote)
 
-		assert.Equal(t, sentBefore, pair.RequestsSent(),
-			"lite controlled agent must not send triggered checks when pair is connected")
+		assert.Equal(t, sentBefore, pair.RequestsSent(), "lite controlled agent must not send triggered checks when pair is connected")
 	})
 
 	t.Run("CustomHandlerSelectionPromotesPair", func(t *testing.T) {
@@ -1875,19 +1634,12 @@ func TestLiteControlledSelector_NoPingCandidate(t *testing.T) {
 
 		assert.Nil(t, agent.getSelectedPair(), "no pair selected yet")
 
-		msg, err := stun.Build(stun.BindingRequest,
-			stun.TransactionID,
-			stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag),
-			UseCandidate(),
-			stun.NewShortTermIntegrity(agent.localPwd),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.localUfrag+":"+agent.remoteUfrag), UseCandidate(), stun.NewShortTermIntegrity(agent.localPwd), stun.Fingerprint)
 		require.NoError(t, err)
 
 		ls.HandleBindingRequest(msg, local, remote)
 
-		assert.Equal(t, pair, agent.getSelectedPair(),
-			"lite controlled agent must accept nomination even when pair has not reached Succeeded")
+		assert.Equal(t, pair, agent.getSelectedPair(), "lite controlled agent must accept nomination even when pair has not reached Succeeded")
 		assert.Equal(t, CandidatePairStateSucceeded, pair.state)
 		assert.True(t, pair.nominated)
 		// Still no triggered check emitted
@@ -1949,26 +1701,14 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 
 	// Full agent — will become the controlling agent (Dial).
 	fullNotifier, fullConnected := onConnected()
-	fullAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		KeepaliveInterval: &keepaliveInterval,
-		CheckInterval:     &oneHour,
-	})
+	fullAgent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, KeepaliveInterval: &keepaliveInterval, CheckInterval: &oneHour})
 	require.NoError(t, err)
 	require.NoError(t, fullAgent.OnConnectionStateChange(fullNotifier))
 	t.Cleanup(func() { require.NoError(t, fullAgent.Close()) })
 
 	// Lite agent — will become the controlled agent (Accept).
 	liteNotifier, liteConnected := onConnected()
-	liteAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		KeepaliveInterval: &keepaliveInterval,
-		CheckInterval:     &oneHour,
-		Lite:              true,
-		CandidateTypes:    []CandidateType{CandidateTypeHost},
-	})
+	liteAgent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, KeepaliveInterval: &keepaliveInterval, CheckInterval: &oneHour, Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}})
 	require.NoError(t, err)
 	require.NoError(t, liteAgent.OnConnectionStateChange(liteNotifier))
 	t.Cleanup(func() { require.NoError(t, liteAgent.Close()) })
@@ -1984,8 +1724,7 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	// Verify the lite agent never sent its own connectivity checks.
 	err = liteAgent.loop.Run(liteAgent.loop, func(_ context.Context) {
 		for _, pair := range liteAgent.checklist {
-			assert.Equal(t, uint64(0), pair.RequestsSent(),
-				"lite agent must not send any connectivity checks")
+			assert.Equal(t, uint64(0), pair.RequestsSent(), "lite agent must not send any connectivity checks")
 		}
 	})
 	require.NoError(t, err)
@@ -2035,22 +1774,12 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(30 * time.Second).Stop()
 
-	virtualNet, err := buildVNet(
-		&vnet.NATType{Mode: vnet.NATModeNAT1To1},
-		&vnet.NATType{Mode: vnet.NATModeNAT1To1},
-	)
+	virtualNet, err := buildVNet(&vnet.NATType{Mode: vnet.NATModeNAT1To1}, &vnet.NATType{Mode: vnet.NATModeNAT1To1})
 	require.NoError(t, err)
 	defer virtualNet.close()
 
 	newLiteAgent := func(network *vnet.Net, externalIP string) *Agent {
-		agent, newAgentErr := NewAgent(&AgentConfig{
-			Lite:             true,
-			CandidateTypes:   []CandidateType{CandidateTypeHost},
-			NetworkTypes:     []NetworkType{NetworkTypeUDP4},
-			MulticastDNSMode: MulticastDNSModeDisabled,
-			Net:              network,
-			NAT1To1IPs:       []string{externalIP},
-		})
+		agent, newAgentErr := NewAgent(&AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, Net: network, NAT1To1IPs: []string{externalIP}})
 		require.NoError(t, newAgentErr)
 
 		return agent

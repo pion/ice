@@ -133,13 +133,7 @@ func TestBufferedConn_writeProcess_WriteError(t *testing.T) {
 func newTestTCPPC(t *testing.T, readBuf int) *tcpPacketConn {
 	t.Helper()
 
-	return newTCPPacketConn(tcpPacketParams{
-		ReadBuffer:    readBuf,
-		LocalAddr:     &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0},
-		Logger:        logging.NewDefaultLoggerFactory().NewLogger("ice"),
-		WriteBuffer:   0,
-		AliveDuration: 0,
-	})
+	return newTCPPacketConn(tcpPacketParams{ReadBuffer: readBuf, LocalAddr: &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0}, Logger: logging.NewDefaultLoggerFactory().NewLogger("ice"), WriteBuffer: 0, AliveDuration: 0})
 }
 
 func TestTCPPacketConn_AddConn_ReturnsClosed(t *testing.T) {
@@ -222,13 +216,7 @@ func TestTCPPacketConn_ReadFrom_ShortBuffer(t *testing.T) {
 func TestTCPPacketConn_WriteTo_ErrorBranch_WithProvidedMock(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 
-	tpc := newTCPPacketConn(tcpPacketParams{
-		ReadBuffer:    1,
-		LocalAddr:     &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0},
-		Logger:        logger,
-		WriteBuffer:   0,
-		AliveDuration: 0,
-	})
+	tpc := newTCPPacketConn(tcpPacketParams{ReadBuffer: 1, LocalAddr: &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0}, Logger: logger, WriteBuffer: 0, AliveDuration: 0})
 	t.Cleanup(func() { _ = tpc.Close() })
 
 	mc := &mockConn{}
@@ -248,13 +236,7 @@ func TestTCPPacketConn_SetDeadlines(t *testing.T) {
 	addr := &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 12345}
 	remoteAddr := &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 23456}
 
-	tpc := newTCPPacketConn(tcpPacketParams{
-		ReadBuffer:    8,
-		LocalAddr:     addr,
-		Logger:        logger,
-		WriteBuffer:   0,
-		AliveDuration: 0,
-	})
+	tpc := newTCPPacketConn(tcpPacketParams{ReadBuffer: 8, LocalAddr: addr, Logger: logger, WriteBuffer: 0, AliveDuration: 0})
 	observer := &deadlineConn{lAddr: addr, rAddr: remoteAddr}
 	tpc.mu.Lock()
 	tpc.conns[observer.RemoteAddr().String()] = observer
@@ -281,13 +263,7 @@ func TestTCPPacketConn_String(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice")
 	addr := &net.TCPAddr{IP: net.IP{10, 0, 0, 1}, Port: 54321}
 
-	tpc := newTCPPacketConn(tcpPacketParams{
-		ReadBuffer:    1,
-		LocalAddr:     addr,
-		Logger:        logger,
-		WriteBuffer:   0,
-		AliveDuration: 0,
-	})
+	tpc := newTCPPacketConn(tcpPacketParams{ReadBuffer: 1, LocalAddr: addr, Logger: logger, WriteBuffer: 0, AliveDuration: 0})
 
 	got := tpc.String()
 	want := fmt.Sprintf("tcpPacketConn{LocalAddr: %s}", addr)

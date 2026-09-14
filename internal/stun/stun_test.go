@@ -73,10 +73,7 @@ func newSTUNTestNetwork(
 		serverPort = 3478
 	)
 
-	router, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "192.0.2.0/24",
-		LoggerFactory: logging.NewDefaultLoggerFactory(),
-	})
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "192.0.2.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
 	require.NoError(t, err)
 
 	clientNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{clientIP}})
@@ -160,11 +157,7 @@ func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 	}{
 		{name: "NoLoss", requests: 1, mappedAddr: xorMappedAddr},
 		{name: "RecoversFromConsecutiveLosses", dropped: 2, requests: 3, mappedAddr: xorMappedAddr},
-		{
-			name:       "LegacyMappedAddress",
-			requests:   1,
-			mappedAddr: &stun.MappedAddress{IP: reflexiveIP, Port: reflexivePort},
-		},
+		{name: "LegacyMappedAddress", requests: 1, mappedAddr: &stun.MappedAddress{IP: reflexiveIP, Port: reflexivePort}},
 		{name: "DiscardsInvalidPackets", requests: 1, mappedAddr: xorMappedAddr, invalidPackets: true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -172,12 +165,7 @@ func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 			transaction, err := NewXORMappedAddrTransaction()
 			require.NoError(t, err)
 
-			addr, err := transaction.RunPacketConn(
-				context.Background(),
-				network.client,
-				network.server.LocalAddr(),
-				5*time.Second,
-			)
+			addr, err := transaction.RunPacketConn(context.Background(), network.client, network.server.LocalAddr(), 5*time.Second)
 			require.NoError(t, err)
 			require.True(t, addr.IP.Equal(reflexiveIP))
 			require.Equal(t, reflexivePort, addr.Port)
@@ -206,12 +194,7 @@ func TestXORMappedAddrTransactionRunPacketConn(t *testing.T) {
 		transaction, err := NewXORMappedAddrTransaction()
 		require.NoError(t, err)
 
-		addr, err := transaction.RunPacketConn(
-			context.Background(),
-			network.client,
-			network.server.LocalAddr(),
-			5*time.Second,
-		)
+		addr, err := transaction.RunPacketConn(context.Background(), network.client, network.server.LocalAddr(), 5*time.Second)
 		require.ErrorIs(t, err, errGetXorMappedAddrResponse)
 		require.Nil(t, addr)
 		require.EqualValues(t, 1, network.requests.Load())
@@ -266,11 +249,7 @@ func TestXORMappedAddrTransactionDiscardsUnrelatedResponses(t *testing.T) {
 			if testCase.mismatchID {
 				responseID[0] ^= 0xff
 			}
-			response, err := stun.Build(
-				stun.NewTransactionIDSetter(responseID),
-				stun.NewType(testCase.method, testCase.class),
-				&stun.XORMappedAddress{IP: net.IPv4(203, 0, 113, 7), Port: 51234},
-			)
+			response, err := stun.Build(stun.NewTransactionIDSetter(responseID), stun.NewType(testCase.method, testCase.class), &stun.XORMappedAddress{IP: net.IPv4(203, 0, 113, 7), Port: 51234})
 			require.NoError(t, err)
 
 			require.False(t, transaction.HandleResponse(response))
@@ -281,11 +260,7 @@ func TestXORMappedAddrTransactionDiscardsUnrelatedResponses(t *testing.T) {
 func TestXORMappedAddrTransactionReportsErrorResponse(t *testing.T) {
 	transaction, err := NewXORMappedAddrTransaction()
 	require.NoError(t, err)
-	response, err := stun.Build(
-		stun.NewTransactionIDSetter(transaction.ID()),
-		stun.BindingError,
-		stun.ErrorCodeAttribute{Code: stun.CodeBadRequest, Reason: []byte("Bad Request")},
-	)
+	response, err := stun.Build(stun.NewTransactionIDSetter(transaction.ID()), stun.BindingError, stun.ErrorCodeAttribute{Code: stun.CodeBadRequest, Reason: []byte("Bad Request")})
 	require.NoError(t, err)
 	raw := bytes.Clone(response.Raw)
 	response = &stun.Message{Raw: raw}

@@ -10,13 +10,7 @@ import (
 )
 
 func TestCandidateType_String_KnownCases(t *testing.T) {
-	cases := map[CandidateType]string{
-		CandidateTypeHost:            "host",
-		CandidateTypeServerReflexive: "srflx",
-		CandidateTypePeerReflexive:   "prflx",
-		CandidateTypeRelay:           "relay",
-		CandidateTypeUnspecified:     "Unknown candidate type",
-	}
+	cases := map[CandidateType]string{CandidateTypeHost: "host", CandidateTypeServerReflexive: "srflx", CandidateTypePeerReflexive: "prflx", CandidateTypeRelay: "relay", CandidateTypeUnspecified: "Unknown candidate type"}
 
 	for ct, want := range cases {
 		require.Equal(t, want, ct.String(), "unexpected string for %v", ct)

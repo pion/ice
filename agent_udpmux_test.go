@@ -40,10 +40,7 @@ func newMuxForAddr(t *testing.T, addr *net.UDPAddr, loggerFactory logging.Logger
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pc.Close() })
 
-	return NewUDPMuxDefault(UDPMuxParams{
-		Logger:  loggerFactory.NewLogger("ice"),
-		UDPConn: pc,
-	})
+	return NewUDPMuxDefault(UDPMuxParams{Logger: loggerFactory.NewLogger("ice"), UDPConn: pc})
 }
 
 // TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux.
@@ -65,14 +62,7 @@ func TestMuxAgent(t *testing.T) {
 			loggerFactory := logging.NewDefaultLoggerFactory()
 			udpMux := newMuxForAddr(t, muxAddr, loggerFactory)
 
-			muxedA, err := NewAgent(&AgentConfig{
-				UDPMux:         udpMux,
-				CandidateTypes: []CandidateType{CandidateTypeHost},
-				NetworkTypes: []NetworkType{
-					NetworkTypeUDP4,
-				},
-				IncludeLoopback: addr.IP.IsLoopback(),
-			})
+			muxedA, err := NewAgent(&AgentConfig{UDPMux: udpMux, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}, IncludeLoopback: addr.IP.IsLoopback()})
 			require.NoError(t, err)
 			var muxedAClosed bool
 			defer func() {
@@ -82,10 +72,7 @@ func TestMuxAgent(t *testing.T) {
 				require.NoError(t, muxedA.Close())
 			}()
 
-			agent, err := NewAgent(&AgentConfig{
-				CandidateTypes: []CandidateType{CandidateTypeHost},
-				NetworkTypes:   supportedNetworkTypes(),
-			})
+			agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: supportedNetworkTypes()})
 			require.NoError(t, err)
 			var aClosed bool
 			defer func() {

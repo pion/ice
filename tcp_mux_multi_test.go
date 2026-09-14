@@ -18,10 +18,7 @@ import (
 )
 
 func TestMultiTCPMux_Recv(t *testing.T) {
-	for name, bufSize := range map[string]int{
-		"no buffer":    0,
-		"buffered 4MB": 4 * 1024 * 1024,
-	} {
+	for name, bufSize := range map[string]int{"no buffer": 0, "buffered 4MB": 4 * 1024 * 1024} {
 		t.Run(name, func(t *testing.T) {
 			defer test.CheckRoutines(t)()
 
@@ -29,21 +26,13 @@ func TestMultiTCPMux_Recv(t *testing.T) {
 
 			var muxInstances []TCPMux
 			for range 3 {
-				listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-					IP:   net.IP{127, 0, 0, 1},
-					Port: 0,
-				})
+				listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 				require.NoError(t, err, "error starting listener")
 				defer func() {
 					_ = listener.Close()
 				}()
 
-				tcpMux := NewTCPMuxDefault(TCPMuxParams{
-					Listener:        listener,
-					Logger:          loggerFactory.NewLogger("ice"),
-					ReadBufferSize:  20,
-					WriteBufferSize: bufSize,
-				})
+				tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20, WriteBufferSize: bufSize})
 				defer func() {
 					_ = tcpMux.Close()
 				}()
@@ -101,20 +90,13 @@ func TestMultiTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 
 	var tcpMuxInstances []TCPMux
 	for range 3 {
-		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-			IP:   net.IP{127, 0, 0, 1},
-			Port: 0,
-		})
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 		require.NoError(t, err, "error starting listener")
 		defer func() {
 			_ = listener.Close()
 		}()
 
-		tcpMux := NewTCPMuxDefault(TCPMuxParams{
-			Listener:       listener,
-			Logger:         loggerFactory.NewLogger("ice"),
-			ReadBufferSize: 20,
-		})
+		tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20})
 		defer func() {
 			_ = tcpMux.Close()
 		}()
@@ -149,11 +131,7 @@ func TestMultiTCPMux_GetConnByUfrag_FromAnyMux(t *testing.T) {
 		_ = l1.Close()
 	}()
 
-	mux1 := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       l1,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux1 := NewTCPMuxDefault(TCPMuxParams{Listener: l1, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux1.Close()
 	}()
@@ -164,11 +142,7 @@ func TestMultiTCPMux_GetConnByUfrag_FromAnyMux(t *testing.T) {
 		_ = l2.Close()
 	}()
 
-	mux2 := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       l2,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux2 := NewTCPMuxDefault(TCPMuxParams{Listener: l2, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux2.Close()
 	}()
@@ -226,11 +200,7 @@ func TestMultiTCPMux_Close_PropagatesError_FromWrappedMux(t *testing.T) {
 	// first mux: normal close (nil)
 	l1, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	mux1 := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       l1,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux1 := NewTCPMuxDefault(TCPMuxParams{Listener: l1, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux1.Close()
 	}()
@@ -238,11 +208,7 @@ func TestMultiTCPMux_Close_PropagatesError_FromWrappedMux(t *testing.T) {
 	// second mux: Close() returns injected error
 	l2, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	mux2Real := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       l2,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux2Real := NewTCPMuxDefault(TCPMuxParams{Listener: l2, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux2Real.Close()
 	}()
@@ -260,11 +226,7 @@ func TestMultiTCPMux_Close_LastErrorWins_FromWrappedMuxes(t *testing.T) {
 	// first mux: error1
 	la, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	mux1Real := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       la,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux1Real := NewTCPMuxDefault(TCPMuxParams{Listener: la, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux1Real.Close()
 	}()
@@ -273,11 +235,7 @@ func TestMultiTCPMux_Close_LastErrorWins_FromWrappedMuxes(t *testing.T) {
 	// second mux: error2 (last error should be returned)
 	lb, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err)
-	mux2Real := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       lb,
-		Logger:         logger,
-		ReadBufferSize: 8,
-	})
+	mux2Real := NewTCPMuxDefault(TCPMuxParams{Listener: lb, Logger: logger, ReadBufferSize: 8})
 	defer func() {
 		_ = mux2Real.Close()
 	}()

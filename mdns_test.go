@@ -31,25 +31,15 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 		NetworkTypes []NetworkType
 	}
 
-	testCases := []testCase{
-		{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}},
-	}
+	testCases := []testCase{{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}}}
 
 	if ipv6Available(t) {
-		testCases = append(testCases,
-			testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}},
-			testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}},
-		)
+		testCases = append(testCases, testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}}, testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}})
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			cfg := &AgentConfig{
-				NetworkTypes:     tc.NetworkTypes,
-				CandidateTypes:   []CandidateType{CandidateTypeHost},
-				MulticastDNSMode: MulticastDNSModeQueryAndGather,
-				InterfaceFilter:  problematicNetworkInterfaces,
-			}
+			cfg := &AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, InterfaceFilter: problematicNetworkInterfaces}
 
 			aAgent, err := NewAgent(cfg)
 			require.NoError(t, err)
@@ -87,25 +77,15 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 		NetworkTypes []NetworkType
 	}
 
-	testCases := []testCase{
-		{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}},
-	}
+	testCases := []testCase{{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}}}
 
 	if ipv6Available(t) {
-		testCases = append(testCases,
-			testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}},
-			testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}},
-		)
+		testCases = append(testCases, testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}}, testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}})
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			aAgent, err := NewAgent(&AgentConfig{
-				NetworkTypes:     tc.NetworkTypes,
-				CandidateTypes:   []CandidateType{CandidateTypeHost},
-				MulticastDNSMode: MulticastDNSModeQueryAndGather,
-				InterfaceFilter:  problematicNetworkInterfaces,
-			})
+			aAgent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, InterfaceFilter: problematicNetworkInterfaces})
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, aAgent.Close())
@@ -114,12 +94,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 			aNotifier, aConnected := onConnected()
 			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-			bAgent, err := NewAgent(&AgentConfig{
-				NetworkTypes:     tc.NetworkTypes,
-				CandidateTypes:   []CandidateType{CandidateTypeHost},
-				MulticastDNSMode: MulticastDNSModeQueryOnly,
-				InterfaceFilter:  problematicNetworkInterfaces,
-			})
+			bAgent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryOnly, InterfaceFilter: problematicNetworkInterfaces})
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, bAgent.Close())
@@ -145,35 +120,18 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 		NetworkTypes []NetworkType
 	}
 
-	testCases := []testCase{
-		{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}},
-	}
+	testCases := []testCase{{Name: "UDP4", NetworkTypes: []NetworkType{NetworkTypeUDP4}}}
 
 	if ipv6Available(t) {
-		testCases = append(testCases,
-			testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}},
-			testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}},
-		)
+		testCases = append(testCases, testCase{Name: "UDP6", NetworkTypes: []NetworkType{NetworkTypeUDP6}}, testCase{Name: "UDP46", NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}})
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, err := NewAgent(&AgentConfig{
-				NetworkTypes:         tc.NetworkTypes,
-				CandidateTypes:       []CandidateType{CandidateTypeHost},
-				MulticastDNSMode:     MulticastDNSModeQueryAndGather,
-				MulticastDNSHostName: "invalidHostName",
-				InterfaceFilter:      problematicNetworkInterfaces,
-			})
+			_, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, MulticastDNSHostName: "invalidHostName", InterfaceFilter: problematicNetworkInterfaces})
 			require.Equal(t, err, ErrInvalidMulticastDNSHostName)
 
-			agent, err := NewAgent(&AgentConfig{
-				NetworkTypes:         tc.NetworkTypes,
-				CandidateTypes:       []CandidateType{CandidateTypeHost},
-				MulticastDNSMode:     MulticastDNSModeQueryAndGather,
-				MulticastDNSHostName: "validName.local",
-				InterfaceFilter:      problematicNetworkInterfaces,
-			})
+			agent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, MulticastDNSHostName: "validName.local", InterfaceFilter: problematicNetworkInterfaces})
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -195,9 +153,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 func TestGenerateMulticastDNSName(t *testing.T) {
 	name, err := generateMulticastDNSName()
 	require.NoError(t, err)
-	isMDNSName := regexp.MustCompile(
-		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`,
-	).MatchString
+	isMDNSName := regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`).MatchString
 
 	require.True(t, isMDNSName(name))
 }

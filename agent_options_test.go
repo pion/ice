@@ -47,9 +47,7 @@ func testBooleanOption(t *testing.T, test booleanOptionTest, optionName string) 
 	})
 
 	t.Run("works with config", func(t *testing.T) {
-		config := &AgentConfig{
-			NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
 		test.configSetter(config, true)
 
 		agent, err := NewAgent(config)
@@ -83,10 +81,7 @@ func TestDefaultNominationValueGenerator(t *testing.T) {
 
 func TestWithLite(t *testing.T) {
 	t.Run("enables lite with host candidates", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithICELite(true),
-		)
+		agent, err := NewAgentWithOptions(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithICELite(true))
 		require.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -102,11 +97,7 @@ func TestWithLite(t *testing.T) {
 	})
 
 	t.Run("config sets lite", func(t *testing.T) {
-		config := &AgentConfig{
-			Lite:           true,
-			CandidateTypes: []CandidateType{CandidateTypeHost},
-			NetworkTypes:   []NetworkType{NetworkTypeUDP4},
-		}
+		config := &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}}
 
 		agent, err := NewAgent(config)
 		require.NoError(t, err)
@@ -155,12 +146,7 @@ func TestWithPortRange(t *testing.T) {
 }
 
 func TestWithTimeoutOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(
-		WithDisconnectedTimeout(10*time.Second),
-		WithFailedTimeout(20*time.Second),
-		WithKeepaliveInterval(3*time.Second),
-		WithCheckInterval(150*time.Millisecond),
-	)
+	agent, err := NewAgentWithOptions(WithDisconnectedTimeout(10*time.Second), WithFailedTimeout(20*time.Second), WithKeepaliveInterval(3*time.Second), WithCheckInterval(150*time.Millisecond))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -200,40 +186,16 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		expectedFailedTimeout       time.Duration
 		expectedCheckingTimeout     time.Duration
 	}{
+		{name: "full config keeps full default", config: &AgentConfig{}, expectedDisconnectedTimeout: defaultDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
+		{name: "lite config uses lite default", config: &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}}, expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
 		{
-			name:                        "full config keeps full default",
-			config:                      &AgentConfig{},
-			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
-			expectedFailedTimeout:       defaultFailedTimeout,
-			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
-		},
-		{
-			name: "lite config uses lite default",
-			config: &AgentConfig{
-				Lite:           true,
-				CandidateTypes: []CandidateType{CandidateTypeHost},
-			},
-			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
-			expectedFailedTimeout:       defaultFailedTimeout,
-			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
-		},
-		{
-			name: "lite config preserves explicit timeout",
-			config: &AgentConfig{
-				Lite:                true,
-				CandidateTypes:      []CandidateType{CandidateTypeHost},
-				DisconnectedTimeout: &explicitDisconnectedTimeout,
-			},
+			name:                        "lite config preserves explicit timeout",
+			config:                      &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, DisconnectedTimeout: &explicitDisconnectedTimeout},
 			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
 			expectedFailedTimeout:       defaultFailedTimeout,
 			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
 		},
-		{
-			name:                        "full options keep full default",
-			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
-			expectedFailedTimeout:       defaultFailedTimeout,
-			expectedCheckingTimeout:     defaultDisconnectedTimeout + defaultFailedTimeout,
-		},
+		{name: "full options keep full default", expectedDisconnectedTimeout: defaultDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
 		{
 			name: "lite options use lite default",
 			options: []AgentOption{
@@ -346,12 +308,7 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 }
 
 func TestWithAcceptanceWaitOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(
-		WithHostAcceptanceMinWait(1*time.Second),
-		WithSrflxAcceptanceMinWait(2*time.Second),
-		WithPrflxAcceptanceMinWait(3*time.Second),
-		WithRelayAcceptanceMinWait(4*time.Second),
-	)
+	agent, err := NewAgentWithOptions(WithHostAcceptanceMinWait(1*time.Second), WithSrflxAcceptanceMinWait(2*time.Second), WithPrflxAcceptanceMinWait(3*time.Second), WithRelayAcceptanceMinWait(4*time.Second))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -408,10 +365,7 @@ func TestWithNetOption(t *testing.T) {
 }
 
 func TestWithMulticastDNSOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(
-		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithMulticastDNSHostName("pion-test.local"),
-	)
+	agent, err := NewAgentWithOptions(WithMulticastDNSMode(MulticastDNSModeDisabled), WithMulticastDNSHostName("pion-test.local"))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -496,11 +450,7 @@ func TestWithMuxOptions(t *testing.T) {
 	udpMux := &stubUDPMux{}
 	udpMuxSrflx := &stubUniversalUDPMux{}
 
-	agent, err := NewAgentWithOptions(
-		WithTCPMux(tcpMux),
-		WithUDPMux(udpMux),
-		WithUDPMuxSrflx(udpMuxSrflx),
-	)
+	agent, err := NewAgentWithOptions(WithTCPMux(tcpMux), WithUDPMux(udpMux), WithUDPMuxSrflx(udpMuxSrflx))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -561,9 +511,7 @@ func TestWithRenomination(t *testing.T) {
 	})
 
 	t.Run("default agent has renomination disabled", func(t *testing.T) {
-		config := &AgentConfig{
-			NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -590,9 +538,7 @@ func TestWithNominationAttribute(t *testing.T) {
 	})
 
 	t.Run("default value when no option", func(t *testing.T) {
-		config := &AgentConfig{
-			NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -631,10 +577,7 @@ func TestWithTCPPriorityOffset(t *testing.T) {
 
 	t.Run("works with config", func(t *testing.T) {
 		customOffset := uint16(100)
-		config := &AgentConfig{
-			NetworkTypes:      []NetworkType{NetworkTypeUDP4},
-			TCPPriorityOffset: &customOffset,
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, TCPPriorityOffset: &customOffset}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -691,10 +634,7 @@ func TestWithBindingRequestHandler(t *testing.T) {
 			return true
 		}
 
-		config := &AgentConfig{
-			NetworkTypes:          []NetworkType{NetworkTypeUDP4},
-			BindingRequestHandler: handler,
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, BindingRequestHandler: handler}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -727,13 +667,7 @@ func TestMultipleConfigOptions(t *testing.T) {
 			return true
 		}
 
-		agent, err := NewAgentWithOptions(
-			WithIncludeLoopback(),
-			WithTCPPriorityOffset(customOffset),
-			WithDisableActiveTCP(),
-			WithBindingRequestHandler(handler),
-			WithEnableUseCandidateCheckPriority(),
-		)
+		agent, err := NewAgentWithOptions(WithIncludeLoopback(), WithTCPPriorityOffset(customOffset), WithDisableActiveTCP(), WithBindingRequestHandler(handler), WithEnableUseCandidateCheckPriority())
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -778,10 +712,7 @@ func TestWithInterfaceFilter(t *testing.T) {
 			return interfaceName == "lo"
 		}
 
-		config := &AgentConfig{
-			NetworkTypes:    []NetworkType{NetworkTypeUDP4},
-			InterfaceFilter: filter,
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, InterfaceFilter: filter}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -816,10 +747,7 @@ func TestWithLoggerFactory(t *testing.T) {
 
 	t.Run("works with config", func(t *testing.T) {
 		loggerFactory := logging.NewDefaultLoggerFactory()
-		config := &AgentConfig{
-			NetworkTypes:  []NetworkType{NetworkTypeUDP4},
-			LoggerFactory: loggerFactory,
-		}
+		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, LoggerFactory: loggerFactory}
 
 		agent, err := NewAgent(config)
 		assert.NoError(t, err)
@@ -833,9 +761,7 @@ func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 	t.Run("ipv6 listen skipped when network types option restricts to ipv4", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := newAgentFromConfig(&AgentConfig{
-			Net: stub,
-		}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+		agent, err := newAgentFromConfig(&AgentConfig{Net: stub}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 		require.NoError(t, err)
 		defer func() { require.NoError(t, agent.Close()) }()
 
@@ -845,9 +771,7 @@ func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 
 func TestWithNetworkTypes(t *testing.T) {
 	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
-		)
+		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -857,9 +781,7 @@ func TestWithNetworkTypes(t *testing.T) {
 	})
 
 	t.Run("deduplicates values", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}),
-		)
+		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -869,25 +791,19 @@ func TestWithNetworkTypes(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported value", func(t *testing.T) {
-		_, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkType(0)}),
-		)
+		_, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkType(0)}))
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 
 	t.Run("rejects unsupported value from config", func(t *testing.T) {
-		_, err := NewAgent(&AgentConfig{
-			NetworkTypes: []NetworkType{NetworkType(0)},
-		})
+		_, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkType(0)}})
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 }
 
 func TestWithTURNTransportProtocols(t *testing.T) {
 	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
-		)
+		agent, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -897,9 +813,7 @@ func TestWithTURNTransportProtocols(t *testing.T) {
 	})
 
 	t.Run("deduplicates protocols", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}),
-		)
+		agent, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -909,16 +823,12 @@ func TestWithTURNTransportProtocols(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported proto", func(t *testing.T) {
-		_, err := NewAgentWithOptions(
-			WithTURNTransportProtocols([]NetworkType{NetworkType(0)}),
-		)
+		_, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkType(0)}))
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 
 	t.Run("rejects unsupported proto from config", func(t *testing.T) {
-		_, err := NewAgent(&AgentConfig{
-			turnTransportProtocols: []NetworkType{NetworkType(0)},
-		})
+		_, err := NewAgent(&AgentConfig{turnTransportProtocols: []NetworkType{NetworkType(0)}})
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 }
@@ -930,10 +840,7 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("default candidate types accept urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := newAgentFromConfig(&AgentConfig{
-			Urls: []*stun.URI{stunURL},
-			Net:  stub,
-		})
+		agent, err := newAgentFromConfig(&AgentConfig{Urls: []*stun.URI{stunURL}, Net: stub})
 		require.NoError(t, err)
 		require.NoError(t, agent.Close())
 	})
@@ -941,10 +848,7 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("host only candidate types reject urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := newAgentFromConfig(&AgentConfig{
-			Urls: []*stun.URI{stunURL},
-			Net:  stub,
-		}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+		_, err := newAgentFromConfig(&AgentConfig{Urls: []*stun.URI{stunURL}, Net: stub}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 		require.ErrorIs(t, err, ErrUselessUrlsProvided)
 	})
 }
@@ -953,22 +857,14 @@ func TestWithCandidateTypesNAT1To1Validation(t *testing.T) {
 	t.Run("host mapping requires host candidates", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := newAgentFromConfig(&AgentConfig{
-			NAT1To1IPs:             []string{"1.2.3.4"},
-			NAT1To1IPCandidateType: CandidateTypeHost,
-			Net:                    stub,
-		}, WithCandidateTypes([]CandidateType{CandidateTypeRelay}))
+		_, err := newAgentFromConfig(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeHost, Net: stub}, WithCandidateTypes([]CandidateType{CandidateTypeRelay}))
 		require.ErrorIs(t, err, ErrIneffectiveNAT1To1IPMappingHost)
 	})
 
 	t.Run("srflx mapping requires srflx candidates", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := newAgentFromConfig(&AgentConfig{
-			NAT1To1IPs:             []string{"1.2.3.4"},
-			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
-			Net:                    stub,
-		}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+		_, err := newAgentFromConfig(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive, Net: stub}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 		require.ErrorIs(t, err, ErrIneffectiveNAT1To1IPMappingSrflx)
 	})
 }
@@ -985,14 +881,8 @@ func TestWith1To1CandidateIPOptions(t *testing.T) {
 		{
 			name: "host candidates",
 			rules: []AddressRewriteRule{
-				{
-					External:        []string{"1.2.3.4"},
-					AsCandidateType: CandidateTypeHost,
-				},
-				{
-					External:        []string{"5.6.7.8"},
-					AsCandidateType: CandidateTypeHost,
-				},
+				{External: []string{"1.2.3.4"}, AsCandidateType: CandidateTypeHost},
+				{External: []string{"5.6.7.8"}, AsCandidateType: CandidateTypeHost},
 			},
 			candidateType:    CandidateTypeHost,
 			expectedFirstIP:  "1.2.3.4",
@@ -1002,14 +892,8 @@ func TestWith1To1CandidateIPOptions(t *testing.T) {
 		{
 			name: "srflx candidates",
 			rules: []AddressRewriteRule{
-				{
-					External:        []string{"5.6.7.8"},
-					AsCandidateType: CandidateTypeServerReflexive,
-				},
-				{
-					External:        []string{"9.9.9.9"},
-					AsCandidateType: CandidateTypeServerReflexive,
-				},
+				{External: []string{"5.6.7.8"}, AsCandidateType: CandidateTypeServerReflexive},
+				{External: []string{"9.9.9.9"}, AsCandidateType: CandidateTypeServerReflexive},
 			},
 			candidateType:    CandidateTypeServerReflexive,
 			expectedFirstIP:  "5.6.7.8",
@@ -1020,14 +904,7 @@ func TestWith1To1CandidateIPOptions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertAddressRewriteOption(
-				t,
-				tc.rules,
-				tc.candidateType,
-				tc.expectedFirstIP,
-				tc.expectedSecondIP,
-				tc.lookupLocalIP,
-			)
+			assertAddressRewriteOption(t, tc.rules, tc.candidateType, tc.expectedFirstIP, tc.expectedSecondIP, tc.lookupLocalIP)
 		})
 	}
 }
@@ -1044,10 +921,7 @@ func assertAddressRewriteOption(
 
 	stub := newStubNet(t)
 
-	agent, err := NewAgentWithOptions(
-		WithNet(stub),
-		WithAddressRewriteRules(rules...),
-	)
+	agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(rules...))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1095,22 +969,10 @@ func requireFirstMappingIP(t *testing.T, mapping *ipMapping, localIP net.IP) net
 
 func TestWith1To1RulesOption(t *testing.T) {
 	stub := newStubNet(t)
-	originalRules := []AddressRewriteRule{
-		{
-			External:        []string{"9.9.9.9"},
-			AsCandidateType: CandidateTypeHost,
-		},
-	}
+	originalRules := []AddressRewriteRule{{External: []string{"9.9.9.9"}, AsCandidateType: CandidateTypeHost}}
 
 	// With append semantics the option stacks, so call twice and ensure accumulation.
-	agent, err := NewAgentWithOptions(
-		WithNet(stub),
-		WithAddressRewriteRules(originalRules...),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"4.4.4.4"},
-			AsCandidateType: CandidateTypeServerReflexive,
-		}),
-	)
+	agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(originalRules...), WithAddressRewriteRules(AddressRewriteRule{External: []string{"4.4.4.4"}, AsCandidateType: CandidateTypeServerReflexive}))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1128,14 +990,7 @@ func TestWith1To1RulesOption(t *testing.T) {
 func TestWith1To1RulesEmptyNoop(t *testing.T) {
 	stub := newStubNet(t)
 
-	agent, err := NewAgentWithOptions(
-		WithNet(stub),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"1.2.3.4"},
-			AsCandidateType: CandidateTypeHost,
-		}),
-		WithAddressRewriteRules(),
-	)
+	agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}, AsCandidateType: CandidateTypeHost}), WithAddressRewriteRules())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1152,18 +1007,7 @@ func TestWithAddressRewriteRulesWarnOnConflicts(t *testing.T) {
 	logger := &recordingLogger{}
 	factory := &recordingLoggerFactory{logger: logger}
 
-	agent, err := NewAgentWithOptions(
-		WithNet(stub),
-		WithLoggerFactory(factory),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"203.0.113.10"},
-			AsCandidateType: CandidateTypeHost,
-		}),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"198.51.100.50"},
-			AsCandidateType: CandidateTypeHost,
-		}),
-	)
+	agent, err := NewAgentWithOptions(WithNet(stub), WithLoggerFactory(factory), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost}), WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.50"}, AsCandidateType: CandidateTypeHost}))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1194,18 +1038,7 @@ func TestWithAddressRewriteRulesConflictingModesWarningAndPrecedence(t *testing.
 	agent, err := NewAgentWithOptions(
 		WithNet(stub),
 		WithLoggerFactory(factory),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"203.0.113.10"},
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-			AddressRewriteRule{
-				External:        []string{"198.51.100.50"},
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}, AddressRewriteRule{External: []string{"198.51.100.50"}, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1231,24 +1064,8 @@ func TestWithAddressRewriteRulesNoFalsePositiveConflicts(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(stub),
 		WithLoggerFactory(factory),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"203.0.113.10"},
-				AsCandidateType: CandidateTypeHost,
-				Networks:        []NetworkType{NetworkTypeUDP4},
-			},
-			AddressRewriteRule{
-				External:        []string{"2001:db8::10"},
-				AsCandidateType: CandidateTypeHost,
-				Networks:        []NetworkType{NetworkTypeUDP6},
-			},
-		),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"198.51.100.10"},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost, Networks: []NetworkType{NetworkTypeUDP4}}, AddressRewriteRule{External: []string{"2001:db8::10"}, AsCandidateType: CandidateTypeHost, Networks: []NetworkType{NetworkTypeUDP6}}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.10"}, AsCandidateType: CandidateTypeServerReflexive}),
 	)
 	assert.NoError(t, err)
 	if agent != nil {
@@ -1263,18 +1080,7 @@ func TestWithAddressRewriteRulesNoFalsePositiveConflicts(t *testing.T) {
 func TestLegacyAndNewAddressRewriteOrdering(t *testing.T) {
 	stub := newStubNet(t)
 
-	agent, err := newAgentFromConfig(
-		&AgentConfig{
-			Net:        stub,
-			NAT1To1IPs: []string{"203.0.113.10"},
-		},
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"198.51.100.5"},
-				AsCandidateType: CandidateTypeHost,
-			},
-		),
-	)
+	agent, err := newAgentFromConfig(&AgentConfig{Net: stub, NAT1To1IPs: []string{"203.0.113.10"}}, WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.5"}, AsCandidateType: CandidateTypeHost}))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1288,13 +1094,7 @@ func TestLegacyAndNewAddressRewriteOrdering(t *testing.T) {
 func TestLegacyNAT1To1TranslationOrder(t *testing.T) {
 	stub := newStubNet(t)
 
-	agent, err := NewAgent(&AgentConfig{
-		Net: stub,
-		NAT1To1IPs: []string{
-			"203.0.113.1/10.0.0.1",
-			"203.0.113.2",
-		},
-	})
+	agent, err := NewAgent(&AgentConfig{Net: stub, NAT1To1IPs: []string{"203.0.113.1/10.0.0.1", "203.0.113.2"}})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1317,13 +1117,7 @@ func TestLegacyNAT1To1TranslationOrder(t *testing.T) {
 func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 	t.Run("host candidate parity", func(t *testing.T) {
 		legacyStub := newStubNet(t)
-		legacyAgent, err := NewAgent(&AgentConfig{
-			Net: legacyStub,
-			NAT1To1IPs: []string{
-				"203.0.113.10",
-				"198.51.100.20/10.0.0.20",
-			},
-		})
+		legacyAgent, err := NewAgent(&AgentConfig{Net: legacyStub, NAT1To1IPs: []string{"203.0.113.10", "198.51.100.20/10.0.0.20"}})
 		assert.NoError(t, err)
 		if legacyAgent != nil {
 			t.Cleanup(func() {
@@ -1332,22 +1126,7 @@ func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 		}
 
 		modernStub := newStubNet(t)
-		modernAgent, err := NewAgentWithOptions(
-			WithNet(modernStub),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"203.0.113.10"},
-					AsCandidateType: CandidateTypeHost,
-				},
-			),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"198.51.100.20"},
-					Local:           "10.0.0.20",
-					AsCandidateType: CandidateTypeHost,
-				},
-			),
-		)
+		modernAgent, err := NewAgentWithOptions(WithNet(modernStub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost}), WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.20"}, Local: "10.0.0.20", AsCandidateType: CandidateTypeHost}))
 		assert.NoError(t, err)
 		if modernAgent != nil {
 			t.Cleanup(func() {
@@ -1356,16 +1135,12 @@ func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 		}
 
 		for _, loc := range []string{"10.0.0.20", "10.0.0.21"} {
-			legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(
-				CandidateTypeHost, loc, "",
-			)
+			legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(CandidateTypeHost, loc, "")
 			assert.NoError(t, legacyErr)
 			assert.True(t, legacyMatched)
 			assert.NotEmpty(t, legacyIPs)
 
-			modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(
-				CandidateTypeHost, loc, "",
-			)
+			modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(CandidateTypeHost, loc, "")
 			assert.NoError(t, modernErr)
 			assert.True(t, modernMatched)
 			assert.NotEmpty(t, modernIPs)
@@ -1376,11 +1151,7 @@ func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 
 	t.Run("srflx candidate parity", func(t *testing.T) {
 		legacyStub := newStubNet(t)
-		legacyAgent, err := NewAgent(&AgentConfig{
-			Net:                    legacyStub,
-			NAT1To1IPs:             []string{"198.51.100.77"},
-			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
-		})
+		legacyAgent, err := NewAgent(&AgentConfig{Net: legacyStub, NAT1To1IPs: []string{"198.51.100.77"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive})
 		assert.NoError(t, err)
 		if legacyAgent != nil {
 			t.Cleanup(func() {
@@ -1389,15 +1160,7 @@ func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 		}
 
 		modernStub := newStubNet(t)
-		modernAgent, err := NewAgentWithOptions(
-			WithNet(modernStub),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"198.51.100.77"},
-					AsCandidateType: CandidateTypeServerReflexive,
-				},
-			),
-		)
+		modernAgent, err := NewAgentWithOptions(WithNet(modernStub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.77"}, AsCandidateType: CandidateTypeServerReflexive}))
 		assert.NoError(t, err)
 		if modernAgent != nil {
 			t.Cleanup(func() {
@@ -1405,20 +1168,12 @@ func TestLegacyAddressRewriteParityWithRules(t *testing.T) {
 			})
 		}
 
-		legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(
-			CandidateTypeServerReflexive,
-			"0.0.0.0",
-			"",
-		)
+		legacyIPs, legacyMatched, _, legacyErr := legacyAgent.addressRewriteMapper.findExternalIPs(CandidateTypeServerReflexive, "0.0.0.0", "")
 		assert.NoError(t, legacyErr)
 		assert.True(t, legacyMatched)
 		assert.NotEmpty(t, legacyIPs)
 
-		modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(
-			CandidateTypeServerReflexive,
-			"0.0.0.0",
-			"",
-		)
+		modernIPs, modernMatched, _, modernErr := modernAgent.addressRewriteMapper.findExternalIPs(CandidateTypeServerReflexive, "0.0.0.0", "")
 		assert.NoError(t, modernErr)
 		assert.True(t, modernMatched)
 		assert.NotEmpty(t, modernIPs)
@@ -1435,22 +1190,8 @@ func TestOverlapWarningPerCandidateType(t *testing.T) {
 	agent, err := NewAgentWithOptions(
 		WithNet(stub),
 		WithLoggerFactory(factory),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"203.0.113.10"},
-				AsCandidateType: CandidateTypeHost,
-			},
-		),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"198.51.100.10"},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-			AddressRewriteRule{
-				External:        []string{"198.51.100.20"},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.10"}, AsCandidateType: CandidateTypeServerReflexive}, AddressRewriteRule{External: []string{"198.51.100.20"}, AsCandidateType: CandidateTypeServerReflexive}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -1465,13 +1206,7 @@ func TestWithNAT1To1IPValidation(t *testing.T) {
 	t.Run("dedupe and trim host IPs", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{" 203.0.113.1 ", "203.0.113.1", "203.0.113.2 "},
-				AsCandidateType: CandidateTypeHost,
-			}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{" 203.0.113.1 ", "203.0.113.1", "203.0.113.2 "}, AsCandidateType: CandidateTypeHost}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -1484,13 +1219,7 @@ func TestWithNAT1To1IPValidation(t *testing.T) {
 	t.Run("reject hostname entry", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"example.com"},
-				AsCandidateType: CandidateTypeHost,
-			}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"example.com"}, AsCandidateType: CandidateTypeHost}))
 		require.Nil(t, agent)
 		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
 	})
@@ -1498,13 +1227,7 @@ func TestWithNAT1To1IPValidation(t *testing.T) {
 	t.Run("reject slash mapping in address rewrite rules", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.1/10.0.0.1"},
-				AsCandidateType: CandidateTypeHost,
-			}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.1/10.0.0.1"}, AsCandidateType: CandidateTypeHost}))
 		require.Nil(t, agent)
 		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
 	})
@@ -1512,13 +1235,7 @@ func TestWithNAT1To1IPValidation(t *testing.T) {
 	t.Run("reject invalid rule entry", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"1.2.3.4", "bad-ip"},
-				AsCandidateType: CandidateTypeHost,
-			}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4", "bad-ip"}, AsCandidateType: CandidateTypeHost}))
 		require.Nil(t, agent)
 		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
 	})
@@ -1527,15 +1244,7 @@ func TestWithNAT1To1IPValidation(t *testing.T) {
 func TestWithAddressRewriteRulesIPv6(t *testing.T) {
 	stub := newStubNet(t)
 
-	agent, err := NewAgentWithOptions(
-		WithNet(stub),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"2001:db8::2"},
-			Local:           "2001:db8:1::2",
-			AsCandidateType: CandidateTypeHost,
-			Networks:        []NetworkType{NetworkTypeUDP6},
-		}),
-	)
+	agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"2001:db8::2"}, Local: "2001:db8:1::2", AsCandidateType: CandidateTypeHost, Networks: []NetworkType{NetworkTypeUDP6}}))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -1570,17 +1279,7 @@ func TestWithAddressRewriteRulesIPv6(t *testing.T) {
 }
 
 func TestAddressRewriteRulesRejectWithMDNSQueryAndGather(t *testing.T) {
-	agent := &Agent{
-		candidateTypes: []CandidateType{CandidateTypeHost},
-		mDNSMode:       MulticastDNSModeQueryAndGather,
-		addressRewriteRules: []AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.200"},
-				AsCandidateType: CandidateTypeHost,
-			},
-		},
-		log: logging.NewDefaultLoggerFactory().NewLogger("test"),
-	}
+	agent := &Agent{candidateTypes: []CandidateType{CandidateTypeHost}, mDNSMode: MulticastDNSModeQueryAndGather, addressRewriteRules: []AddressRewriteRule{{External: []string{"203.0.113.200"}, AsCandidateType: CandidateTypeHost}}, log: logging.NewDefaultLoggerFactory().NewLogger("test")}
 
 	err := applyAddressRewriteMapping(agent)
 	assert.ErrorIs(t, err, ErrMulticastDNSWithNAT1To1IPMapping)
@@ -1590,20 +1289,7 @@ func TestAgentAddressRewriteModeIntegration(t *testing.T) {
 	stub := newStubNet(t)
 
 	t.Run("defaults host replace srflx append", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"203.0.113.10"},
-					AsCandidateType: CandidateTypeHost,
-				},
-				AddressRewriteRule{
-					External:        []string{"198.51.100.10"},
-					Local:           "0.0.0.0",
-					AsCandidateType: CandidateTypeServerReflexive,
-				},
-			),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeHost}, AddressRewriteRule{External: []string{"198.51.100.10"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -1615,17 +1301,7 @@ func TestAgentAddressRewriteModeIntegration(t *testing.T) {
 	})
 
 	t.Run("host append honored", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"203.0.113.20"},
-					Local:           "10.0.0.5",
-					AsCandidateType: CandidateTypeHost,
-					Mode:            AddressRewriteAppend,
-				},
-			),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.20"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -1636,17 +1312,7 @@ func TestAgentAddressRewriteModeIntegration(t *testing.T) {
 	})
 
 	t.Run("srflx replace honored", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNet(stub),
-			WithAddressRewriteRules(
-				AddressRewriteRule{
-					External:        []string{"198.51.100.50"},
-					Local:           "0.0.0.0",
-					AsCandidateType: CandidateTypeServerReflexive,
-					Mode:            AddressRewriteReplace,
-				},
-			),
-		)
+		agent, err := NewAgentWithOptions(WithNet(stub), WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.50"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -1659,20 +1325,10 @@ func TestAgentAddressRewriteModeIntegration(t *testing.T) {
 
 func TestAddressRewriteModeOverrides(t *testing.T) {
 	t.Run("host append preserves local candidate", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.99"},
-				Local:           "10.0.0.99",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.99"}, Local: "10.0.0.99", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}})
 		assert.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logging.NewDefaultLoggerFactory().NewLogger("test")}
 
 		local := netip.MustParseAddr("10.0.0.99")
 		mapped, ok := agent.applyHostAddressRewrite(local, []netip.Addr{local}, "")
@@ -1684,28 +1340,14 @@ func TestAddressRewriteModeOverrides(t *testing.T) {
 	})
 
 	t.Run("srflx replace overrides default append", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.99"},
-				Local:           "0.0.0.0",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.99"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}})
 		assert.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logging.NewDefaultLoggerFactory().NewLogger("test"),
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logging.NewDefaultLoggerFactory().NewLogger("test")}
 
 		assert.True(t, agent.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive))
 
-		ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(
-			CandidateTypeServerReflexive,
-			"0.0.0.0",
-			"",
-		)
+		ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(CandidateTypeServerReflexive, "0.0.0.0", "")
 		assert.NoError(t, err)
 		assert.True(t, matched)
 		assert.Equal(t, AddressRewriteReplace, mode)
@@ -1716,20 +1358,10 @@ func TestAddressRewriteModeOverrides(t *testing.T) {
 func TestAddressRewriteMixedFamilyApplication(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("test")
 
-	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"203.0.113.123"},
-			Local:           "2001:db8::123",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteReplace,
-		},
-	})
+	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.123"}, Local: "2001:db8::123", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 	assert.NoError(t, err)
 
-	agent := &Agent{
-		addressRewriteMapper: mapper,
-		log:                  logger,
-	}
+	agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 	local := netip.MustParseAddr("2001:db8::123")
 	mapped, ok := agent.applyHostAddressRewrite(local, []netip.Addr{local}, "")
@@ -1782,25 +1414,8 @@ func TestAgentConfigNAT1To1IPs(t *testing.T) {
 		localIP       string
 		expectedIP    string
 	}{
-		{
-			name: "host candidate default type",
-			config: AgentConfig{
-				NAT1To1IPs: []string{"1.2.3.4"},
-			},
-			candidateType: CandidateTypeHost,
-			localIP:       "10.0.0.1",
-			expectedIP:    "1.2.3.4",
-		},
-		{
-			name: "srflx candidate explicit type",
-			config: AgentConfig{
-				NAT1To1IPs:             []string{"5.6.7.8"},
-				NAT1To1IPCandidateType: CandidateTypeServerReflexive,
-			},
-			candidateType: CandidateTypeServerReflexive,
-			localIP:       "0.0.0.0",
-			expectedIP:    "5.6.7.8",
-		},
+		{name: "host candidate default type", config: AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}}, candidateType: CandidateTypeHost, localIP: "10.0.0.1", expectedIP: "1.2.3.4"},
+		{name: "srflx candidate explicit type", config: AgentConfig{NAT1To1IPs: []string{"5.6.7.8"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive}, candidateType: CandidateTypeServerReflexive, localIP: "0.0.0.0", expectedIP: "5.6.7.8"},
 	}
 
 	for _, tc := range testCases {
@@ -1826,10 +1441,7 @@ func TestAgentConfigNAT1To1IPs(t *testing.T) {
 
 		//nolint:godox
 		// TODO: remove once AgentConfig.NAT1To1IPs is deprecated.
-		agent, err := NewAgent(&AgentConfig{
-			Net:        stub,
-			NAT1To1IPs: []string{"1.2.3.4", "5.6.7.8"},
-		})
+		agent, err := NewAgent(&AgentConfig{Net: stub, NAT1To1IPs: []string{"1.2.3.4", "5.6.7.8"}})
 		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
 		require.Nil(t, agent)
 	})
@@ -1837,10 +1449,7 @@ func TestAgentConfigNAT1To1IPs(t *testing.T) {
 	t.Run("legacy config allows slash pair syntax", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgent(&AgentConfig{
-			Net:        stub,
-			NAT1To1IPs: []string{"203.0.113.20/10.0.0.20"},
-		})
+		agent, err := NewAgent(&AgentConfig{Net: stub, NAT1To1IPs: []string{"203.0.113.20/10.0.0.20"}})
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -1949,16 +1558,8 @@ func (n *stubNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, error) 
 }
 
 func (n *stubNet) Interfaces() ([]*transport.Interface, error) {
-	iface := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "stub0",
-		Flags: net.FlagUp,
-	})
-	iface.AddAddress(&net.IPNet{
-		IP:   net.IPv4(192, 0, 2, 1),
-		Mask: net.CIDRMask(24, 32),
-	})
+	iface := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "stub0", Flags: net.FlagUp})
+	iface.AddAddress(&net.IPNet{IP: net.IPv4(192, 0, 2, 1), Mask: net.CIDRMask(24, 32)})
 
 	return []*transport.Interface{iface}, nil
 }

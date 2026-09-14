@@ -11,40 +11,19 @@ import (
 )
 
 func hostCandidate() *CandidateHost {
-	return &CandidateHost{
-		candidateBase: candidateBase{
-			candidateType: CandidateTypeHost,
-			component:     ComponentRTP,
-		},
-	}
+	return &CandidateHost{candidateBase: candidateBase{candidateType: CandidateTypeHost, component: ComponentRTP}}
 }
 
 func prflxCandidate() *CandidatePeerReflexive {
-	return &CandidatePeerReflexive{
-		candidateBase: candidateBase{
-			candidateType: CandidateTypePeerReflexive,
-			component:     ComponentRTP,
-		},
-	}
+	return &CandidatePeerReflexive{candidateBase: candidateBase{candidateType: CandidateTypePeerReflexive, component: ComponentRTP}}
 }
 
 func srflxCandidate() *CandidateServerReflexive {
-	return &CandidateServerReflexive{
-		candidateBase: candidateBase{
-			candidateType: CandidateTypeServerReflexive,
-			component:     ComponentRTP,
-		},
-	}
+	return &CandidateServerReflexive{candidateBase: candidateBase{candidateType: CandidateTypeServerReflexive, component: ComponentRTP}}
 }
 
 func relayCandidate() *CandidateRelay {
-	return &CandidateRelay{
-		candidateBase: candidateBase{
-			candidateType:        CandidateTypeRelay,
-			component:            ComponentRTP,
-			relayLocalPreference: relayProtocolPreference(udp),
-		},
-	}
+	return &CandidateRelay{candidateBase: candidateBase{candidateType: CandidateTypeRelay, component: ComponentRTP, relayLocalPreference: relayProtocolPreference(udp)}}
 }
 
 func TestCandidatePairPriority(t *testing.T) {
@@ -52,70 +31,14 @@ func TestCandidatePairPriority(t *testing.T) {
 		Pair         *CandidatePair
 		WantPriority uint64
 	}{
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				hostCandidate(),
-				false,
-			),
-			WantPriority: 9151314440652587007,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				hostCandidate(),
-				true,
-			),
-			WantPriority: 9151314440652587007,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				prflxCandidate(),
-				true,
-			),
-			WantPriority: 7998392936314175488,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				prflxCandidate(),
-				false,
-			),
-			WantPriority: 7998392936314175487,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				srflxCandidate(),
-				true,
-			),
-			WantPriority: 7277816996102668288,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				srflxCandidate(),
-				false,
-			),
-			WantPriority: 7277816996102668287,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				relayCandidate(),
-				true,
-			),
-			WantPriority: 4398012955648,
-		},
-		{
-			Pair: newCandidatePair(
-				hostCandidate(),
-				relayCandidate(),
-				false,
-			),
-			WantPriority: 4398012955647,
-		},
+		{Pair: newCandidatePair(hostCandidate(), hostCandidate(), false), WantPriority: 9151314440652587007},
+		{Pair: newCandidatePair(hostCandidate(), hostCandidate(), true), WantPriority: 9151314440652587007},
+		{Pair: newCandidatePair(hostCandidate(), prflxCandidate(), true), WantPriority: 7998392936314175488},
+		{Pair: newCandidatePair(hostCandidate(), prflxCandidate(), false), WantPriority: 7998392936314175487},
+		{Pair: newCandidatePair(hostCandidate(), srflxCandidate(), true), WantPriority: 7277816996102668288},
+		{Pair: newCandidatePair(hostCandidate(), srflxCandidate(), false), WantPriority: 7277816996102668287},
+		{Pair: newCandidatePair(hostCandidate(), relayCandidate(), true), WantPriority: 4398012955648},
+		{Pair: newCandidatePair(hostCandidate(), relayCandidate(), false), WantPriority: 4398012955647},
 	} {
 		require.Equal(t, test.Pair.priority(), test.WantPriority)
 	}

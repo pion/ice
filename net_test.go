@@ -82,18 +82,9 @@ func TestLocalInterfaces_ErrorFromInterfaces(t *testing.T) {
 	base, err := stdnet.NewNet()
 	require.NoError(t, err)
 
-	wrapped := &errInterfacesNet{
-		Net:    base,
-		retErr: errBoom,
-	}
+	wrapped := &errInterfacesNet{Net: base, retErr: errBoom}
 
-	ifaces, addrs, gotErr := localInterfaces(
-		wrapped,
-		nil,
-		nil,
-		nil,
-		false,
-	)
+	ifaces, addrs, gotErr := localInterfaces(wrapped, nil, nil, nil, false)
 
 	require.ErrorIs(t, gotErr, wrapped.retErr)
 	require.Nil(t, ifaces, "expected nil iface slice on error")
@@ -123,18 +114,9 @@ func TestLocalInterfaces_SkipInterfaceDown(t *testing.T) {
 	clone := *sysIfaces[0]
 	clone.Flags &^= net.FlagUp
 
-	wrapped := &fixedInterfacesNet{
-		Net:  base,
-		list: []*transport.Interface{&clone},
-	}
+	wrapped := &fixedInterfacesNet{Net: base, list: []*transport.Interface{&clone}}
 
-	ifcs, addrs, ierr := localInterfaces(
-		wrapped,
-		nil,
-		nil,
-		nil,
-		false,
-	)
+	ifcs, addrs, ierr := localInterfaces(wrapped, nil, nil, nil, false)
 	require.NoError(t, ierr)
 	require.Len(t, ifcs, 0, "down interfaces must be skipped")
 	require.Len(t, addrs, 0, "no addresses should be collected from a down interface")
@@ -167,10 +149,7 @@ func TestLocalInterfaces_SkipLoopbackAddrs_WhenIncludeLoopbackFalse(t *testing.T
 	cloned.Flags |= net.FlagUp
 	cloned.Flags &^= net.FlagLoopback
 
-	wrapped := &fixedInterfacesNet{
-		Net:  base,
-		list: []*transport.Interface{&cloned},
-	}
+	wrapped := &fixedInterfacesNet{Net: base, list: []*transport.Interface{&cloned}}
 
 	ifaces, addrs, ierr := localInterfaces(
 		wrapped,
@@ -244,11 +223,7 @@ func TestListenUDPInPortRange_BailsOnEADDRNOTAVAIL(t *testing.T) {
 
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
 
-	sysErr := &net.OpError{
-		Op:  "listen",
-		Net: "udp",
-		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRNOTAVAIL},
-	}
+	sysErr := &net.OpError{Op: "listen", Net: "udp", Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRNOTAVAIL}}
 
 	captor := &listenUDPErrorCaptor{Net: base, err: sysErr}
 
@@ -271,11 +246,7 @@ func TestListenUDPInPortRange_ContinuesOnPortBusyError(t *testing.T) {
 
 	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
 
-	portBusyErr := &net.OpError{
-		Op:  "listen",
-		Net: "udp",
-		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRINUSE},
-	}
+	portBusyErr := &net.OpError{Op: "listen", Net: "udp", Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRINUSE}}
 
 	captor := &listenUDPErrorCaptor{Net: base, err: portBusyErr}
 

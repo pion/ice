@@ -71,54 +71,12 @@ func TestEffectiveURLProtoType(t *testing.T) {
 		url      stun.URI
 		expected stun.ProtoType
 	}{
-		{
-			name: "stun defaults to udp",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeSTUN,
-				Proto:  stun.ProtoTypeUnknown,
-			},
-			expected: stun.ProtoTypeUDP,
-		},
-		{
-			name: "turn defaults to udp",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeTURN,
-				Proto:  stun.ProtoTypeUnknown,
-			},
-			expected: stun.ProtoTypeUDP,
-		},
-		{
-			name: "stuns defaults to tcp",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeSTUNS,
-				Proto:  stun.ProtoTypeUnknown,
-			},
-			expected: stun.ProtoTypeTCP,
-		},
-		{
-			name: "turns defaults to tcp",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeTURNS,
-				Proto:  stun.ProtoTypeUnknown,
-			},
-			expected: stun.ProtoTypeTCP,
-		},
-		{
-			name: "unknown remains unknown",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeUnknown,
-				Proto:  stun.ProtoTypeUnknown,
-			},
-			expected: stun.ProtoTypeUnknown,
-		},
-		{
-			name: "explicit proto overrides scheme default",
-			url: stun.URI{
-				Scheme: stun.SchemeTypeTURNS,
-				Proto:  stun.ProtoTypeUDP,
-			},
-			expected: stun.ProtoTypeUDP,
-		},
+		{name: "stun defaults to udp", url: stun.URI{Scheme: stun.SchemeTypeSTUN, Proto: stun.ProtoTypeUnknown}, expected: stun.ProtoTypeUDP},
+		{name: "turn defaults to udp", url: stun.URI{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUnknown}, expected: stun.ProtoTypeUDP},
+		{name: "stuns defaults to tcp", url: stun.URI{Scheme: stun.SchemeTypeSTUNS, Proto: stun.ProtoTypeUnknown}, expected: stun.ProtoTypeTCP},
+		{name: "turns defaults to tcp", url: stun.URI{Scheme: stun.SchemeTypeTURNS, Proto: stun.ProtoTypeUnknown}, expected: stun.ProtoTypeTCP},
+		{name: "unknown remains unknown", url: stun.URI{Scheme: stun.SchemeTypeUnknown, Proto: stun.ProtoTypeUnknown}, expected: stun.ProtoTypeUnknown},
+		{name: "explicit proto overrides scheme default", url: stun.URI{Scheme: stun.SchemeTypeTURNS, Proto: stun.ProtoTypeUDP}, expected: stun.ProtoTypeUDP},
 	}
 
 	for _, tc := range tests {
@@ -135,13 +93,7 @@ func TestListenUDP(t *testing.T) {
 		require.NoError(t, agent.Close())
 	}()
 
-	_, localAddrs, err := localInterfaces(
-		agent.net,
-		agent.interfaceFilter,
-		agent.ipFilter,
-		[]NetworkType{NetworkTypeUDP4},
-		false,
-	)
+	_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 	require.NotEqual(t, len(localAddrs), 0, "localInterfaces found no interfaces, unable to test")
 	require.NoError(t, err)
 
@@ -192,10 +144,7 @@ func TestGatherConcurrency(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-		IncludeLoopback: true,
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: true})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -268,14 +217,7 @@ func TestCompleteGatheringIgnoresOldGeneration(t *testing.T) {
 }
 
 func TestContinualRegatherKeepsGeneration(t *testing.T) {
-	agent, err := NewAgentWithOptions(
-		WithNet(newHostGatherNet(nil)),
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithNetworkMonitorInterval(time.Millisecond),
-		WithIncludeLoopback(),
-	)
+	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkMonitorInterval(time.Millisecond), WithIncludeLoopback())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -328,60 +270,15 @@ func TestLoopbackCandidate(t *testing.T) {
 	defer func() {
 		_ = unspecConn.Close()
 	}()
-	muxUnspecDefault := NewUDPMuxDefault(UDPMuxParams{
-		UDPConn: unspecConn,
-	})
+	muxUnspecDefault := NewUDPMuxDefault(UDPMuxParams{UDPConn: unspecConn})
 
 	testCases := []testCase{
-		{
-			name: "mux should not have loopback candidate",
-			agentConfig: &AgentConfig{
-				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				UDPMux:       mux,
-			},
-			loExpected: false,
-		},
-		{
-			name: "mux with loopback should not have loopback candidate",
-			agentConfig: &AgentConfig{
-				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				UDPMux:       muxWithLo,
-			},
-			loExpected: true,
-		},
-		{
-			name: "UDPMuxDefault with unspecified IP should not have loopback candidate",
-			agentConfig: &AgentConfig{
-				NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				UDPMux:       muxUnspecDefault,
-			},
-			loExpected: false,
-		},
-		{
-			name: "UDPMuxDefault with unspecified IP should respect agent includeloopback",
-			agentConfig: &AgentConfig{
-				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				UDPMux:          muxUnspecDefault,
-				IncludeLoopback: true,
-			},
-			loExpected: true,
-		},
-		{
-			name: "includeloopback enabled",
-			agentConfig: &AgentConfig{
-				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				IncludeLoopback: true,
-			},
-			loExpected: true,
-		},
-		{
-			name: "includeloopback disabled",
-			agentConfig: &AgentConfig{
-				NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-				IncludeLoopback: false,
-			},
-			loExpected: false,
-		},
+		{name: "mux should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: mux}, loExpected: false},
+		{name: "mux with loopback should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxWithLo}, loExpected: true},
+		{name: "UDPMuxDefault with unspecified IP should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxUnspecDefault}, loExpected: false},
+		{name: "UDPMuxDefault with unspecified IP should respect agent includeloopback", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxUnspecDefault, IncludeLoopback: true}, loExpected: true},
+		{name: "includeloopback enabled", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: true}, loExpected: true},
+		{name: "includeloopback disabled", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: false}, loExpected: false},
 	}
 
 	for _, tc := range testCases {
@@ -430,16 +327,7 @@ func TestSTUNConcurrency(t *testing.T) {
 	require.NoError(t, err)
 	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-			},
-		},
-	})
+	server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverListener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}}}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, server.Close())
@@ -447,43 +335,22 @@ func TestSTUNConcurrency(t *testing.T) {
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
-		urls = append(urls, &stun.URI{
-			Scheme: stun.SchemeTypeSTUN,
-			Host:   localhostIPStr,
-			Port:   serverPort + 1,
-		})
+		urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: serverPort + 1})
 	}
-	urls = append(urls, &stun.URI{
-		Scheme: stun.SchemeTypeSTUN,
-		Host:   localhostIPStr,
-		Port:   serverPort,
-	})
+	urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: serverPort})
 
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP: net.IP{127, 0, 0, 1},
-	})
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}})
 	require.NoError(t, err)
 	defer func() {
 		_ = listener.Close()
 	}()
 
-	tcpMux := NewTCPMuxDefault(
-		TCPMuxParams{
-			Listener:       listener,
-			Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
-			ReadBufferSize: 8,
-		},
-	)
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: logging.NewDefaultLoggerFactory().NewLogger("ice"), ReadBufferSize: 8})
 	defer func() {
 		_ = tcpMux.Close()
 	}()
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes(),
-		Urls:           urls,
-		CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive},
-		TCPMux:         tcpMux,
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}, TCPMux: tcpMux})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -518,26 +385,15 @@ func TestTURNConcurrency(t *testing.T) {
 	) {
 		packetConnConfigs := []turn.PacketConnConfig{}
 		if packetConn != nil {
-			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{
-				PacketConn:            packetConn,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-			})
+			packetConnConfigs = append(packetConnConfigs, turn.PacketConnConfig{PacketConn: packetConn, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}})
 		}
 
 		listenerConfigs := []turn.ListenerConfig{}
 		if listener != nil {
-			listenerConfigs = append(listenerConfigs, turn.ListenerConfig{
-				Listener:              listener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-			})
+			listenerConfigs = append(listenerConfigs, turn.ListenerConfig{Listener: listener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}})
 		}
 
-		server, err := turn.NewServer(turn.ServerConfig{
-			Realm:             "pion.ly",
-			AuthHandler:       optimisticAuthHandler,
-			PacketConnConfigs: packetConnConfigs,
-			ListenerConfigs:   listenerConfigs,
-		})
+		server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: packetConnConfigs, ListenerConfigs: listenerConfigs})
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, server.Close())
@@ -547,31 +403,12 @@ func TestTURNConcurrency(t *testing.T) {
 		// avoid long delay on unreachable ports on Windows
 		if runtime.GOOS != "windows" {
 			for i := 0; i <= 10; i++ {
-				urls = append(urls, &stun.URI{
-					Scheme:   scheme,
-					Host:     localhostIPStr,
-					Username: "username",
-					Password: "password",
-					Proto:    protocol,
-					Port:     serverPort + 1 + i,
-				})
+				urls = append(urls, &stun.URI{Scheme: scheme, Host: localhostIPStr, Username: "username", Password: "password", Proto: protocol, Port: serverPort + 1 + i})
 			}
 		}
-		urls = append(urls, &stun.URI{
-			Scheme:   scheme,
-			Host:     localhostIPStr,
-			Username: "username",
-			Password: "password",
-			Proto:    protocol,
-			Port:     serverPort,
-		})
+		urls = append(urls, &stun.URI{Scheme: scheme, Host: localhostIPStr, Username: "username", Password: "password", Proto: protocol, Port: serverPort})
 
-		agent, err := NewAgent(&AgentConfig{
-			CandidateTypes:     []CandidateType{CandidateTypeRelay},
-			InsecureSkipVerify: true,
-			NetworkTypes:       supportedNetworkTypes(),
-			Urls:               urls,
-		})
+		agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeRelay}, InsecureSkipVerify: true, NetworkTypes: supportedNetworkTypes(), Urls: urls})
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -621,11 +458,7 @@ func TestTURNConcurrency(t *testing.T) {
 		certificate, genErr := selfsign.GenerateSelfSigned()
 		require.NoError(t, genErr)
 
-		serverListener, err := dtls.ListenWithOptions(
-			"udp",
-			&net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: 0},
-			dtls.WithCertificates(certificate),
-		)
+		serverListener, err := dtls.ListenWithOptions("udp", &net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: 0}, dtls.WithCertificates(certificate))
 		require.NoError(t, err)
 		serverPort := portFromAddr(t, serverListener.Addr())
 
@@ -643,16 +476,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	require.NoError(t, err)
 	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-			},
-		},
-	})
+	server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverListener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}}}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, server.Close())
@@ -660,26 +484,11 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 
 	urls := []*stun.URI{}
 	for i := 0; i <= 10; i++ {
-		urls = append(urls, &stun.URI{
-			Scheme: stun.SchemeTypeSTUN,
-			Host:   localhostIPStr,
-			Port:   serverPort + 1,
-		})
+		urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: serverPort + 1})
 	}
-	urls = append(urls, &stun.URI{
-		Scheme:   stun.SchemeTypeTURN,
-		Proto:    stun.ProtoTypeUDP,
-		Host:     localhostIPStr,
-		Port:     serverPort,
-		Username: "username",
-		Password: "password",
-	})
+	urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"})
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes(),
-		Urls:           urls,
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -716,35 +525,15 @@ func TestTURNSrflx(t *testing.T) {
 	require.NoError(t, err)
 	serverPort := portFromAddr(t, serverListener.LocalAddr())
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            serverListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-			},
-		},
-	})
+	server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverListener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}}}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, server.Close())
 	}()
 
-	urls := []*stun.URI{{
-		Scheme:   stun.SchemeTypeTURN,
-		Proto:    stun.ProtoTypeUDP,
-		Host:     localhostIPStr,
-		Port:     serverPort,
-		Username: "username",
-		Password: "password",
-	}}
+	urls := []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"}}
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes(),
-		Urls:           urls,
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay},
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -783,11 +572,7 @@ func TestGatherCandidatesRelayProducesRelay(t *testing.T) {
 			require.NoError(t, err)
 			defer peer.Close() //nolint:errcheck
 
-			conf := turn.ServerConfig{
-				Realm:               "pion.ly",
-				AuthHandler:         optimisticAuthHandler,
-				StrictAddressFamily: true,
-			}
+			conf := turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, StrictAddressFamily: true}
 			generator := &turn.RelayAddressGeneratorNone{Address: host}
 			var addr net.Addr
 			proto := stun.ProtoTypeUDP
@@ -814,10 +599,7 @@ func TestGatherCandidatesRelayProducesRelay(t *testing.T) {
 				WithTURNTransportProtocols([]NetworkType{network}),
 				WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithUrls([]*stun.URI{{
-					Scheme: stun.SchemeTypeTURN, Host: host, Port: portFromAddr(t, addr),
-					Proto: proto, Username: "username", Password: "password",
-				}}),
+				WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: host, Port: portFromAddr(t, addr), Proto: proto, Username: "username", Password: "password"}}),
 			)
 			require.NoError(t, err)
 			defer func() { require.NoError(t, agent.Close()) }()
@@ -910,12 +692,7 @@ func (n *relayGatherNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, 
 }
 
 func (n *relayGatherNet) Interfaces() ([]*transport.Interface, error) {
-	iface := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "relaytest0",
-		Flags: net.FlagUp,
-	})
+	iface := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "relaytest0", Flags: net.FlagUp})
 	maskBits := 32
 	prefixBits := 24
 	if n.addr.IP.To4() == nil {
@@ -1020,20 +797,10 @@ func (n *relayListenCaptureNet) ResolveTCPAddr(network, address string) (*net.TC
 }
 
 func (n *relayListenCaptureNet) Interfaces() ([]*transport.Interface, error) {
-	iface0 := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "eth0",
-		Flags: net.FlagUp,
-	})
+	iface0 := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "eth0", Flags: net.FlagUp})
 	iface0.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
 
-	iface1 := transport.NewInterface(net.Interface{
-		Index: 2,
-		MTU:   1500,
-		Name:  "wlan0",
-		Flags: net.FlagUp,
-	})
+	iface1 := transport.NewInterface(net.Interface{Index: 2, MTU: 1500, Name: "wlan0", Flags: net.FlagUp})
 	iface1.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(8, 32)})
 
 	return []*transport.Interface{iface0, iface1}, nil
@@ -1140,12 +907,7 @@ func (n *hostGatherNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, e
 }
 
 func (n *hostGatherNet) Interfaces() ([]*transport.Interface, error) {
-	iface := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "hosttest0",
-		Flags: net.FlagUp,
-	})
+	iface := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "hosttest0", Flags: net.FlagUp})
 	iface.AddAddress(&net.IPNet{IP: n.addr.IP, Mask: net.CIDRMask(24, 32)})
 
 	return []*transport.Interface{iface}, nil
@@ -1205,11 +967,7 @@ func (n *srflxListenCaptureNet) ListenPacket(string, string) (net.PacketConn, er
 func (n *srflxListenCaptureNet) ListenUDP(network string, laddr *net.UDPAddr) (transport.UDPConn, error) {
 	n.mu.Lock()
 	if laddr != nil {
-		n.listenCalls = append(n.listenCalls, &net.UDPAddr{
-			IP:   append(net.IP{}, laddr.IP...),
-			Port: laddr.Port,
-			Zone: laddr.Zone,
-		})
+		n.listenCalls = append(n.listenCalls, &net.UDPAddr{IP: append(net.IP{}, laddr.IP...), Port: laddr.Port, Zone: laddr.Zone})
 	} else {
 		n.listenCalls = append(n.listenCalls, nil)
 	}
@@ -1247,20 +1005,10 @@ func (n *srflxListenCaptureNet) ResolveTCPAddr(network, address string) (*net.TC
 }
 
 func (n *srflxListenCaptureNet) Interfaces() ([]*transport.Interface, error) {
-	iface0 := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "eth0",
-		Flags: net.FlagUp,
-	})
+	iface0 := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "eth0", Flags: net.FlagUp})
 	iface0.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
 
-	iface1 := transport.NewInterface(net.Interface{
-		Index: 2,
-		MTU:   1500,
-		Name:  "wlan0",
-		Flags: net.FlagUp,
-	})
+	iface1 := transport.NewInterface(net.Interface{Index: 2, MTU: 1500, Name: "wlan0", Flags: net.FlagUp})
 	iface1.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(8, 32)})
 
 	return []*transport.Interface{iface0, iface1}, nil
@@ -1412,12 +1160,7 @@ func (n *errorTurnNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, er
 }
 
 func (n *errorTurnNet) Interfaces() ([]*transport.Interface, error) {
-	iface := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "errturn0",
-		Flags: net.FlagUp,
-	})
+	iface := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "errturn0", Flags: net.FlagUp})
 	iface.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
 
 	return []*transport.Interface{iface}, nil
@@ -1494,24 +1237,8 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{"198.51.100.77"},
-				Local:           "10.0.0.1",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteReplace,
-			},
-		),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     "127.0.0.1",
-				Port:     3478,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeUDP,
-			},
-		}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.77"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1566,16 +1293,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     "127.0.0.1",
-				Port:     3478,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeUDP,
-			},
-		}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 		WithInterfaceFilter(func(iface string) bool {
 			return iface == "eth0" //nolint:goconst
 		}),
@@ -1635,10 +1353,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 						WithTURNTransportProtocols([]NetworkType{transportType}),
 						WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 						WithMulticastDNSMode(MulticastDNSModeDisabled),
-						WithUrls([]*stun.URI{{
-							Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478,
-							Username: "username", Password: "password", Proto: stun.ProtoTypeUDP,
-						}}),
+						WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 					)
 					require.NoError(t, err)
 					defer func() { require.NoError(t, agent.Close()) }()
@@ -1680,16 +1395,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-			WithUrls([]*stun.URI{
-				{
-					Scheme:   stun.SchemeTypeTURN,
-					Host:     "127.0.0.1",
-					Port:     3478,
-					Username: "username",
-					Password: "password",
-					Proto:    stun.ProtoTypeTCP,
-				},
-			}),
+			WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 		)
 		require.NoError(t, err)
@@ -1733,16 +1439,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Proto:    stun.ProtoTypeUDP,
-				Host:     "127.0.0.1",
-				Port:     3478,
-				Username: "user",
-				Password: "pass",
-			},
-		}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "127.0.0.1", Port: 3478, Username: "user", Password: "pass"}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1839,21 +1536,7 @@ func TestTURNProxyDialer(t *testing.T) {
 	proxyDialer, err := proxy.FromURL(tcpProxyURI, proxy.Direct)
 	require.NoError(t, err)
 
-	agent, err := NewAgent(&AgentConfig{
-		CandidateTypes: []CandidateType{CandidateTypeRelay},
-		NetworkTypes:   supportedNetworkTypes(),
-		Urls: []*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     localhostIPStr,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeTCP,
-				Port:     5000,
-			},
-		},
-		ProxyDialer: proxyDialer,
-	})
+	agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeRelay}, NetworkTypes: supportedNetworkTypes(), Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP, Port: 5000}}, ProxyDialer: proxyDialer})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1882,16 +1565,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     "example.com",
-				Port:     3478,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeTCP,
-			},
-		}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "example.com", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1935,32 +1609,19 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	turnNet := &unresolvableRelayGatherNet{
-		relayGatherNet: newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000}),
-	}
+	turnNet := &unresolvableRelayGatherNet{relayGatherNet: newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000})}
 	agent, err := NewAgentWithOptions(
 		WithNet(turnNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     "unresolvable.invalid",
-				Port:     3478,
-				Username: "username",
-				Password: "password",
-				Proto:    stun.ProtoTypeTCP,
-			},
-		}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "unresolvable.invalid", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
-	agent.proxyDialer = &relayTCPProxyDialer{
-		localAddr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 55000},
-	}
+	agent.proxyDialer = &relayTCPProxyDialer{localAddr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 55000}}
 	clientConfig := make(chan *turn.ClientConfig, 1)
 	agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
 		clientConfig <- cfg
@@ -1984,10 +1645,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 func buildSimpleVNet(t *testing.T) (*vnet.Router, *vnet.Net) {
 	t.Helper()
 
-	router, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "1.2.3.0/24",
-		LoggerFactory: logging.NewDefaultLoggerFactory(),
-	})
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
 	require.NoError(t, err)
 
 	nw, err := vnet.NewNet(&vnet.NetConfig{})
@@ -2007,16 +1665,7 @@ func TestGatherCandidatesSrflxMappedPortRangeError(t *testing.T) {
 		require.NoError(t, router.Stop())
 	}()
 
-	agent, err := NewAgentWithOptions(
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"203.0.113.10"},
-			Local:           "0.0.0.0",
-			AsCandidateType: CandidateTypeServerReflexive,
-		}),
-		WithNet(nw),
-	)
+	agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive}), WithNet(nw))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2049,12 +1698,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 		listenAddr := &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: 4789}
 		udpMux := newMockUDPMux([]net.Addr{listenAddr})
 
-		agent, err := NewAgent(&AgentConfig{
-			NetworkTypes:    []NetworkType{NetworkTypeUDP4},
-			CandidateTypes:  []CandidateType{CandidateTypeHost},
-			UDPMux:          udpMux,
-			IncludeLoopback: true,
-		})
+		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeHost}, UDPMux: udpMux, IncludeLoopback: true})
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -2078,24 +1722,13 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 }
 
 func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
-	stunURI := &stun.URI{
-		Scheme: stun.SchemeTypeSTUN,
-		Host:   "127.0.0.1",
-		Port:   3478,
-	}
+	stunURI := &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 3478}
 	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49000}
-	srflxAddr := &stun.XORMappedAddress{
-		IP:   net.IP{203, 0, 113, 5},
-		Port: 50000,
-	}
+	srflxAddr := &stun.XORMappedAddress{IP: net.IP{203, 0, 113, 5}, Port: 50000}
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
-		UDPMuxSrflx:    udpMuxSrflx,
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2103,10 +1736,7 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflxUDPMux(
-		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4},
-		agent.gatherGeneration, agent.localUfrag,
-	)
+	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 	candidates, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2130,11 +1760,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithUrls([]*stun.URI{{
-			Scheme: stun.SchemeTypeSTUN,
-			Host:   localhostIPStr,
-			Port:   9,
-		}}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: 9}}),
 		WithInterfaceFilter(func(iface string) bool {
 			return iface == "eth0"
 		}),
@@ -2160,18 +1786,11 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 
 func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49001}
-	srflxAddr := &stun.XORMappedAddress{
-		IP:   net.IP{203, 0, 113, 6},
-		Port: 50001,
-	}
+	srflxAddr := &stun.XORMappedAddress{IP: net.IP{203, 0, 113, 6}, Port: 50001}
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   []NetworkType{NetworkTypeUDP4},
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
-		UDPMuxSrflx:    udpMuxSrflx,
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
 
 	require.NoError(t, err)
 	defer func() {
@@ -2181,18 +1800,8 @@ func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
 	agent.gatherCandidatesSrflxUDPMux(context.Background(), []*stun.URI{
-		{
-			Scheme: stun.SchemeTypeSTUN,
-			Proto:  stun.ProtoTypeTCP,
-			Host:   "127.0.0.1",
-			Port:   3478,
-		},
-		{
-			Scheme: stun.SchemeTypeSTUN,
-			Proto:  stun.ProtoTypeUDP,
-			Host:   "127.0.0.1",
-			Port:   3478,
-		},
+		{Scheme: stun.SchemeTypeSTUN, Proto: stun.ProtoTypeTCP, Host: "127.0.0.1", Port: 3478},
+		{Scheme: stun.SchemeTypeSTUN, Proto: stun.ProtoTypeUDP, Host: "127.0.0.1", Port: 3478},
 	}, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 	candidates, err := agent.GetLocalCandidates()
@@ -2214,18 +1823,12 @@ func TestUDPMuxDefaultWithNAT1To1IPsUsage(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	mux := NewUDPMuxDefault(UDPMuxParams{
-		UDPConn: conn,
-	})
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn})
 	defer func() {
 		_ = mux.Close()
 	}()
 
-	agent, err := NewAgent(&AgentConfig{
-		NAT1To1IPs:             []string{"1.2.3.4"},
-		NAT1To1IPCandidateType: CandidateTypeHost,
-		UDPMux:                 mux,
-	})
+	agent, err := NewAgent(&AgentConfig{NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeHost, UDPMux: mux})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2269,11 +1872,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		}()
 	}
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-		CandidateTypes: []CandidateType{CandidateTypeHost},
-		UDPMux:         NewMultiUDPMuxDefault(udpMuxInstances...),
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, CandidateTypes: []CandidateType{CandidateTypeHost}, UDPMux: NewMultiUDPMuxDefault(udpMuxInstances...)})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2321,18 +1920,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("append mode adds mapped address", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.10"},
-				Local:           "198.51.100.1",
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.10"}, Local: "198.51.100.1", AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 10), relAddr: "198.51.100.1"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2343,19 +1933,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("replace mode swaps to mapped", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.20"},
-				Local:           "198.51.100.2",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.20"}, Local: "198.51.100.2", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 11), relAddr: "198.51.100.2"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2365,19 +1945,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("replace match with zero external drops", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "198.51.100.4",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "198.51.100.4", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 13), relAddr: "198.51.100.4"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2386,19 +1956,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("append match with zero external keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "198.51.100.5",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "198.51.100.5", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteAppend}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 14), relAddr: "198.51.100.5"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2408,17 +1968,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("invalid relAddr returns error", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.30"},
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.30"}, AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 13), relAddr: "not-an-ip"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2427,18 +1979,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("mapper present but unmatched keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.40"},
-				Local:           "198.51.100.4",
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.40"}, Local: "198.51.100.4", AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 14), relAddr: "198.51.100.5"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2448,21 +1991,9 @@ func TestResolveRelayAddresses(t *testing.T) {
 	})
 
 	t.Run("relay rewrite respects iface filter", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.41"},
-				Local:           "198.51.100.6",
-				AsCandidateType: CandidateTypeRelay,
-				Iface:           "hosttest0",
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.41"}, Local: "198.51.100.6", AsCandidateType: CandidateTypeRelay, Iface: "hosttest0", Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-			net:                  newHostGatherNet(&net.UDPAddr{IP: net.IPv4(198, 51, 100, 6)}),
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger, net: newHostGatherNet(&net.UDPAddr{IP: net.IPv4(198, 51, 100, 6)})}
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 41), relAddr: "198.51.100.6", iface: "hosttest0"}
 
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2482,12 +2013,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	logger := logging.NewDefaultLoggerFactory().NewLogger("test")
 
 	t.Run("host no rule keeps original", func(t *testing.T) {
-		agent := &Agent{
-			addressRewriteMapper: &addressRewriteMapper{
-				rulesByCandidateType: make(map[CandidateType][]*addressRewriteRuleMapping),
-			},
-			log: logger,
-		}
+		agent := &Agent{addressRewriteMapper: &addressRewriteMapper{rulesByCandidateType: make(map[CandidateType][]*addressRewriteRuleMapping)}, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.45")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "")
@@ -2497,19 +2023,10 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("host replace unmatched keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.50"},
-				Local:           "198.51.100.50",
-				AsCandidateType: CandidateTypeHost,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.50"}, Local: "198.51.100.50", AsCandidateType: CandidateTypeHost}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.50")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "")
@@ -2519,20 +2036,10 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("host replace match with zero external drops", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.51",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.51", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.51")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "")
@@ -2541,20 +2048,10 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("host append match with zero external keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.52",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.52", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.52")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "")
@@ -2564,20 +2061,10 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("host rewrite respects iface filter", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.53"},
-				Local:           "10.0.0.53",
-				AsCandidateType: CandidateTypeHost,
-				Iface:           "hosttest0",
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.53"}, Local: "10.0.0.53", AsCandidateType: CandidateTypeHost, Iface: "hosttest0"}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.53")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "hosttest0")
@@ -2592,19 +2079,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx replace unmatched keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.60"},
-				Local:           "203.0.113.60",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.60"}, Local: "203.0.113.60", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 60)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "hosttest0")
@@ -2614,19 +2091,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx replace match with zero external drops", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "192.0.2.70",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "192.0.2.70", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 70)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "hosttest0")
@@ -2635,19 +2102,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx append match with zero external keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "192.0.2.71",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "192.0.2.71", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteAppend}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 71)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "hosttest0")
@@ -2658,21 +2115,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 
 	t.Run("srflx rewrite applies only on matching iface", func(t *testing.T) {
 		localIP := net.IPv4(192, 0, 2, 90)
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.90"},
-				Local:           localIP.String(),
-				AsCandidateType: CandidateTypeServerReflexive,
-				Iface:           "hosttest0",
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.90"}, Local: localIP.String(), AsCandidateType: CandidateTypeServerReflexive, Iface: "hosttest0", Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-			net:                  newHostGatherNet(&net.UDPAddr{IP: localIP}),
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger, net: newHostGatherNet(&net.UDPAddr{IP: localIP})}
 
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "hosttest0")
 		assert.True(t, ok)
@@ -2687,18 +2132,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx append catch-all with zero external keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteAppend}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 72)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "")
@@ -2708,10 +2144,7 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx no mapper returns original", func(t *testing.T) {
-		agent := &Agent{
-			addressRewriteMapper: nil,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: nil, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 90)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "")
@@ -2721,19 +2154,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx replace with zero externals drops", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "192.0.2.91",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "192.0.2.91", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		localIP := net.IPv4(192, 0, 2, 91)
 		addrs, ok := agent.resolveSrflxAddresses(localIP, "")
@@ -2742,17 +2165,9 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("srflx invalid local ip returns false", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.99"},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.99"}, AsCandidateType: CandidateTypeServerReflexive}})
 		require.NoError(t, err)
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addrs, ok := agent.resolveSrflxAddresses(nil, "")
 		assert.False(t, ok)
@@ -2760,19 +2175,10 @@ func TestResolveHostAndSrflxFallbacks(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("relay unmatched keeps original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.70"},
-				Local:           "198.51.100.70",
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.70"}, Local: "198.51.100.70", AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 70), relAddr: "198.51.100.71"}
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2786,18 +2192,10 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 	logger := logging.NewDefaultLoggerFactory().NewLogger("test")
 
 	t.Run("host catch-all replaces", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.80"},
-				AsCandidateType: CandidateTypeHost,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.80"}, AsCandidateType: CandidateTypeHost}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		addr := netip.MustParseAddr("10.0.0.80")
 		mapped, ok := agent.applyHostAddressRewrite(addr, []netip.Addr{addr}, "")
@@ -2807,18 +2205,10 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 	})
 
 	t.Run("srflx catch-all appends mapped only", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.81"},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.81"}, AsCandidateType: CandidateTypeServerReflexive}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		local := net.IPv4(10, 0, 0, 81)
 		addrs, ok := agent.resolveSrflxAddresses(local, "")
@@ -2828,18 +2218,10 @@ func TestCatchAllRewriteApplied(t *testing.T) {
 	})
 
 	t.Run("relay catch-all appends", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.82"},
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.82"}, AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
 
-		agent := &Agent{
-			addressRewriteMapper: mapper,
-			log:                  logger,
-		}
+		agent := &Agent{addressRewriteMapper: mapper, log: logger}
 
 		ep := relayEndpoint{address: net.IPv4(10, 0, 0, 82), relAddr: "0.0.0.0"}
 		addrs, ok := agent.resolveRelayAddresses(ep)
@@ -2854,14 +2236,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 	for _, networks := range [][]NetworkType{nil, {NetworkTypeUDP4}, {NetworkTypeUDP6}} {
 		t.Run(fmt.Sprint(networks), func(t *testing.T) {
 			defer test.CheckRoutines(t)()
-			agent, err := NewAgentWithOptions(
-				WithNetworkTypes(networks),
-				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithAddressRewriteRules(AddressRewriteRule{
-					External: []string{"203.0.113.77"}, Local: "198.51.100.77",
-					AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteAppend,
-				}),
-			)
+			agent, err := NewAgentWithOptions(WithNetworkTypes(networks), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.77"}, Local: "198.51.100.77", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteAppend}))
 			require.NoError(t, err)
 			defer func() { require.NoError(t, agent.Close()) }()
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
@@ -2916,26 +2291,12 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 
 	ctx := context.Background()
 
-	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{
-		network: NetworkTypeUDP4.String(),
-		address: net.IPv4(10, 0, 0, 1),
-		port:    3478,
-		relAddr: "198.51.100.1",
-		relPort: 5000,
-		conn:    nil,
-	})
+	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: net.IPv4(10, 0, 0, 1), port: 3478, relAddr: "198.51.100.1", relPort: 5000, conn: nil})
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
 	assert.Len(t, cands, 0)
 
-	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{
-		network: NetworkTypeUDP4.String(),
-		address: nil,
-		port:    3478,
-		relAddr: "198.51.100.1",
-		relPort: 5000,
-		conn:    newStubPacketConn(nil),
-	})
+	agent.addRelayCandidates(ctx, agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: nil, port: 3478, relAddr: "198.51.100.1", relPort: 5000, conn: newStubPacketConn(nil)})
 	cands, err = agent.GetLocalCandidates()
 	require.NoError(t, err)
 	assert.Len(t, cands, 0)
@@ -2943,14 +2304,7 @@ func TestAddRelayCandidatesSkipsNilConnOrAddress(t *testing.T) {
 
 func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 	t.Run("replace with zero externals drops", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "198.51.100.2",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "198.51.100.2", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
 
 		agent := &Agent{
@@ -2969,14 +2323,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
-			network: NetworkTypeUDP4.String(),
-			address: net.IPv4(10, 0, 0, 2),
-			port:    3478,
-			relAddr: "198.51.100.2",
-			relPort: 5000,
-			conn:    newStubPacketConn(nil),
-		})
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: net.IPv4(10, 0, 0, 2), port: 3478, relAddr: "198.51.100.2", relPort: 5000, conn: newStubPacketConn(nil)})
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2984,12 +2331,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 	})
 
 	t.Run("invalid relAddr causes skip", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.10"},
-				AsCandidateType: CandidateTypeRelay,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.10"}, AsCandidateType: CandidateTypeRelay}})
 		require.NoError(t, err)
 
 		agent := &Agent{
@@ -3008,14 +2350,7 @@ func TestAddRelayCandidatesSkipsWhenResolveFails(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
-			network: NetworkTypeUDP4.String(),
-			address: net.IPv4(10, 0, 0, 3),
-			port:    3478,
-			relAddr: "not-an-ip",
-			relPort: 5000,
-			conn:    newStubPacketConn(nil),
-		})
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: net.IPv4(10, 0, 0, 3), port: 3478, relAddr: "not-an-ip", relPort: 5000, conn: newStubPacketConn(nil)})
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3103,26 +2438,15 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 }
 
 func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
-	tcpMux := &boundTCPMux{
-		localAddr: &net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 5555},
-	}
-	agent, err := NewAgentWithOptions(
-		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
-		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
-		WithTCPMux(tcpMux),
-		WithIncludeLoopback(),
-		WithMulticastDNSMode(MulticastDNSModeDisabled),
-	)
+	tcpMux := &boundTCPMux{localAddr: &net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 5555}}
+	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithTCPMux(tcpMux), WithIncludeLoopback(), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
 	})
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesLocal(
-		context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration, agent.localUfrag,
-	)
+	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration, agent.localUfrag)
 
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -3133,23 +2457,14 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 	t.Run("UDPMux invalid address closes conn", func(t *testing.T) {
 		mux := newInvalidAddrUDPMux()
 		rec := &recordingLogger{}
-		agent, err := NewAgentWithOptions(
-			WithNet(newHostGatherNet(nil)),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithUDPMux(mux),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithLoggerFactory(&recordingLoggerFactory{logger: rec}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled), WithLoggerFactory(&recordingLoggerFactory{logger: rec}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(
-			context.Background(), agent.gatherGeneration, agent.localUfrag,
-		))
+		assert.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag))
 
 		assert.True(t, mux.conn.closed)
 		cands, err := agent.GetLocalCandidates()
@@ -3160,13 +2475,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 	t.Run("NewCandidateHost failure logs and closes conn", func(t *testing.T) {
 		rec := &recordingLogger{}
-		agent, err := NewAgentWithOptions(
-			WithNet(newHostGatherNet(nil)),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithMulticastDNSMode(MulticastDNSModeQueryAndGather),
-			WithLoggerFactory(&recordingLoggerFactory{logger: rec}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithLoggerFactory(&recordingLoggerFactory{logger: rec}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -3175,9 +2484,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		agent.includeLoopback = true
 		agent.mDNSName = "invalid-mdns" // no .local suffix -> NewCandidateHost parse fails
 
-		agent.gatherCandidatesLocal(
-			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
-		)
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3187,13 +2494,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 	t.Run("addCandidate error logs and keeps no candidates", func(t *testing.T) {
 		rec := &recordingLogger{}
-		agent, err := NewAgentWithOptions(
-			WithNet(newHostGatherNet(nil)),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithLoggerFactory(&recordingLoggerFactory{logger: rec}),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithLoggerFactory(&recordingLoggerFactory{logger: rec}))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -3203,9 +2504,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 		agent.loop.Close()
 
-		agent.gatherCandidatesLocal(
-			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
-		)
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 		agent.loop.Run(agent.loop, func(context.Context) { //nolint:errcheck,gosec
 			assert.Empty(t, agent.localCandidates[NetworkTypeUDP4])
@@ -3214,14 +2513,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 	})
 
 	t.Run("host rewrite replace with zero externals skips candidate", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "192.0.2.10",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "192.0.2.10", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
 
 		agent := &Agent{
@@ -3239,9 +2531,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			agent.loop.Close()
 		})
 
-		agent.gatherCandidatesLocal(
-			context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag,
-		)
+		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -3255,14 +2545,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			rec := &recordingLogger{}
 			mapper, err := newAddressRewriteMapper([]AddressRewriteRule{rule})
 			require.NoError(t, err)
-			agent, err := NewAgentWithOptions(
-				WithNet(newHostGatherNet(&net.UDPAddr{IP: ip})),
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-				WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-				WithUDPMux(mux),
-				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithLoggerFactory(&recordingLoggerFactory{logger: rec}),
-			)
+			agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: ip})), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled), WithLoggerFactory(&recordingLoggerFactory{logger: rec}))
 			require.NoError(t, err)
 			agent.addressRewriteMapper = mapper
 			t.Cleanup(func() {
@@ -3270,9 +2553,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 			})
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-			require.NoError(t, agent.gatherCandidatesLocalUDPMux(
-				context.Background(), agent.gatherGeneration, agent.localUfrag,
-			))
+			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag))
 
 			cands, err := agent.GetLocalCandidates()
 			require.NoError(t, err)
@@ -3291,62 +2572,24 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 	runUDPMuxRewrite(
 		"UDPMux append with zero externals logs and keeps original",
-		AddressRewriteRule{
-			External:        nil,
-			Local:           "10.0.0.11",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteAppend,
-		},
+		AddressRewriteRule{External: nil, Local: "10.0.0.11", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend},
 		net.IPv4(10, 0, 0, 11),
 		newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 11}, Port: 1234}}),
 		1,
 		[]string{"10.0.0.11"},
 	)
 
-	runUDPMuxRewrite(
-		"UDPMux replace with zero externals logs and drops",
-		AddressRewriteRule{
-			External:        nil,
-			Local:           "10.0.0.12",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteReplace,
-		},
-		net.IPv4(10, 0, 0, 12),
-		newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 12}, Port: 1234}}),
-		0,
-		nil,
-	)
+	runUDPMuxRewrite("UDPMux replace with zero externals logs and drops", AddressRewriteRule{External: nil, Local: "10.0.0.12", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}, net.IPv4(10, 0, 0, 12), newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 12}, Port: 1234}}), 0, nil)
 
-	runUDPMuxRewrite(
-		"UDPMux findExternalIPs error logs and drops",
-		AddressRewriteRule{
-			External:        []string{"203.0.113.9"},
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteReplace,
-		},
-		net.IPv4zero,
-		newInvalidAddrUDPMux(),
-		0,
-		nil,
-	)
+	runUDPMuxRewrite("UDPMux findExternalIPs error logs and drops", AddressRewriteRule{External: []string{"203.0.113.9"}, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}, net.IPv4zero, newInvalidAddrUDPMux(), 0, nil)
 }
 
 func TestApplyHostRewriteForUDPMuxErrors(t *testing.T) {
 	rec := &recordingLogger{}
-	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        nil,
-			Local:           "10.0.0.50",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteReplace,
-		},
-	})
+	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.50", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 	require.NoError(t, err)
 
-	agent := &Agent{
-		addressRewriteMapper: mapper,
-		log:                  rec,
-	}
+	agent := &Agent{addressRewriteMapper: mapper, log: rec}
 
 	in := []net.IP{net.IPv4(10, 0, 0, 50)}
 	out, ok := agent.applyHostRewriteForUDPMux(in, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 50), Port: 1234})
@@ -3363,31 +2606,21 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 	var expectedPorts []int
 	var tcpMuxInstances []TCPMux
 	for range 3 {
-		listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-			IP:   net.IP{127, 0, 0, 1},
-			Port: 0,
-		})
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 		require.NoError(t, err)
 		defer func() {
 			_ = listener.Close()
 		}()
 
 		expectedPorts = append(expectedPorts, portFromAddr(t, listener.Addr()))
-		tcpMux := NewTCPMuxDefault(TCPMuxParams{
-			Listener:       listener,
-			ReadBufferSize: 8,
-		})
+		tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, ReadBufferSize: 8})
 		defer func() {
 			_ = tcpMux.Close()
 		}()
 		tcpMuxInstances = append(tcpMuxInstances, tcpMux)
 	}
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes(),
-		CandidateTypes: []CandidateType{CandidateTypeHost},
-		TCPMux:         NewMultiTCPMuxDefault(tcpMuxInstances...),
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), CandidateTypes: []CandidateType{CandidateTypeHost}, TCPMux: NewMultiTCPMuxDefault(tcpMuxInstances...)})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -3427,12 +2660,7 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithUDPMux(mux),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.1"},
-				Local:           "10.0.0.1",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.1"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -3478,12 +2706,7 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithUDPMux(mux),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.2"},
-				Local:           "10.0.0.1",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.2"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -3526,26 +2749,13 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 	t.Run("replace host via UDPMux with empty mapping drops candidate", func(t *testing.T) {
 		mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 2}, Port: 1234}})
 
-		agent, err := NewAgentWithOptions(
-			WithNet(newStubNet(t)),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithUDPMux(mux),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newStubNet(t)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
 
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.2",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.2", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 		require.NoError(t, err)
 		agent.addressRewriteMapper = mapper
 
@@ -3581,26 +2791,13 @@ func TestGatherAddressRewriteHostModes(t *testing.T) { //nolint:cyclop
 	t.Run("append host via UDPMux with missing externals keeps original", func(t *testing.T) {
 		mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 3}, Port: 1234}})
 
-		agent, err := NewAgentWithOptions(
-			WithNet(newStubNet(t)),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithUDPMux(mux),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newStubNet(t)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
 
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.3",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.3", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}})
 		require.NoError(t, err)
 		agent.addressRewriteMapper = mapper
 
@@ -3645,11 +2842,7 @@ func TestGatherAddressRewriteAppendHostTCPMux(t *testing.T) {
 	listenerAddr, ok := listener.Addr().(*net.TCPAddr)
 	require.True(t, ok)
 
-	tcpMux := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       listener,
-		Logger:         loggerFactory.NewLogger("ice"),
-		ReadBufferSize: 20,
-	})
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20})
 	defer func() {
 		_ = tcpMux.Close()
 	}()
@@ -3661,12 +2854,7 @@ func TestGatherAddressRewriteAppendHostTCPMux(t *testing.T) {
 		WithTCPMux(tcpMux),
 		WithIncludeLoopback(),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"198.51.100.1"},
-			Local:           "127.0.0.1",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteAppend,
-		}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, Local: "127.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -3710,19 +2898,16 @@ func TestGatherAddressRewriteAppendHostTCPMux(t *testing.T) {
 	wrapB, ok := hostB.conn.(*sharedPacketConn)
 	require.True(t, ok)
 	require.NotSame(t, wrapA, wrapB, "aliases must hold distinct wrappers")
-	require.Same(t, wrapA.underlying, wrapB.underlying,
-		"alias wrappers must share one underlying tcpPacketConn")
+	require.Same(t, wrapA.underlying, wrapB.underlying, "alias wrappers must share one underlying tcpPacketConn")
 	underlying, ok := wrapA.underlying.(*tcpPacketConn)
 	require.True(t, ok)
-	require.Equal(t, int32(2), underlying.refs.Load(),
-		"refcount must reflect both alias candidates")
+	require.Equal(t, int32(2), underlying.refs.Load(), "refcount must reflect both alias candidates")
 
 	// Closing the agent must drain every refcount the mux handed out so
 	// gather doesn't leak wrappers — particularly important since alias
 	// gather acquires multiple wrappers from one underlying conn.
 	require.NoError(t, agent.Close())
-	require.Equal(t, int32(0), underlying.refs.Load(),
-		"agent.Close must release every alias wrapper's reference")
+	require.Equal(t, int32(0), underlying.refs.Load(), "agent.Close must release every alias wrapper's reference")
 }
 
 func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cyclop
@@ -3739,11 +2924,7 @@ func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cycl
 		lAddr, ok := l.Addr().(*net.TCPAddr)
 		require.True(t, ok)
 		expectedPorts = append(expectedPorts, lAddr.Port)
-		muxes = append(muxes, NewTCPMuxDefault(TCPMuxParams{
-			Listener:       l,
-			Logger:         loggerFactory.NewLogger("ice"),
-			ReadBufferSize: 20,
-		}))
+		muxes = append(muxes, NewTCPMuxDefault(TCPMuxParams{Listener: l, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20}))
 	}
 	multi := NewMultiTCPMuxDefault(muxes...)
 	defer func() { _ = multi.Close() }()
@@ -3755,12 +2936,7 @@ func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cycl
 		WithTCPMux(multi),
 		WithIncludeLoopback(),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"198.51.100.1"},
-			Local:           "127.0.0.1",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteAppend,
-		}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, Local: "127.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 	)
 	require.NoError(t, err)
 
@@ -3798,8 +2974,7 @@ func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cycl
 		require.True(t, ok)
 		wrapB, ok := group[1].conn.(*sharedPacketConn)
 		require.True(t, ok)
-		require.Same(t, wrapA.underlying, wrapB.underlying,
-			"aliases on the same mux port must share one tcpPacketConn")
+		require.Same(t, wrapA.underlying, wrapB.underlying, "aliases on the same mux port must share one tcpPacketConn")
 		muxedConn, ok := wrapA.underlying.(*tcpPacketConn)
 		require.True(t, ok)
 		require.Equal(t, int32(2), muxedConn.refs.Load())
@@ -3807,13 +2982,11 @@ func TestGatherAddressRewriteAppendHostMultiTCPMux(t *testing.T) { //nolint:cycl
 		addrs := []string{group[0].Address(), group[1].Address()}
 		assert.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, addrs)
 	}
-	require.NotSame(t, underlyings[0], underlyings[1],
-		"conns from different child muxes must be distinct")
+	require.NotSame(t, underlyings[0], underlyings[1], "conns from different child muxes must be distinct")
 
 	require.NoError(t, agent.Close())
 	for _, u := range underlyings {
-		require.Equal(t, int32(0), u.refs.Load(),
-			"agent.Close must release every alias wrapper's reference")
+		require.Equal(t, int32(0), u.refs.Load(), "agent.Close must release every alias wrapper's reference")
 	}
 }
 
@@ -3840,12 +3013,7 @@ func TestGatherAddressRewriteAppendHostMultiUDPMux(t *testing.T) { //nolint:cycl
 		WithUDPMux(multi),
 		WithIncludeLoopback(),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External:        []string{"198.51.100.1"},
-			Local:           "127.0.0.1",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteAppend,
-		}),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, Local: "127.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 	)
 	require.NoError(t, err)
 
@@ -3882,8 +3050,7 @@ func TestGatherAddressRewriteAppendHostMultiUDPMux(t *testing.T) { //nolint:cycl
 		require.True(t, ok)
 		wrapB, ok := group[1].conn.(*sharedAddrPortConn)
 		require.True(t, ok)
-		require.Same(t, wrapA.underlying, wrapB.underlying,
-			"aliases on the same mux port must share one udpMuxedConn")
+		require.Same(t, wrapA.underlying, wrapB.underlying, "aliases on the same mux port must share one udpMuxedConn")
 		muxedConn, ok := wrapA.underlying.(*udpMuxedConn)
 		require.True(t, ok)
 		require.Equal(t, int32(2), muxedConn.refs.Load())
@@ -3891,31 +3058,19 @@ func TestGatherAddressRewriteAppendHostMultiUDPMux(t *testing.T) { //nolint:cycl
 		addrs := []string{group[0].Address(), group[1].Address()}
 		assert.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, addrs)
 	}
-	require.NotSame(t, underlyings[0], underlyings[1],
-		"conns from different child muxes must be distinct")
+	require.NotSame(t, underlyings[0], underlyings[1], "conns from different child muxes must be distinct")
 
 	require.NoError(t, agent.Close())
 	for _, u := range underlyings {
-		require.Equal(t, int32(0), u.refs.Load(),
-			"agent.Close must release every alias wrapper's reference")
+		require.Equal(t, int32(0), u.refs.Load(), "agent.Close must release every alias wrapper's reference")
 	}
 }
 
 func TestGatherAddressRewriteSrflxModes(t *testing.T) {
-	urls := []*stun.URI{{
-		Scheme: SchemeTypeSTUN,
-		Host:   "127.0.0.1",
-		Port:   3478,
-	}}
+	urls := []*stun.URI{{Scheme: SchemeTypeSTUN, Host: "127.0.0.1", Port: 3478}}
 
 	t.Run("append srflx still gathers", func(t *testing.T) {
-		mux := newCountingUniversalUDPMux(
-			[]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 2}, Port: 2345}},
-			&stun.XORMappedAddress{
-				IP:   net.IP{198, 51, 100, 10},
-				Port: 5000,
-			},
-		)
+		mux := newCountingUniversalUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 2}, Port: 2345}}, &stun.XORMappedAddress{IP: net.IP{198, 51, 100, 10}, Port: 5000})
 
 		var (
 			mu        sync.Mutex
@@ -3923,14 +3078,7 @@ func TestGatherAddressRewriteSrflxModes(t *testing.T) {
 			done      = make(chan struct{})
 		)
 
-		agent, err := NewAgentWithOptions(
-			WithNet(newStubNet(t)),
-			WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithUDPMuxSrflx(mux),
-			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithUrls(urls),
-		)
+		agent, err := NewAgentWithOptions(WithNet(newStubNet(t)), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMuxSrflx(mux), WithMulticastDNSMode(MulticastDNSModeDisabled), WithUrls(urls))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -3979,12 +3127,7 @@ func TestGatherAddressRewriteSrflxModes(t *testing.T) {
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithUrls(urls),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.50"},
-				Local:           "0.0.0.0",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.50"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -4023,27 +3166,14 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.60"},
-				Local:           "10.0.0.10",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteReplace,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.60"}, Local: "10.0.0.10", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
 
-		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
-			network:  NetworkTypeUDP4.String(),
-			address:  net.ParseIP("192.0.2.10"),
-			port:     5000,
-			relAddr:  "10.0.0.10",
-			relPort:  4000,
-			protocol: udp,
-			conn:     newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 10}, Port: 4000}),
-		})
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: net.ParseIP("192.0.2.10"), port: 5000, relAddr: "10.0.0.10", relPort: 4000, protocol: udp, conn: newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 10}, Port: 4000})})
 
 		local, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -4057,27 +3187,14 @@ func TestGatherAddressRewriteRelayModes(t *testing.T) {
 			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{"203.0.113.70"},
-				Local:           "10.0.0.20",
-				AsCandidateType: CandidateTypeRelay,
-				Mode:            AddressRewriteAppend,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.70"}, Local: "10.0.0.20", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteAppend}),
 		)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
 		})
 
-		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
-			network:  NetworkTypeUDP4.String(),
-			address:  net.ParseIP("192.0.2.20"),
-			port:     6000,
-			relAddr:  "10.0.0.20",
-			relPort:  5000,
-			protocol: udp,
-			conn:     newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 20}, Port: 5000}),
-		})
+		agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{network: NetworkTypeUDP4.String(), address: net.ParseIP("192.0.2.20"), port: 6000, relAddr: "10.0.0.20", relPort: 5000, protocol: udp, conn: newStubPacketConn(&net.UDPAddr{IP: net.IP{10, 0, 0, 20}, Port: 5000})})
 
 		local, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -4099,26 +3216,15 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	udpMuxSrflx := &universalUDPMuxMock{
-		conn: conn,
-	}
+	udpMuxSrflx := &universalUDPMuxMock{conn: conn}
 
 	numSTUNS := 3
 	urls := []*stun.URI{}
 	for i := range numSTUNS {
-		urls = append(urls, &stun.URI{
-			Scheme: SchemeTypeSTUN,
-			Host:   localhostIPStr,
-			Port:   3478 + i,
-		})
+		urls = append(urls, &stun.URI{Scheme: SchemeTypeSTUN, Host: localhostIPStr, Port: 3478 + i})
 	}
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes:   supportedNetworkTypes(),
-		Urls:           urls,
-		CandidateTypes: []CandidateType{CandidateTypeServerReflexive},
-		UDPMuxSrflx:    udpMuxSrflx,
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
 	require.NoError(t, err)
 	var aClosed bool
 	defer func() {
@@ -4145,12 +3251,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	aClosed = true
 
 	// Twice because of 2 STUN servers configured
-	require.Equal(
-		t,
-		numSTUNS,
-		udpMuxSrflx.getXORMappedAddrUsedTimes,
-		"expected times that GetXORMappedAddr should be called",
-	)
+	require.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
 	// One for Restart() when agent has been initialized and one time when Close() the agent
 	require.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
 	// Twice because of 2 STUN servers configured
@@ -4203,9 +3304,7 @@ type countingUniversalUDPMux struct {
 }
 
 func newCountingUniversalUDPMux(addrs []net.Addr, xorAddr *stun.XORMappedAddress) *countingUniversalUDPMux {
-	return &countingUniversalUDPMux{
-		mockUniversalUDPMux: newMockUniversalUDPMux(addrs, xorAddr),
-	}
+	return &countingUniversalUDPMux{mockUniversalUDPMux: newMockUniversalUDPMux(addrs, xorAddr)}
 }
 
 func (m *countingUniversalUDPMux) GetConnForURL(ufrag string, url string, addr net.Addr) (net.PacketConn, error) {
@@ -4227,18 +3326,7 @@ func TestGatherCandidatesSrflxMappedEmitsCandidates(t *testing.T) {
 		require.NoError(t, router.Stop())
 	}()
 
-	agent, err := NewAgentWithOptions(
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
-		WithAddressRewriteRules(AddressRewriteRule{
-			External: []string{
-				"203.0.113.10",
-				"203.0.113.20",
-			},
-			AsCandidateType: CandidateTypeServerReflexive,
-		}),
-		WithNet(nw),
-	)
+	agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.10", "203.0.113.20"}, AsCandidateType: CandidateTypeServerReflexive}), WithNet(nw))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -4301,11 +3389,7 @@ func TestGatherCandidatesSrflxMappedMissingExternalIPs(t *testing.T) {
 		require.NoError(t, router.Stop())
 	}()
 
-	agent, err := NewAgentWithOptions(
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
-		WithNet(nw),
-	)
+	agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNet(nw))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -4313,21 +3397,7 @@ func TestGatherCandidatesSrflxMappedMissingExternalIPs(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.addressRewriteMapper = &addressRewriteMapper{
-		rulesByCandidateType: map[CandidateType][]*addressRewriteRuleMapping{
-			CandidateTypeServerReflexive: {
-				{
-					ipv4Mapping: ipMapping{
-						ipMap: map[string][]net.IP{
-							"192.0.2.10": {net.ParseIP("203.0.113.10")},
-						},
-						valid: true,
-					},
-					allowIPv4: true,
-				},
-			},
-		},
-	}
+	agent.addressRewriteMapper = &addressRewriteMapper{rulesByCandidateType: map[CandidateType][]*addressRewriteRuleMapping{CandidateTypeServerReflexive: {{ipv4Mapping: ipMapping{ipMap: map[string][]net.IP{"192.0.2.10": {net.ParseIP("203.0.113.10")}}, valid: true}, allowIPv4: true}}}}
 
 	agent.gatherCandidatesSrflxMapped(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
 
@@ -4460,12 +3530,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 
 	t.Run("Network monitoring interval is configurable", func(t *testing.T) {
 		customInterval := 100 * time.Millisecond
-		agent, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithContinualGatheringPolicy(GatherContinually),
-			WithNetworkMonitorInterval(customInterval),
-		)
+		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -4476,11 +3541,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Default network monitoring interval", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithContinualGatheringPolicy(GatherContinually),
-		)
+		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -4501,25 +3562,14 @@ func TestNetworkChangeDetection(t *testing.T) {
 
 	t.Run("detectNetworkChanges identifies new interfaces", func(t *testing.T) {
 		customInterval := 100 * time.Millisecond
-		agent, err := NewAgentWithOptions(
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithContinualGatheringPolicy(GatherContinually),
-			WithNetworkMonitorInterval(customInterval),
-		)
+		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
 		}()
 
 		// Initialize the last known interfaces
-		_, addrs, err := localInterfaces(
-			agent.net,
-			agent.interfaceFilter,
-			agent.ipFilter,
-			agent.networkTypes,
-			agent.includeLoopback,
-		)
+		_, addrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, agent.networkTypes, agent.includeLoopback)
 		require.NoError(t, err)
 
 		for _, info := range addrs {
@@ -4674,13 +3724,7 @@ func TestGatherUsesStartingUfragAcrossRestart(t *testing.T) {
 	defer test.TimeOut(5 * time.Second).Stop()
 
 	mux := newGatedUDPMux(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 4000})
-	agent, err := NewAgentWithOptions(
-		WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})),
-		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-		WithUDPMux(mux),
-		WithMulticastDNSMode(MulticastDNSModeDisabled),
-	)
+	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 	defer mux.Release()
@@ -4722,10 +3766,7 @@ type mockUniversalUDPMux struct {
 }
 
 func newMockUniversalUDPMux(addrs []net.Addr, xorAddr *stun.XORMappedAddress) *mockUniversalUDPMux {
-	return &mockUniversalUDPMux{
-		mockUDPMux: newMockUDPMux(addrs),
-		xorAddr:    xorAddr,
-	}
+	return &mockUniversalUDPMux{mockUDPMux: newMockUDPMux(addrs), xorAddr: xorAddr}
 }
 
 func (m *mockUniversalUDPMux) GetXORMappedAddr(net.Addr, time.Duration) (*stun.XORMappedAddress, error) {
@@ -4755,18 +3796,7 @@ func TestTURNContext(t *testing.T) {
 		turnPacketSeenDone()
 	}()
 
-	agent, err := NewAgent(&AgentConfig{
-		NetworkTypes: supportedNetworkTypes(),
-		Urls: []*stun.URI{{
-			Scheme:   stun.SchemeTypeTURN,
-			Proto:    stun.ProtoTypeUDP,
-			Host:     localhostIPStr,
-			Port:     portFromAddr(t, listener.LocalAddr()),
-			Username: "username",
-			Password: "password",
-		}},
-		CandidateTypes: []CandidateType{CandidateTypeRelay},
-	})
+	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: portFromAddr(t, listener.LocalAddr()), Username: "username", Password: "password"}}, CandidateTypes: []CandidateType{CandidateTypeRelay}})
 	require.NoError(t, err)
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 

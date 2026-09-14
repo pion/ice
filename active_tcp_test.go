@@ -72,12 +72,7 @@ func TestActiveTCP(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		{
-			name:                    "TCP4 connection",
-			networkTypes:            []NetworkType{NetworkTypeTCP4},
-			listenIPAddress:         getLocalIPAddress(t, NetworkTypeTCP4),
-			selectedPairNetworkType: tcp,
-		},
+		{name: "TCP4 connection", networkTypes: []NetworkType{NetworkTypeTCP4}, listenIPAddress: getLocalIPAddress(t, NetworkTypeTCP4), selectedPairNetworkType: tcp},
 		{
 			name:                    "UDP is preferred over TCP4", // This fails some time
 			networkTypes:            supportedNetworkTypes(),
@@ -113,11 +108,7 @@ func TestActiveTCP(t *testing.T) {
 
 			req := require.New(t)
 
-			listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-				IP:   testCase.listenIPAddress.AsSlice(),
-				Port: listenPort,
-				Zone: testCase.listenIPAddress.Zone(),
-			})
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: testCase.listenIPAddress.AsSlice(), Port: listenPort, Zone: testCase.listenIPAddress.Zone()})
 			req.NoError(err)
 			defer func() {
 				_ = listener.Close()
@@ -125,11 +116,7 @@ func TestActiveTCP(t *testing.T) {
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 
-			tcpMux := NewTCPMuxDefault(TCPMuxParams{
-				Listener:       listener,
-				Logger:         loggerFactory.NewLogger("passive-ice-tcp-mux"),
-				ReadBufferSize: 20,
-			})
+			tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("passive-ice-tcp-mux"), ReadBufferSize: 20})
 
 			defer func() {
 				_ = tcpMux.Close()
@@ -138,15 +125,7 @@ func TestActiveTCP(t *testing.T) {
 			req.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
-			cfg := &AgentConfig{
-				TCPMux:                tcpMux,
-				CandidateTypes:        []CandidateType{CandidateTypeHost},
-				NetworkTypes:          testCase.networkTypes,
-				LoggerFactory:         loggerFactory,
-				HostAcceptanceMinWait: &hostAcceptanceMinWait,
-				InterfaceFilter:       problematicNetworkInterfaces,
-				IncludeLoopback:       true,
-			}
+			cfg := &AgentConfig{TCPMux: tcpMux, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: testCase.networkTypes, LoggerFactory: loggerFactory, HostAcceptanceMinWait: &hostAcceptanceMinWait, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true}
 			if testCase.useMDNS {
 				cfg.MulticastDNSMode = MulticastDNSModeQueryAndGather
 			}
@@ -157,14 +136,7 @@ func TestActiveTCP(t *testing.T) {
 				req.NoError(passiveAgent.Close())
 			}()
 
-			activeAgent, err := NewAgent(&AgentConfig{
-				CandidateTypes:        []CandidateType{CandidateTypeHost},
-				NetworkTypes:          testCase.networkTypes,
-				LoggerFactory:         loggerFactory,
-				HostAcceptanceMinWait: &hostAcceptanceMinWait,
-				InterfaceFilter:       problematicNetworkInterfaces,
-				IncludeLoopback:       true,
-			})
+			activeAgent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: testCase.networkTypes, LoggerFactory: loggerFactory, HostAcceptanceMinWait: &hostAcceptanceMinWait, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true})
 
 			req.NoError(err)
 			req.NotNil(activeAgent)
@@ -212,10 +184,7 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 5).Stop()
 
-	cfg := &AgentConfig{
-		NetworkTypes:    supportedNetworkTypes(),
-		InterfaceFilter: problematicNetworkInterfaces,
-	}
+	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), InterfaceFilter: problematicNetworkInterfaces}
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
@@ -274,11 +243,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 		}
 	}()
 
-	cfg := &AgentConfig{
-		NetworkTypes:    []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6},
-		InterfaceFilter: problematicNetworkInterfaces,
-		IncludeLoopback: true,
-	}
+	cfg := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6}, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true}
 
 	aAgent, err := NewAgent(cfg)
 	require.NoError(t, err)
@@ -302,9 +267,7 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	invalidCandidate, err := UnmarshalCandidate(
-		fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port),
-	)
+	invalidCandidate, err := UnmarshalCandidate(fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port))
 	require.NoError(t, err)
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))

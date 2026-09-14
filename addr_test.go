@@ -77,18 +77,12 @@ func TestParseAddr_IPAddr_Success(t *testing.T) {
 
 func TestAddrParseError_Error(t *testing.T) {
 	e := addrParseError{addr: &net.TCPAddr{}}
-	require.Equal(t,
-		"do not know how to parse address type *net.TCPAddr",
-		e.Error(),
-	)
+	require.Equal(t, "do not know how to parse address type *net.TCPAddr", e.Error())
 }
 
 func TestIPConvertError_Error(t *testing.T) {
 	e := ipConvertError{ip: []byte("bad-ip")}
-	require.Equal(t,
-		"failed to convert IP 'bad-ip' to netip.Addr",
-		e.Error(),
-	)
+	require.Equal(t, "failed to convert IP 'bad-ip' to netip.Addr", e.Error())
 }
 
 func TestIPAddrToNetIP_Error_InvalidBytes(t *testing.T) {

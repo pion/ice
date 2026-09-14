@@ -19,30 +19,19 @@ import (
 var _ TCPMux = &TCPMuxDefault{}
 
 func TestTCPMux_Recv(t *testing.T) {
-	for name, bufSize := range map[string]int{
-		"no buffer":    0,
-		"buffered 4MB": 4 * 1024 * 1024,
-	} {
+	for name, bufSize := range map[string]int{"no buffer": 0, "buffered 4MB": 4 * 1024 * 1024} {
 		t.Run(name, func(t *testing.T) {
 			defer test.CheckRoutines(t)()
 
 			loggerFactory := logging.NewDefaultLoggerFactory()
 
-			listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-				IP:   net.IP{127, 0, 0, 1},
-				Port: 0,
-			})
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 			require.NoError(t, err, "error starting listener")
 			defer func() {
 				_ = listener.Close()
 			}()
 
-			tcpMux := NewTCPMuxDefault(TCPMuxParams{
-				Listener:        listener,
-				Logger:          loggerFactory.NewLogger("ice"),
-				ReadBufferSize:  20,
-				WriteBufferSize: bufSize,
-			})
+			tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20, WriteBufferSize: bufSize})
 
 			defer func() {
 				_ = tcpMux.Close()
@@ -94,20 +83,13 @@ func TestTCPMux_NoDeadlockWhenClosingUnusedPacketConn(t *testing.T) {
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP:   net.IP{127, 0, 0, 1},
-		Port: 0,
-	})
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err, "error starting listener")
 	defer func() {
 		_ = listener.Close()
 	}()
 
-	tcpMux := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       listener,
-		Logger:         loggerFactory.NewLogger("ice"),
-		ReadBufferSize: 20,
-	})
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20})
 
 	defer func() {
 		_ = tcpMux.Close()
@@ -131,21 +113,13 @@ func TestTCPMux_FirstPacketTimeout(t *testing.T) {
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP:   net.IP{127, 0, 0, 1},
-		Port: 0,
-	})
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err, "error starting listener")
 	defer func() {
 		_ = listener.Close()
 	}()
 
-	tcpMux := NewTCPMuxDefault(TCPMuxParams{
-		Listener:             listener,
-		Logger:               loggerFactory.NewLogger("ice"),
-		ReadBufferSize:       20,
-		FirstStunBindTimeout: time.Second,
-	})
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20, FirstStunBindTimeout: time.Second})
 	defer func() {
 		_ = tcpMux.Close()
 	}()
@@ -171,21 +145,13 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP:   net.IP{127, 0, 0, 1},
-		Port: 0,
-	})
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP{127, 0, 0, 1}, Port: 0})
 	require.NoError(t, err, "error starting listener")
 	defer func() {
 		_ = listener.Close()
 	}()
 
-	tcpMux := NewTCPMuxDefault(TCPMuxParams{
-		Listener:                     listener,
-		Logger:                       loggerFactory.NewLogger("ice"),
-		ReadBufferSize:               20,
-		AliveDurationForConnFromStun: time.Second,
-	})
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: loggerFactory.NewLogger("ice"), ReadBufferSize: 20, AliveDurationForConnFromStun: time.Second})
 
 	defer func() {
 		_ = tcpMux.Close()
@@ -200,11 +166,7 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 			_ = conn.Close()
 		}()
 
-		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername("myufrag:otherufrag"),
-			stun.NewShortTermIntegrity("myufrag"),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername("myufrag:otherufrag"), stun.NewShortTermIntegrity("myufrag"), stun.Fingerprint)
 		require.NoError(t, err, "error building STUN packet")
 		msg.Encode()
 
@@ -225,11 +187,7 @@ func TestTCPMux_NoLeakForConnectionFromStun(t *testing.T) {
 			_ = conn.Close()
 		}()
 
-		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID,
-			stun.NewUsername("myufrag2:otherufrag2"),
-			stun.NewShortTermIntegrity("myufrag2"),
-			stun.Fingerprint,
-		)
+		msg, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername("myufrag2:otherufrag2"), stun.NewShortTermIntegrity("myufrag2"), stun.Fingerprint)
 		require.NoError(t, err, "error building STUN packet")
 		msg.Encode()
 
@@ -278,11 +236,7 @@ func TestTCPMux_GetConnByUfrag_SharedRefcount(t *testing.T) {
 		_ = listener.Close()
 	}()
 
-	tcpMux := NewTCPMuxDefault(TCPMuxParams{
-		Listener:       listener,
-		Logger:         logging.NewDefaultLoggerFactory().NewLogger("ice"),
-		ReadBufferSize: 20,
-	})
+	tcpMux := NewTCPMuxDefault(TCPMuxParams{Listener: listener, Logger: logging.NewDefaultLoggerFactory().NewLogger("ice"), ReadBufferSize: 20})
 	defer func() {
 		_ = tcpMux.Close()
 	}()
@@ -300,8 +254,7 @@ func TestTCPMux_GetConnByUfrag_SharedRefcount(t *testing.T) {
 	wrapperB, ok := connB.(*sharedPacketConn)
 	require.True(t, ok)
 	require.NotSame(t, wrapperA, wrapperB, "each call must produce its own wrapper")
-	require.Same(t, wrapperA.underlying, wrapperB.underlying,
-		"wrappers must share one underlying tcpPacketConn")
+	require.Same(t, wrapperA.underlying, wrapperB.underlying, "wrappers must share one underlying tcpPacketConn")
 
 	underlying, ok := wrapperA.underlying.(*tcpPacketConn)
 	require.True(t, ok)

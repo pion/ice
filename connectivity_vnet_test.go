@@ -49,10 +49,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// WAN
-	wan, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "0.0.0.0/0",
-		LoggerFactory: loggerFactory,
-	})
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "0.0.0.0/0", LoggerFactory: loggerFactory})
 	if err != nil {
 		return nil, err
 	}
@@ -73,14 +70,10 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	lan0, err := vnet.NewRouter(&vnet.RouterConfig{
 		StaticIPs: func() []string {
 			if natType0.Mode == vnet.NATModeNAT1To1 {
-				return []string{
-					vnetGlobalIPA + "/" + vnetLocalIPA,
-				}
+				return []string{vnetGlobalIPA + "/" + vnetLocalIPA}
 			}
 
-			return []string{
-				vnetGlobalIPA,
-			}
+			return []string{vnetGlobalIPA}
 		}(),
 		CIDR:          vnetLocalIPA + "/" + vnetLocalSubnetMaskA,
 		NATType:       natType0,
@@ -90,9 +83,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 		return nil, err
 	}
 
-	net0, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{vnetLocalIPA},
-	})
+	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{vnetLocalIPA}})
 	if err != nil {
 		return nil, err
 	}
@@ -111,14 +102,10 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 	lan1, err := vnet.NewRouter(&vnet.RouterConfig{
 		StaticIPs: func() []string {
 			if natType1.Mode == vnet.NATModeNAT1To1 {
-				return []string{
-					vnetGlobalIPB + "/" + vnetLocalIPB,
-				}
+				return []string{vnetGlobalIPB + "/" + vnetLocalIPB}
 			}
 
-			return []string{
-				vnetGlobalIPB,
-			}
+			return []string{vnetGlobalIPB}
 		}(),
 		CIDR:          vnetLocalIPB + "/" + vnetLocalSubnetMaskB,
 		NATType:       natType1,
@@ -128,9 +115,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 		return nil, err
 	}
 
-	net1, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{vnetLocalIPB},
-	})
+	net1, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{vnetLocalIPB}})
 	if err != nil {
 		return nil, err
 	}
@@ -156,12 +141,7 @@ func buildVNet(natType0, natType1 *vnet.NATType) (*virtualNet, error) { //nolint
 		return nil, err
 	}
 
-	return &virtualNet{
-		wan:    wan,
-		net0:   net0,
-		net1:   net1,
-		server: server,
-	}, nil
+	return &virtualNet{wan: wan, net0: net0, net1: net1, server: server}, nil
 }
 
 func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.Server, error) {
@@ -180,18 +160,9 @@ func addVNetSTUN(wanNet *vnet.Net, loggerFactory logging.LoggerFactory) (*turn.S
 
 			return "", nil, false
 		},
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn: wanNetPacketConn,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
-					RelayAddress: net.ParseIP(vnetSTUNServerIP),
-					Address:      "0.0.0.0",
-					Net:          wanNet,
-				},
-			},
-		},
-		Realm:         "pion.ly",
-		LoggerFactory: loggerFactory,
+		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: wanNetPacketConn, RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{RelayAddress: net.ParseIP(vnetSTUNServerIP), Address: "0.0.0.0", Net: wanNet}}},
+		Realm:             "pion.ly",
+		LoggerFactory:     loggerFactory,
 	})
 	if err != nil {
 		return nil, err
@@ -242,37 +213,19 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 
 	var nat1To1IPs []string
 	if a0TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
-		nat1To1IPs = []string{
-			vnetGlobalIPA,
-		}
+		nat1To1IPs = []string{vnetGlobalIPA}
 	}
 
-	cfg0 := &AgentConfig{
-		Urls:                   a0TestConfig.urls,
-		NetworkTypes:           supportedNetworkTypes(),
-		MulticastDNSMode:       MulticastDNSModeDisabled,
-		NAT1To1IPs:             nat1To1IPs,
-		NAT1To1IPCandidateType: a0TestConfig.nat1To1IPCandidateType,
-		Net:                    vnet.net0,
-	}
+	cfg0 := &AgentConfig{Urls: a0TestConfig.urls, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: nat1To1IPs, NAT1To1IPCandidateType: a0TestConfig.nat1To1IPCandidateType, Net: vnet.net0}
 
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
-		nat1To1IPs = []string{
-			vnetGlobalIPB,
-		}
+		nat1To1IPs = []string{vnetGlobalIPB}
 	}
-	cfg1 := &AgentConfig{
-		Urls:                   a1TestConfig.urls,
-		NetworkTypes:           supportedNetworkTypes(),
-		MulticastDNSMode:       MulticastDNSModeDisabled,
-		NAT1To1IPs:             nat1To1IPs,
-		NAT1To1IPCandidateType: a1TestConfig.nat1To1IPCandidateType,
-		Net:                    vnet.net1,
-	}
+	cfg1 := &AgentConfig{Urls: a1TestConfig.urls, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: nat1To1IPs, NAT1To1IPCandidateType: a1TestConfig.nat1To1IPCandidateType, Net: vnet.net1}
 
 	bAgent, err := NewAgent(cfg1)
 	require.NoError(t, err)
@@ -329,47 +282,24 @@ func closePipe(tb testing.TB, ca *Conn, cb *Conn) {
 func TestConnectivityVNet(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	stunServerURL := &stun.URI{
-		Scheme: stun.SchemeTypeSTUN,
-		Host:   vnetSTUNServerIP,
-		Port:   vnetSTUNServerPort,
-		Proto:  stun.ProtoTypeUDP,
-	}
+	stunServerURL := &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}
 
-	turnServerURL := &stun.URI{
-		Scheme:   stun.SchemeTypeTURN,
-		Host:     vnetSTUNServerIP,
-		Port:     vnetSTUNServerPort,
-		Username: "user",
-		Password: "pass",
-		Proto:    stun.ProtoTypeUDP,
-	}
+	turnServerURL := &stun.URI{Scheme: stun.SchemeTypeTURN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Username: "user", Password: "pass", Proto: stun.ProtoTypeUDP}
 
 	t.Run("Full-cone NATs on both ends", func(t *testing.T) {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		log := loggerFactory.NewLogger("test")
 
 		// buildVNet with a Full-cone NATs both LANs
-		natType := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointIndependent,
-			FilteringBehavior: vnet.EndpointIndependent,
-		}
+		natType := &vnet.NATType{MappingBehavior: vnet.EndpointIndependent, FilteringBehavior: vnet.EndpointIndependent}
 		vnet, err := buildVNet(natType, natType)
 
 		require.NoError(t, err, "should succeed")
 		defer vnet.close()
 
 		log.Debug("Connecting...")
-		a0TestConfig := &agentTestConfig{
-			urls: []*stun.URI{
-				stunServerURL,
-			},
-		}
-		a1TestConfig := &agentTestConfig{
-			urls: []*stun.URI{
-				stunServerURL,
-			},
-		}
+		a0TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
+		a1TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		time.Sleep(1 * time.Second)
@@ -383,27 +313,15 @@ func TestConnectivityVNet(t *testing.T) {
 		log := loggerFactory.NewLogger("test")
 
 		// buildVNet with a Symmetric NATs for both LANs
-		natType := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointAddrPortDependent,
-			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		}
+		natType := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 		vnet, err := buildVNet(natType, natType)
 
 		require.NoError(t, err, "should succeed")
 		defer vnet.close()
 
 		log.Debug("Connecting...")
-		a0TestConfig := &agentTestConfig{
-			urls: []*stun.URI{
-				stunServerURL,
-				turnServerURL,
-			},
-		}
-		a1TestConfig := &agentTestConfig{
-			urls: []*stun.URI{
-				stunServerURL,
-			},
-		}
+		a0TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL, turnServerURL}}
+		a1TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
@@ -415,14 +333,9 @@ func TestConnectivityVNet(t *testing.T) {
 		log := loggerFactory.NewLogger("test")
 
 		// Agent0 is behind 1:1 NAT
-		natType0 := &vnet.NATType{
-			Mode: vnet.NATModeNAT1To1,
-		}
+		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
 		// Agent1 is behind a symmetric NAT
-		natType1 := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointAddrPortDependent,
-			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		}
+		natType1 := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 		vnet, err := buildVNet(natType0, natType1)
 
 		require.NoError(t, err, "should succeed")
@@ -433,9 +346,7 @@ func TestConnectivityVNet(t *testing.T) {
 			urls:                   []*stun.URI{},
 			nat1To1IPCandidateType: CandidateTypeHost, // Use 1:1 NAT IP as a host candidate
 		}
-		a1TestConfig := &agentTestConfig{
-			urls: []*stun.URI{},
-		}
+		a1TestConfig := &agentTestConfig{urls: []*stun.URI{}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
@@ -447,14 +358,9 @@ func TestConnectivityVNet(t *testing.T) {
 		log := loggerFactory.NewLogger("test")
 
 		// Agent0 is behind 1:1 NAT
-		natType0 := &vnet.NATType{
-			Mode: vnet.NATModeNAT1To1,
-		}
+		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
 		// Agent1 is behind a symmetric NAT
-		natType1 := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointAddrPortDependent,
-			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		}
+		natType1 := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 		vnet, err := buildVNet(natType0, natType1)
 
 		require.NoError(t, err, "should succeed")
@@ -465,9 +371,7 @@ func TestConnectivityVNet(t *testing.T) {
 			urls:                   []*stun.URI{},
 			nat1To1IPCandidateType: CandidateTypeServerReflexive, // Use 1:1 NAT IP as a srflx candidate
 		}
-		a1TestConfig := &agentTestConfig{
-			urls: []*stun.URI{},
-		}
+		a1TestConfig := &agentTestConfig{urls: []*stun.URI{}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
 
 		log.Debug("Closing...")
@@ -480,10 +384,7 @@ func TestConnectivityVNetWithAddressRewriteRuleOptions(t *testing.T) {
 
 	t.Run("host candidate mapping with options", func(t *testing.T) {
 		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
-		natType1 := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointAddrPortDependent,
-			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		}
+		natType1 := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 
 		vnet, err := buildVNet(natType0, natType1)
 		require.NoError(t, err)
@@ -493,10 +394,7 @@ func TestConnectivityVNetWithAddressRewriteRuleOptions(t *testing.T) {
 			WithNet(vnet.net0),
 			WithNetworkTypes(supportedNetworkTypes()),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{vnetGlobalIPA},
-				AsCandidateType: CandidateTypeHost,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeHost}),
 		}
 		agent1Opts := []AgentOption{
 			WithNet(vnet.net1),
@@ -510,10 +408,7 @@ func TestConnectivityVNetWithAddressRewriteRuleOptions(t *testing.T) {
 
 	t.Run("srflx candidate mapping with options", func(t *testing.T) {
 		natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
-		natType1 := &vnet.NATType{
-			MappingBehavior:   vnet.EndpointAddrPortDependent,
-			FilteringBehavior: vnet.EndpointAddrPortDependent,
-		}
+		natType1 := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 
 		vnet, err := buildVNet(natType0, natType1)
 		require.NoError(t, err)
@@ -523,10 +418,7 @@ func TestConnectivityVNetWithAddressRewriteRuleOptions(t *testing.T) {
 			WithNet(vnet.net0),
 			WithNetworkTypes(supportedNetworkTypes()),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
-			WithAddressRewriteRules(AddressRewriteRule{
-				External:        []string{vnetGlobalIPA},
-				AsCandidateType: CandidateTypeServerReflexive,
-			}),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeServerReflexive}),
 		}
 		agent1Opts := []AgentOption{
 			WithNet(vnet.net1),
@@ -553,16 +445,7 @@ func TestConnectivityVNetNAT1To1SharedFoundation(t *testing.T) {
 		WithNet(vnet.net0),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithAddressRewriteRules(
-			AddressRewriteRule{
-				External:        []string{vnetGlobalIPA},
-				AsCandidateType: CandidateTypeHost,
-			},
-			AddressRewriteRule{
-				External:        []string{vnetGlobalIPA},
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeHost}, AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeServerReflexive}),
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -601,13 +484,7 @@ func TestConnectivityVNetNAT1To1SharedFoundation(t *testing.T) {
 	}
 
 	require.Equal(t, 1, typeCount[CandidateTypeHost], "expected exactly one host candidate for %s", vnetGlobalIPA)
-	require.Equal(
-		t,
-		1,
-		typeCount[CandidateTypeServerReflexive],
-		"expected exactly one srflx candidate for %s",
-		vnetGlobalIPA,
-	)
+	require.Equal(t, 1, typeCount[CandidateTypeServerReflexive], "expected exactly one srflx candidate for %s", vnetGlobalIPA)
 }
 
 // TestDisconnectedToConnected requires that an agent can go to disconnected,
@@ -620,10 +497,7 @@ func TestDisconnectedToConnected(t *testing.T) {
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// Create a network with two interfaces
-	wan, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "0.0.0.0/0",
-		LoggerFactory: loggerFactory,
-	})
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "0.0.0.0/0", LoggerFactory: loggerFactory})
 	require.NoError(t, err)
 
 	var dropAllData uint64
@@ -631,15 +505,11 @@ func TestDisconnectedToConnected(t *testing.T) {
 		return atomic.LoadUint64(&dropAllData) != 1
 	})
 
-	net0, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"192.168.0.1"},
-	})
+	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.1"}})
 	require.NoError(t, err)
 	require.NoError(t, wan.AddNet(net0))
 
-	net1, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"192.168.0.2"},
-	})
+	net1, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.2"}})
 	require.NoError(t, err)
 	require.NoError(t, wan.AddNet(net1))
 
@@ -649,27 +519,13 @@ func TestDisconnectedToConnected(t *testing.T) {
 	keepaliveInterval := time.Millisecond * 20
 
 	// Create two agents and connect them
-	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:        supportedNetworkTypes(),
-		MulticastDNSMode:    MulticastDNSModeDisabled,
-		Net:                 net0,
-		DisconnectedTimeout: &disconnectTimeout,
-		KeepaliveInterval:   &keepaliveInterval,
-		CheckInterval:       &keepaliveInterval,
-	})
+	controllingAgent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net0, DisconnectedTimeout: &disconnectTimeout, KeepaliveInterval: &keepaliveInterval, CheckInterval: &keepaliveInterval})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controllingAgent.Close())
 	}()
 
-	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:        supportedNetworkTypes(),
-		MulticastDNSMode:    MulticastDNSModeDisabled,
-		Net:                 net1,
-		DisconnectedTimeout: &disconnectTimeout,
-		KeepaliveInterval:   &keepaliveInterval,
-		CheckInterval:       &keepaliveInterval,
-	})
+	controlledAgent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net1, DisconnectedTimeout: &disconnectTimeout, KeepaliveInterval: &keepaliveInterval, CheckInterval: &keepaliveInterval})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controlledAgent.Close())
@@ -720,17 +576,12 @@ func TestWriteUseValidPair(t *testing.T) {
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
 	// Create a network with two interfaces
-	wan, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "0.0.0.0/0",
-		LoggerFactory: loggerFactory,
-	})
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "0.0.0.0/0", LoggerFactory: loggerFactory})
 	require.NoError(t, err)
 
 	wan.AddChunkFilter(func(c vnet.Chunk) bool {
 		if stun.IsMessage(c.UserData()) {
-			m := &stun.Message{
-				Raw: c.UserData(),
-			}
+			m := &stun.Message{Raw: c.UserData()}
 			if decErr := m.Decode(); decErr != nil {
 				return false
 			} else if m.Contains(stun.AttrUseCandidate) {
@@ -741,36 +592,24 @@ func TestWriteUseValidPair(t *testing.T) {
 		return true
 	})
 
-	net0, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"192.168.0.1"},
-	})
+	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.1"}})
 	require.NoError(t, err)
 	require.NoError(t, wan.AddNet(net0))
 
-	net1, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"192.168.0.2"},
-	})
+	net1, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.2"}})
 	require.NoError(t, err)
 	require.NoError(t, wan.AddNet(net1))
 
 	require.NoError(t, wan.Start())
 
 	// Create two agents and connect them
-	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:     supportedNetworkTypes(),
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net0,
-	})
+	controllingAgent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net0})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controllingAgent.Close())
 	}()
 
-	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:     supportedNetworkTypes(),
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		Net:              net1,
-	})
+	controlledAgent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net1})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controlledAgent.Close())

@@ -57,20 +57,10 @@ func createRenominationTestAgent(t *testing.T, controlling bool) (*Agent, Candid
 
 	agent.isControlling.Store(controlling)
 
-	local, err := NewCandidateHost(&CandidateHostConfig{
-		Network:   "udp",
-		Address:   "127.0.0.1",
-		Port:      12345,
-		Component: 1,
-	})
+	local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 	assert.NoError(t, err)
 
-	remote, err := NewCandidateHost(&CandidateHostConfig{
-		Network:   "udp",
-		Address:   "127.0.0.1",
-		Port:      54321,
-		Component: 1,
-	})
+	remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 	assert.NoError(t, err)
 
 	return agent, local, remote
@@ -147,10 +137,7 @@ func TestControlledSelectorNominationAcceptance(t *testing.T) {
 		assert.NoError(t, agent.Close())
 	}()
 
-	selector := &controlledSelector{
-		agent: agent,
-		log:   agent.log,
-	}
+	selector := &controlledSelector{agent: agent, log: agent.log}
 	selector.Start()
 
 	// First nomination should be accepted
@@ -184,10 +171,7 @@ func TestControlledSelectorNominationDisabled(t *testing.T) {
 		assert.NoError(t, agent.Close())
 	}()
 
-	selector := &controlledSelector{
-		agent: agent,
-		log:   agent.log,
-	}
+	selector := &controlledSelector{agent: agent, log: agent.log}
 	selector.Start()
 
 	// Standard ICE nomination (no value) should be accepted
@@ -228,20 +212,10 @@ func TestAgentRenominateCandidate(t *testing.T) {
 		agent.isControlling.Store(true)
 
 		// Create test candidates with mock connection
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		// Mock the connection for the local candidate to avoid nil pointer
@@ -281,20 +255,10 @@ func TestAgentRenominateCandidate(t *testing.T) {
 
 		agent.isControlling.Store(true)
 
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		err = agent.RenominateCandidate(local, remote)
@@ -337,20 +301,10 @@ func TestSendNominationRequest(t *testing.T) {
 		agent.isControlling.Store(true)
 
 		// Create test candidates
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		// Mock connection to capture sent messages
@@ -419,20 +373,10 @@ func TestSendNominationRequest(t *testing.T) {
 
 		agent.isControlling.Store(true)
 
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		mockConn := &mockPacketConnWithCapture{}
@@ -492,20 +436,10 @@ func TestRenominationErrorCases(t *testing.T) {
 
 		agent.isControlling.Store(true)
 
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		mockConn := &mockPacketConnWithCapture{}
@@ -600,10 +534,7 @@ func TestNominationValueBoundaries(t *testing.T) {
 
 	t.Run("NominationSetter with custom attribute type", func(t *testing.T) {
 		customAttrType := stun.AttrType(0x0050)
-		setter := NominationSetter{
-			Value:    98765,
-			AttrType: customAttrType,
-		}
+		setter := NominationSetter{Value: 98765, AttrType: customAttrType}
 
 		m := &stun.Message{}
 		err := setter.AddTo(m)
@@ -636,27 +567,14 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
-		selector := &controlledSelector{
-			agent: agent,
-			log:   agent.log,
-		}
+		selector := &controlledSelector{agent: agent, log: agent.log}
 		selector.Start()
 
 		// Create test candidates
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		// Mock connection for response
@@ -731,26 +649,13 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 		agent.remoteUfrag = testRemoteUfrag
 		agent.remotePwd = testRemotePwd
 
-		selector := &controlledSelector{
-			agent: agent,
-			log:   agent.log,
-		}
+		selector := &controlledSelector{agent: agent, log: agent.log}
 		selector.Start()
 
-		local, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      12345,
-			Component: 1,
-		})
+		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
 
-		remote, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   "udp",
-			Address:   "127.0.0.1",
-			Port:      54321,
-			Component: 1,
-		})
+		remote, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 54321, Component: 1})
 		assert.NoError(t, err)
 
 		mockConn := &mockPacketConnWithCapture{}
@@ -841,10 +746,7 @@ func TestInvalidRenominationConfig(t *testing.T) {
 		controlledAgent.isControlling.Store(false)
 
 		// Create controlled selector to test nomination handling
-		selector := &controlledSelector{
-			agent: controlledAgent,
-			log:   controlledAgent.log,
-		}
+		selector := &controlledSelector{agent: controlledAgent, log: controlledAgent.log}
 
 		// Test 1: Should accept nomination without value (standard ICE)
 		assert.True(t, selector.shouldAcceptNomination(nil))
@@ -884,9 +786,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 
 	t.Run("agent uses default nomination attribute when not configured", func(t *testing.T) {
 		// Create agent without custom nomination attribute
-		agentConfig := &AgentConfig{
-			NetworkTypes: []NetworkType{NetworkTypeUDP4},
-		}
+		agentConfig := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
 
 		agent, err := NewAgent(agentConfig)
 		assert.NoError(t, err)

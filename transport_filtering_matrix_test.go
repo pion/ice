@@ -143,12 +143,7 @@ func (n *firewallNet) ResolveTCPAddr(network, address string) (*net.TCPAddr, err
 }
 
 func (n *firewallNet) Interfaces() ([]*transport.Interface, error) {
-	iface := transport.NewInterface(net.Interface{
-		Index: 1,
-		MTU:   1500,
-		Name:  "fw0",
-		Flags: net.FlagUp | net.FlagLoopback,
-	})
+	iface := transport.NewInterface(net.Interface{Index: 1, MTU: 1500, Name: "fw0", Flags: net.FlagUp | net.FlagLoopback})
 	iface.AddAddress(&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)})
 
 	return []*transport.Interface{iface}, nil
@@ -215,10 +210,7 @@ func (d *firewallProxyDialer) Dial(network, _ string) (net.Conn, error) {
 		return nil, errFirewallBlocked
 	}
 
-	return &matrixTCPConn{
-		local:  &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000},
-		remote: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478},
-	}, nil
+	return &matrixTCPConn{local: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000}, remote: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 3478}}, nil
 }
 
 func (d *firewallProxyDialer) count() int {
@@ -307,118 +299,17 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 	}
 
 	testCases := []testCase{
-		{
-			name:                  "tcp-only firewall with udp relay config and TURN/TCP gathers relay",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeTCP,
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
-		{
-			name:                  "udp-only firewall with udp-only config and TURN/UDP gathers relay",
-			allowUDP:              true,
-			allowTCP:              false,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeUDP,
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
-		{
-			name:                  "tcp-only candidate config skips relay gathering",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeTCP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeUDP,
-			expectFactoryMinCalls: 0,
-			expectRelayCandidate:  false,
-		},
-		{
-			name:                  "udp relay config with TURN/TCP fails when tcp blocked by firewall",
-			allowUDP:              true,
-			allowTCP:              false,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeTCP,
-			expectFactoryMinCalls: 0,
-			expectRelayCandidate:  false,
-		},
-		{
-			name:                  "tcp-only firewall with udp relay config and TURNS/TCP gathers relay",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURNS,
-			turnProto:             stun.ProtoTypeTCP,
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
-		{
-			name:                  "tcp-only config with TURN URL without transport param defaults to UDP and is filtered",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeTCP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeUnknown,
-			expectFactoryMinCalls: 0,
-			expectRelayCandidate:  false,
-		},
-		{
-			name:                  "udp-only config with TURN URL without transport param defaults to UDP and gathers relay",
-			allowUDP:              true,
-			allowTCP:              false,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeUnknown,
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
-		{
-			name:                  "udp relay config with TURNS URL without transport param defaults to TCP and gathers relay",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURNS,
-			turnProto:             stun.ProtoTypeUnknown,
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
-		{
-			name:                  "udp-only config with TURNS URL without transport param defaults to TCP and is filtered",
-			allowUDP:              true,
-			allowTCP:              false,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURNS,
-			turnProto:             stun.ProtoTypeUnknown,
-			expectFactoryMinCalls: 0,
-			expectRelayCandidate:  false,
-		},
-		{
-			name:                  "TURN/TCP URL blocked by TURN transport option allowing UDP only",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURN,
-			turnProto:             stun.ProtoTypeTCP,
-			turnAllowed:           []NetworkType{NetworkTypeUDP4},
-			expectFactoryMinCalls: 0,
-			expectRelayCandidate:  false,
-		},
-		{
-			name:                  "TURNS default TCP allowed by TURN transport option",
-			allowUDP:              false,
-			allowTCP:              true,
-			networkTypes:          []NetworkType{NetworkTypeUDP4},
-			turnScheme:            stun.SchemeTypeTURNS,
-			turnProto:             stun.ProtoTypeUnknown,
-			turnAllowed:           []NetworkType{NetworkTypeTCP4},
-			expectFactoryMinCalls: 1,
-			expectRelayCandidate:  true,
-		},
+		{name: "tcp-only firewall with udp relay config and TURN/TCP gathers relay", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeTCP, expectFactoryMinCalls: 1, expectRelayCandidate: true},
+		{name: "udp-only firewall with udp-only config and TURN/UDP gathers relay", allowUDP: true, allowTCP: false, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUDP, expectFactoryMinCalls: 1, expectRelayCandidate: true},
+		{name: "tcp-only candidate config skips relay gathering", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeTCP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUDP, expectFactoryMinCalls: 0, expectRelayCandidate: false},
+		{name: "udp relay config with TURN/TCP fails when tcp blocked by firewall", allowUDP: true, allowTCP: false, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeTCP, expectFactoryMinCalls: 0, expectRelayCandidate: false},
+		{name: "tcp-only firewall with udp relay config and TURNS/TCP gathers relay", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeTCP, expectFactoryMinCalls: 1, expectRelayCandidate: true},
+		{name: "tcp-only config with TURN URL without transport param defaults to UDP and is filtered", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeTCP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUnknown, expectFactoryMinCalls: 0, expectRelayCandidate: false},
+		{name: "udp-only config with TURN URL without transport param defaults to UDP and gathers relay", allowUDP: true, allowTCP: false, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUnknown, expectFactoryMinCalls: 1, expectRelayCandidate: true},
+		{name: "udp relay config with TURNS URL without transport param defaults to TCP and gathers relay", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeUnknown, expectFactoryMinCalls: 1, expectRelayCandidate: true},
+		{name: "udp-only config with TURNS URL without transport param defaults to TCP and is filtered", allowUDP: true, allowTCP: false, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeUnknown, expectFactoryMinCalls: 0, expectRelayCandidate: false},
+		{name: "TURN/TCP URL blocked by TURN transport option allowing UDP only", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeTCP, turnAllowed: []NetworkType{NetworkTypeUDP4}, expectFactoryMinCalls: 0, expectRelayCandidate: false},
+		{name: "TURNS default TCP allowed by TURN transport option", allowUDP: false, allowTCP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeUnknown, turnAllowed: []NetworkType{NetworkTypeTCP4}, expectFactoryMinCalls: 1, expectRelayCandidate: true},
 	}
 
 	for _, tc := range testCases {
@@ -426,14 +317,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 			netFW := newFirewallNet(tc.allowUDP, tc.allowTCP)
 			proxyDialer := &firewallProxyDialer{allowTCP: tc.allowTCP}
 
-			url := &stun.URI{
-				Scheme:   tc.turnScheme,
-				Proto:    tc.turnProto,
-				Host:     "127.0.0.1",
-				Port:     3478,
-				Username: "user",
-				Password: "pass",
-			}
+			url := &stun.URI{Scheme: tc.turnScheme, Proto: tc.turnProto, Host: "127.0.0.1", Port: 3478, Username: "user", Password: "pass"}
 
 			opts := []AgentOption{
 				WithNet(netFW),
@@ -448,9 +332,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 				opts = append(opts, WithTURNTransportProtocols(tc.turnAllowed))
 			}
 
-			agent, err := NewAgentWithOptions(
-				opts...,
-			)
+			agent, err := NewAgentWithOptions(opts...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -460,9 +342,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 			agent.turnClientFactory = func(*turn.ClientConfig) (turnClient, error) {
 				factoryCalls.Add(1)
 
-				return &stubTurnClient{
-					relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 50), Port: 6000}),
-				}, nil
+				return &stubTurnClient{relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 50), Port: 6000})}, nil
 			}
 
 			candidates := gatherAndCollectCandidates(t, agent)
@@ -514,14 +394,7 @@ func TestTransportFilteringSrflxMatrix(t *testing.T) {
 		_ = serverListener.Close()
 	}()
 
-	server, err := turn.NewServer(turn.ServerConfig{
-		Realm:       "pion.ly",
-		AuthHandler: optimisticAuthHandler,
-		PacketConnConfigs: []turn.PacketConnConfig{{
-			PacketConn:            serverListener,
-			RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr},
-		}},
-	})
+	server, err := turn.NewServer(turn.ServerConfig{Realm: "pion.ly", AuthHandler: optimisticAuthHandler, PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverListener, RelayAddressGenerator: &turn.RelayAddressGeneratorNone{Address: localhostIPStr}}}})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, server.Close())
@@ -537,77 +410,20 @@ func TestTransportFilteringSrflxMatrix(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		{
-			name:         "udp allowed and udp config with TURN/UDP gathers srflx",
-			allowUDP:     true,
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			turnScheme:   stun.SchemeTypeTURN,
-			turnProto:    stun.ProtoTypeUDP,
-			expectSrflx:  true,
-		},
-		{
-			name:         "tcp-only config with TURN/TCP does not gather srflx",
-			allowUDP:     false,
-			networkTypes: []NetworkType{NetworkTypeTCP4},
-			turnScheme:   stun.SchemeTypeTURN,
-			turnProto:    stun.ProtoTypeTCP,
-			expectSrflx:  false,
-		},
-		{
-			name:         "udp config with TURN/TCP transport is filtered for srflx",
-			allowUDP:     true,
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			turnScheme:   stun.SchemeTypeTURN,
-			turnProto:    stun.ProtoTypeTCP,
-			expectSrflx:  false,
-		},
-		{
-			name:         "udp config with TURN URL without transport param defaults to UDP and gathers srflx",
-			allowUDP:     true,
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			turnScheme:   stun.SchemeTypeTURN,
-			turnProto:    stun.ProtoTypeUnknown,
-			expectSrflx:  true,
-		},
-		{
-			name:         "udp config with TURNS URL without transport param defaults to TCP and is filtered for srflx",
-			allowUDP:     true,
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			turnScheme:   stun.SchemeTypeTURNS,
-			turnProto:    stun.ProtoTypeUnknown,
-			expectSrflx:  false,
-		},
-		{
-			name:         "udp config with explicit TURNS/TCP is filtered for srflx",
-			allowUDP:     true,
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			turnScheme:   stun.SchemeTypeTURNS,
-			turnProto:    stun.ProtoTypeTCP,
-			expectSrflx:  false,
-		},
+		{name: "udp allowed and udp config with TURN/UDP gathers srflx", allowUDP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUDP, expectSrflx: true},
+		{name: "tcp-only config with TURN/TCP does not gather srflx", allowUDP: false, networkTypes: []NetworkType{NetworkTypeTCP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeTCP, expectSrflx: false},
+		{name: "udp config with TURN/TCP transport is filtered for srflx", allowUDP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeTCP, expectSrflx: false},
+		{name: "udp config with TURN URL without transport param defaults to UDP and gathers srflx", allowUDP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURN, turnProto: stun.ProtoTypeUnknown, expectSrflx: true},
+		{name: "udp config with TURNS URL without transport param defaults to TCP and is filtered for srflx", allowUDP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeUnknown, expectSrflx: false},
+		{name: "udp config with explicit TURNS/TCP is filtered for srflx", allowUDP: true, networkTypes: []NetworkType{NetworkTypeUDP4}, turnScheme: stun.SchemeTypeTURNS, turnProto: stun.ProtoTypeTCP, expectSrflx: false},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			netFW := newFirewallNet(tc.allowUDP, true)
-			url := &stun.URI{
-				Scheme:   tc.turnScheme,
-				Proto:    tc.turnProto,
-				Host:     localhostIPStr,
-				Port:     serverPort,
-				Username: "user",
-				Password: "pass",
-			}
+			url := &stun.URI{Scheme: tc.turnScheme, Proto: tc.turnProto, Host: localhostIPStr, Port: serverPort, Username: "user", Password: "pass"}
 
-			agent, err := NewAgentWithOptions(
-				WithNet(netFW),
-				WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
-				WithNetworkTypes(tc.networkTypes),
-				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithIncludeLoopback(),
-				WithSTUNGatherTimeout(200*time.Millisecond),
-				WithUrls([]*stun.URI{url}),
-			)
+			agent, err := NewAgentWithOptions(WithNet(netFW), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes(tc.networkTypes), WithMulticastDNSMode(MulticastDNSModeDisabled), WithIncludeLoopback(), WithSTUNGatherTimeout(200*time.Millisecond), WithUrls([]*stun.URI{url}))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -643,30 +459,9 @@ func TestTransportFilteringHostMatrix(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		{
-			name:         "udp config gathers udp host candidate",
-			networkTypes: []NetworkType{NetworkTypeUDP4},
-			allowUDP:     true,
-			useTCPMux:    false,
-			expectHost:   true,
-			expectTCP:    false,
-		},
-		{
-			name:         "tcp config gathers tcp host candidate with tcp mux",
-			networkTypes: []NetworkType{NetworkTypeTCP4},
-			allowUDP:     false,
-			useTCPMux:    true,
-			expectHost:   true,
-			expectTCP:    true,
-		},
-		{
-			name:         "tcp config without tcp mux yields no host candidate",
-			networkTypes: []NetworkType{NetworkTypeTCP4},
-			allowUDP:     false,
-			useTCPMux:    false,
-			expectHost:   false,
-			expectTCP:    false,
-		},
+		{name: "udp config gathers udp host candidate", networkTypes: []NetworkType{NetworkTypeUDP4}, allowUDP: true, useTCPMux: false, expectHost: true, expectTCP: false},
+		{name: "tcp config gathers tcp host candidate with tcp mux", networkTypes: []NetworkType{NetworkTypeTCP4}, allowUDP: false, useTCPMux: true, expectHost: true, expectTCP: true},
+		{name: "tcp config without tcp mux yields no host candidate", networkTypes: []NetworkType{NetworkTypeTCP4}, allowUDP: false, useTCPMux: false, expectHost: false, expectTCP: false},
 	}
 
 	for _, tc := range testCases {
@@ -681,9 +476,7 @@ func TestTransportFilteringHostMatrix(t *testing.T) {
 				WithIncludeLoopback(),
 			}
 			if tc.useTCPMux {
-				opts = append(opts, WithTCPMux(&boundTCPMux{
-					localAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 34567},
-				}))
+				opts = append(opts, WithTCPMux(&boundTCPMux{localAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 34567}}))
 			}
 
 			agent, err := NewAgentWithOptions(opts...)
@@ -732,14 +525,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 		WithIncludeLoopback(),
-		WithUrls([]*stun.URI{{
-			Scheme:   stun.SchemeTypeTURN,
-			Proto:    stun.ProtoTypeTCP,
-			Host:     "turn.example.com",
-			Port:     3478,
-			Username: "user",
-			Password: "pass",
-		}}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}),
 	)
 	require.NoError(t, err)
 	defer func() {
@@ -750,9 +536,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 	agent.turnClientFactory = func(*turn.ClientConfig) (turnClient, error) {
 		factoryCalls.Add(1)
 
-		return &stubTurnClient{
-			relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 77), Port: 6100}),
-		}, nil
+		return &stubTurnClient{relayConn: newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 77), Port: 6100})}, nil
 	}
 
 	candidates := gatherAndCollectCandidates(t, agent)

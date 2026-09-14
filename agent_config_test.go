@@ -77,16 +77,8 @@ func TestDefaultRelayAcceptanceMinWaitForCandidates(t *testing.T) {
 		candidateType []CandidateType
 		expectedWait  time.Duration
 	}{
-		{
-			name:          "relay only",
-			candidateType: []CandidateType{CandidateTypeRelay},
-			expectedWait:  defaultRelayOnlyAcceptanceMinWait,
-		},
-		{
-			name:          "mixed types",
-			candidateType: []CandidateType{CandidateTypeHost, CandidateTypeRelay},
-			expectedWait:  defaultRelayAcceptanceMinWait,
-		},
+		{name: "relay only", candidateType: []CandidateType{CandidateTypeRelay}, expectedWait: defaultRelayOnlyAcceptanceMinWait},
+		{name: "mixed types", candidateType: []CandidateType{CandidateTypeHost, CandidateTypeRelay}, expectedWait: defaultRelayAcceptanceMinWait},
 	}
 
 	for _, tc := range tests {

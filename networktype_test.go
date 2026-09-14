@@ -20,30 +20,10 @@ func TestNetworkTypeParsing_Success(t *testing.T) {
 		inIP      net.IP
 		expected  NetworkType
 	}{
-		{
-			"lowercase UDP4",
-			"udp",
-			ipv4,
-			NetworkTypeUDP4,
-		},
-		{
-			"uppercase UDP4",
-			"UDP",
-			ipv4,
-			NetworkTypeUDP4,
-		},
-		{
-			"lowercase UDP6",
-			"udp",
-			ipv6,
-			NetworkTypeUDP6,
-		},
-		{
-			"uppercase UDP6",
-			"UDP",
-			ipv6,
-			NetworkTypeUDP6,
-		},
+		{"lowercase UDP4", "udp", ipv4, NetworkTypeUDP4},
+		{"uppercase UDP4", "UDP", ipv4, NetworkTypeUDP4},
+		{"lowercase UDP6", "udp", ipv6, NetworkTypeUDP6},
+		{"uppercase UDP6", "UDP", ipv6, NetworkTypeUDP6},
 	} {
 		actual, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
 		require.NoError(t, err)
@@ -59,11 +39,7 @@ func TestNetworkTypeParsing_Failure(t *testing.T) {
 		inNetwork string
 		inIP      net.IP
 	}{
-		{
-			"invalid network",
-			"junkNetwork",
-			ipv6,
-		},
+		{"invalid network", "junkNetwork", ipv6},
 	} {
 		_, err := determineNetworkType(test.inNetwork, mustAddr(t, test.inIP))
 		require.Error(t, err)

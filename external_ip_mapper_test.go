@@ -11,18 +11,11 @@ import (
 )
 
 func makeRule(candidateType CandidateType, ips ...string) AddressRewriteRule {
-	return AddressRewriteRule{
-		External:        ips,
-		AsCandidateType: candidateType,
-	}
+	return AddressRewriteRule{External: ips, AsCandidateType: candidateType}
 }
 
 func makeLocalRule(local string, ips ...string) AddressRewriteRule {
-	return AddressRewriteRule{
-		External:        ips,
-		Local:           local,
-		AsCandidateType: CandidateTypeHost,
-	}
+	return AddressRewriteRule{External: ips, Local: local, AsCandidateType: CandidateTypeHost}
 }
 
 func assertExternalIPStrings(
@@ -114,10 +107,8 @@ func TestNewExternalIPMapper(t *testing.T) {
 		expectMapper func(t *testing.T, mapper *addressRewriteMapper)
 	}{
 		{
-			name: "mixed external families",
-			rules: []AddressRewriteRule{
-				makeRule(CandidateTypeHost, "1.2.3.4", "2001:db8::1"),
-			},
+			name:  "mixed external families",
+			rules: []AddressRewriteRule{makeRule(CandidateTypeHost, "1.2.3.4", "2001:db8::1")},
 			expectMapper: func(t *testing.T, mapper *addressRewriteMapper) {
 				t.Helper()
 
@@ -126,29 +117,12 @@ func TestNewExternalIPMapper(t *testing.T) {
 				assertExternalIPStrings(t, mapper, CandidateTypeHost, "2001:db8::10", "eth0", "2001:db8::1")
 			},
 		},
+		{name: "invalid external ip", rules: []AddressRewriteRule{makeRule(CandidateTypeHost, "bad.2.3.4")}},
+		{name: "explicit mapping via slash rejected", rules: []AddressRewriteRule{makeRule(CandidateTypeHost, "1.2.3.4/10.0.0.1")}},
+		{name: "invalid local ip", rules: []AddressRewriteRule{makeLocalRule("10.0.0.bad", "1.2.3.4")}},
 		{
-			name: "invalid external ip",
-			rules: []AddressRewriteRule{
-				makeRule(CandidateTypeHost, "bad.2.3.4"),
-			},
-		},
-		{
-			name: "explicit mapping via slash rejected",
-			rules: []AddressRewriteRule{
-				makeRule(CandidateTypeHost, "1.2.3.4/10.0.0.1"),
-			},
-		},
-		{
-			name: "invalid local ip",
-			rules: []AddressRewriteRule{
-				makeLocalRule("10.0.0.bad", "1.2.3.4"),
-			},
-		},
-		{
-			name: "mixed family pair ipv6 ext ipv4 local",
-			rules: []AddressRewriteRule{
-				makeLocalRule("10.0.0.1", "2200::1"),
-			},
+			name:  "mixed family pair ipv6 ext ipv4 local",
+			rules: []AddressRewriteRule{makeLocalRule("10.0.0.1", "2200::1")},
 			expectMapper: func(t *testing.T, mapper *addressRewriteMapper) {
 				t.Helper()
 
@@ -156,10 +130,8 @@ func TestNewExternalIPMapper(t *testing.T) {
 			},
 		},
 		{
-			name: "mixed family pair ipv4 ext ipv6 local",
-			rules: []AddressRewriteRule{
-				makeLocalRule("fe80::1", "1.2.3.4"),
-			},
+			name:  "mixed family pair ipv4 ext ipv6 local",
+			rules: []AddressRewriteRule{makeLocalRule("fe80::1", "1.2.3.4")},
 			expectMapper: func(t *testing.T, mapper *addressRewriteMapper) {
 				t.Helper()
 
@@ -181,21 +153,10 @@ func TestNewExternalIPMapper(t *testing.T) {
 				assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.2", "", "1.2.3.4")
 			},
 		},
+		{name: "invalid pair format", rules: []AddressRewriteRule{makeRule(CandidateTypeHost, "1.2.3.4/192.168.0.2/10.0.0.1")}},
 		{
-			name: "invalid pair format",
-			rules: []AddressRewriteRule{
-				makeRule(CandidateTypeHost, "1.2.3.4/192.168.0.2/10.0.0.1"),
-			},
-		},
-		{
-			name: "cidr family mismatch with external",
-			rules: []AddressRewriteRule{
-				{
-					External:        []string{"2001:db8::1"},
-					AsCandidateType: CandidateTypeHost,
-					CIDR:            "10.0.0.0/24",
-				},
-			},
+			name:  "cidr family mismatch with external",
+			rules: []AddressRewriteRule{{External: []string{"2001:db8::1"}, AsCandidateType: CandidateTypeHost, CIDR: "10.0.0.0/24"}},
 			expectMapper: func(t *testing.T, mapper *addressRewriteMapper) {
 				t.Helper()
 
@@ -204,27 +165,8 @@ func TestNewExternalIPMapper(t *testing.T) {
 				assertNoExternalMapping(t, mapper, CandidateTypeHost, "2001:db8::5")
 			},
 		},
-		{
-			name: "invalid cidr explicit mapping",
-			rules: []AddressRewriteRule{
-				{
-					External:        []string{"1.2.3.4"},
-					Local:           "10.0.0.1",
-					AsCandidateType: CandidateTypeHost,
-					CIDR:            "192.168.0.0/24",
-				},
-			},
-		},
-		{
-			name: "invalid cidr syntax",
-			rules: []AddressRewriteRule{
-				{
-					External:        []string{"1.2.3.4"},
-					AsCandidateType: CandidateTypeHost,
-					CIDR:            "not-a-cidr",
-				},
-			},
-		},
+		{name: "invalid cidr explicit mapping", rules: []AddressRewriteRule{{External: []string{"1.2.3.4"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeHost, CIDR: "192.168.0.0/24"}}},
+		{name: "invalid cidr syntax", rules: []AddressRewriteRule{{External: []string{"1.2.3.4"}, AsCandidateType: CandidateTypeHost, CIDR: "not-a-cidr"}}},
 	}
 
 	for _, tc := range cases {
@@ -254,14 +196,7 @@ func TestFindExternalIPHost(t *testing.T) {
 }
 
 func TestAddressRewriteIfaceScope(t *testing.T) {
-	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"203.0.113.10"},
-			Local:           "10.0.0.10",
-			AsCandidateType: CandidateTypeHost,
-			Iface:           "eth0",
-		},
-	})
+	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.10"}, Local: "10.0.0.10", AsCandidateType: CandidateTypeHost, Iface: "eth0"}})
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
@@ -283,16 +218,8 @@ func TestAddressRewriteRuleOrdering(t *testing.T) {
 			External:        []string{"203.0.113.200"},
 			AsCandidateType: CandidateTypeHost, // catch-all
 		},
-		{
-			External:        []string{"198.51.100.5"},
-			AsCandidateType: CandidateTypeHost,
-			CIDR:            "10.0.0.0/24",
-		},
-		{
-			External:        []string{"198.51.100.6"},
-			AsCandidateType: CandidateTypeHost,
-			Iface:           "eth0",
-		},
+		{External: []string{"198.51.100.5"}, AsCandidateType: CandidateTypeHost, CIDR: "10.0.0.0/24"},
+		{External: []string{"198.51.100.6"}, AsCandidateType: CandidateTypeHost, Iface: "eth0"},
 	})
 	assert.NoError(t, err)
 
@@ -317,12 +244,7 @@ func TestAddressRewriteModeDefaultsAndExplicit(t *testing.T) {
 		makeRule(CandidateTypeHost, "1.2.3.4"),
 		makeRule(CandidateTypeServerReflexive, "5.6.7.8"),
 		makeRule(CandidateTypeRelay, "203.0.113.44"),
-		{
-			External:        []string{"9.9.9.9"},
-			Local:           "10.0.0.5",
-			AsCandidateType: CandidateTypeHost,
-			Mode:            AddressRewriteAppend,
-		},
+		{External: []string{"9.9.9.9"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend},
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
@@ -352,27 +274,9 @@ func TestAddressRewriteModeDefaultsTable(t *testing.T) {
 		expectMode    AddressRewriteMode
 		expectAddress string
 	}{
-		{
-			name:          "host default replace",
-			rule:          makeRule(CandidateTypeHost, "203.0.113.10"),
-			localIP:       "10.0.0.1",
-			expectMode:    AddressRewriteReplace,
-			expectAddress: "203.0.113.10",
-		},
-		{
-			name:          "srflx default append",
-			rule:          makeRule(CandidateTypeServerReflexive, "203.0.113.20"),
-			localIP:       "0.0.0.0",
-			expectMode:    AddressRewriteAppend,
-			expectAddress: "203.0.113.20",
-		},
-		{
-			name:          "relay default append",
-			rule:          makeRule(CandidateTypeRelay, "203.0.113.30"),
-			localIP:       "192.0.2.1",
-			expectMode:    AddressRewriteAppend,
-			expectAddress: "203.0.113.30",
-		},
+		{name: "host default replace", rule: makeRule(CandidateTypeHost, "203.0.113.10"), localIP: "10.0.0.1", expectMode: AddressRewriteReplace, expectAddress: "203.0.113.10"},
+		{name: "srflx default append", rule: makeRule(CandidateTypeServerReflexive, "203.0.113.20"), localIP: "0.0.0.0", expectMode: AddressRewriteAppend, expectAddress: "203.0.113.20"},
+		{name: "relay default append", rule: makeRule(CandidateTypeRelay, "203.0.113.30"), localIP: "192.0.2.1", expectMode: AddressRewriteAppend, expectAddress: "203.0.113.30"},
 	}
 
 	for _, tt := range tests {
@@ -408,19 +312,14 @@ func TestIPMappingFindExternalIPs(t *testing.T) {
 	})
 
 	t.Run("catch-all returns sole", func(t *testing.T) {
-		m := ipMapping{
-			ipSole: []net.IP{net.ParseIP("203.0.113.10")},
-			valid:  true,
-		}
+		m := ipMapping{ipSole: []net.IP{net.ParseIP("203.0.113.10")}, valid: true}
 		ips := m.findExternalIPs(net.ParseIP("10.0.0.1"))
 		assert.Len(t, ips, 1)
 		assert.Equal(t, "203.0.113.10", ips[0].String())
 	})
 
 	t.Run("no mapping found returns error", func(t *testing.T) {
-		m := ipMapping{
-			valid: true,
-		}
+		m := ipMapping{valid: true}
 		ips := m.findExternalIPs(net.ParseIP("10.0.0.1"))
 		assert.Nil(t, ips)
 	})
@@ -428,14 +327,7 @@ func TestIPMappingFindExternalIPs(t *testing.T) {
 
 func TestAddressRewriteModeHostReplaceAndAppend(t *testing.T) {
 	t.Run("replace host mapping removes original", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.1"},
-				Local:           "10.0.0.1",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.1"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 		assert.NoError(t, err)
 
 		ips, matched, mode, findErr := mapper.findExternalIPs(CandidateTypeHost, "10.0.0.1", "")
@@ -446,14 +338,7 @@ func TestAddressRewriteModeHostReplaceAndAppend(t *testing.T) {
 	})
 
 	t.Run("append host mapping keeps original and adds new", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.1"},
-				Local:           "10.0.0.1",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.1"}, Local: "10.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}})
 		assert.NoError(t, err)
 
 		ips, matched, mode, findErr := mapper.findExternalIPs(CandidateTypeHost, "10.0.0.1", "")
@@ -464,14 +349,7 @@ func TestAddressRewriteModeHostReplaceAndAppend(t *testing.T) {
 	})
 
 	t.Run("replace host mapping allows cross family", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.20"},
-				Local:           "2001:db8::5",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.20"}, Local: "2001:db8::5", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace}})
 		assert.NoError(t, err)
 
 		ips, matched, mode, findErr := mapper.findExternalIPs(CandidateTypeHost, "2001:db8::5", "")
@@ -484,13 +362,7 @@ func TestAddressRewriteModeHostReplaceAndAppend(t *testing.T) {
 
 func TestAddressRewriteModeSrflxReplaceAndAppend(t *testing.T) {
 	t.Run("srflx default append", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.10"},
-				Local:           "0.0.0.0",
-				AsCandidateType: CandidateTypeServerReflexive,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.10"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive}})
 		assert.NoError(t, err)
 
 		ips, matched, mode, findErr := mapper.findExternalIPs(CandidateTypeServerReflexive, "0.0.0.0", "")
@@ -501,14 +373,7 @@ func TestAddressRewriteModeSrflxReplaceAndAppend(t *testing.T) {
 	})
 
 	t.Run("srflx explicit replace", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"198.51.100.20"},
-				Local:           "0.0.0.0",
-				AsCandidateType: CandidateTypeServerReflexive,
-				Mode:            AddressRewriteReplace,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"198.51.100.20"}, Local: "0.0.0.0", AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}})
 		assert.NoError(t, err)
 
 		ips, matched, mode, findErr := mapper.findExternalIPs(CandidateTypeServerReflexive, "0.0.0.0", "")
@@ -589,14 +454,7 @@ func TestFindExternalIPFallbackAndErrors(t *testing.T) {
 	})
 
 	t.Run("append with zero externals returns error but keeps original upstream", func(t *testing.T) {
-		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        nil,
-				Local:           "10.0.0.11",
-				AsCandidateType: CandidateTypeHost,
-				Mode:            AddressRewriteAppend,
-			},
-		})
+		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: nil, Local: "10.0.0.11", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}})
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
 
@@ -608,28 +466,14 @@ func TestFindExternalIPFallbackAndErrors(t *testing.T) {
 }
 
 func TestExternalIPMapperNetworksFilter(t *testing.T) {
-	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"203.0.113.2"},
-			Local:           "10.0.0.2",
-			AsCandidateType: CandidateTypeHost,
-			Networks:        []NetworkType{NetworkTypeUDP4},
-		},
-	})
+	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.2"}, Local: "10.0.0.2", AsCandidateType: CandidateTypeHost, Networks: []NetworkType{NetworkTypeUDP4}}})
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
 	assertExternalIPStrings(t, mapper, CandidateTypeHost, "10.0.0.2", "", "203.0.113.2")
 	assertNoExternalMapping(t, mapper, CandidateTypeHost, "2001:db8:1::1")
 
-	mapper, err = newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"2001:db8::6"},
-			Local:           "2001:db8:2::6",
-			AsCandidateType: CandidateTypeServerReflexive,
-			Networks:        []NetworkType{NetworkTypeUDP6},
-		},
-	})
+	mapper, err = newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"2001:db8::6"}, Local: "2001:db8:2::6", AsCandidateType: CandidateTypeServerReflexive, Networks: []NetworkType{NetworkTypeUDP6}}})
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
 
@@ -637,77 +481,37 @@ func TestExternalIPMapperNetworksFilter(t *testing.T) {
 	assertNoExternalMapping(t, mapper, CandidateTypeServerReflexive, "192.0.2.10")
 
 	t.Run("nil and empty networks are equivalent", func(t *testing.T) {
-		nilNetworks, nilErr := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.5"},
-				Local:           "10.0.0.5",
-				AsCandidateType: CandidateTypeHost,
-			},
-		})
+		nilNetworks, nilErr := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.5"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost}})
 		assert.NoError(t, nilErr)
 		assert.NotNil(t, nilNetworks)
 		assertExternalIPStrings(t, nilNetworks, CandidateTypeHost, "10.0.0.5", "", "203.0.113.5")
 
-		emptyNetworks, emptyErr := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.5"},
-				Local:           "10.0.0.5",
-				AsCandidateType: CandidateTypeHost,
-				Networks:        []NetworkType{},
-			},
-		})
+		emptyNetworks, emptyErr := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"203.0.113.5"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost, Networks: []NetworkType{}}})
 		assert.NoError(t, emptyErr)
 		assert.NotNil(t, emptyNetworks)
 		assertExternalIPStrings(t, emptyNetworks, CandidateTypeHost, "10.0.0.5", "", "203.0.113.5")
 	})
 
 	t.Run("nil/empty allow ipv6 while udp4 excludes it", func(t *testing.T) {
-		nilMapper, nilErr := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"2001:db8::50"},
-				Local:           "2001:db8::50",
-				AsCandidateType: CandidateTypeHost,
-			},
-		})
+		nilMapper, nilErr := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"2001:db8::50"}, Local: "2001:db8::50", AsCandidateType: CandidateTypeHost}})
 		assert.NoError(t, nilErr)
 		assert.NotNil(t, nilMapper)
 		assertExternalIPStrings(t, nilMapper, CandidateTypeHost, "2001:db8::50", "", "2001:db8::50")
 
-		emptyMapper, emptyErr := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"2001:db8::50"},
-				Local:           "2001:db8::50",
-				AsCandidateType: CandidateTypeHost,
-				Networks:        []NetworkType{},
-			},
-		})
+		emptyMapper, emptyErr := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"2001:db8::50"}, Local: "2001:db8::50", AsCandidateType: CandidateTypeHost, Networks: []NetworkType{}}})
 		assert.NoError(t, emptyErr)
 		assert.NotNil(t, emptyMapper)
 		assertExternalIPStrings(t, emptyMapper, CandidateTypeHost, "2001:db8::50", "", "2001:db8::50")
 
-		udp4Mapper, udp4Err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"2001:db8::50"},
-				Local:           "2001:db8::50",
-				AsCandidateType: CandidateTypeHost,
-				Networks:        []NetworkType{NetworkTypeUDP4},
-			},
-		})
+		udp4Mapper, udp4Err := newAddressRewriteMapper([]AddressRewriteRule{{External: []string{"2001:db8::50"}, Local: "2001:db8::50", AsCandidateType: CandidateTypeHost, Networks: []NetworkType{NetworkTypeUDP4}}})
 		assert.NoError(t, udp4Err)
 		assert.Nil(t, udp4Mapper)
 	})
 
 	t.Run("mixed family rule respects each address family", func(t *testing.T) {
 		mixedMapper, mixedErr := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.99"},
-				AsCandidateType: CandidateTypeHost,
-			},
-			{
-				External:        []string{"2001:db8::99"},
-				Local:           "2001:db8:1::99",
-				AsCandidateType: CandidateTypeHost,
-			},
+			{External: []string{"203.0.113.99"}, AsCandidateType: CandidateTypeHost},
+			{External: []string{"2001:db8::99"}, Local: "2001:db8:1::99", AsCandidateType: CandidateTypeHost},
 		})
 		assert.NoError(t, mixedErr)
 		assert.NotNil(t, mixedMapper)
@@ -719,20 +523,9 @@ func TestExternalIPMapperNetworksFilter(t *testing.T) {
 
 func TestAddressRewritePrecedenceMatrix(t *testing.T) {
 	mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-		{
-			External:        []string{"203.0.113.200"},
-			AsCandidateType: CandidateTypeHost,
-			CIDR:            "10.0.0.0/24",
-		},
-		{
-			External:        []string{"198.51.100.200"},
-			AsCandidateType: CandidateTypeHost,
-		},
-		{
-			External:        []string{"192.0.2.50"},
-			Local:           "10.0.0.50",
-			AsCandidateType: CandidateTypeHost,
-		},
+		{External: []string{"203.0.113.200"}, AsCandidateType: CandidateTypeHost, CIDR: "10.0.0.0/24"},
+		{External: []string{"198.51.100.200"}, AsCandidateType: CandidateTypeHost},
+		{External: []string{"192.0.2.50"}, Local: "10.0.0.50", AsCandidateType: CandidateTypeHost},
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, mapper)
@@ -745,16 +538,8 @@ func TestAddressRewritePrecedenceMatrix(t *testing.T) {
 func TestExternalIPMapperRuleOrderAndSpecificity(t *testing.T) {
 	t.Run("earliest matching rule wins", func(t *testing.T) {
 		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.10"},
-				Local:           "10.0.0.5",
-				AsCandidateType: CandidateTypeHost,
-			},
-			{
-				External:        []string{"198.51.100.10"},
-				Local:           "10.0.0.5",
-				AsCandidateType: CandidateTypeHost,
-			},
+			{External: []string{"203.0.113.10"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost},
+			{External: []string{"198.51.100.10"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost},
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)
@@ -764,17 +549,8 @@ func TestExternalIPMapperRuleOrderAndSpecificity(t *testing.T) {
 
 	t.Run("specific mapping outranks cidr and catch-all", func(t *testing.T) {
 		mapper, err := newAddressRewriteMapper([]AddressRewriteRule{
-			{
-				External:        []string{"203.0.113.30"},
-				Local:           "10.0.0.5",
-				AsCandidateType: CandidateTypeHost,
-				CIDR:            "10.0.0.0/24",
-			},
-			{
-				External:        []string{"203.0.113.40"},
-				AsCandidateType: CandidateTypeHost,
-				CIDR:            "10.0.0.0/24",
-			},
+			{External: []string{"203.0.113.30"}, Local: "10.0.0.5", AsCandidateType: CandidateTypeHost, CIDR: "10.0.0.0/24"},
+			{External: []string{"203.0.113.40"}, AsCandidateType: CandidateTypeHost, CIDR: "10.0.0.0/24"},
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, mapper)

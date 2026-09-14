@@ -29,9 +29,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 		n, err := vnet.NewNet(&vnet.NetConfig{})
 		require.NoError(t, err)
 
-		a, err := NewAgent(&AgentConfig{
-			Net: n,
-		})
+		a, err := NewAgent(&AgentConfig{Net: n})
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -47,10 +45,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 		_, ipNet, err := net.ParseCIDR(cider)
 		require.NoError(t, err)
 
-		router, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR:          cider,
-			LoggerFactory: loggerFactory,
-		})
+		router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: cider, LoggerFactory: loggerFactory})
 		require.NoError(t, err)
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{})
@@ -58,9 +53,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 
 		require.NoError(t, router.AddNet(nw))
 
-		a, err := NewAgent(&AgentConfig{
-			Net: nw,
-		})
+		a, err := NewAgent(&AgentConfig{Net: nw})
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -77,10 +70,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("listenUDP", func(t *testing.T) {
-		router, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR:          "1.2.3.0/24",
-			LoggerFactory: loggerFactory,
-		})
+		router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
 		require.NoError(t, err)
 
 		nw, err := vnet.NewNet(&vnet.NetConfig{})
@@ -94,13 +84,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localAddrs, err := localInterfaces(
-			agent.net,
-			agent.interfaceFilter,
-			agent.ipFilter,
-			[]NetworkType{NetworkTypeUDP4},
-			false,
-		)
+		_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NotEqual(t, 0, len(localAddrs))
 		require.NoError(t, err)
 
@@ -142,40 +126,22 @@ func TestVNetGatherWithNAT1To1(t *testing.T) { //nolint:cyclop
 		map0 := fmt.Sprintf("%s/%s", externalIP0, localIP0)
 		map1 := fmt.Sprintf("%s/%s", externalIP1, localIP1)
 
-		wan, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR:          "1.2.3.0/24",
-			LoggerFactory: loggerFactory,
-		})
+		wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
 		require.NoError(t, err, "should succeed")
 
-		lan, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR:      "10.0.0.0/24",
-			StaticIPs: []string{map0, map1},
-			NATType: &vnet.NATType{
-				Mode: vnet.NATModeNAT1To1,
-			},
-			LoggerFactory: loggerFactory,
-		})
+		lan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", StaticIPs: []string{map0, map1}, NATType: &vnet.NATType{Mode: vnet.NATModeNAT1To1}, LoggerFactory: loggerFactory})
 		require.NoError(t, err, "should succeed")
 
 		err = wan.AddRouter(lan)
 		require.NoError(t, err, "should succeed")
 
-		nw, err := vnet.NewNet(&vnet.NetConfig{
-			StaticIPs: []string{localIP0, localIP1},
-		})
+		nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{localIP0, localIP1}})
 		require.NoError(t, err)
 
 		err = lan.AddNet(nw)
 		require.NoError(t, err, "should succeed")
 
-		agent, err := NewAgent(&AgentConfig{
-			NetworkTypes: []NetworkType{
-				NetworkTypeUDP4,
-			},
-			NAT1To1IPs: []string{map0, map1},
-			Net:        nw,
-		})
+		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, NAT1To1IPs: []string{map0, map1}, Net: nw})
 		require.NoError(t, err, "should succeed")
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -219,47 +185,22 @@ func TestVNetGatherWithNAT1To1(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("gather 1:1 NAT external IPs as srflx candidates", func(t *testing.T) {
-		wan, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR:          "1.2.3.0/24",
-			LoggerFactory: loggerFactory,
-		})
+		wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
 		require.NoError(t, err, "should succeed")
 
-		lan, err := vnet.NewRouter(&vnet.RouterConfig{
-			CIDR: "10.0.0.0/24",
-			StaticIPs: []string{
-				"1.2.3.4/10.0.0.1",
-			},
-			NATType: &vnet.NATType{
-				Mode: vnet.NATModeNAT1To1,
-			},
-			LoggerFactory: loggerFactory,
-		})
+		lan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", StaticIPs: []string{"1.2.3.4/10.0.0.1"}, NATType: &vnet.NATType{Mode: vnet.NATModeNAT1To1}, LoggerFactory: loggerFactory})
 		require.NoError(t, err, "should succeed")
 
 		err = wan.AddRouter(lan)
 		require.NoError(t, err, "should succeed")
 
-		nw, err := vnet.NewNet(&vnet.NetConfig{
-			StaticIPs: []string{
-				"10.0.0.1",
-			},
-		})
+		nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1"}})
 		require.NoError(t, err)
 
 		err = lan.AddNet(nw)
 		require.NoError(t, err, "should succeed")
 
-		agent, err := NewAgent(&AgentConfig{
-			NetworkTypes: []NetworkType{
-				NetworkTypeUDP4,
-			},
-			NAT1To1IPs: []string{
-				"1.2.3.4",
-			},
-			NAT1To1IPCandidateType: CandidateTypeServerReflexive,
-			Net:                    nw,
-		})
+		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, NAT1To1IPs: []string{"1.2.3.4"}, NAT1To1IPCandidateType: CandidateTypeServerReflexive, Net: nw})
 		require.NoError(t, err, "should succeed")
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -310,10 +251,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	router, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "1.2.3.0/24",
-		LoggerFactory: loggerFactory,
-	})
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "1.2.3.0/24", LoggerFactory: loggerFactory})
 	require.NoError(t, err)
 
 	nw, err := vnet.NewNet(&vnet.NetConfig{})
@@ -334,13 +272,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(
-			agent.net,
-			agent.interfaceFilter,
-			agent.ipFilter,
-			[]NetworkType{NetworkTypeUDP4},
-			false,
-		)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 0)
 	})
@@ -359,13 +291,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(
-			agent.net,
-			agent.interfaceFilter,
-			agent.ipFilter,
-			[]NetworkType{NetworkTypeUDP4},
-			false,
-		)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 0)
 	})
@@ -384,13 +310,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(
-			agent.net,
-			agent.interfaceFilter,
-			agent.ipFilter,
-			[]NetworkType{NetworkTypeUDP4},
-			false,
-		)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 1)
 	})
@@ -401,20 +321,13 @@ func TestGatherRelayWithVNet(t *testing.T) {
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
 
-	router, err := vnet.NewRouter(&vnet.RouterConfig{
-		CIDR:          "10.0.0.0/24",
-		LoggerFactory: loggerFactory,
-	})
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", LoggerFactory: loggerFactory})
 	require.NoError(t, err)
 
-	clientNet, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"10.0.0.2"},
-	})
+	clientNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.2"}})
 	require.NoError(t, err)
 
-	serverNet, err := vnet.NewNet(&vnet.NetConfig{
-		StaticIPs: []string{"10.0.0.3"},
-	})
+	serverNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.3"}})
 	require.NoError(t, err)
 
 	require.NoError(t, router.AddNet(clientNet))
@@ -424,18 +337,11 @@ func TestGatherRelayWithVNet(t *testing.T) {
 		require.NoError(t, router.Stop())
 	}()
 
-	turnAddr := &net.UDPAddr{
-		IP:   net.IPv4(10, 0, 0, 3),
-		Port: 3478,
-	}
+	turnAddr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 3), Port: 3478}
 	serverConn, err := serverNet.ListenPacket("udp4", turnAddr.String())
 	require.NoError(t, err)
 
-	relayGenerator := &turn.RelayAddressGeneratorStatic{
-		RelayAddress: turnAddr.IP,
-		Address:      turnAddr.IP.String(),
-		Net:          serverNet,
-	}
+	relayGenerator := &turn.RelayAddressGeneratorStatic{RelayAddress: turnAddr.IP, Address: turnAddr.IP.String(), Net: serverNet}
 
 	const (
 		turnRealm = "pion.ly"
@@ -444,14 +350,9 @@ func TestGatherRelayWithVNet(t *testing.T) {
 	)
 
 	server, err := turn.NewServer(turn.ServerConfig{
-		LoggerFactory: loggerFactory,
-		Realm:         turnRealm,
-		PacketConnConfigs: []turn.PacketConnConfig{
-			{
-				PacketConn:            serverConn,
-				RelayAddressGenerator: relayGenerator,
-			},
-		},
+		LoggerFactory:     loggerFactory,
+		Realm:             turnRealm,
+		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: serverConn, RelayAddressGenerator: relayGenerator}},
 		AuthHandler: func(ra *turn.RequestAttributes) (userID string, key []byte, ok bool) {
 			if ra.Username != turnUser {
 				return "", nil, false
@@ -469,16 +370,7 @@ func TestGatherRelayWithVNet(t *testing.T) {
 		WithNet(clientNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{
-			{
-				Scheme:   stun.SchemeTypeTURN,
-				Host:     turnAddr.IP.String(),
-				Port:     turnAddr.Port,
-				Username: turnUser,
-				Password: turnPass,
-				Proto:    stun.ProtoTypeUDP,
-			},
-		}),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: turnAddr.IP.String(), Port: turnAddr.Port, Username: turnUser, Password: turnPass, Proto: stun.ProtoTypeUDP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -519,34 +411,16 @@ func TestGatherRelayWithVNet(t *testing.T) {
 func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	turnServerURL := &stun.URI{
-		Scheme:   stun.SchemeTypeTURN,
-		Host:     vnetSTUNServerIP,
-		Port:     vnetSTUNServerPort,
-		Username: "user",
-		Password: "pass",
-		Proto:    stun.ProtoTypeUDP,
-	}
+	turnServerURL := &stun.URI{Scheme: stun.SchemeTypeTURN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Username: "user", Password: "pass", Proto: stun.ProtoTypeUDP}
 
 	// buildVNet with a Symmetric NATs for both LANs
-	natType := &vnet.NATType{
-		MappingBehavior:   vnet.EndpointAddrPortDependent,
-		FilteringBehavior: vnet.EndpointAddrPortDependent,
-	}
+	natType := &vnet.NATType{MappingBehavior: vnet.EndpointAddrPortDependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
 	v, err := buildVNet(natType, natType)
 
 	require.NoError(t, err, "should succeed")
 	defer v.close()
 
-	cfg0 := &AgentConfig{
-		Urls: []*stun.URI{
-			turnServerURL,
-		},
-		NetworkTypes:     supportedNetworkTypes(),
-		MulticastDNSMode: MulticastDNSModeDisabled,
-		NAT1To1IPs:       []string{vnetGlobalIPA},
-		Net:              v.net0,
-	}
+	cfg0 := &AgentConfig{Urls: []*stun.URI{turnServerURL}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: []string{vnetGlobalIPA}, Net: v.net0}
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err, "should succeed")
 	defer func() {
