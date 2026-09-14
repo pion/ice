@@ -44,6 +44,11 @@ type AddressRewriteRule struct {
 	Mode AddressRewriteMode
 	// Networks is the optional networks to limit the rule to, nil/empty = all.
 	Networks []NetworkType
+	// OriginalPort and NewPort optionally rewrite a gathered candidate's
+	// advertised port. Set OriginalPort to zero to rewrite every port. NewPort
+	// must be non-zero unless both fields are zero, which leaves ports unchanged.
+	OriginalPort int
+	NewPort      int
 }
 
 func validateIPString(ipStr string) (net.IP, bool, error) {
@@ -347,6 +352,42 @@ func (m *addressRewriteMapper) findExternalIPs(
 	ips, matched, mode := evaluateRewriteRules(rules, locIP, isLocIPv4, iface)
 
 	return ips, matched, mode, nil
+}
+
+func (m *addressRewriteMapper) findExternalPort(
+	candidateType CandidateType,
+	localIP string,
+	iface string,
+	originalPort int,
+) int {
+	locIP, isLocIPv4, err := validateIPString(localIP)
+	if err != nil {
+		return originalPort
+	}
+
+	mappedPort := originalPort
+	bestSpec := -1
+	for _, rule := range m.rulesByCandidateType[candidateType] {
+		if rule.rule.NewPort == 0 || (rule.rule.OriginalPort != 0 && rule.rule.OriginalPort != originalPort) {
+			continue
+		}
+
+		ipMapping, ok := ruleMappingForLookup(rule, locIP, isLocIPv4, iface)
+		if !ok {
+			continue
+		}
+		if _, ok = ipMapping.ipMap[locIP.String()]; ok {
+			return rule.rule.NewPort
+		}
+		if ipMapping.catchAllSet {
+			if spec := catchAllSpecificity(rule, iface); spec > bestSpec {
+				mappedPort = rule.rule.NewPort
+				bestSpec = spec
+			}
+		}
+	}
+
+	return mappedPort
 }
 
 func ruleMappingForLookup(
