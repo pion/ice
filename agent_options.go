@@ -115,6 +115,10 @@ func appendAddressRewriteRules(agent *Agent, rules ...AddressRewriteRule) error 
 }
 
 func sanitizeAddressRewriteRule(rule AddressRewriteRule) (AddressRewriteRule, error) {
+	if !validPortMapping(rule.OriginalPort, rule.NewPort) {
+		return AddressRewriteRule{}, ErrInvalidNAT1To1IPMapping
+	}
+
 	cleaned, err := sanitizeExternalIPs(rule.External)
 	if err != nil {
 		return AddressRewriteRule{}, err
@@ -140,6 +144,10 @@ func sanitizeAddressRewriteRule(rule AddressRewriteRule) (AddressRewriteRule, er
 	}
 
 	return normalized, nil
+}
+
+func validPortMapping(original, mapped int) bool {
+	return original == 0 && mapped == 0 || original >= 0 && original <= 65535 && mapped > 0 && mapped <= 65535
 }
 
 func defaultAddressRewriteMode(candidateType CandidateType) AddressRewriteMode {

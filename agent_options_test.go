@@ -1162,6 +1162,17 @@ func TestAddressRewriteMapper(t *testing.T) {
 	}
 }
 
+func TestAddressRewritePortValidation(t *testing.T) {
+	for _, ports := range [][2]int{{1234, 0}, {-1, 4321}, {1234, 65536}} {
+		err := WithAddressRewriteRules(AddressRewriteRule{
+			External:     []string{"203.0.113.1"},
+			OriginalPort: ports[0],
+			NewPort:      ports[1],
+		})(&Agent{})
+		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+	}
+}
+
 type recordingLogger struct {
 	warnings []string
 }

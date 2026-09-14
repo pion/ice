@@ -2693,3 +2693,94 @@ func TestTURNContext(t *testing.T) {
 	<-turnPacketSeen.Done()
 	assert.NoError(t, agent.Close())
 }
+
+func TestAddressRewritePortSrflx(t *testing.T) {
+	stunURI := &stun.URI{
+		Scheme: stun.SchemeTypeSTUN,
+		Host:   "127.0.0.1",
+		Port:   3478,
+	}
+	relatedAddr := &net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 49000}
+	srflxAddr := &stun.XORMappedAddress{
+		IP:   net.IP{203, 0, 113, 5},
+		Port: 50000,
+	}
+
+	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newStubNet(t)),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+		WithUDPMuxSrflx(udpMuxSrflx),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"203.0.113.5"},
+			AsCandidateType: CandidateTypeServerReflexive,
+			OriginalPort:    50000,
+			NewPort:         50001,
+		}),
+	)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+
+	agent.gatherCandidatesSrflxUDPMux(
+		context.Background(), []*stun.URI{stunURI}, []NetworkType{NetworkTypeUDP4},
+		agent.gatherGeneration, agent.localUfrag,
+	)
+
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+
+	for _, cand := range candidates {
+		srflx, ok := cand.(*CandidateServerReflexive)
+		require.True(t, ok)
+		require.Equal(t, 50001, srflx.Port())
+	}
+}
+
+func TestAddressRewritePort(t *testing.T) {
+	mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 1234}})
+
+	agent, err := NewAgentWithOptions(
+		WithNet(newStubNet(t)),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithUDPMux(mux),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External:        []string{"203.0.113.1"},
+			Local:           "10.0.0.1",
+			AsCandidateType: CandidateTypeHost,
+			Mode:            AddressRewriteReplace,
+			NewPort:         4321,
+		}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, agent.Close())
+	})
+
+	candidates := make(chan Candidate, 1)
+	require.NoError(t, agent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			close(candidates)
+
+			return
+		}
+		candidates <- candidate
+	}))
+
+	require.NoError(t, agent.GatherCandidates())
+	candidate, ok := <-candidates
+	require.True(t, ok)
+	assert.Equal(t, "203.0.113.1", candidate.Address())
+	assert.Equal(t, 4321, candidate.Port())
+	assert.Equal(t, CandidateTypeHost, candidate.Type())
+	_, ok = <-candidates
+	require.False(t, ok)
+}

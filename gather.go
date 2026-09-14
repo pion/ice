@@ -192,6 +192,17 @@ func (a *Agent) shouldRewriteHostCandidates() bool {
 	return a.mDNSMode != MulticastDNSModeQueryAndGather && a.shouldRewriteCandidateType(CandidateTypeHost)
 }
 
+func (a *Agent) rewriteCandidatePort(candidate *candidateBase, localIP, iface string) {
+	if a.addressRewriteMapper != nil {
+		candidate.port = a.addressRewriteMapper.findExternalPort(
+			candidate.candidateType,
+			localIP,
+			iface,
+			candidate.port,
+		)
+	}
+}
+
 func (a *Agent) applyHostAddressRewrite(addr netip.Addr, mappedAddrs []netip.Addr, iface string) ([]netip.Addr, bool) {
 	mappedIPs, matched, mode, innerErr := a.addressRewriteMapper.findExternalIPs(
 		CandidateTypeHost,
@@ -495,6 +506,7 @@ func (a *Agent) gatherCandidatesLocal(
 
 						continue
 					}
+					a.rewriteCandidatePort(&candidateHost.candidateBase, addr.String(), ifaceName)
 
 					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn, &generation, false); err != nil {
 						a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -596,16 +608,18 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 				return err
 			}
 
-			c, err := NewCandidateHost(&hostConfig)
+			cand, err := NewCandidateHost(&hostConfig)
 			if err != nil {
 				closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
 
 				continue
 			}
 
-			if err := a.addCandidate(ctx, c, conn, &generation, false); err != nil {
+			a.rewriteCandidatePort(&cand.candidateBase, udpAddr.IP.String(), "")
+
+			if err := a.addCandidate(ctx, cand, conn, &generation, false); err != nil {
 				a.log.Warnf("failed to add candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
-				a.cleanupCandidate(c, conn, "failed")
+				a.cleanupCandidate(cand, conn, "failed")
 
 				continue
 			}
@@ -655,7 +669,8 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			addresses, ok := a.resolveSrflxAddresses(lAddr.IP, findIfaceForIP(ifaces, lAddr.IP))
+			iface := findIfaceForIP(ifaces, lAddr.IP)
+			addresses, ok := a.resolveSrflxAddresses(lAddr.IP, iface)
 			if !ok {
 				closeConnAndLog(
 					conn, a.log, "Address rewrite mapping did not provide usable external IPs for %s", lAddr.IP.String(),
@@ -715,6 +730,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 
 					continue
 				}
+				a.rewriteCandidatePort(&candidate.candidateBase, lAddr.IP.String(), iface)
 
 				if err := a.addCandidate(ctx, candidate, currentConn, &generation, false); err != nil {
 					a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
@@ -796,16 +812,17 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 						RelAddr:   localAddr.IP.String(),
 						RelPort:   localAddr.Port,
 					}
-					c, err := NewCandidateServerReflexive(&srflxConfig)
+					cand, err := NewCandidateServerReflexive(&srflxConfig)
 					if err != nil {
 						closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
 
 						return
 					}
+					a.rewriteCandidatePort(&cand.candidateBase, localAddr.IP.String(), "")
 
-					if err := a.addCandidate(ctx, c, conn, &generation, false); err != nil {
+					if err := a.addCandidate(ctx, cand, conn, &generation, false); err != nil {
 						a.log.Warnf("Failed to append srflx mux candidate to localCandidates: %v", err)
-						a.cleanupCandidate(c, conn, "failed")
+						a.cleanupCandidate(cand, conn, "failed")
 					}
 				}(*urls[i], networkType.String(), udpAddr)
 			}
@@ -922,16 +939,18 @@ func (a *Agent) gatherCandidatesSrflx(
 			RelAddr:   lAddr.IP.String(),
 			RelPort:   lAddr.Port,
 		}
-		c, err := NewCandidateServerReflexive(&srflxConfig)
+		candidate, err := NewCandidateServerReflexive(&srflxConfig)
 		if err != nil {
 			closeConnAndLog(conn, a.log, "failed to create server reflexive candidate: %s %s %d: %v", network, ip, port, err)
 
 			return
 		}
 
-		if err := a.addCandidate(ctx, c, conn, &generation, false); err != nil {
+		a.rewriteCandidatePort(&candidate.candidateBase, lAddr.IP.String(), findIfaceForIP(localAddrs, lAddr.IP))
+
+		if err := a.addCandidate(ctx, candidate, conn, &generation, false); err != nil {
 			a.log.Warnf("Failed to append to localCandidates and run onCandidateHdlr: %v", err)
-			a.cleanupCandidate(c, conn, "failed")
+			a.cleanupCandidate(candidate, conn, "failed")
 		}
 	}
 
@@ -1378,6 +1397,7 @@ func (a *Agent) createRelayCandidate(
 
 		return err
 	}
+	a.rewriteCandidatePort(&candidate.candidateBase, ep.relAddr, ep.iface)
 
 	if err := a.addCandidate(ctx, candidate, ep.conn, &generation, false); err != nil {
 		if closeErr := candidate.close(); closeErr != nil {
