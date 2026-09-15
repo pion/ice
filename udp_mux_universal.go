@@ -15,7 +15,7 @@ import (
 	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
-	"github.com/pion/transport/v4"
+	"github.com/pion/transport/v5"
 )
 
 // UniversalUDPMux allows multiple connections to go over a single UDP port for

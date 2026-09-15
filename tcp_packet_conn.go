@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v4/packetio"
+	"github.com/pion/transport/v5/packetio"
 )
 
 type bufferedConn struct {
@@ -42,7 +42,7 @@ func newBufferedConn(conn net.Conn, bufSize int, logger logging.LeveledLogger) n
 }
 
 func (bc *bufferedConn) Write(b []byte) (int, error) {
-	n, err := bc.buf.Write(b)
+	n, err := bc.buf.Write(b, nil)
 	if err != nil {
 		return n, err
 	}
@@ -53,7 +53,7 @@ func (bc *bufferedConn) Write(b []byte) (int, error) {
 func (bc *bufferedConn) writeProcess() {
 	pktBuf := make([]byte, receiveMTU)
 	for atomic.LoadInt32(&bc.closed) == 0 {
-		n, err := bc.buf.Read(pktBuf)
+		n, _, err := bc.buf.Read(pktBuf, nil)
 		if errors.Is(err, io.EOF) {
 			return
 		}

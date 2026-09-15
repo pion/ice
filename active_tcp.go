@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v4/packetio"
+	"github.com/pion/transport/v5/packetio"
 )
 
 type activeTCPConn struct {
@@ -70,7 +70,7 @@ func newActiveTCPConn(
 					break
 				}
 
-				if _, err := a.readBuffer.Write(buff[:n]); err != nil {
+				if _, err := a.readBuffer.Write(buff[:n], nil); err != nil {
 					log.Infof("Failed to write to buffer: %s", err)
 
 					break
@@ -81,7 +81,7 @@ func newActiveTCPConn(
 		buff := make([]byte, receiveMTU)
 
 		for !a.closed.Load() {
-			n, err := a.writeBuffer.Read(buff)
+			n, _, err := a.writeBuffer.Read(buff, nil)
 			if err != nil {
 				log.Infof("Failed to read from buffer: %s", err)
 
@@ -108,7 +108,7 @@ func (a *activeTCPConn) ReadFrom(buff []byte) (n int, srcAddr net.Addr, err erro
 		return 0, nil, io.ErrClosedPipe
 	}
 
-	n, err = a.readBuffer.Read(buff)
+	n, _, err = a.readBuffer.Read(buff, nil)
 	// RemoteAddr is assuredly set *after* we can read from the buffer
 	srcAddr = a.RemoteAddr()
 
@@ -120,7 +120,7 @@ func (a *activeTCPConn) WriteTo(buff []byte, _ net.Addr) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	return a.writeBuffer.Write(buff)
+	return a.writeBuffer.Write(buff, nil)
 }
 
 func (a *activeTCPConn) Close() error {

@@ -115,7 +115,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	n, err := c.agent.buf.Read(p)
+	n, _, err := c.agent.buf.Read(p, nil)
 	c.bytesReceived.Add(uint64(n)) //nolint:gosec // G115
 
 	return n, err

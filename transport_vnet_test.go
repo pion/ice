@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/pion/stun/v4"
-	"github.com/pion/transport/v4/test"
-	"github.com/pion/transport/v4/vnet"
+	"github.com/pion/transport/v5/test"
+	"github.com/pion/transport/v5/vnet"
 	"github.com/stretchr/testify/require"
 )
 

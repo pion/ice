@@ -8,8 +8,8 @@ import (
 	"net"
 
 	"github.com/pion/logging"
-	"github.com/pion/transport/v4"
-	"github.com/pion/transport/v4/stdnet"
+	"github.com/pion/transport/v5"
+	"github.com/pion/transport/v5/stdnet"
 )
 
 // MultiUDPMuxDefault implements both UDPMux and AllConnsGetter,

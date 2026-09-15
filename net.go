@@ -9,7 +9,7 @@ import (
 
 	"github.com/pion/ice/v4/internal/netutil"
 	"github.com/pion/logging"
-	"github.com/pion/transport/v4"
+	"github.com/pion/transport/v5"
 )
 
 type ifaceAddr struct {

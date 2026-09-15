@@ -364,7 +364,7 @@ func (c *candidateBase) handleInboundPacket(buf []byte, srcAddr netip.AddrPort) 
 	}
 
 	// Note: This will return packetio.ErrFull if the buffer ever manages to fill up.
-	n, err := agent.buf.Write(buf)
+	n, err := agent.buf.Write(buf, nil)
 	if err != nil {
 		agent.log.Warnf("Failed to write packet: %s", err)
 

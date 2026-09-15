@@ -20,7 +20,7 @@ import (
 	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
-	"github.com/pion/transport/v4/stdnet"
+	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/turn/v5"
 )
 
