@@ -2336,7 +2336,10 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 		candidateCh := make(chan Candidate, 10)
 		err = agent.OnCandidate(func(c Candidate) {
 			if c != nil {
-				candidateCh <- c
+				select {
+				case candidateCh <- c:
+				default:
+				}
 			}
 		})
 		require.NoError(t, err)
@@ -2389,7 +2392,10 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 		candidateCh := make(chan Candidate, 10)
 		err = agent.OnCandidate(func(c Candidate) {
 			if c != nil {
-				candidateCh <- c
+				select {
+				case candidateCh <- c:
+				default:
+				}
 			}
 		})
 		require.NoError(t, err)
