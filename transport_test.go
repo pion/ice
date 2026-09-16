@@ -628,7 +628,17 @@ func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(30 * time.Second).Stop()
 
-	ca, cb := pipe(t, &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}})
+	// AllocsPerRun counts allocations process-wide, so the agents are given
+	// one candidate each and no keepalives: a single pair leaves nothing
+	// checking alongside the data path once it is connected.
+	noKeepalive := time.Duration(0)
+	ca, cb := pipe(t, &AgentConfig{
+		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
+		IncludeLoopback:   true,
+		IPFilter:          net.IP.IsLoopback,
+		MulticastDNSMode:  MulticastDNSModeDisabled,
+		KeepaliveInterval: &noKeepalive,
+	})
 	defer closePipe(t, ca, cb)
 
 	packet := make([]byte, 1200)
