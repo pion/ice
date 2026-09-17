@@ -143,6 +143,7 @@ func (s *sharedPacketConn) SetDeadline(t time.Time) error {
 }
 
 func (s *sharedPacketConn) abortWrite() error {
+	s.cancel()
 	aborter, ok := s.underlying.(writeAborter)
 	if !ok {
 		return nil

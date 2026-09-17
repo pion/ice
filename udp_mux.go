@@ -61,6 +61,11 @@ type UDPMuxDefault struct {
 	// deadline means SetWriteDeadline(time.Now()) succeeded and the last
 	// in-flight writer must clear it before new writes can enter.
 	writeState atomic.Uint64
+
+	// One shutdown watchdog per mux.
+	writeAbortTimer *time.Timer
+	writeAbortGrace time.Duration
+	writeAborts     map[*atomic.Int32]time.Time
 }
 
 const (
@@ -120,11 +125,13 @@ func newUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 	params.UDPConnString = params.UDPConn.LocalAddr().String()
 
 	mux := &UDPMuxDefault{
-		addressMap: map[netip.AddrPort]*udpMuxedConn{},
-		params:     params,
-		connsIPv4:  make(map[string]*udpMuxedConn),
-		connsIPv6:  make(map[string]*udpMuxedConn),
-		closedChan: make(chan struct{}, 1),
+		addressMap:      map[netip.AddrPort]*udpMuxedConn{},
+		params:          params,
+		connsIPv4:       make(map[string]*udpMuxedConn),
+		connsIPv6:       make(map[string]*udpMuxedConn),
+		closedChan:      make(chan struct{}, 1),
+		writeAbortGrace: 5 * time.Second,
+		writeAborts:     make(map[*atomic.Int32]time.Time),
 		bufferPool: &sync.Pool{
 			New: func() any {
 				// Big enough buffer to fit a maximum-size packet.
@@ -290,6 +297,10 @@ func (m *UDPMuxDefault) Close() error {
 		m.connsIPv6 = make(map[string]*udpMuxedConn)
 
 		close(m.closedChan)
+		if m.writeAbortTimer != nil {
+			m.writeAbortTimer.Stop()
+		}
+		clear(m.writeAborts)
 
 		_ = m.params.UDPConn.Close()
 	})
@@ -341,22 +352,19 @@ func (m *UDPMuxDefault) writeToContext(ctx context.Context, buf []byte, rAddr ne
 
 	if done := ctx.Done(); done != nil {
 		// net.PacketConn writes cannot be canceled directly. If ctx is
-		// canceled while WriteTo is blocked, abortWrite interrupts it by
-		// temporarily setting the shared socket write deadline to now.
+		// canceled while WriteTo is blocked, the watchdog gives it a grace
+		// period before temporarily expiring the shared socket write deadline.
 		stopAbort := make(chan struct{})
-		var stopped atomic.Bool
+		var active atomic.Int32
+		active.Store(1)
 		defer func() {
-			stopped.Store(true)
+			active.Store(0)
 			close(stopAbort)
 		}()
 		go func() {
 			select {
 			case <-done:
-				if !stopped.Load() {
-					if abortErr := m.abortWrite(); abortErr != nil {
-						m.params.Logger.Warnf("Failed to abort UDP write: %v", abortErr)
-					}
-				}
+				m.scheduleWriteAbort(&active)
 			case <-stopAbort:
 			}
 		}()
@@ -394,6 +402,45 @@ func (m *UDPMuxDefault) abortWrite() error {
 		m.setWriteDeadlineArmed()
 
 		return nil
+	}
+}
+
+func (m *UDPMuxDefault) scheduleWriteAbort(active *atomic.Int32) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, pending := m.writeAborts[active]; pending || m.IsClosed() {
+		return
+	}
+	m.writeAborts[active] = time.Now().Add(m.writeAbortGrace)
+	if len(m.writeAborts) == 1 {
+		if m.writeAbortTimer == nil {
+			m.writeAbortTimer = time.AfterFunc(m.writeAbortGrace, m.checkWriteAborts)
+		} else {
+			m.writeAbortTimer.Reset(m.writeAbortGrace)
+		}
+	}
+}
+
+// checkWriteAborts gives canceled writers a grace period to finish naturally.
+// Coalesce subsequent checks so shutdown churn cannot cause a scan per close.
+func (m *UDPMuxDefault) checkWriteAborts() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	for active, deadline := range m.writeAborts {
+		if now.Before(deadline) {
+			continue
+		}
+		if active.Load() == 0 {
+			delete(m.writeAborts, active)
+		} else if err := m.abortWrite(); err != nil {
+			m.params.Logger.Warnf("Failed to abort UDP write: %v", err)
+		}
+	}
+	if len(m.writeAborts) != 0 {
+		m.writeAbortTimer.Reset(100 * time.Millisecond)
 	}
 }
 

@@ -41,6 +41,8 @@ type udpMuxedConn struct {
 
 	// refs counts outstanding sharedPacketConn wrappers handed out by the mux.
 	refs atomic.Int32
+
+	activeWrites atomic.Int32
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
@@ -135,6 +137,9 @@ func (c *udpMuxedConn) readPacket(
 }
 
 func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
+	c.activeWrites.Add(1)
+	defer c.activeWrites.Add(-1)
+
 	if c.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
@@ -157,6 +162,9 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 }
 
 func (c *udpMuxedConn) WriteToAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	c.activeWrites.Add(1)
+	defer c.activeWrites.Add(-1)
+
 	if c.isClosed() {
 		return 0, io.ErrClosedPipe
 	}
@@ -192,8 +200,10 @@ func (c *udpMuxedConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
 
-func (c *udpMuxedConn) abortWrite() error {
-	return c.params.Mux.abortWrite()
+func (c *udpMuxedConn) abortWrite() error { //nolint:unparam // Required by writeAborter; the watchdog logs errors.
+	c.params.Mux.scheduleWriteAbort(&c.activeWrites)
+
+	return nil
 }
 
 func (c *udpMuxedConn) CloseChannel() <-chan struct{} {
