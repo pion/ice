@@ -97,7 +97,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, controllingAgent.Close()) })
+	defer func() { require.NoError(t, controllingAgent.Close()) }()
 	require.NoError(t, controllingAgent.OnConnectionStateChange(aNotifier))
 
 	controlledAgent, err := NewAgent(&AgentConfig{
@@ -113,7 +113,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, controlledAgent.Close()) })
+	defer func() { require.NoError(t, controlledAgent.Close()) }()
 	require.NoError(t, controlledAgent.OnConnectionStateChange(bNotifier))
 
 	controlledConn, controllingConn := connect(t, controlledAgent, controllingAgent)
