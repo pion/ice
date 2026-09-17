@@ -101,7 +101,7 @@ func turnNetworkTypesForURL(url stun.URI, networkTypes []NetworkType) []NetworkT
 
 // Close a net.Conn and log if we have a failure.
 func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ...any) {
-	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
+	if c == nil || (reflect.ValueOf(c).Kind() == reflect.Pointer && reflect.ValueOf(c).IsNil()) {
 		log.Warnf("Connection is not allocated: "+msg, args...)
 
 		return
@@ -1098,10 +1098,12 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, gen
 
 						relAddr = conn.LocalAddr().(*net.TCPAddr).IP.String() //nolint:forcetypeassert
 						relPort = conn.LocalAddr().(*net.TCPAddr).Port        //nolint:forcetypeassert
-						if url.Scheme == stun.SchemeTypeTURN {
+						switch url.Scheme {
+						case stun.SchemeTypeTURN:
 							relayProtocol = tcp
-						} else if url.Scheme == stun.SchemeTypeTURNS {
+						case stun.SchemeTypeTURNS:
 							relayProtocol = "tls"
+						default:
 						}
 						locConn = turn.NewSTUNConn(conn)
 
