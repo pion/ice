@@ -220,6 +220,7 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 
 	aAgent, err := NewAgent(cfg0)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, aAgent.Close()) })
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	if a1TestConfig.nat1To1IPCandidateType != CandidateTypeUnspecified {
@@ -229,6 +230,7 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 
 	bAgent, err := NewAgent(cfg1)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, bAgent.Close()) })
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
 	aConn, bConn := connectWithVNet(t, aAgent, bAgent)
@@ -301,11 +303,9 @@ func TestConnectivityVNet(t *testing.T) {
 		a0TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
 		a1TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
+		defer closePipe(t, ca, cb)
 
 		time.Sleep(1 * time.Second)
-
-		log.Debug("Closing...")
-		closePipe(t, ca, cb)
 	})
 
 	t.Run("Symmetric NATs on both ends", func(t *testing.T) {
@@ -323,9 +323,7 @@ func TestConnectivityVNet(t *testing.T) {
 		a0TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL, turnServerURL}}
 		a1TestConfig := &agentTestConfig{urls: []*stun.URI{stunServerURL}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
-
-		log.Debug("Closing...")
-		closePipe(t, ca, cb)
+		defer closePipe(t, ca, cb)
 	})
 
 	t.Run("1:1 NAT with host candidate vs Symmetric NATs", func(t *testing.T) {
@@ -348,9 +346,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		a1TestConfig := &agentTestConfig{urls: []*stun.URI{}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
-
-		log.Debug("Closing...")
-		closePipe(t, ca, cb)
+		defer closePipe(t, ca, cb)
 	})
 
 	t.Run("1:1 NAT with srflx candidate vs Symmetric NATs", func(t *testing.T) {
@@ -373,9 +369,7 @@ func TestConnectivityVNet(t *testing.T) {
 		}
 		a1TestConfig := &agentTestConfig{urls: []*stun.URI{}}
 		ca, cb := pipeWithVNet(t, vnet, a0TestConfig, a1TestConfig)
-
-		log.Debug("Closing...")
-		closePipe(t, ca, cb)
+		defer closePipe(t, ca, cb)
 	})
 }
 

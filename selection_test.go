@@ -97,6 +97,7 @@ func TestBindingRequestHandler(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, controllingAgent.Close()) })
 	require.NoError(t, controllingAgent.OnConnectionStateChange(aNotifier))
 
 	controlledAgent, err := NewAgent(&AgentConfig{
@@ -112,9 +113,11 @@ func TestBindingRequestHandler(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, controlledAgent.Close()) })
 	require.NoError(t, controlledAgent.OnConnectionStateChange(bNotifier))
 
 	controlledConn, controllingConn := connect(t, controlledAgent, controllingAgent)
+	defer closePipe(t, controllingConn, controlledConn)
 	<-aConnected
 	<-bConnected
 
@@ -174,8 +177,6 @@ func TestBindingRequestHandler(t *testing.T) {
 	fired, ok := controlledLoggingFired.Load().(bool)
 	require.True(t, ok)
 	require.True(t, fired)
-
-	closePipe(t, controllingConn, controlledConn)
 }
 
 // copied from pion/webrtc's peerconnection_go_test.go.
@@ -1717,6 +1718,7 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	// To test the common full (controlling) -> lite (controlled) case, pass liteAgent
 	// as aAgent and fullAgent as bAgent.
 	liteConn, fullConn := connect(t, liteAgent, fullAgent)
+	defer closePipe(t, liteConn, fullConn)
 
 	<-fullConnected
 	<-liteConnected
@@ -1766,8 +1768,6 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	// Both agents should be able to exchange data.
 	require.True(t, sendUntilDone(t, fullConn, liteConn, 100))
 	require.True(t, sendUntilDone(t, liteConn, fullConn, 120))
-
-	closePipe(t, liteConn, fullConn)
 }
 
 func TestLiteMode_LiteControlling_Integration(t *testing.T) {
