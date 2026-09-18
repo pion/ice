@@ -3428,3 +3428,215 @@ func TestMDNSLocalAddressFromTCPMux(t *testing.T) {
 		require.Nil(t, mDNSLocalAddressFromTCPMux(&stubTCPMux{}, []NetworkType{NetworkTypeTCP4}))
 	})
 }
+
+func TestAgentGetBestValidCandidatePair(t *testing.T) {
+	f := setupTestAgentGetBestValidCandidatePair(t)
+	defer func() {
+		require.NoError(t, f.sut.Close())
+	}()
+
+	remoteCandidatesFromLowestPriorityToHighest := []Candidate{f.relayRemote, f.srflxRemote, f.prflxRemote, f.hostRemote}
+
+	for _, remoteCandidate := range remoteCandidatesFromLowestPriorityToHighest {
+		candidatePair := f.sut.addPair(f.hostLocal, remoteCandidate)
+		candidatePair.state = CandidatePairStateSucceeded
+
+		actualBestPair := f.sut.getBestValidCandidatePair()
+		expectedBestPair := &CandidatePair{Remote: remoteCandidate, Local: f.hostLocal, state: CandidatePairStateSucceeded}
+
+		require.Equal(t, actualBestPair.String(), expectedBestPair.String())
+	}
+}
+
+func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestValidCandidatePairFixture {
+	t.Helper()
+
+	fixture := new(TestAgentGetBestValidCandidatePairFixture)
+	fixture.hostLocal = newHostLocal(t)
+	fixture.relayRemote = newRelayRemote(t)
+	fixture.srflxRemote = newSrflxRemote(t)
+	fixture.prflxRemote = newPrflxRemote(t)
+	fixture.hostRemote = newHostRemote(t)
+
+	agent, err := NewAgent()
+	require.NoError(t, err)
+	fixture.sut = agent
+
+	return fixture
+}
+
+type TestAgentGetBestValidCandidatePairFixture struct {
+	sut *Agent
+
+	hostLocal   Candidate
+	relayRemote Candidate
+	srflxRemote Candidate
+	prflxRemote Candidate
+	hostRemote  Candidate
+}
+
+func TestNoBestAvailableCandidatePairAfterAgentConstruction(t *testing.T) {
+	agent, err := NewAgent()
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	require.Nil(t, agent.getBestAvailableCandidatePair())
+}
+
+func TestOnSelectedCandidatePairChange(t *testing.T) {
+	agent, candidatePair := fixtureTestOnSelectedCandidatePairChange(t)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	callbackCalled := make(chan struct{}, 1)
+	err := agent.OnSelectedCandidatePairChange(func(_, _ Candidate) {
+		close(callbackCalled)
+	})
+	require.NoError(t, err)
+
+	err = agent.loop.Run(context.Background(), func(_ context.Context) {
+		agent.setSelectedPair(candidatePair)
+	})
+	require.NoError(t, err)
+
+	<-callbackCalled
+}
+
+func fixtureTestOnSelectedCandidatePairChange(t *testing.T) (*Agent, *CandidatePair) {
+	t.Helper()
+
+	agent, err := NewAgent()
+	require.NoError(t, err)
+
+	candidatePair := makeCandidatePair(t)
+
+	return agent, candidatePair
+}
+
+func makeCandidatePair(t *testing.T) *CandidatePair {
+	t.Helper()
+
+	hostLocal := newHostLocal(t)
+	relayRemote := newRelayRemote(t)
+
+	candidatePair := newCandidatePair(hostLocal, relayRemote, false)
+
+	return candidatePair
+}
+
+// newMuxForAddr creates a UDPMuxDefault with the correct socket family for the given address.
+// This fixes Windows dual-stack issues where IPv6 sockets don't receive IPv4 traffic by default.
+func newMuxForAddr(t *testing.T, addr *net.UDPAddr, loggerFactory logging.LoggerFactory) *UDPMuxDefault {
+	t.Helper()
+	var (
+		network string
+		laddr   *net.UDPAddr
+	)
+
+	switch {
+	case addr.IP == nil || addr.IP.IsUnspecified():
+		network = "udp4"
+		laddr = &net.UDPAddr{IP: net.IPv4zero, Port: addr.Port}
+	case addr.IP.To4() != nil:
+		network = "udp4"
+		laddr = &net.UDPAddr{IP: net.IPv4zero, Port: addr.Port}
+	default:
+		network = "udp6"
+		laddr = &net.UDPAddr{IP: net.IPv6unspecified, Port: addr.Port}
+	}
+
+	pc, err := net.ListenUDP(network, laddr)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pc.Close() })
+
+	return NewUDPMuxDefault(UDPMuxParams{Logger: loggerFactory.NewLogger("ice"), UDPConn: pc})
+}
+
+// TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux.
+func TestMuxAgent(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	const muxPort = 7686
+
+	caseAddrs := map[string]*net.UDPAddr{
+		"unspecified":  {Port: muxPort},
+		"ipv4Loopback": {IP: net.IPv4(127, 0, 0, 1), Port: muxPort},
+	}
+
+	for subTest, addr := range caseAddrs {
+		muxAddr := addr
+		t.Run(subTest, func(t *testing.T) {
+			loggerFactory := logging.NewDefaultLoggerFactory()
+			udpMux := newMuxForAddr(t, muxAddr, loggerFactory)
+
+			opts := []AgentOption{WithUDPMux(udpMux), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+			if addr.IP.IsLoopback() {
+				opts = append(opts, WithIncludeLoopback())
+			}
+			muxedA, err := NewAgent(opts...)
+			require.NoError(t, err)
+			var muxedAClosed bool
+			defer func() {
+				if muxedAClosed {
+					return
+				}
+				require.NoError(t, muxedA.Close())
+			}()
+
+			agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(supportedNetworkTypes()))
+			require.NoError(t, err)
+			var aClosed bool
+			defer func() {
+				if aClosed {
+					return
+				}
+				require.NoError(t, agent.Close())
+			}()
+
+			conn, muxedConn := connect(t, agent, muxedA)
+
+			pair := muxedA.getSelectedPair()
+			require.NotNil(t, pair)
+			require.Equal(t, muxPort, pair.Local.Port())
+
+			// Send a packet to Mux
+			data := []byte("hello world")
+			_, err = conn.Write(data)
+			require.NoError(t, err)
+
+			buf := make([]byte, 1024)
+			n, err := muxedConn.Read(buf)
+			require.NoError(t, err)
+			require.Equal(t, data, buf[:n])
+
+			// Send a packet from Mux
+			_, err = muxedConn.Write(data)
+			require.NoError(t, err)
+
+			n, err = conn.Read(buf)
+			require.NoError(t, err)
+			require.Equal(t, data, buf[:n])
+
+			// Close it down
+			require.NoError(t, conn.Close())
+			aClosed = true
+			require.NoError(t, muxedConn.Close())
+			muxedAClosed = true
+			require.NoError(t, udpMux.Close())
+
+			// Expect error when reading from closed mux
+			_, err = muxedConn.Read(data)
+			require.Error(t, err)
+
+			// Expect error when writing to closed mux
+			_, err = muxedConn.Write(data)
+			require.Error(t, err)
+		})
+	}
+}
