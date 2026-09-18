@@ -56,7 +56,7 @@ type candidateBase struct {
 
 	relayLocalPreference uint16
 
-	remoteCandidateCaches sync.Map // map[AddrPort]Candidate
+	remoteCandidateCaches sync.Map // map[netip.AddrPort]Candidate
 	isLocationTracked     bool
 	extensions            []CandidateExtension
 }
@@ -328,7 +328,7 @@ func (c *candidateBase) readPacket(buf []byte, attrs packetio.Attributes) (int, 
 }
 
 func (c *candidateBase) validateSTUNTrafficCache(addr netip.AddrPort) bool {
-	if candidate, ok := c.remoteCandidateCaches.Load(toAddrPortKey(addr)); ok {
+	if candidate, ok := c.remoteCandidateCaches.Load(canonicalAddrPort(addr)); ok {
 		remoteCandidate, ok := candidate.(Candidate)
 		if !ok {
 			return false
@@ -346,7 +346,7 @@ func (c *candidateBase) addRemoteCandidateCache(candidate Candidate, srcAddr net
 	if c.validateSTUNTrafficCache(srcAddr) {
 		return
 	}
-	c.remoteCandidateCaches.Store(toAddrPortKey(srcAddr), candidate)
+	c.remoteCandidateCaches.Store(canonicalAddrPort(srcAddr), candidate)
 }
 
 func (c *candidateBase) replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate) {

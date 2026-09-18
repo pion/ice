@@ -229,20 +229,3 @@ func canonicalAddr(addr netip.Addr) netip.Addr {
 func canonicalAddrPort(ap netip.AddrPort) netip.AddrPort {
 	return netip.AddrPortFrom(canonicalAddr(ap.Addr()), ap.Port())
 }
-
-// AddrPort is  an IP and a port number.
-type AddrPort [18]byte
-
-func toAddrPortKey(addr netip.AddrPort) AddrPort {
-	var ap AddrPort
-	if !addr.IsValid() {
-		return ap
-	}
-
-	addr16 := addr.Addr().As16()
-	copy(ap[:16], addr16[:])
-	ap[16] = uint8(addr.Port() >> 8)
-	ap[17] = uint8(addr.Port() & 0xFF)
-
-	return ap
-}
