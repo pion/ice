@@ -22,5 +22,5 @@ func TestTCPType(t *testing.T) {
 	require.Equal(t, "active", TCPTypeActive.String())
 	require.Equal(t, "passive", TCPTypePassive.String())
 	require.Equal(t, "so", TCPTypeSimultaneousOpen.String())
-	require.Equal(t, "Unknown", TCPType(-1).String())
+	require.Equal(t, "unknown", TCPType(-1).String())
 }

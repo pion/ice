@@ -80,7 +80,7 @@ func (t GatheringState) String() string {
 	case GatheringStateComplete:
 		return "complete"
 	default:
-		return ErrUnknownType.Error()
+		return unknownStr
 	}
 }
 
