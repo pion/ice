@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -231,10 +232,8 @@ func (m *TCPMuxDefault) handleConn(conn net.Conn) { //nolint:cyclop
 	buf = buf[:n]
 
 	msg := &stun.Message{
-		Raw: make([]byte, len(buf)),
+		Raw: slices.Clone(buf),
 	}
-	// Explicitly copy raw buffer so Message can own the memory.
-	copy(msg.Raw, buf)
 	if err = msg.Decode(); err != nil {
 		m.closeAndLogError(conn)
 		m.params.Logger.Warnf("Failed to handle decode ICE from %s to %s: %v", conn.RemoteAddr(), conn.LocalAddr(), err)
