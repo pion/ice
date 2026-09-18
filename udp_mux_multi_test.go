@@ -243,7 +243,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 
 		keepLoopbackV4 := func(ip net.IP) bool { return ip.IsLoopback() && ip.To4() != nil }
 		opt := UDPMuxFromPortWithIPFilter(keepLoopbackV4)
-		opt.apply(&p)
+		opt(&p)
 
 		require.NotNil(t, p.ipFilter)
 		require.True(t, p.ipFilter(net.ParseIP("127.0.0.1")))
@@ -254,7 +254,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		var p multiUDPMuxFromPortParam
 
 		opt := UDPMuxFromPortWithNetworks(NetworkTypeUDP4)
-		opt.apply(&p)
+		opt(&p)
 
 		require.Len(t, p.networks, 1)
 		require.Equal(t, NetworkTypeUDP4, p.networks[0])
@@ -264,7 +264,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		var p multiUDPMuxFromPortParam
 
 		opt := UDPMuxFromPortWithNetworks(NetworkTypeUDP4, NetworkTypeUDP6)
-		opt.apply(&p)
+		opt(&p)
 
 		require.Len(t, p.networks, 2)
 		require.ElementsMatch(t, []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, p.networks)
@@ -274,7 +274,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		var p multiUDPMuxFromPortParam
 
 		opt := UDPMuxFromPortWithReadBufferSize(4096)
-		opt.apply(&p)
+		opt(&p)
 
 		require.Equal(t, 4096, p.readBufferSize)
 	})
@@ -283,7 +283,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		var p multiUDPMuxFromPortParam
 
 		opt := UDPMuxFromPortWithWriteBufferSize(8192)
-		opt.apply(&p)
+		opt(&p)
 
 		require.Equal(t, 8192, p.writeBufferSize)
 	})
@@ -293,7 +293,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 
 		logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
 		opt := UDPMuxFromPortWithLogger(logger)
-		opt.apply(&p)
+		opt(&p)
 
 		require.NotNil(t, p.logger)
 		require.Equal(t, logger, p.logger)
@@ -306,7 +306,7 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		require.NoError(t, err)
 
 		opt := UDPMuxFromPortWithNet(n)
-		opt.apply(&p)
+		opt(&p)
 
 		require.NotNil(t, p.net)
 		require.Equal(t, n, p.net)
