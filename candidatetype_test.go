@@ -26,8 +26,3 @@ func TestCandidateType_Preference_DefaultCase(t *testing.T) {
 	const outOfBounds CandidateType = 255
 	require.Equal(t, uint16(0), outOfBounds.Preference())
 }
-
-func TestContainsCandidateType_NilSlice(t *testing.T) {
-	var list []CandidateType // nil slice
-	require.False(t, containsCandidateType(CandidateTypeHost, list))
-}

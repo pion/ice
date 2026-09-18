@@ -320,8 +320,8 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 	}
 
 	if len(agent.urls) > 0 &&
-		!containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) &&
-		!containsCandidateType(CandidateTypeRelay, agent.candidateTypes) {
+		!slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive) &&
+		!slices.Contains(agent.candidateTypes, CandidateTypeRelay) {
 		agent.closeMulticastConn()
 
 		return nil, ErrUselessURLsProvided
@@ -383,7 +383,7 @@ func applyAddressRewriteMapping(agent *Agent) error {
 		}
 		// surface misconfiguration when host candidates are disabled but a host
 		// rewrite rule was provided.
-		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
+		if !slices.Contains(agent.candidateTypes, CandidateTypeHost) {
 			return ErrIneffectiveAddressRewriteHost
 		}
 	}
@@ -391,7 +391,7 @@ func applyAddressRewriteMapping(agent *Agent) error {
 	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
 		// surface misconfiguration when srflx candidates are disabled but a srflx
 		// rewrite rule was provided.
-		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
+		if !slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive) {
 			return ErrIneffectiveAddressRewriteSrflx
 		}
 	}

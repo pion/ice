@@ -5,7 +5,9 @@ package ice
 
 import (
 	"fmt"
+	"maps"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -301,7 +303,7 @@ func findAddressRewriteRuleConflicts(rules []AddressRewriteRule) []addressRewrit
 				if _, ok := existing[entry.externalIP]; !ok {
 					conflicts = append(conflicts, addressRewriteConflict{
 						scope:               key,
-						existingExternalIPs: mapKeys(existing),
+						existingExternalIPs: slices.Sorted(maps.Keys(existing)),
 						conflictingExternal: entry.externalIP,
 					})
 				}
@@ -380,20 +382,6 @@ func deriveAddressRewriteFamilyScopeKey(ipStr string) string {
 	}
 
 	return "family:ipv6"
-}
-
-func mapKeys(m map[string]struct{}) []string {
-	if len(m) == 0 {
-		return nil
-	}
-
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	return keys
 }
 
 // WithICELite configures whether the agent operates in lite mode.
