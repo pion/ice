@@ -3,8 +3,6 @@
 
 package ice
 
-import "slices"
-
 // CandidateType represents the type of candidate.
 type CandidateType byte
 
@@ -54,12 +52,4 @@ func (c CandidateType) Preference() uint16 {
 	}
 
 	return 0
-}
-
-func containsCandidateType(candidateType CandidateType, candidateTypeList []CandidateType) bool {
-	if candidateTypeList == nil {
-		return false
-	}
-
-	return slices.Contains(candidateTypeList, candidateType)
 }
