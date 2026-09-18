@@ -877,10 +877,10 @@ func TestWithAddressRewriteRulesAccumulatesAndCopies(t *testing.T) {
 
 	for _, testCase := range []struct {
 		typ      CandidateType
-		expected []net.IP
+		expected []string
 	}{
-		{CandidateTypeHost, []net.IP{net.ParseIP("203.0.113.1"), net.ParseIP("203.0.113.2")}},
-		{CandidateTypeServerReflexive, []net.IP{net.ParseIP("198.51.100.1")}},
+		{CandidateTypeHost, []string{"203.0.113.1", "203.0.113.2"}},
+		{CandidateTypeServerReflexive, []string{"198.51.100.1"}},
 	} {
 		ips, matched, _, lookupErr := agent.addressRewriteMapper.findExternalIPs(testCase.typ, "10.0.0.1", "")
 		require.NoError(t, lookupErr)
@@ -923,7 +923,7 @@ func TestWithAddressRewriteRulesOverlapWarnings(t *testing.T) {
 			ips, matched, mode, err := agent.addressRewriteMapper.findExternalIPs(testCase.candidateType, "10.0.0.1", "")
 			require.NoError(t, err)
 			require.True(t, matched)
-			require.Equal(t, []net.IP{net.ParseIP("203.0.113.10")}, ips)
+			require.Equal(t, []string{"203.0.113.10"}, ips)
 			require.Equal(t, AddressRewriteReplace, mode)
 		})
 	}
@@ -975,7 +975,7 @@ func TestLegacyAddressRewriteTranslationAndOrdering(t *testing.T) {
 				ips, matched, _, lookupErr := agent.addressRewriteMapper.findExternalIPs(testCase.candidateType, lookup.local, "")
 				require.NoError(t, lookupErr)
 				require.True(t, matched)
-				require.Equal(t, []net.IP{net.ParseIP(lookup.external)}, ips)
+				require.Equal(t, []string{lookup.external}, ips)
 			}
 		})
 	}
@@ -1014,123 +1014,135 @@ func TestAddressRewriteMapper(t *testing.T) {
 		{
 			name: "precedence",
 			rules: []AddressRewriteRule{
-				{External: []string{"203.0.113.200"}, Mode: AddressRewriteReplace},
-				{External: []string{"203.0.113.201"}, Mode: AddressRewriteAppend},
-				{External: []string{"203.0.113.100"}, CIDR: "10.0.0.0/24", Mode: AddressRewriteAppend},
-				{External: []string{"203.0.113.50"}, Iface: "eth0", Mode: AddressRewriteReplace},
-				{External: []string{"203.0.113.51"}, Iface: "eth0", CIDR: "10.0.0.0/24", Mode: AddressRewriteAppend},
-				{External: []string{"203.0.113.5"}, Local: "10.0.0.5", Mode: AddressRewriteReplace},
-				{External: []string{"203.0.113.6"}, Local: "10.0.0.5", Mode: AddressRewriteAppend},
+				{External: []string{"203.0.113.200", "relay.example"}, Mode: AddressRewriteReplace},
+				{External: []string{"203.0.113.201", "relay.example"}, Mode: AddressRewriteAppend},
+				{External: []string{"203.0.113.100", "relay.example"}, CIDR: "10.0.0.0/24", Mode: AddressRewriteAppend},
+				{External: []string{"203.0.113.50", "relay.example"}, Iface: "eth0", Mode: AddressRewriteReplace},
+				{External: []string{"203.0.113.51", "relay.example"}, Iface: "eth0", CIDR: "10.0.0.0/24", Mode: AddressRewriteAppend},
+				{External: []string{"203.0.113.5", "relay.example"}, Local: "10.0.0.5", Mode: AddressRewriteReplace},
+				{External: []string{"203.0.113.6", "relay.example"}, Local: "10.0.0.5", Mode: AddressRewriteAppend},
 			},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{name: "first explicit mapping outranks earlier CIDR", local: "10.0.0.5", external: []string{"203.0.113.5"}, mode: AddressRewriteReplace},
-				{name: "explicit mapping outranks interface and CIDR", local: "10.0.0.5", iface: "eth0", external: []string{"203.0.113.5"}, mode: AddressRewriteReplace},
-				{name: "CIDR outranks catch-all without interface", local: "10.0.0.25", external: []string{"203.0.113.100"}, mode: AddressRewriteAppend},
-				{name: "interface and CIDR outrank interface alone", local: "10.0.0.25", iface: "eth0", external: []string{"203.0.113.51"}, mode: AddressRewriteAppend},
-				{name: "interface outranks catch-all outside CIDR", local: "172.16.0.1", iface: "eth0", external: []string{"203.0.113.50"}, mode: AddressRewriteReplace},
-				{name: "first catch-all wins equal specificity", local: "172.16.0.1", iface: "wlan0", external: []string{"203.0.113.200"}, mode: AddressRewriteReplace},
-				{name: "unscoped CIDR has equal priority with interface lookup", local: "10.0.0.25", iface: "wlan0", external: []string{"203.0.113.200"}, mode: AddressRewriteReplace},
+				{name: "first explicit mapping outranks earlier CIDR", local: "10.0.0.5", external: []string{"203.0.113.5", "relay.example"}, mode: AddressRewriteReplace},
+				{name: "explicit mapping outranks interface and CIDR", local: "10.0.0.5", iface: "eth0", external: []string{"203.0.113.5", "relay.example"}, mode: AddressRewriteReplace},
+				{name: "CIDR outranks catch-all without interface", local: "10.0.0.25", external: []string{"203.0.113.100", "relay.example"}, mode: AddressRewriteAppend},
+				{name: "interface and CIDR outrank interface alone", local: "10.0.0.25", iface: "eth0", external: []string{"203.0.113.51", "relay.example"}, mode: AddressRewriteAppend},
+				{name: "interface outranks catch-all outside CIDR", local: "172.16.0.1", iface: "eth0", external: []string{"203.0.113.50", "relay.example"}, mode: AddressRewriteReplace},
+				{name: "first catch-all wins equal specificity", local: "172.16.0.1", iface: "wlan0", external: []string{"203.0.113.200", "relay.example"}, mode: AddressRewriteReplace},
+				{name: "unscoped CIDR has equal priority with interface lookup", local: "10.0.0.25", iface: "wlan0", external: []string{"203.0.113.200", "relay.example"}, mode: AddressRewriteReplace},
 			},
 		},
 		{
 			name:          "nil networks allow both families and preserve address order",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.2", "2001:db8::2", "203.0.113.1", "2001:db8::1"}, Networks: nil}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.2", "2001:db8::2", "203.0.113.1", "2001:db8::1", "relay.example"}, Networks: nil}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"203.0.113.2", "203.0.113.1"}, mode: AddressRewriteReplace},
-				{local: "2001:db8:1::1", external: []string{"2001:db8::2", "2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"203.0.113.2", "203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"2001:db8::2", "2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 			},
 		},
 		{
 			name:          "explicit IPv4 local maps to IPv6 external",
-			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1"}, Local: "10.0.0.1", Networks: []NetworkType{NetworkTypeUDP4}}},
+			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1", "relay.example"}, Local: "10.0.0.1", Networks: []NetworkType{NetworkTypeUDP4}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "10.0.0.2"},
 				{local: "2001:db8:1::1"},
 			},
 		},
 		{
 			name:          "explicit IPv6 local maps to IPv4 external",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1"}, Local: "2001:db8:1::1", Networks: []NetworkType{NetworkTypeUDP6}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, Local: "2001:db8:1::1", Networks: []NetworkType{NetworkTypeUDP6}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "2001:db8:1::1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "2001:db8:1::2"},
 				{local: "10.0.0.1"},
 			},
 		},
 		{
 			name:          "IPv4 CIDR determines local family for IPv6 external",
-			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1"}, CIDR: "10.0.0.0/24"}},
+			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1", "relay.example"}, CIDR: "10.0.0.0/24"}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "10.0.1.1"},
 				{local: "2001:db8:1::1"},
 			},
 		},
 		{
 			name:          "IPv6 CIDR determines local family for IPv4 external",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1"}, CIDR: "2001:db8:1::/64"}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, CIDR: "2001:db8:1::/64"}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "2001:db8:1::1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "2001:db8:2::1"},
 				{local: "10.0.0.1"},
 			},
 		},
 		{
 			name:          "empty networks allow both families",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1"}, Networks: []NetworkType{}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1", "relay.example"}, Networks: []NetworkType{}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace},
-				{local: "2001:db8:1::1", external: []string{"2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 			},
 		},
 		{
 			name:          "UDP4 excludes IPv6",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1"}, Networks: []NetworkType{NetworkTypeUDP4}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1", "relay.example"}, Networks: []NetworkType{NetworkTypeUDP4}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "2001:db8:1::1"},
 			},
 		},
 		{
 			name:          "UDP6 excludes IPv4",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1"}, Networks: []NetworkType{NetworkTypeUDP6}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1", "relay.example"}, Networks: []NetworkType{NetworkTypeUDP6}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
 				{local: "10.0.0.1"},
-				{local: "2001:db8:1::1", external: []string{"2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 			},
 		},
 		{
 			name:          "TCP4 excludes IPv6",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1"}, Networks: []NetworkType{NetworkTypeTCP4}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1", "relay.example"}, Networks: []NetworkType{NetworkTypeTCP4}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
-				{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace},
+				{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "2001:db8:1::1"},
 			},
 		},
 		{
 			name:          "TCP6 excludes IPv4",
-			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1"}, Networks: []NetworkType{NetworkTypeTCP6}}},
+			rules:         []AddressRewriteRule{{External: []string{"203.0.113.1", "2001:db8::1", "relay.example"}, Networks: []NetworkType{NetworkTypeTCP6}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
 				{local: "10.0.0.1"},
-				{local: "2001:db8:1::1", external: []string{"2001:db8::1"}, mode: AddressRewriteReplace},
+				{local: "2001:db8:1::1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 			},
 		},
-		{name: "unspecified defaults to host replace", rules: []AddressRewriteRule{{External: []string{"203.0.113.1"}, AsCandidateType: CandidateTypeUnspecified}}, candidateType: CandidateTypeHost, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace}}},
-		{name: "host defaults to replace", rules: []AddressRewriteRule{{External: []string{"203.0.113.1"}, AsCandidateType: CandidateTypeHost}}, candidateType: CandidateTypeHost, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteReplace}}},
-		{name: "srflx defaults to append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1"}, AsCandidateType: CandidateTypeServerReflexive}}, candidateType: CandidateTypeServerReflexive, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteAppend}}},
-		{name: "relay defaults to append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1"}, AsCandidateType: CandidateTypeRelay}}, candidateType: CandidateTypeRelay, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1"}, mode: AddressRewriteAppend}}},
+		{
+			name: "unspecified defaults to host replace", rules: []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, AsCandidateType: CandidateTypeUnspecified}},
+			candidateType: CandidateTypeHost, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace}},
+		},
+		{
+			name: "host defaults to replace", rules: []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, AsCandidateType: CandidateTypeHost}},
+			candidateType: CandidateTypeHost, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteReplace}},
+		},
+		{
+			name: "srflx defaults to append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, AsCandidateType: CandidateTypeServerReflexive}},
+			candidateType: CandidateTypeServerReflexive, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteAppend}},
+		},
+		{
+			name: "relay defaults to append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, AsCandidateType: CandidateTypeRelay}},
+			candidateType: CandidateTypeRelay, lookups: []lookup{{local: "10.0.0.1", external: []string{"203.0.113.1", "relay.example"}, mode: AddressRewriteAppend}},
+		},
 	}
 
 	for _, testCase := range tests {
@@ -1151,11 +1163,13 @@ func TestAddressRewriteMapper(t *testing.T) {
 					if lookup.external == nil {
 						require.Nil(t, ips)
 					}
-					var external []string
-					for _, ip := range ips {
-						external = append(external, ip.String())
+					require.Equal(t, lookup.external, ips)
+					if len(ips) > 0 {
+						ips[0] = "mutated.example"
+						ips, _, _, err = mapper.findExternalIPs(testCase.candidateType, lookup.local, lookup.iface)
+						require.NoError(t, err)
+						require.Equal(t, lookup.external, ips)
 					}
-					require.Equal(t, lookup.external, external)
 				})
 			}
 		})

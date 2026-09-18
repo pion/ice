@@ -640,7 +640,28 @@ func (c *candidateBase) context() context.Context {
 }
 
 func (c *candidateBase) copy() (Candidate, error) {
-	return UnmarshalCandidate(c.Marshal())
+	address := c.Address()
+	if validateFQDN(address) && c.addrPort().IsValid() {
+		address = c.addrPort().Addr().String()
+	}
+	copied, err := UnmarshalCandidate(c.marshalAddress(address))
+	if err != nil {
+		return nil, err
+	}
+	if address == c.Address() {
+		return copied, nil
+	}
+
+	switch candidate := copied.(type) {
+	case *CandidateHost:
+		candidate.address = c.Address()
+	case *CandidateServerReflexive:
+		candidate.address = c.Address()
+	case *CandidateRelay:
+		candidate.address = c.Address()
+	}
+
+	return copied, nil
 }
 
 func removeZoneIDFromAddress(addr string) string {
@@ -653,6 +674,10 @@ func removeZoneIDFromAddress(addr string) string {
 
 // Marshal returns the string representation of the ICECandidate.
 func (c *candidateBase) Marshal() string {
+	return c.marshalAddress(c.Address())
+}
+
+func (c *candidateBase) marshalAddress(address string) string {
 	val := c.Foundation()
 	if val == " " {
 		val = ""
@@ -663,7 +688,7 @@ func (c *candidateBase) Marshal() string {
 		c.Component(),
 		c.NetworkType().NetworkShort(),
 		c.Priority(),
-		removeZoneIDFromAddress(c.Address()),
+		removeZoneIDFromAddress(address),
 		c.Port(),
 		c.Type())
 
