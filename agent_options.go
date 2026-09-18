@@ -359,16 +359,7 @@ func deriveAddressRewriteLocalScopeKey(local string) string {
 		return ""
 	}
 
-	ip, _, err := validateIPString(local)
-	if err != nil {
-		return "family:unknown"
-	}
-
-	if ip.To4() != nil {
-		return "family:ipv4"
-	}
-
-	return "family:ipv6"
+	return deriveAddressRewriteFamilyScopeKey(local)
 }
 
 func deriveAddressRewriteFamilyScopeKey(ipStr string) string {
