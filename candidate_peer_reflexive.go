@@ -42,7 +42,7 @@ func NewCandidatePeerReflexive(config *CandidatePeerReflexiveConfig) (*Candidate
 
 	candidateID := config.CandidateID
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = generateCandidateID()
 	}
 
 	candidate := &CandidatePeerReflexive{

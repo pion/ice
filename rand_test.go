@@ -11,14 +11,12 @@ import (
 )
 
 func TestRandomGeneratorCollision(t *testing.T) {
-	candidateIDGen := newCandidateIDGenerator()
-
 	testCases := map[string]struct {
 		gen func(t *testing.T) string
 	}{
 		"CandidateID": {
 			gen: func(*testing.T) string {
-				return candidateIDGen.Generate()
+				return generateCandidateID()
 			},
 		},
 		"PWD": {

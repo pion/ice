@@ -40,7 +40,7 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 
 	candidateID := config.CandidateID
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = generateCandidateID()
 	}
 
 	candidate := &CandidateServerReflexive{

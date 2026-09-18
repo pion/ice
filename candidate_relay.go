@@ -46,7 +46,7 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 	candidateID := config.CandidateID
 
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = generateCandidateID()
 	}
 
 	ipAddr, err := netip.ParseAddr(config.Address)
