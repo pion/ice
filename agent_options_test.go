@@ -89,23 +89,6 @@ func TestWithLite(t *testing.T) {
 	})
 }
 
-func TestWithURLs(t *testing.T) {
-	stunURL, err := stun.ParseURI("stun:example.com:3478")
-	require.NoError(t, err)
-
-	input := []*stun.URI{stunURL}
-	agent, err := NewAgent(WithURLs(input))
-	require.NoError(t, err)
-	defer agent.Close() //nolint:errcheck
-
-	require.Len(t, agent.urls, 1)
-	assert.Equal(t, stunURL.String(), agent.urls[0].String())
-
-	input[0] = nil
-	require.Len(t, agent.urls, 1)
-	assert.NotNil(t, agent.urls[0])
-}
-
 func TestWithPortRange(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -733,23 +716,28 @@ func TestWithTURNTransportProtocols(t *testing.T) {
 	})
 }
 
-func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
+func TestSetURLsValidatesCandidateTypes(t *testing.T) {
 	stunURL, err := stun.ParseURI("stun:example.com:3478")
 	require.NoError(t, err)
 
 	t.Run("default candidate types accept urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgent(WithURLs([]*stun.URI{stunURL}), WithNet(stub))
+		agent, err := NewAgent(WithNet(stub))
 		require.NoError(t, err)
+		require.NoError(t, agent.SetURLs([]*stun.URI{stunURL}))
 		require.NoError(t, agent.Close())
 	})
 
 	t.Run("host only candidate types reject urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := NewAgent(WithURLs([]*stun.URI{stunURL}), WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
-		require.ErrorIs(t, err, ErrUselessURLsProvided)
+		agent, err := NewAgent(WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+		require.ErrorIs(t, agent.SetURLs([]*stun.URI{stunURL}), ErrUselessURLsProvided)
+		require.Empty(t, agent.urls)
+		require.NoError(t, agent.SetURLs(nil))
 	})
 }
 
@@ -1219,7 +1207,6 @@ func TestWithInsecureSkipVerify(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, agent.Close()) })
 	require.False(t, agent.insecureSkipVerify)
-	require.ErrorIs(t, WithInsecureSkipVerify(true)(agent), ErrAgentOptionNotUpdatable)
 
 	insecureAgent, err := NewAgent(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled), WithInsecureSkipVerify(true))
 	require.NoError(t, err)

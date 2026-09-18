@@ -80,7 +80,8 @@ func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Durat
 	return defaultRelayAcceptanceMinWait
 }
 
-// AgentOption represents a function that can be used to configure an Agent.
+// AgentOption configures an Agent during NewAgent.
+// Options must not be applied to a running agent. Use SetURLs to update server URLs.
 type AgentOption func(*Agent) error
 
 // NominationValueGenerator is a function that generates nomination values for renomination.
@@ -113,10 +114,6 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 // Overlapping rules in the same scope are logged as warnings.
 func WithAddressRewriteRules(rules ...AddressRewriteRule) AgentOption {
 	return func(agent *Agent) error {
-		if agent.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		return appendAddressRewriteRules(agent, rules...)
 	}
 }
@@ -379,28 +376,7 @@ func deriveAddressRewriteFamilyScopeKey(ipStr string) string {
 // Lite agents do not perform connectivity checks and only provide host candidates.
 func WithICELite(lite bool) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.lite = lite
-
-		return nil
-	}
-}
-
-// WithURLs sets the STUN/TURN server URLs used by the agent.
-func WithURLs(urls []*stun.URI) AgentOption {
-	return func(a *Agent) error {
-		if len(urls) == 0 {
-			a.urls = nil
-
-			return nil
-		}
-
-		cloned := make([]*stun.URI, len(urls))
-		copy(cloned, urls)
-		a.urls = cloned
 
 		return nil
 	}
@@ -410,10 +386,6 @@ func WithURLs(urls []*stun.URI) AgentOption {
 // It returns ErrPort if portMax is less than portMin.
 func WithPortRange(portMin, portMax uint16) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		if portMax < portMin {
 			return ErrPort
 		}
@@ -429,10 +401,6 @@ func WithPortRange(portMin, portMax uint16) AgentOption {
 // A timeout of 0 disables the transition.
 func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.disconnectedTimeout = timeout
 		a.disconnectedTimeoutExplicit = true
 
@@ -444,10 +412,6 @@ func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
 // A timeout of 0 disables the transition.
 func WithFailedTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.failedTimeout = timeout
 
 		return nil
@@ -458,10 +422,6 @@ func WithFailedTimeout(timeout time.Duration) AgentOption {
 // An interval of 0 disables keepalives.
 func WithKeepaliveInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.keepaliveInterval = interval
 
 		return nil
@@ -471,10 +431,6 @@ func WithKeepaliveInterval(interval time.Duration) AgentOption {
 // WithHostAcceptanceMinWait sets the minimum wait before selecting host candidates.
 func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.hostAcceptanceMinWait = wait
 
 		return nil
@@ -484,10 +440,6 @@ func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
 // WithSrflxAcceptanceMinWait sets the minimum wait before selecting srflx candidates.
 func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.srflxAcceptanceMinWait = wait
 
 		return nil
@@ -497,10 +449,6 @@ func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 // WithPrflxAcceptanceMinWait sets the minimum wait before selecting prflx candidates.
 func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.prflxAcceptanceMinWait = wait
 
 		return nil
@@ -510,10 +458,6 @@ func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
 // WithRelayAcceptanceMinWait sets the minimum wait before selecting relay candidates.
 func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.relayAcceptanceMinWait = wait
 		a.relayAcceptanceMinWaitExplicit = true
 
@@ -524,10 +468,6 @@ func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
 // WithSTUNGatherTimeout sets the STUN gather timeout.
 func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.stunGatherTimeout = timeout
 
 		return nil
@@ -537,10 +477,6 @@ func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
 // WithIPFilter sets a filter for IP addresses used during candidate gathering.
 func WithIPFilter(filter func(net.IP) bool) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.ipFilter = filter
 
 		return nil
@@ -551,10 +487,6 @@ func WithIPFilter(filter func(net.IP) bool) AgentOption {
 // Candidates for which this function returns false are ignored.
 func WithRemoteIPFilter(filter func(net.IP) bool) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.remoteIPFilter = filter
 
 		return nil
@@ -564,10 +496,6 @@ func WithRemoteIPFilter(filter func(net.IP) bool) AgentOption {
 // WithNet sets the underlying network implementation for the agent.
 func WithNet(net transport.Net) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.net = net
 
 		return nil
@@ -577,10 +505,6 @@ func WithNet(net transport.Net) AgentOption {
 // WithMulticastDNSMode configures mDNS behavior for the agent.
 func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.mDNSMode = mode
 
 		return nil
@@ -590,10 +514,6 @@ func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
 // WithMulticastDNSHostName sets the mDNS host name used by the agent.
 func WithMulticastDNSHostName(hostName string) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		if !strings.HasSuffix(hostName, ".local") || len(strings.Split(hostName, ".")) != 2 {
 			return ErrInvalidMulticastDNSHostName
 		}
@@ -608,10 +528,6 @@ func WithMulticastDNSHostName(hostName string) AgentOption {
 // If empty strings are provided, the agent will generate values during Restart.
 func WithLocalCredentials(ufrag, pwd string) AgentOption {
 	return func(a *Agent) error { //nolint:varnamelen
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		if err := validateLocalCredentials(ufrag, pwd); err != nil {
 			return err
 		}
@@ -626,10 +542,6 @@ func WithLocalCredentials(ufrag, pwd string) AgentOption {
 // WithTCPMux sets the TCP mux for ICE TCP multiplexing.
 func WithTCPMux(tcpMux TCPMux) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.tcpMux = tcpMux
 
 		return nil
@@ -639,10 +551,6 @@ func WithTCPMux(tcpMux TCPMux) AgentOption {
 // WithUDPMux sets the UDP mux used for multiplexing host candidates.
 func WithUDPMux(udpMux UDPMux) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.udpMux = udpMux
 
 		return nil
@@ -652,10 +560,6 @@ func WithUDPMux(udpMux UDPMux) AgentOption {
 // WithUDPMuxSrflx sets the UDP mux for server reflexive candidates.
 func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.udpMuxSrflx = udpMuxSrflx
 
 		return nil
@@ -665,10 +569,6 @@ func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
 // WithProxyDialer sets the proxy dialer used for TURN over TCP/TLS/DTLS connections.
 func WithProxyDialer(dialer proxy.Dialer) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.proxyDialer = dialer
 
 		return nil
@@ -678,10 +578,6 @@ func WithProxyDialer(dialer proxy.Dialer) AgentOption {
 // WithMaxBindingRequests sets the maximum number of binding requests before considering a pair failed.
 func WithMaxBindingRequests(limit uint16) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.maxBindingRequests = limit
 
 		return nil
@@ -691,10 +587,6 @@ func WithMaxBindingRequests(limit uint16) AgentOption {
 // WithCheckInterval sets how often the agent runs connectivity checks while connecting.
 func WithCheckInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.checkInterval = interval
 
 		return nil
@@ -714,10 +606,6 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 //	agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 func WithRenomination(generator NominationValueGenerator) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		if generator == nil {
 			return ErrInvalidNominationValueGenerator
 		}
@@ -737,10 +625,6 @@ func WithRenomination(generator NominationValueGenerator) AgentOption {
 // Additional validation may be added in the future.
 func WithNominationAttribute(attrType uint16) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		// Basic validation: ensure it's not the reserved 0x0000
 		if attrType == 0x0000 {
 			return ErrInvalidNominationAttribute
@@ -760,10 +644,6 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 //	agent, err := NewAgent(WithIncludeLoopback())
 func WithIncludeLoopback() AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.includeLoopback = true
 
 		return nil
@@ -780,10 +660,6 @@ func WithIncludeLoopback() AgentOption {
 //	agent, err := NewAgent(WithTCPPriorityOffset(50))
 func WithTCPPriorityOffset(offset uint16) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.tcpPriorityOffset = offset
 
 		return nil
@@ -799,10 +675,6 @@ func WithTCPPriorityOffset(offset uint16) AgentOption {
 //	agent, err := NewAgent(WithDisableActiveTCP())
 func WithDisableActiveTCP() AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.disableActiveTCP = true
 
 		return nil
@@ -826,10 +698,6 @@ func WithBindingRequestHandler(
 	handler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool,
 ) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.userBindingRequestHandler = handler
 
 		return nil
@@ -847,10 +715,6 @@ func WithBindingRequestHandler(
 //	agent, err := NewAgent(WithEnableUseCandidateCheckPriority())
 func WithEnableUseCandidateCheckPriority() AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.enableUseCandidateCheckPriority = true
 
 		return nil
@@ -867,10 +731,6 @@ func WithEnableUseCandidateCheckPriority() AgentOption {
 //	agent, err := NewAgent(WithContinualGatheringPolicy(GatherContinually))
 func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.continualGatheringPolicy = policy
 
 		return nil
@@ -890,10 +750,6 @@ func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 //	)
 func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		if interval <= 0 {
 			return ErrInvalidNetworkMonitorInterval
 		}
@@ -915,10 +771,6 @@ func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 //	)
 func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		normalized, err := sanitizeTransportNetworkTypes(networkTypes)
 		if err != nil {
 			return err
@@ -938,10 +790,6 @@ func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
 // NetworkTypeUDP4/UDP6 and NetworkTypeTCP4/TCP6.
 func WithTURNTransportProtocols(protocols []NetworkType) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		normalized, err := sanitizeTransportNetworkTypes(protocols)
 		if err != nil {
 			return err
@@ -986,10 +834,6 @@ func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {
 //	)
 func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.candidateTypes = candidateTypes
 
 		return nil
@@ -1015,10 +859,6 @@ func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 //	)
 func WithAutomaticRenomination(interval time.Duration) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.automaticRenomination = true
 		if interval > 0 {
 			a.renominationInterval = interval
@@ -1044,10 +884,6 @@ func WithAutomaticRenomination(interval time.Duration) AgentOption {
 //	)
 func WithInterfaceFilter(filter func(string) bool) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.interfaceFilter = filter
 
 		return nil
@@ -1065,10 +901,6 @@ func WithInterfaceFilter(filter func(string) bool) AgentOption {
 //	agent, err := NewAgent(WithLoggerFactory(loggerFactory))
 func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		// Logger factory will be passed down to objects created by the agent
 		a.loggerFactory = loggerFactory
 		a.log = loggerFactory.NewLogger("ice")
@@ -1081,10 +913,6 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 // By default, certificates are verified.
 func WithInsecureSkipVerify(insecureSkipVerify bool) AgentOption {
 	return func(a *Agent) error {
-		if a.constructed {
-			return ErrAgentOptionNotUpdatable
-		}
-
 		a.insecureSkipVerify = insecureSkipVerify
 
 		return nil
