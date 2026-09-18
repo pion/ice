@@ -33,7 +33,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	candidateID := config.CandidateID
 
 	if candidateID == "" {
-		candidateID = globalCandidateIDGenerator.Generate()
+		candidateID = generateCandidateID()
 	}
 
 	candidateHost := &CandidateHost{
