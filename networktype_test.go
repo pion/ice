@@ -62,7 +62,7 @@ func TestNetworkTypeIsTCP(t *testing.T) {
 
 func TestNetworkType_String_Default(t *testing.T) {
 	var invalid NetworkType // 0 triggers default branch
-	require.Equal(t, ErrUnknownType.Error(), invalid.String())
+	require.Equal(t, "unknown", invalid.String())
 
 	require.Equal(t, "udp4", NetworkTypeUDP4.String())
 	require.Equal(t, "udp6", NetworkTypeUDP6.String())
@@ -72,7 +72,7 @@ func TestNetworkType_String_Default(t *testing.T) {
 
 func TestNetworkType_NetworkShort_Default(t *testing.T) {
 	var invalid NetworkType
-	require.Equal(t, ErrUnknownType.Error(), invalid.NetworkShort())
+	require.Equal(t, "unknown", invalid.NetworkShort())
 
 	require.Equal(t, udp, NetworkTypeUDP4.NetworkShort())
 	require.Equal(t, udp, NetworkTypeUDP6.NetworkShort())

@@ -46,6 +46,6 @@ func (t TCPType) String() string {
 	case TCPTypeSimultaneousOpen:
 		return "so"
 	default:
-		return ErrUnknownType.Error()
+		return unknownStr
 	}
 }

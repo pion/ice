@@ -10,9 +10,6 @@ import (
 )
 
 var (
-	// ErrUnknownType indicates an error with Unknown info.
-	ErrUnknownType = errors.New("Unknown")
-
 	// ErrPort indicates malformed port is provided.
 	ErrPort = errors.New("invalid port")
 

@@ -34,7 +34,7 @@ func TestGatheringState_String(t *testing.T) {
 		gatheringState GatheringState
 		expectedString string
 	}{
-		{GatheringStateUnknown, ErrUnknownType.Error()},
+		{GatheringStateUnknown, "unknown"},
 		{GatheringStateNew, "new"},
 		{GatheringStateGathering, "gathering"},
 		{GatheringStateComplete, "complete"},

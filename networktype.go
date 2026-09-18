@@ -55,7 +55,7 @@ func (t NetworkType) String() string {
 	case NetworkTypeTCP6:
 		return tcp6
 	default:
-		return ErrUnknownType.Error()
+		return unknownStr
 	}
 }
 
@@ -77,7 +77,7 @@ func (t NetworkType) NetworkShort() string {
 	case NetworkTypeTCP4, NetworkTypeTCP6:
 		return tcp
 	default:
-		return ErrUnknownType.Error()
+		return unknownStr
 	}
 }
 
