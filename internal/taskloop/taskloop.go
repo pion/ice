@@ -10,8 +10,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	atomicx "github.com/pion/ice/v4/internal/atomic"
 )
 
 // ErrClosed indicates that the loop has been stopped.
@@ -30,7 +28,6 @@ type Loop struct {
 	done         chan struct{}
 	taskLoopDone chan struct{}
 	closeOnce    sync.Once
-	err          atomicx.Error
 }
 
 // New creates and starts a new task loop.
@@ -75,8 +72,6 @@ func (l *Loop) Close() {
 // current task to return.
 func (l *Loop) CloseWithPreStop(preStop func()) {
 	l.closeOnce.Do(func() {
-		l.err.Store(ErrClosed)
-
 		close(l.done)
 		if preStop != nil {
 			preStop()
