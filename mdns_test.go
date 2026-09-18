@@ -39,9 +39,9 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			cfg := &AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, InterfaceFilter: problematicNetworkInterfaces}
+			cfg := []AgentOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces)}
 
-			aAgent, err := NewAgent(cfg)
+			aAgent, err := NewAgent(cfg...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, aAgent.Close())
@@ -50,7 +50,7 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 			aNotifier, aConnected := onConnected()
 			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-			bAgent, err := NewAgent(cfg)
+			bAgent, err := NewAgent(cfg...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, bAgent.Close())
@@ -85,7 +85,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			aAgent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, InterfaceFilter: problematicNetworkInterfaces})
+			aAgent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, aAgent.Close())
@@ -94,7 +94,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 			aNotifier, aConnected := onConnected()
 			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-			bAgent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryOnly, InterfaceFilter: problematicNetworkInterfaces})
+			bAgent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryOnly), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, bAgent.Close())
@@ -128,10 +128,10 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, MulticastDNSHostName: "invalidHostName", InterfaceFilter: problematicNetworkInterfaces})
+			_, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("invalidHostName"), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.Equal(t, err, ErrInvalidMulticastDNSHostName)
 
-			agent, err := NewAgent(&AgentConfig{NetworkTypes: tc.NetworkTypes, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeQueryAndGather, MulticastDNSHostName: "validName.local", InterfaceFilter: problematicNetworkInterfaces})
+			agent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("validName.local"), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())

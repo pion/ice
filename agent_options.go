@@ -17,6 +17,67 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const (
+	// defaultCheckInterval is the interval at which the agent performs candidate checks in the connecting phase.
+	defaultCheckInterval = 200 * time.Millisecond
+
+	// keepaliveInterval used to keep candidates alive.
+	defaultKeepaliveInterval = 2 * time.Second
+
+	// defaultDisconnectedTimeout is the default time till an Agent transitions disconnected.
+	defaultDisconnectedTimeout = 5 * time.Second
+
+	// defaultLiteDisconnectedTimeout uses the RFC 7675 consent-expiry period as a
+	// conservative receive-idle window for lite Agents.
+	defaultLiteDisconnectedTimeout = 10 * time.Second
+
+	// defaultFailedTimeout is the default time till an Agent transitions to failed after disconnected.
+	defaultFailedTimeout = 25 * time.Second
+
+	// defaultHostAcceptanceMinWait is the wait time before nominating a host candidate.
+	defaultHostAcceptanceMinWait = 0
+
+	// defaultSrflxAcceptanceMinWait is the wait time before nominating a srflx candidate.
+	defaultSrflxAcceptanceMinWait = 500 * time.Millisecond
+
+	// defaultPrflxAcceptanceMinWait is the wait time before nominating a prflx candidate.
+	defaultPrflxAcceptanceMinWait = 1000 * time.Millisecond
+
+	// defaultRelayAcceptanceMinWait is the wait time before nominating a relay candidate.
+	defaultRelayAcceptanceMinWait = 2000 * time.Millisecond
+
+	// defaultRelayOnlyAcceptanceMinWait is the wait time before nominating with a relay only candidate.
+	defaultRelayOnlyAcceptanceMinWait = time.Duration(0)
+
+	// defaultSTUNGatherTimeout is the wait time for STUN responses.
+	defaultSTUNGatherTimeout = 5 * time.Second
+
+	// defaultMaxBindingRequests is the maximum number of binding requests before considering a pair failed.
+	defaultMaxBindingRequests = 7
+
+	// TCPPriorityOffset is a number which is subtracted from the default (UDP) candidate type preference
+	// for host, srflx and prfx candidate types.
+	defaultTCPPriorityOffset = 27
+
+	// maxBufferSize is the number of bytes that can be buffered before we start to error.
+	maxBufferSize = 1000 * 1000 // 1MB
+
+	// maxBindingRequestTimeout is the wait time before binding requests can be deleted.
+	maxBindingRequestTimeout = 4000 * time.Millisecond
+)
+
+func defaultCandidateTypes() []CandidateType {
+	return []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive, CandidateTypeRelay}
+}
+
+func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Duration {
+	if len(candidateTypes) == 1 && candidateTypes[0] == CandidateTypeRelay {
+		return defaultRelayOnlyAcceptanceMinWait
+	}
+
+	return defaultRelayAcceptanceMinWait
+}
+
 // AgentOption represents a function that can be used to configure an Agent.
 type AgentOption func(*Agent) error
 
@@ -116,7 +177,7 @@ func appendAddressRewriteRules(agent *Agent, rules ...AddressRewriteRule) error 
 
 func sanitizeAddressRewriteRule(rule AddressRewriteRule) (AddressRewriteRule, error) {
 	if !validPortMapping(rule.OriginalPort, rule.NewPort) {
-		return AddressRewriteRule{}, ErrInvalidNAT1To1IPMapping
+		return AddressRewriteRule{}, ErrInvalidAddressRewriteMapping
 	}
 
 	cleaned, err := sanitizeExternalIPs(rule.External)
@@ -137,7 +198,7 @@ func sanitizeAddressRewriteRule(rule AddressRewriteRule) (AddressRewriteRule, er
 		normalized.Mode = defaultAddressRewriteMode(normalized.AsCandidateType)
 	case AddressRewriteReplace, AddressRewriteAppend:
 	default:
-		return AddressRewriteRule{}, ErrInvalidNAT1To1IPMapping
+		return AddressRewriteRule{}, ErrInvalidAddressRewriteMapping
 	}
 	if len(rule.Networks) > 0 {
 		normalized.Networks = append([]NetworkType(nil), rule.Networks...)
@@ -172,10 +233,6 @@ func sanitizeExternalIPs(ips []string) ([]string, error) {
 			continue
 		}
 
-		if strings.Contains(trimmed, "/") {
-			return nil, ErrInvalidNAT1To1IPMapping
-		}
-
 		if _, _, err := validateIPString(trimmed); err != nil && !validateFQDN(trimmed) {
 			return nil, err
 		}
@@ -184,7 +241,7 @@ func sanitizeExternalIPs(ips []string) ([]string, error) {
 		sanitized = append(sanitized, trimmed)
 	}
 	if len(sanitized) == 0 {
-		return nil, ErrInvalidNAT1To1IPMapping
+		return nil, ErrInvalidAddressRewriteMapping
 	}
 
 	return sanitized, nil
@@ -474,6 +531,7 @@ func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
 		}
 
 		a.relayAcceptanceMinWait = wait
+		a.relayAcceptanceMinWaitExplicit = true
 
 		return nil
 	}
@@ -669,7 +727,7 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(config, WithRenomination(DefaultNominationValueGenerator()))
+//	agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 func WithRenomination(generator NominationValueGenerator) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -715,7 +773,7 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(WithIncludeLoopback())
+//	agent, err := NewAgent(WithIncludeLoopback())
 func WithIncludeLoopback() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -735,7 +793,7 @@ func WithIncludeLoopback() AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(WithTCPPriorityOffset(50))
+//	agent, err := NewAgent(WithTCPPriorityOffset(50))
 func WithTCPPriorityOffset(offset uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -754,7 +812,7 @@ func WithTCPPriorityOffset(offset uint16) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(WithDisableActiveTCP())
+//	agent, err := NewAgent(WithDisableActiveTCP())
 func WithDisableActiveTCP() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -779,7 +837,7 @@ func WithDisableActiveTCP() AgentOption {
 //		log.Printf("Binding request from %s to %s", remote.Address(), local.Address())
 //		return true // Accept the request
 //	}
-//	agent, err := NewAgentWithOptions(WithBindingRequestHandler(handler))
+//	agent, err := NewAgent(WithBindingRequestHandler(handler))
 func WithBindingRequestHandler(
 	handler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool,
 ) AgentOption {
@@ -802,7 +860,7 @@ func WithBindingRequestHandler(
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(WithEnableUseCandidateCheckPriority())
+//	agent, err := NewAgent(WithEnableUseCandidateCheckPriority())
 func WithEnableUseCandidateCheckPriority() AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -822,7 +880,7 @@ func WithEnableUseCandidateCheckPriority() AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(WithContinualGatheringPolicy(GatherContinually))
+//	agent, err := NewAgent(WithContinualGatheringPolicy(GatherContinually))
 func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -842,7 +900,7 @@ func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(
+//	agent, err := NewAgent(
 //		WithContinualGatheringPolicy(GatherContinually),
 //		WithNetworkMonitorInterval(5 * time.Second),
 //	)
@@ -868,7 +926,7 @@ func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(
+//	agent, err := NewAgent(
 //		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
 //	)
 func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
@@ -939,7 +997,7 @@ func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(
+//	agent, err := NewAgent(
 //		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
 //	)
 func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
@@ -967,7 +1025,7 @@ func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
 //
 // Example:
 //
-//	agent, err := NewAgentWithOptions(
+//	agent, err := NewAgent(
 //		WithRenomination(DefaultNominationValueGenerator()),
 //		WithAutomaticRenomination(3*time.Second),
 //	)
@@ -995,7 +1053,7 @@ func WithAutomaticRenomination(interval time.Duration) AgentOption {
 // Example:
 //
 //	// Only use interfaces starting with "eth"
-//	agent, err := NewAgentWithOptions(
+//	agent, err := NewAgent(
 //		WithInterfaceFilter(func(interfaceName string) bool {
 //			return len(interfaceName) >= 3 && interfaceName[:3] == "eth"
 //		}),
@@ -1020,7 +1078,7 @@ func WithInterfaceFilter(filter func(string) bool) AgentOption {
 //
 //	loggerFactory := logging.NewDefaultLoggerFactory()
 //	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
-//	agent, err := NewAgentWithOptions(WithLoggerFactory(loggerFactory))
+//	agent, err := NewAgent(WithLoggerFactory(loggerFactory))
 func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
@@ -1030,6 +1088,20 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 		// Logger factory will be passed down to objects created by the agent
 		a.loggerFactory = loggerFactory
 		a.log = loggerFactory.NewLogger("ice")
+
+		return nil
+	}
+}
+
+// WithInsecureSkipVerify controls whether TURN TLS and DTLS connections skip certificate verification.
+// By default, certificates are verified.
+func WithInsecureSkipVerify(insecureSkipVerify bool) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.insecureSkipVerify = insecureSkipVerify
 
 		return nil
 	}

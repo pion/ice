@@ -52,7 +52,7 @@ func (m *mockPacketConnWithCapture) SetWriteDeadline(time.Time) error { return n
 func createRenominationTestAgent(t *testing.T, controlling bool) (*Agent, Candidate, Candidate) {
 	t.Helper()
 
-	agent, err := NewAgentWithOptions(WithRenomination(func() uint32 { return 1 }))
+	agent, err := NewAgent(WithRenomination(func() uint32 { return 1 }))
 	assert.NoError(t, err)
 
 	agent.isControlling.Store(controlling)
@@ -110,7 +110,7 @@ func TestNominationAttribute(t *testing.T) {
 func TestRenominationConfiguration(t *testing.T) {
 	nominationCounter := uint32(0)
 
-	agent, err := NewAgentWithOptions(WithRenomination(func() uint32 {
+	agent, err := NewAgent(WithRenomination(func() uint32 {
 		nominationCounter++
 
 		return nominationCounter
@@ -131,7 +131,7 @@ func TestRenominationConfiguration(t *testing.T) {
 }
 
 func TestControlledSelectorNominationAcceptance(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
+	agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 	assert.NoError(t, err)
 	defer func() {
 		assert.NoError(t, agent.Close())
@@ -161,11 +161,9 @@ func TestControlledSelectorNominationAcceptance(t *testing.T) {
 }
 
 func TestControlledSelectorNominationDisabled(t *testing.T) {
-	config := &AgentConfig{
-		// Renomination disabled by default
-	}
+	config := []AgentOption{}
 
-	agent, err := NewAgent(config)
+	agent, err := NewAgent(config...)
 	assert.NoError(t, err)
 	defer func() {
 		assert.NoError(t, agent.Close())
@@ -192,7 +190,7 @@ func TestControlledSelectorNominationDisabled(t *testing.T) {
 func TestAgentRenominateCandidate(t *testing.T) {
 	t.Run("controlling agent can renominate", func(t *testing.T) {
 		nominationCounter := uint32(0)
-		agent, err := NewAgentWithOptions(WithRenomination(func() uint32 {
+		agent, err := NewAgent(WithRenomination(func() uint32 {
 			nominationCounter++
 
 			return nominationCounter
@@ -243,11 +241,9 @@ func TestAgentRenominateCandidate(t *testing.T) {
 	})
 
 	t.Run("renomination when disabled", func(t *testing.T) {
-		config := &AgentConfig{
-			// Renomination disabled by default
-		}
+		config := []AgentOption{}
 
-		agent, err := NewAgent(config)
+		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -282,7 +278,7 @@ func TestAgentRenominateCandidate(t *testing.T) {
 func TestSendNominationRequest(t *testing.T) {
 	t.Run("STUN message contains nomination attribute", func(t *testing.T) {
 		nominationCounter := uint32(0)
-		agent, err := NewAgentWithOptions(WithRenomination(func() uint32 {
+		agent, err := NewAgent(WithRenomination(func() uint32 {
 			nominationCounter++
 
 			return nominationCounter
@@ -355,11 +351,9 @@ func TestSendNominationRequest(t *testing.T) {
 	})
 
 	t.Run("STUN message without nomination when disabled", func(t *testing.T) {
-		config := &AgentConfig{
-			// Renomination disabled by default
-		}
+		config := []AgentOption{}
 
-		agent, err := NewAgent(config)
+		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -406,11 +400,11 @@ func TestSendNominationRequest(t *testing.T) {
 func TestRenominationErrorCases(t *testing.T) {
 	t.Run("getNominationValue with nil generator", func(t *testing.T) {
 		// Try to create agent with nil generator - should fail
-		_, err := NewAgentWithOptions(WithRenomination(nil))
+		_, err := NewAgent(WithRenomination(nil))
 		assert.ErrorIs(t, err, ErrInvalidNominationValueGenerator)
 
 		// Create agent without renomination for testing
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -422,7 +416,7 @@ func TestRenominationErrorCases(t *testing.T) {
 	})
 
 	t.Run("STUN message build with invalid attributes", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithRenomination(func() uint32 { return 1 }))
+		agent, err := NewAgent(WithRenomination(func() uint32 { return 1 }))
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -555,7 +549,7 @@ func TestNominationValueBoundaries(t *testing.T) {
 
 func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 	t.Run("HandleBindingRequest with nomination attribute", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
+		agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -638,7 +632,7 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 	})
 
 	t.Run("HandleBindingRequest without nomination attribute", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
+		agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -683,10 +677,10 @@ func TestControlledSelectorWithActualSTUNMessages(t *testing.T) {
 
 func TestInvalidRenominationConfig(t *testing.T) {
 	t.Run("nil nomination generator with renomination enabled", func(t *testing.T) {
-		config := &AgentConfig{}
+		config := []AgentOption{}
 
 		// Without renomination, agent should work fine
-		agent, err := NewAgent(config)
+		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent.Close())
@@ -703,7 +697,7 @@ func TestInvalidRenominationConfig(t *testing.T) {
 
 	t.Run("different generator behaviors", func(t *testing.T) {
 		// Test constant generator
-		agent1, err := NewAgentWithOptions(WithRenomination(func() uint32 { return 42 }))
+		agent1, err := NewAgent(WithRenomination(func() uint32 { return 42 }))
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, agent1.Close())
@@ -716,7 +710,7 @@ func TestInvalidRenominationConfig(t *testing.T) {
 
 		// Test incrementing generator
 		counter := uint32(0)
-		agent2, err := NewAgentWithOptions(WithRenomination(func() uint32 {
+		agent2, err := NewAgent(WithRenomination(func() uint32 {
 			counter++
 
 			return counter
@@ -734,9 +728,7 @@ func TestInvalidRenominationConfig(t *testing.T) {
 
 	t.Run("controlled agent handles renomination regardless of local config", func(t *testing.T) {
 		// Create controlled agent with renomination DISABLED
-		controlledAgent, err := NewAgent(&AgentConfig{
-			// Renomination disabled by default // Disabled locally
-		})
+		controlledAgent, err := NewAgent()
 		assert.NoError(t, err)
 		defer func() {
 			assert.NoError(t, controlledAgent.Close())
@@ -773,7 +765,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 		customAttr := uint16(0x0042)
 
 		// Create agent with custom nomination attribute using option
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithRenomination(func() uint32 { return 100 }),
 			WithNominationAttribute(customAttr),
 		)
@@ -786,9 +778,9 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 
 	t.Run("agent uses default nomination attribute when not configured", func(t *testing.T) {
 		// Create agent without custom nomination attribute
-		agentConfig := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
+		agentConfig := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
 
-		agent, err := NewAgent(agentConfig)
+		agent, err := NewAgent(agentConfig...)
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -800,7 +792,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 		customAttr := uint16(0x0055)
 
 		// Test that multiple options can be applied
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithRenomination(func() uint32 { return 200 }),
 			WithNominationAttribute(customAttr),
 		)
@@ -812,7 +804,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 
 	t.Run("WithNominationAttribute returns error for invalid value", func(t *testing.T) {
 		// Test that 0x0000 is rejected as invalid
-		_, err := NewAgentWithOptions(WithNominationAttribute(0x0000))
+		_, err := NewAgent(WithNominationAttribute(0x0000))
 		assert.ErrorIs(t, err, ErrInvalidNominationAttribute)
 	})
 }

@@ -29,7 +29,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 		n, err := vnet.NewNet(&vnet.NetConfig{})
 		require.NoError(t, err)
 
-		a, err := NewAgent(&AgentConfig{Net: n})
+		a, err := NewAgent(WithNet(n))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -53,7 +53,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 
 		require.NoError(t, router.AddNet(nw))
 
-		a, err := NewAgent(&AgentConfig{Net: nw})
+		a, err := NewAgent(WithNet(nw))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -78,7 +78,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 
 		require.NoError(t, router.AddNet(nw))
 
-		agent, err := NewAgent(&AgentConfig{Net: nw})
+		agent, err := NewAgent(WithNet(nw))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -156,7 +156,13 @@ func TestVNetGatherNAT1To1SocketAddresses(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, router.AddNet(nw))
 
-	agent, err := NewAgent(&AgentConfig{Net: nw, NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeHost}, MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: []string{"1.2.3.4/10.0.0.1", "1.2.3.5/10.0.0.2"}})
+	agent, err := NewAgent(
+		WithNet(nw),
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}, Local: "10.0.0.1"}, AddressRewriteRule{External: []string{"1.2.3.5"}, Local: "10.0.0.2"}),
+	)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -194,7 +200,7 @@ func TestGatherAddressRewriteSrflxModes(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			mux := newMockUniversalUDPMux([]net.Addr{&net.UDPAddr{IP: net.ParseIP("10.0.0.1"), Port: 2345}}, &stun.XORMappedAddress{IP: net.ParseIP("198.51.100.10"), Port: 5000})
-			agent, err := NewAgentWithOptions(
+			agent, err := NewAgent(
 				WithNet(nw),
 				WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 				WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
@@ -236,14 +242,11 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	require.NoError(t, router.AddNet(nw))
 
 	t.Run("InterfaceFilter should exclude the interface", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{
-			Net: nw,
-			InterfaceFilter: func(interfaceName string) (keep bool) {
-				require.Equal(t, "eth0", interfaceName)
+		agent, err := NewAgent(WithNet(nw), WithInterfaceFilter(func(interfaceName string) (keep bool) {
+			require.Equal(t, "eth0", interfaceName)
 
-				return false
-			},
-		})
+			return false
+		}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -255,14 +258,11 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	})
 
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{
-			Net: nw,
-			IPFilter: func(ip net.IP) (keep bool) {
-				require.Equal(t, net.IP{1, 2, 3, 1}, ip)
+		agent, err := NewAgent(WithNet(nw), WithIPFilter(func(ip net.IP) (keep bool) {
+			require.Equal(t, net.IP{1, 2, 3, 1}, ip)
 
-				return false
-			},
-		})
+			return false
+		}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -274,14 +274,11 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 	})
 
 	t.Run("InterfaceFilter should not exclude the interface", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{
-			Net: nw,
-			InterfaceFilter: func(interfaceName string) (keep bool) {
-				require.Equal(t, "eth0", interfaceName)
+		agent, err := NewAgent(WithNet(nw), WithInterfaceFilter(func(interfaceName string) (keep bool) {
+			require.Equal(t, "eth0", interfaceName)
 
-				return true
-			},
-		})
+			return true
+		}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -343,7 +340,7 @@ func TestGatherRelayWithVNet(t *testing.T) {
 		require.NoError(t, server.Close())
 	}()
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(clientNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
@@ -397,8 +394,8 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	require.NoError(t, err, "should succeed")
 	defer v.close()
 
-	cfg0 := &AgentConfig{Urls: []*stun.URI{turnServerURL}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: []string{vnetGlobalIPA}, Net: v.net0}
-	aAgent, err := NewAgent(cfg0)
+	cfg0 := []AgentOption{WithUrls([]*stun.URI{turnServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeHost}), WithNet(v.net0)}
+	aAgent, err := NewAgent(cfg0...)
 	require.NoError(t, err, "should succeed")
 	defer func() {
 		// Assert relay conn leak on close.

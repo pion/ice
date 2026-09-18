@@ -62,7 +62,11 @@ func TestMuxAgent(t *testing.T) {
 			loggerFactory := logging.NewDefaultLoggerFactory()
 			udpMux := newMuxForAddr(t, muxAddr, loggerFactory)
 
-			muxedA, err := NewAgent(&AgentConfig{UDPMux: udpMux, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}, IncludeLoopback: addr.IP.IsLoopback()})
+			opts := []AgentOption{WithUDPMux(udpMux), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+			if addr.IP.IsLoopback() {
+				opts = append(opts, WithIncludeLoopback())
+			}
+			muxedA, err := NewAgent(opts...)
 			require.NoError(t, err)
 			var muxedAClosed bool
 			defer func() {
@@ -72,7 +76,7 @@ func TestMuxAgent(t *testing.T) {
 				require.NoError(t, muxedA.Close())
 			}()
 
-			agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: supportedNetworkTypes()})
+			agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(supportedNetworkTypes()))
 			require.NoError(t, err)
 			var aClosed bool
 			defer func() {

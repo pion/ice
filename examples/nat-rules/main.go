@@ -332,7 +332,7 @@ func runScenario(ctx context.Context, sc scenario) error { //nolint:cyclop
 		}()
 	}
 
-	agent, err := ice.NewAgentWithOptions(opts...) //nolint:contextcheck
+	agent, err := ice.NewAgent(opts...) //nolint:contextcheck
 	if err != nil {
 		return fmt.Errorf("scenario %s: create agent: %w", sc.Key, err)
 	}

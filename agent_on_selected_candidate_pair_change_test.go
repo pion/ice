@@ -35,7 +35,7 @@ func TestOnSelectedCandidatePairChange(t *testing.T) {
 func fixtureTestOnSelectedCandidatePairChange(t *testing.T) (*Agent, *CandidatePair) {
 	t.Helper()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 
 	candidatePair := makeCandidatePair(t)

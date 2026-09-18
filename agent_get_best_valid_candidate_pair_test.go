@@ -40,7 +40,7 @@ func setupTestAgentGetBestValidCandidatePair(t *testing.T) *TestAgentGetBestVali
 	fixture.prflxRemote = newPrflxRemote(t)
 	fixture.hostRemote = newHostRemote(t)
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	fixture.sut = agent
 

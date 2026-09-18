@@ -258,31 +258,24 @@ func connect(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipe(tb testing.TB, defaultConfig *AgentConfig) (*Conn, *Conn) {
+func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
 	tb.Helper()
 	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg := &AgentConfig{}
-	if defaultConfig != nil {
-		*cfg = *defaultConfig
-	}
+	cfg := append([]AgentOption{WithNetworkTypes(supportedNetworkTypes())}, defaultConfig...)
+	cfg = append(cfg, WithUrls(urls))
 
-	cfg.Urls = urls
-	if cfg.NetworkTypes == nil {
-		cfg.NetworkTypes = supportedNetworkTypes()
-	}
-
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(tb, err)
 	require.NoError(tb, aAgent.OnConnectionStateChange(aNotifier))
 	tb.Cleanup(func() {
 		require.NoError(tb, aAgent.Close())
 	})
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(tb, err)
 
 	require.NoError(tb, bAgent.OnConnectionStateChange(bNotifier))
@@ -307,16 +300,16 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg := &AgentConfig{Urls: urls, DisconnectedTimeout: &disconnectTimeout, KeepaliveInterval: &iceKeepalive, NetworkTypes: supportedNetworkTypes()}
+	cfg := []AgentOption{WithUrls(urls), WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 	t.Cleanup(func() {
 		require.NoError(t, aAgent.Close())
 	})
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 	t.Cleanup(func() {
@@ -389,8 +382,8 @@ func TestConnStats(t *testing.T) {
 func TestAgent_connect_ErrEarly(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes()}
-	agent, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes())}
+	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
 	require.NoError(t, agent.Close())
@@ -411,8 +404,8 @@ func TestConn_Write_RejectsSTUN(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled}
-	a, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	a, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		_ = a.Close()
@@ -434,14 +427,14 @@ func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled}
-	agent, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
 	}()
 
-	b, err := NewAgent(cfg)
+	b, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, b.Close())
@@ -502,8 +495,8 @@ func TestConn_WriteToPair_InvalidID(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled}
-	agent, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		_ = agent.Close()
@@ -521,8 +514,8 @@ func TestConn_WriteToPair_NotSucceeded(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled}
-	agent, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		_ = agent.Close()
@@ -554,8 +547,8 @@ func TestConn_WriteToPair_RejectsSTUN(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled}
-	agent, err := NewAgent(cfg)
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		_ = agent.Close()
@@ -632,13 +625,7 @@ func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
 	// one candidate each and no keepalives: a single pair leaves nothing
 	// checking alongside the data path once it is connected.
 	noKeepalive := time.Duration(0)
-	ca, cb := pipe(t, &AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
-		IncludeLoopback:   true,
-		IPFilter:          net.IP.IsLoopback,
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		KeepaliveInterval: &noKeepalive,
-	})
+	ca, cb := pipe(t, []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)})
 	defer closePipe(t, ca, cb)
 
 	packet := make([]byte, 1200)
@@ -727,7 +714,7 @@ func TestConnWriteDoesNotAllocateOverStandardPacketConn(t *testing.T) {
 	_, supportsAddrPort := any(&discardPacketConn{}).(AddrPortReaderWriter)
 	require.False(t, supportsAddrPort, "discardPacketConn must be a standard-only PacketConn")
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -782,7 +769,7 @@ func TestCustomTCPMuxAddrPortCapability(t *testing.T) {
 }
 
 func BenchmarkUDPConnWriteRead(b *testing.B) {
-	ca, cb := pipe(b, &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}})
+	ca, cb := pipe(b, []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})})
 	defer closePipe(b, ca, cb)
 
 	// Note: this loop needs to keep the writes and reads synchronous to keep

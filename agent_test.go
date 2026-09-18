@@ -191,7 +191,7 @@ func TestAgentCloseAbortsBlockedCandidateWrite(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(2 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 
 	conn := newBlockingWritePacketConn()
@@ -243,7 +243,7 @@ func TestAgentCloseAbortsBlockedSharedCandidateWrite(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(2 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 
 	muxedConn := newBlockingMuxedPacketConn()
@@ -304,7 +304,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	defer test.TimeOut(time.Second * 2).Stop()
 
 	t.Run("UDP prflx candidate from handleInbound()", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -343,7 +343,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Resolved mDNS candidate is matched instead of creating prflx", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -387,7 +387,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("prflx candidate priority comes from inbound PRIORITY", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -420,7 +420,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Signaled host candidate replaces existing remote prflx candidate", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -487,7 +487,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Signaled srflx candidate replaces existing remote prflx candidate", func(t *testing.T) { // nolint:dupl
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -541,7 +541,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Signaled relay candidate replaces existing remote prflx candidate", func(t *testing.T) { // nolint:dupl
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -595,7 +595,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("AcceptanceMinWait: prflx not accepted until replaced", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -654,7 +654,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Bad network type with handleInbound()", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -674,7 +674,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("prflx candidate is stored even when network type is disabled", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -701,7 +701,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 
 	t.Run("Success from unknown remote, prflx candidate MUST only be created via Binding Request", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -732,7 +732,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 func TestAddRemoteCandidateStoresCandidatesIndependentlyOfNetworkTypes(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+	agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -795,18 +795,18 @@ func TestConnectivityOnStartup(t *testing.T) {
 	bNotifier, bConnected := onConnected()
 
 	KeepaliveInterval := time.Hour
-	cfg0 := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net0, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &KeepaliveInterval}
+	cfg0 := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net0), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(KeepaliveInterval)}
 
-	aAgent, err := NewAgent(cfg0)
+	aAgent, err := NewAgent(cfg0...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-	cfg1 := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: net1, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &KeepaliveInterval}
+	cfg1 := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(KeepaliveInterval)}
 
-	bAgent, err := NewAgent(cfg1)
+	bAgent, err := NewAgent(cfg1...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -871,7 +871,7 @@ func TestConnectivityLite(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	stunServerURL := &stun.URI{Scheme: SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP}
+	stunServerURL := &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP}
 
 	fullAgentNATType := &vnet.NATType{MappingBehavior: vnet.EndpointIndependent, FilteringBehavior: vnet.EndpointIndependent}
 	liteAgentNATType := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
@@ -882,18 +882,26 @@ func TestConnectivityLite(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg0 := &AgentConfig{Urls: []*stun.URI{stunServerURL}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: vent.net0}
+	cfg0 := []AgentOption{WithUrls([]*stun.URI{stunServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vent.net0)}
 
-	aAgent, err := NewAgent(cfg0)
+	aAgent, err := NewAgent(cfg0...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-	cfg1 := &AgentConfig{Urls: []*stun.URI{}, Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: vent.net1, NAT1To1IPs: []string{vnetGlobalIPB}}
+	cfg1 := []AgentOption{
+		WithUrls([]*stun.URI{}),
+		WithICELite(true),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes(supportedNetworkTypes()),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithNet(vent.net1),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPB}, AsCandidateType: CandidateTypeHost}),
+	}
 
-	bAgent, err := NewAgent(cfg1)
+	bAgent, err := NewAgent(cfg1...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -919,11 +927,18 @@ func TestLiteAgentDoesNotSendConnectivityChecks(t *testing.T) {
 	require.NoError(t, err)
 	defer virtualNet.close()
 
-	fullAgent, err := NewAgent(&AgentConfig{Urls: []*stun.URI{{Scheme: SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: virtualNet.net0})
+	fullAgent, err := NewAgent(WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(virtualNet.net0))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, fullAgent.Close()) }()
 
-	liteAgent, err := NewAgent(&AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, Net: virtualNet.net1, NAT1To1IPs: []string{vnetGlobalIPB}})
+	liteAgent, err := NewAgent(
+		WithICELite(true),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes(supportedNetworkTypes()),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithNet(virtualNet.net1),
+		WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPB}, AsCandidateType: CandidateTypeHost}),
+	)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, liteAgent.Close()) }()
 
@@ -974,7 +989,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	require.NoError(t, err)
 
 	t.Run("Invalid Binding requests should be discarded", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -988,7 +1003,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Invalid Binding success responses should be discarded", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -999,7 +1014,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Discard non-binding messages", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -1010,7 +1025,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Valid bind request", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -1027,7 +1042,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Valid bind without fingerprint", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -1045,7 +1060,7 @@ func TestInboundValidity(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Success with invalid TransactionID", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -1073,7 +1088,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 	newTestAgent := func(t *testing.T) *Agent {
 		t.Helper()
 
-		agent, err := NewAgentWithOptions(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+		agent, err := NewAgent(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 		require.NoError(t, err)
 
 		return agent
@@ -1189,7 +1204,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 	})
 
 	t.Run("Binding request from blocked prflx address is discarded", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithNet(newStubNet(t)),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
@@ -1218,7 +1233,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 
 	t.Run("Binding request prflx filter is called once", func(t *testing.T) {
 		filterCalls := 0
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithNet(newStubNet(t)),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
@@ -1252,7 +1267,7 @@ func TestHandleInboundAdditionalCases(t *testing.T) {
 func TestInvalidAgentStarts(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1285,11 +1300,11 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 
-	cfg := &AgentConfig{Urls: []*stun.URI{}, NetworkTypes: supportedNetworkTypes(), DisconnectedTimeout: &disconnectedDuration, FailedTimeout: &failedDuration, KeepaliveInterval: &KeepaliveInterval, InterfaceFilter: problematicNetworkInterfaces}
+	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithInterfaceFilter(problematicNetworkInterfaces)}
 
 	isClosed := make(chan any)
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		select {
@@ -1300,7 +1315,7 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		select {
@@ -1347,7 +1362,7 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 
 func TestInvalidGather(t *testing.T) {
 	t.Run("Gather with no OnCandidate should error", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
@@ -1364,7 +1379,7 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1464,7 +1479,7 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1521,7 +1536,7 @@ func TestLocalCandidateStats(t *testing.T) { //nolint:cyclop
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1569,7 +1584,7 @@ func TestRemoteCandidateStats(t *testing.T) { //nolint:cyclop
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1631,7 +1646,7 @@ func TestBindingRequestTimeout(t *testing.T) {
 
 	const expectedRemovalCount = 2
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1668,7 +1683,7 @@ func TestAgentCredentials(t *testing.T) {
 	// Agent should not require any of the usernames and password to be set
 	// If set, they should follow the default 16/128 bits random number generator strategy
 
-	agent, err := NewAgent(&AgentConfig{LoggerFactory: log})
+	agent, err := NewAgent(WithLoggerFactory(log))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1681,10 +1696,10 @@ func TestAgentCredentials(t *testing.T) {
 	// random number generator output used to generate the password, and
 	// at least 24 bits of output to generate the username fragment.
 
-	_, err = NewAgent(&AgentConfig{LocalUfrag: "xx", LoggerFactory: log})
+	_, err = NewAgent(WithLocalCredentials("xx", ""), WithLoggerFactory(log))
 	require.EqualError(t, err, ErrLocalUfragInsufficientBits.Error())
 
-	_, err = NewAgent(&AgentConfig{LocalPwd: "xxxxxx", LoggerFactory: log})
+	_, err = NewAgent(WithLoggerFactory(log), WithLocalCredentials("", "xxxxxx"))
 	require.EqualError(t, err, ErrLocalPwdInsufficientBits.Error())
 }
 
@@ -1698,15 +1713,15 @@ func TestConnectionStateFailedDeleteAllCandidates(t *testing.T) {
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond, KeepaliveInterval: &KeepaliveInterval}
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -1740,15 +1755,15 @@ func TestConnectionStateConnectingToFailed(t *testing.T) {
 	oneSecond := time.Second
 	KeepaliveInterval := time.Duration(0)
 
-	cfg := &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond, KeepaliveInterval: &KeepaliveInterval}
+	cfg := []AgentOption{WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -1797,7 +1812,7 @@ func TestAgentRestart(t *testing.T) {
 	oneSecond := time.Second
 
 	t.Run("Restart During Gather", func(t *testing.T) {
-		connA, connB := pipe(t, &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond})
+		connA, connB := pipe(t, []AgentOption{WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond)})
 		defer closePipe(t, connA, connB)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1814,7 +1829,7 @@ func TestAgentRestart(t *testing.T) {
 	})
 
 	t.Run("Restart When Closed", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		require.NoError(t, agent.Close())
 
@@ -1822,7 +1837,7 @@ func TestAgentRestart(t *testing.T) {
 	})
 
 	t.Run("Restart One Side", func(t *testing.T) {
-		connA, connB := pipe(t, &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond})
+		connA, connB := pipe(t, []AgentOption{WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond)})
 		defer closePipe(t, connA, connB)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1856,7 +1871,7 @@ func TestAgentRestart(t *testing.T) {
 		}
 
 		// Store the original candidates, confirm that after we reconnect we have new pairs
-		connA, connB := pipe(t, &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond})
+		connA, connB := pipe(t, []AgentOption{WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond)})
 		defer closePipe(t, connA, connB)
 
 		aFirstGeneration := connA.agent.gatherGeneration
@@ -1918,8 +1933,7 @@ func TestAgentRestart(t *testing.T) {
 }
 
 func TestGetRemoteCredentials(t *testing.T) {
-	var config AgentConfig
-	agent, err := NewAgent(&config)
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1936,9 +1950,7 @@ func TestGetRemoteCredentials(t *testing.T) {
 }
 
 func TestGetRemoteCandidates(t *testing.T) {
-	var config AgentConfig
-
-	agent, err := NewAgent(&config)
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1963,11 +1975,9 @@ func TestGetRemoteCandidates(t *testing.T) {
 }
 
 func TestRemoteIPFilterInAddRemoteCandidate(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{
-		RemoteIPFilter: func(ip net.IP) (keep bool) {
-			return !ip.Equal(net.IPv4(203, 0, 113, 9))
-		},
-	})
+	agent, err := NewAgent(WithRemoteIPFilter(func(ip net.IP) (keep bool) {
+		return !ip.Equal(net.IPv4(203, 0, 113, 9))
+	}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1989,11 +1999,9 @@ func TestRemoteIPFilterInAddRemoteCandidate(t *testing.T) {
 }
 
 func TestAddRemoteCandidateHonorsRemoteIPFilter(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{
-		RemoteIPFilter: func(ip net.IP) (keep bool) {
-			return !ip.Equal(net.IPv4(203, 0, 113, 11))
-		},
-	})
+	agent, err := NewAgent(WithRemoteIPFilter(func(ip net.IP) (keep bool) {
+		return !ip.Equal(net.IPv4(203, 0, 113, 11))
+	}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2019,7 +2027,7 @@ func TestAddRemoteCandidateHonorsRemoteIPFilter(t *testing.T) {
 }
 
 func TestAddVirtualCandidateRegistersExternalRelay(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithCandidateTypes([]CandidateType{}), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithCandidateTypes([]CandidateType{}), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -2062,7 +2070,7 @@ func TestAddVirtualCandidateRegistersExternalRelay(t *testing.T) {
 }
 
 func TestAddVirtualCandidateRejectsNilPacketConn(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -2072,7 +2080,7 @@ func TestAddVirtualCandidateRejectsNilPacketConn(t *testing.T) {
 }
 
 func TestAddVirtualCandidateRejectsDuplicateWithoutClosing(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -2103,7 +2111,7 @@ func TestAddVirtualCandidateRejectsDuplicateWithoutClosing(t *testing.T) {
 }
 
 func TestAddCandidateClosesDuplicate(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -2129,9 +2137,7 @@ func TestAddCandidateClosesDuplicate(t *testing.T) {
 }
 
 func TestGetLocalCandidates(t *testing.T) {
-	var config AgentConfig
-
-	agent, err := NewAgent(&config)
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2189,9 +2195,9 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 500 * time.Millisecond
 
-	cfg := &AgentConfig{Urls: []*stun.URI{}, NetworkTypes: supportedNetworkTypes(), DisconnectedTimeout: &disconnectedDuration, FailedTimeout: &failedDuration, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &CheckInterval}
+	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	var aAgentClosed bool
 	defer func() {
@@ -2201,7 +2207,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -2237,14 +2243,14 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 50 * time.Millisecond
 
-	cfg := &AgentConfig{Urls: []*stun.URI{}, NetworkTypes: supportedNetworkTypes(), DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &CheckInterval}
+	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -2275,14 +2281,14 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 50 * time.Millisecond
 
-	cfg := &AgentConfig{Urls: []*stun.URI{}, NetworkTypes: supportedNetworkTypes(), DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &CheckInterval}
+	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -2320,7 +2326,7 @@ func TestLiteLifecycle(t *testing.T) {
 
 	aNotifier, aConnected := onConnected()
 
-	aAgent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled})
+	aAgent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	var aClosed bool
 	defer func() {
@@ -2335,16 +2341,16 @@ func TestLiteLifecycle(t *testing.T) {
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 500 * time.Millisecond
-	bAgent, err := NewAgent(&AgentConfig{
-		Lite:                true,
-		CandidateTypes:      []CandidateType{CandidateTypeHost},
-		NetworkTypes:        supportedNetworkTypes(),
-		MulticastDNSMode:    MulticastDNSModeDisabled,
-		DisconnectedTimeout: &disconnectedDuration,
-		FailedTimeout:       &failedDuration,
-		KeepaliveInterval:   &KeepaliveInterval,
-		CheckInterval:       &CheckInterval,
-	})
+	bAgent, err := NewAgent(
+		WithICELite(true),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithNetworkTypes(supportedNetworkTypes()),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithDisconnectedTimeout(disconnectedDuration),
+		WithFailedTimeout(failedDuration),
+		WithKeepaliveInterval(KeepaliveInterval),
+		WithCheckInterval(CheckInterval),
+	)
 	require.NoError(t, err)
 	var bClosed bool
 	defer func() {
@@ -2413,7 +2419,7 @@ func TestValidateSelectedPairTransitions(t *testing.T) {
 }
 
 func TestNilCandidate(t *testing.T) {
-	a, err := NewAgent(&AgentConfig{})
+	a, err := NewAgent()
 	require.NoError(t, err)
 
 	require.NoError(t, a.AddRemoteCandidate(nil))
@@ -2421,7 +2427,7 @@ func TestNilCandidate(t *testing.T) {
 }
 
 func TestNilCandidatePair(t *testing.T) {
-	a, err := NewAgent(&AgentConfig{})
+	a, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, a.Close())
@@ -2444,15 +2450,15 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 
 	require.NoError(t, wan.Start())
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), Net: net}
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithNet(net)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())
@@ -2522,22 +2528,25 @@ func TestAcceptAggressiveNomination(t *testing.T) { //nolint:cyclop
 			bNotifier, bConnected := onConnected()
 
 			KeepaliveInterval := time.Hour
-			cfg0 := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, MulticastDNSMode: MulticastDNSModeDisabled, Net: net0, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &KeepaliveInterval, Lite: tc.isLite, EnableUseCandidateCheckPriority: tc.enableUseCandidateCheckPriority}
+			cfg0 := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net0), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(KeepaliveInterval), WithICELite(tc.isLite)}
+			if tc.enableUseCandidateCheckPriority {
+				cfg0 = append(cfg0, WithEnableUseCandidateCheckPriority())
+			}
 			if tc.isLite {
-				cfg0.CandidateTypes = []CandidateType{CandidateTypeHost}
+				cfg0 = append(cfg0, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 			}
 
 			var aAgent, bAgent *Agent
-			aAgent, err = NewAgent(cfg0)
+			aAgent, err = NewAgent(cfg0...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, aAgent.Close())
 			}()
 			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-			cfg1 := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, MulticastDNSMode: MulticastDNSModeDisabled, Net: net1, KeepaliveInterval: &KeepaliveInterval, CheckInterval: &KeepaliveInterval}
+			cfg1 := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(KeepaliveInterval)}
 
-			bAgent, err = NewAgent(cfg1)
+			bAgent, err = NewAgent(cfg1...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, bAgent.Close())
@@ -2655,8 +2664,8 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 	defer test.CheckRoutinesStrict(t)()
 	defer test.TimeOut(time.Second * 5).Stop()
 
-	config := &AgentConfig{NetworkTypes: supportedNetworkTypes()}
-	aAgent, err := NewAgent(config)
+	config := []AgentOption{WithNetworkTypes(supportedNetworkTypes())}
+	aAgent, err := NewAgent(config...)
 	require.NoError(t, err)
 	var aAgentClosed bool
 	defer func() {
@@ -2666,7 +2675,7 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(config)
+	bAgent, err := NewAgent(config...)
 	require.NoError(t, err)
 	var bAgentClosed bool
 	defer func() {
@@ -2710,9 +2719,7 @@ func TestAgentGracefulCloseDeadlock(t *testing.T) {
 }
 
 func TestSetCandidatesUfrag(t *testing.T) {
-	var config AgentConfig
-
-	agent, err := NewAgent(&config)
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2742,9 +2749,7 @@ func TestSetCandidatesUfrag(t *testing.T) {
 }
 
 func TestAddingCandidatesFromOtherGenerations(t *testing.T) {
-	var config AgentConfig
-
-	agent, err := NewAgent(&config)
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2783,7 +2788,7 @@ func TestAlwaysSentKeepAlive(t *testing.T) { //nolint:cyclop
 	// Avoid deadlocks?
 	defer test.TimeOut(1 * time.Second).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2820,12 +2825,12 @@ func TestRoleConflict(t *testing.T) {
 
 	runTest := func(t *testing.T, doDial bool) {
 		t.Helper()
-		cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), MulticastDNSMode: MulticastDNSModeDisabled, InterfaceFilter: problematicNetworkInterfaces}
+		cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithInterfaceFilter(problematicNetworkInterfaces)}
 
-		aAgent, err := NewAgent(cfg)
+		aAgent, err := NewAgent(cfg...)
 		require.NoError(t, err)
 
-		bAgent, err := NewAgent(cfg)
+		bAgent, err := NewAgent(cfg...)
 		require.NoError(t, err)
 
 		isConnected := make(chan any)
@@ -2935,7 +2940,7 @@ func TestRoleConflictErrorResponse(t *testing.T) { //nolint:cyclop
 
 			checkInterval := 20 * time.Millisecond
 			newAgent := func(network *vnet.Net) *Agent {
-				agent, newErr := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, CheckInterval: &checkInterval, Net: network})
+				agent, newErr := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithCheckInterval(checkInterval), WithNet(network))
 				require.NoError(t, newErr)
 
 				return agent
@@ -3023,17 +3028,19 @@ func TestDefaultRelayAcceptanceMinWaitFor(t *testing.T) {
 	})
 }
 
-func TestAgentConfig_initWithDefaults_UsesProvidedValues(t *testing.T) {
+func TestAgentOptionsUseProvidedValues(t *testing.T) {
 	valMaxBindingReq := uint16(0)
 	valSrflxWait := 111 * time.Millisecond
 	valPrflxWait := 222 * time.Millisecond
 	valRelayWait := 3 * time.Second
 	valStunTimeout := 4 * time.Second
 
-	cfg := &AgentConfig{MaxBindingRequests: &valMaxBindingReq, SrflxAcceptanceMinWait: &valSrflxWait, PrflxAcceptanceMinWait: &valPrflxWait, RelayAcceptanceMinWait: &valRelayWait, STUNGatherTimeout: &valStunTimeout}
+	cfg := []AgentOption{WithMaxBindingRequests(valMaxBindingReq), WithSrflxAcceptanceMinWait(valSrflxWait), WithPrflxAcceptanceMinWait(valPrflxWait), WithRelayAcceptanceMinWait(valRelayWait), WithSTUNGatherTimeout(valStunTimeout)}
 
 	var a Agent
-	cfg.initWithDefaults(&a)
+	for _, opt := range cfg {
+		require.NoError(t, opt(&a))
+	}
 
 	require.Equal(t, valMaxBindingReq, a.maxBindingRequests, "expected override for MaxBindingRequests")
 	require.Equal(t, valSrflxWait, a.srflxAcceptanceMinWait, "expected override for SrflxAcceptanceMinWait")
@@ -3069,14 +3076,19 @@ func TestAutomaticRenominationWithVNet(t *testing.T) {
 	checkInterval := 50 * time.Millisecond
 	renominationInterval := 200 * time.Millisecond
 
-	agent1, err := newAgentFromConfig(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, Net: net0, KeepaliveInterval: &keepaliveInterval, CheckInterval: &checkInterval},
+	agent1, err := NewAgent(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithNet(net0),
+		WithKeepaliveInterval(keepaliveInterval),
+		WithCheckInterval(checkInterval),
 		WithRenomination(DefaultNominationValueGenerator()),
 		WithAutomaticRenomination(renominationInterval),
 	)
 	require.NoError(t, err)
 	defer agent1.Close() //nolint:errcheck
 
-	agent2, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, Net: net1, KeepaliveInterval: &keepaliveInterval, CheckInterval: &checkInterval})
+	agent2, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(checkInterval))
 	require.NoError(t, err)
 	defer agent2.Close() //nolint:errcheck
 
@@ -3103,7 +3115,7 @@ func TestAutomaticRenominationRTTImprovement(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	// This test verifies the RTT-based renomination logic
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -3150,7 +3162,7 @@ func TestAutomaticRenominationRTTImprovement(t *testing.T) {
 func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -3185,19 +3197,19 @@ func TestAgentUpdateOptions(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	t.Run("URLs can be updated on a running agent", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, a.Close())
 		}()
 
-		newURLs := []*stun.URI{{Scheme: SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP}}
+		newURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP}}
 
 		require.NoError(t, a.UpdateOptions(WithUrls(newURLs)))
 	})
 
 	t.Run("UpdateOptions on closed agent fails", func(t *testing.T) {
-		a, err := NewAgent(&AgentConfig{})
+		a, err := NewAgent()
 		require.NoError(t, err)
 		require.NoError(t, a.Close())
 
@@ -3205,7 +3217,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 	})
 
 	t.Run("Non-updatable options are rejected", func(t *testing.T) { //nolint:varnamelen
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3309,7 +3321,7 @@ func TestMDNSQueryTimeout(t *testing.T) {
 
 func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 	t.Run("accepts UDP relay candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeTCP4}, CandidateTypes: []CandidateType{CandidateTypeRelay}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3327,7 +3339,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 
 	// nolint:dupl
 	t.Run("accepts UDP host candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeTCP4}, CandidateTypes: []CandidateType{CandidateTypeRelay}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3345,7 +3357,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 
 	// nolint:dupl
 	t.Run("accepts UDP srflx candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeTCP4}, CandidateTypes: []CandidateType{CandidateTypeRelay}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3362,7 +3374,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 	})
 
 	t.Run("stores UDP relay candidate regardless of TURN URL transport", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeTCP4}, CandidateTypes: []CandidateType{CandidateTypeRelay}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "turn.example.com", Port: 3478}}})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "turn.example.com", Port: 3478}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
