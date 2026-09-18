@@ -32,7 +32,8 @@ type UDPMux interface {
 
 // UDPMuxDefault is an implementation of the interface.
 type UDPMuxDefault struct {
-	params UDPMuxParams
+	params        UDPMuxParams
+	udpConnString string
 
 	closedChan chan struct{}
 	closeOnce  sync.Once
@@ -80,8 +81,7 @@ type UDPMuxParams struct {
 	// UDPConn may implement AddrPortReaderWriter to opt in to
 	// allocation-free address handling. *net.UDPConn will be
 	// automatically adapted to implement AddrPortReaderWriter.
-	UDPConn       net.PacketConn
-	UDPConnString string
+	UDPConn net.PacketConn
 
 	// Required for gathering local addresses
 	// in case a un UDPConn is passed which does not
@@ -122,11 +122,11 @@ func newUDPMuxDefault(params UDPMuxParams) *UDPMuxDefault {
 			}
 		}
 	}
-	params.UDPConnString = params.UDPConn.LocalAddr().String()
 
 	mux := &UDPMuxDefault{
 		addressMap:      map[netip.AddrPort]*udpMuxedConn{},
 		params:          params,
+		udpConnString:   params.UDPConn.LocalAddr().String(),
 		connsIPv4:       make(map[string]*udpMuxedConn),
 		connsIPv6:       make(map[string]*udpMuxedConn),
 		closedChan:      make(chan struct{}, 1),
@@ -198,7 +198,7 @@ func (m *UDPMuxDefault) GetListenAddresses() []net.Addr {
 // the connection's Close method should be called for each GetConn call to avoid leaks.
 func (m *UDPMuxDefault) GetConn(ufrag string, addr net.Addr) (net.PacketConn, error) {
 	// don't check addr for mux using unspecified address
-	if !m.isUnspecified && m.params.UDPConnString != addr.String() {
+	if !m.isUnspecified && m.udpConnString != addr.String() {
 		return nil, errInvalidAddress
 	}
 
