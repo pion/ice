@@ -107,19 +107,34 @@ func TestWithUrls(t *testing.T) {
 }
 
 func TestWithPortRange(t *testing.T) {
-	agent, err := NewAgent(WithPortRange(1000, 2000))
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		portMin uint16
+		portMax uint16
+		wantErr error
+	}{
+		{name: "valid range", portMin: 1000, portMax: 2000},
+		{name: "single port", portMin: 6000, portMax: 6000},
+		{name: "default range"},
+		{name: "reversed range", portMin: 6000, portMax: 5000, wantErr: ErrPort},
+		{name: "zero maximum below minimum", portMin: 2000, wantErr: ErrPort},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent, err := NewAgent(WithPortRange(tc.portMin, tc.portMax))
+			if agent != nil {
+				t.Cleanup(func() { require.NoError(t, agent.Close()) })
+			}
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				require.Nil(t, agent)
 
-	assert.Equal(t, uint16(1000), agent.portMin)
-	assert.Equal(t, uint16(2000), agent.portMax)
-
-	agent.Close() //nolint:gosec,errcheck
-	agent, err = NewAgent(WithPortRange(2000, 0))
-	assert.NoError(t, err)
-	defer agent.Close() //nolint:gosec,errcheck
-
-	assert.Equal(t, uint16(2000), agent.portMin)
-	assert.Equal(t, uint16(0), agent.portMax)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.portMin, agent.portMin)
+			assert.Equal(t, tc.portMax, agent.portMax)
+		})
+	}
 }
 
 func TestWithTimeoutOptions(t *testing.T) {
