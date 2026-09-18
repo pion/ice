@@ -332,7 +332,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 				opts = append(opts, WithTURNTransportProtocols(tc.turnAllowed))
 			}
 
-			agent, err := NewAgentWithOptions(opts...)
+			agent, err := NewAgent(opts...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -423,7 +423,7 @@ func TestTransportFilteringSrflxMatrix(t *testing.T) {
 			netFW := newFirewallNet(tc.allowUDP, true)
 			url := &stun.URI{Scheme: tc.turnScheme, Proto: tc.turnProto, Host: localhostIPStr, Port: serverPort, Username: "user", Password: "pass"}
 
-			agent, err := NewAgentWithOptions(WithNet(netFW), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes(tc.networkTypes), WithMulticastDNSMode(MulticastDNSModeDisabled), WithIncludeLoopback(), WithSTUNGatherTimeout(200*time.Millisecond), WithUrls([]*stun.URI{url}))
+			agent, err := NewAgent(WithNet(netFW), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes(tc.networkTypes), WithMulticastDNSMode(MulticastDNSModeDisabled), WithIncludeLoopback(), WithSTUNGatherTimeout(200*time.Millisecond), WithUrls([]*stun.URI{url}))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -479,7 +479,7 @@ func TestTransportFilteringHostMatrix(t *testing.T) {
 				opts = append(opts, WithTCPMux(&boundTCPMux{localAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 34567}}))
 			}
 
-			agent, err := NewAgentWithOptions(opts...)
+			agent, err := NewAgent(opts...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -518,7 +518,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 	netFW := newFirewallNet(false, true)
 	proxyDialer := &firewallProxyDialer{allowTCP: true}
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(netFW),
 		WithProxyDialer(proxy.Dialer(proxyDialer)),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),

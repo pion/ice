@@ -141,7 +141,7 @@ func main() { //nolint:cyclop,maintidx
 
 	if isControlling {
 		renominationInterval := 3 * time.Second
-		iceAgent, err = ice.NewAgentWithOptions(
+		iceAgent, err = ice.NewAgent(
 			ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
 			ice.WithInterfaceFilter(interfaceFilter),
 			ice.WithLoggerFactory(loggerFactory),
@@ -149,7 +149,7 @@ func main() { //nolint:cyclop,maintidx
 			ice.WithAutomaticRenomination(renominationInterval),
 		)
 	} else {
-		iceAgent, err = ice.NewAgentWithOptions(
+		iceAgent, err = ice.NewAgent(
 			ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
 			ice.WithInterfaceFilter(interfaceFilter),
 			ice.WithLoggerFactory(loggerFactory),

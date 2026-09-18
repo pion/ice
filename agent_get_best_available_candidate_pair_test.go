@@ -12,7 +12,7 @@ import (
 )
 
 func TestNoBestAvailableCandidatePairAfterAgentConstruction(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 
 	defer func() {

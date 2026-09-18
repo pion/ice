@@ -125,18 +125,18 @@ func TestActiveTCP(t *testing.T) {
 			req.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
-			cfg := &AgentConfig{TCPMux: tcpMux, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: testCase.networkTypes, LoggerFactory: loggerFactory, HostAcceptanceMinWait: &hostAcceptanceMinWait, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true}
+			cfg := []AgentOption{WithTCPMux(tcpMux), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes), WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
 			if testCase.useMDNS {
-				cfg.MulticastDNSMode = MulticastDNSModeQueryAndGather
+				cfg = append(cfg, WithMulticastDNSMode(MulticastDNSModeQueryAndGather))
 			}
-			passiveAgent, err := NewAgent(cfg)
+			passiveAgent, err := NewAgent(cfg...)
 			req.NoError(err)
 			req.NotNil(passiveAgent)
 			defer func() {
 				req.NoError(passiveAgent.Close())
 			}()
 
-			activeAgent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: testCase.networkTypes, LoggerFactory: loggerFactory, HostAcceptanceMinWait: &hostAcceptanceMinWait, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true})
+			activeAgent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes), WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback())
 
 			req.NoError(err)
 			req.NotNil(activeAgent)
@@ -184,16 +184,16 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 5).Stop()
 
-	cfg := &AgentConfig{NetworkTypes: supportedNetworkTypes(), InterfaceFilter: problematicNetworkInterfaces}
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithInterfaceFilter(problematicNetworkInterfaces)}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
 	defer func() {
@@ -243,16 +243,16 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 		}
 	}()
 
-	cfg := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6}, InterfaceFilter: problematicNetworkInterfaces, IncludeLoopback: true}
+	cfg := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6}), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
 	defer func() {

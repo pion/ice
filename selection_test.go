@@ -85,33 +85,21 @@ func TestBindingRequestHandler(t *testing.T) {
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
-	controllingAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6},
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		KeepaliveInterval: &keepaliveInterval,
-		CheckInterval:     &oneHour,
-		BindingRequestHandler: func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
-			controlledLoggingFired.Store(true)
+	controllingAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
+		controlledLoggingFired.Store(true)
 
-			return false
-		},
-	})
+		return false
+	}))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, controllingAgent.Close()) }()
 	require.NoError(t, controllingAgent.OnConnectionStateChange(aNotifier))
 
-	controlledAgent, err := NewAgent(&AgentConfig{
-		NetworkTypes:      []NetworkType{NetworkTypeUDP4},
-		MulticastDNSMode:  MulticastDNSModeDisabled,
-		KeepaliveInterval: &keepaliveInterval,
-		CheckInterval:     &oneHour,
-		BindingRequestHandler: func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
-			// Don't switch candidate pair until we are ready
-			val, ok := switchToNewCandidatePair.Load().(bool)
+	controlledAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
+		// Don't switch candidate pair until we are ready
+		val, ok := switchToNewCandidatePair.Load().(bool)
 
-			return ok && val
-		},
-	})
+		return ok && val
+	}))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, controlledAgent.Close()) }()
 	require.NoError(t, controlledAgent.OnConnectionStateChange(bNotifier))
@@ -587,7 +575,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 
 	t.Run("Configuration", func(t *testing.T) {
 		t.Run("WithAutomaticRenomination enables feature", func(t *testing.T) {
-			agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(5*time.Second))
+			agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(5*time.Second))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -599,7 +587,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		})
 
 		t.Run("Default interval when zero", func(t *testing.T) {
-			agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(0))
+			agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()), WithAutomaticRenomination(0))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -611,7 +599,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("Quality Assessment", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -661,7 +649,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("Should Renominate Logic", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -747,7 +735,7 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 	})
 
 	t.Run("Find Best Candidate Pair", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -792,7 +780,7 @@ func TestAutomaticRenominationIntegration(t *testing.T) { //nolint:cyclop
 
 	t.Run("Automatic renomination triggers after interval", func(t *testing.T) {
 		// Create agents with automatic renomination enabled
-		aAgent, err := NewAgentWithOptions(
+		aAgent, err := NewAgent(
 			WithRenomination(DefaultNominationValueGenerator()),
 			WithAutomaticRenomination(100*time.Millisecond), // Short interval for testing
 		)
@@ -801,7 +789,7 @@ func TestAutomaticRenominationIntegration(t *testing.T) { //nolint:cyclop
 			require.NoError(t, aAgent.Close())
 		}()
 
-		bAgent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
+		bAgent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, bAgent.Close())
@@ -1702,14 +1690,14 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 
 	// Full agent — will become the controlling agent (Dial).
 	fullNotifier, fullConnected := onConnected()
-	fullAgent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, KeepaliveInterval: &keepaliveInterval, CheckInterval: &oneHour})
+	fullAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour))
 	require.NoError(t, err)
 	require.NoError(t, fullAgent.OnConnectionStateChange(fullNotifier))
 	t.Cleanup(func() { require.NoError(t, fullAgent.Close()) })
 
 	// Lite agent — will become the controlled agent (Accept).
 	liteNotifier, liteConnected := onConnected()
-	liteAgent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, KeepaliveInterval: &keepaliveInterval, CheckInterval: &oneHour, Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}})
+	liteAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithICELite(true), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 	require.NoError(t, err)
 	require.NoError(t, liteAgent.OnConnectionStateChange(liteNotifier))
 	t.Cleanup(func() { require.NoError(t, liteAgent.Close()) })
@@ -1779,7 +1767,14 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	defer virtualNet.close()
 
 	newLiteAgent := func(network *vnet.Net, externalIP string) *Agent {
-		agent, newAgentErr := NewAgent(&AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}, MulticastDNSMode: MulticastDNSModeDisabled, Net: network, NAT1To1IPs: []string{externalIP}})
+		agent, newAgentErr := NewAgent(
+			WithICELite(true),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNet(network),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{externalIP}, AsCandidateType: CandidateTypeHost}),
+		)
 		require.NoError(t, newAgentErr)
 
 		return agent

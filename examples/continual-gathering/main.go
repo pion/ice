@@ -44,7 +44,7 @@ func main() { //nolint:cyclop
 	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
 
 	// Create ICE agent with the specified gathering policy using AgentOptions
-	agent, err := ice.NewAgentWithOptions(
+	agent, err := ice.NewAgent(
 		ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
 		ice.WithCandidateTypes([]ice.CandidateType{ice.CandidateTypeHost}),
 		ice.WithContinualGatheringPolicy(policy),

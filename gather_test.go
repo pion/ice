@@ -85,7 +85,7 @@ func TestEffectiveURLProtoType(t *testing.T) {
 }
 
 func TestListenUDP(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -142,7 +142,7 @@ func TestGatherConcurrency(t *testing.T) {
 
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: true})
+	agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithIncludeLoopback())
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -168,7 +168,7 @@ func TestAgentRestartThenGatherRepeatedly(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(time.Second * 30).Stop()
 
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -184,7 +184,7 @@ func TestAgentRestartThenGatherRepeatedly(t *testing.T) {
 }
 
 func TestCompleteGatheringIgnoresOldGeneration(t *testing.T) {
-	agent, err := NewAgent(&AgentConfig{})
+	agent, err := NewAgent()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -215,7 +215,7 @@ func TestCompleteGatheringIgnoresOldGeneration(t *testing.T) {
 }
 
 func TestContinualRegatherKeepsGeneration(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkMonitorInterval(time.Millisecond), WithIncludeLoopback())
+	agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkMonitorInterval(time.Millisecond), WithIncludeLoopback())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -255,7 +255,7 @@ func TestLoopbackCandidate(t *testing.T) {
 	defer test.TimeOut(time.Second * 30).Stop()
 	type testCase struct {
 		name        string
-		agentConfig *AgentConfig
+		agentConfig []AgentOption
 		loExpected  bool
 	}
 	mux, err := NewMultiUDPMuxFromPort(12500)
@@ -271,18 +271,18 @@ func TestLoopbackCandidate(t *testing.T) {
 	muxUnspecDefault := NewUDPMuxDefault(UDPMuxParams{UDPConn: unspecConn})
 
 	testCases := []testCase{
-		{name: "mux should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: mux}, loExpected: false},
-		{name: "mux with loopback should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxWithLo}, loExpected: true},
-		{name: "UDPMuxDefault with unspecified IP should not have loopback candidate", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxUnspecDefault}, loExpected: false},
-		{name: "UDPMuxDefault with unspecified IP should respect agent includeloopback", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, UDPMux: muxUnspecDefault, IncludeLoopback: true}, loExpected: true},
-		{name: "includeloopback enabled", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: true}, loExpected: true},
-		{name: "includeloopback disabled", agentConfig: &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, IncludeLoopback: false}, loExpected: false},
+		{name: "mux should not have loopback candidate", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithUDPMux(mux)}, loExpected: false},
+		{name: "mux with loopback should not have loopback candidate", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithUDPMux(muxWithLo)}, loExpected: true},
+		{name: "UDPMuxDefault with unspecified IP should not have loopback candidate", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithUDPMux(muxUnspecDefault)}, loExpected: false},
+		{name: "UDPMuxDefault with unspecified IP should respect agent includeloopback", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithUDPMux(muxUnspecDefault), WithIncludeLoopback()}, loExpected: true},
+		{name: "includeloopback enabled", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithIncludeLoopback()}, loExpected: true},
+		{name: "includeloopback disabled", agentConfig: []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6})}, loExpected: false},
 	}
 
 	for _, tc := range testCases {
 		tcase := tc
 		t.Run(tcase.name, func(t *testing.T) {
-			agent, err := NewAgent(tc.agentConfig)
+			agent, err := NewAgent(tc.agentConfig...)
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -348,7 +348,7 @@ func TestSTUNConcurrency(t *testing.T) {
 		_ = tcpMux.Close()
 	}()
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}, TCPMux: tcpMux})
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}), WithTCPMux(tcpMux))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -406,7 +406,7 @@ func TestTURNConcurrency(t *testing.T) {
 		}
 		urls = append(urls, &stun.URI{Scheme: scheme, Host: localhostIPStr, Username: "username", Password: "password", Proto: protocol, Port: serverPort})
 
-		agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeRelay}, InsecureSkipVerify: true, NetworkTypes: supportedNetworkTypes(), Urls: urls})
+		agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithInsecureSkipVerify(true), WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -486,7 +486,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	}
 	urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"})
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}})
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -531,7 +531,7 @@ func TestTURNSrflx(t *testing.T) {
 
 	urls := []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"}}
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}})
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -592,7 +592,7 @@ func TestGatherCandidatesRelayProducesRelay(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { require.NoError(t, server.Close()) }()
 
-			agent, err := NewAgentWithOptions(
+			agent, err := NewAgent(
 				WithNetworkTypes([]NetworkType{relayNetwork}),
 				WithTURNTransportProtocols([]NetworkType{network}),
 				WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
@@ -1230,7 +1230,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 	locConn := newStubPacketConn(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 50000})
 	stubClient.relayConn = locConn
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 50000})),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
@@ -1285,7 +1285,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 	netCapture := newRelayListenCaptureNet()
 	stubClient := &stubTurnClient{}
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(netCapture),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
@@ -1345,7 +1345,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 
 						return net.ResolveUDPAddr(network, serverAddr)
 					}
-					agent, err := NewAgentWithOptions(
+					agent, err := NewAgent(
 						WithNet(turnNet),
 						WithNetworkTypes(candidateNetworks),
 						WithTURNTransportProtocols([]NetworkType{transportType}),
@@ -1388,7 +1388,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 	t.Run("skips TCP transport URL when TURN transport protocols allow only UDP", func(t *testing.T) {
 		stubClient := &stubTurnClient{}
 
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 3), Port: 50000})),
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
@@ -1432,7 +1432,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	errConn := &errorPacketConn{addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}}
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(&errorTurnNet{pc: errConn}),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
@@ -1464,7 +1464,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 }
 
 func TestCloseConnLog(t *testing.T) {
-	a, err := NewAgent(&AgentConfig{})
+	a, err := NewAgent()
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, a.Close())
@@ -1534,7 +1534,12 @@ func TestTURNProxyDialer(t *testing.T) {
 	proxyDialer, err := proxy.FromURL(tcpProxyURI, proxy.Direct)
 	require.NoError(t, err)
 
-	agent, err := NewAgent(&AgentConfig{CandidateTypes: []CandidateType{CandidateTypeRelay}, NetworkTypes: supportedNetworkTypes(), Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP, Port: 5000}}, ProxyDialer: proxyDialer})
+	agent, err := NewAgent(
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+		WithNetworkTypes(supportedNetworkTypes()),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP, Port: 5000}}),
+		WithProxyDialer(proxyDialer),
+	)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1558,7 +1563,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 	stubClient := &stubTurnClient{}
 	stubClient.relayConn = newStubPacketConn(&net.UDPAddr{IP: net.IPv4(203, 0, 113, 10), Port: 6000})
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000})),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
@@ -1608,7 +1613,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	turnNet := &unresolvableRelayGatherNet{relayGatherNet: newRelayGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 50000})}
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(turnNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
@@ -1642,7 +1647,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 
 func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 	t.Run("requires mux", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{})
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -1656,7 +1661,7 @@ func TestGatherCandidatesLocalUDPMux(t *testing.T) {
 		listenAddr := &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: 4789}
 		udpMux := newMockUDPMux([]net.Addr{listenAddr})
 
-		agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeHost}, UDPMux: udpMux, IncludeLoopback: true})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(udpMux), WithIncludeLoopback())
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -1686,7 +1691,7 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
+	agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMuxSrflx))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1713,7 +1718,7 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 	netCapture := newSrflxListenCaptureNet()
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(netCapture),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
@@ -1748,7 +1753,7 @@ func TestGatherCandidatesSrflxUDPMuxRespectsURLTransport(t *testing.T) {
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
+	agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMuxSrflx))
 
 	require.NoError(t, err)
 	defer func() {
@@ -1791,7 +1796,7 @@ func TestMultiUDPMuxUsage(t *testing.T) {
 		}()
 	}
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}, CandidateTypes: []CandidateType{CandidateTypeHost}, UDPMux: NewMultiUDPMuxDefault(udpMuxInstances...)})
+	agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(NewMultiUDPMuxDefault(udpMuxInstances...)))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -1837,7 +1842,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			defer test.CheckRoutines(t)()
-			agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithNetworkTypes(testCase.networks), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(testCase.rule))
+			agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithNetworkTypes(testCase.networks), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(testCase.rule))
 			require.NoError(t, err)
 			defer func() { require.NoError(t, agent.Close()) }()
 			require.NoError(t, agent.OnCandidate(func(Candidate) {}))
@@ -1959,7 +1964,7 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 				mux := NewMultiUDPMuxDefault(muxes...)
 				options = append(options, WithUDPMux(mux))
 			}
-			agent, err := NewAgentWithOptions(options...)
+			agent, err := NewAgent(options...)
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, agent.Close()) })
 
@@ -2029,7 +2034,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 	newAgent := func(t *testing.T) *Agent {
 		t.Helper()
 
-		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithMulticastDNSMode(MulticastDNSModeDisabled))
+		agent, err := NewAgent(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -2096,7 +2101,7 @@ func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 
 func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 	tcpMux := &boundTCPMux{localAddr: &net.TCPAddr{IP: net.ParseIP("203.0.113.10"), Port: 5555}}
-	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithTCPMux(tcpMux), WithIncludeLoopback(), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithTCPMux(tcpMux), WithIncludeLoopback(), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, agent.Close())
@@ -2113,7 +2118,7 @@ func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 	t.Run("UDPMux invalid address closes conn", func(t *testing.T) {
 		mux := newInvalidAddrUDPMux()
-		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
+		agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -2129,7 +2134,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 	})
 
 	t.Run("NewCandidateHost failure logs and closes conn", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather))
+		agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -2146,7 +2151,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 	})
 
 	t.Run("addCandidate error logs and keeps no candidates", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled))
+		agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, agent.Close())
@@ -2186,7 +2191,7 @@ func TestMultiTCPMuxUsage(t *testing.T) {
 		tcpMuxInstances = append(tcpMuxInstances, tcpMux)
 	}
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), CandidateTypes: []CandidateType{CandidateTypeHost}, TCPMux: NewMultiTCPMuxDefault(tcpMuxInstances...)})
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithTCPMux(NewMultiTCPMuxDefault(tcpMuxInstances...)))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2232,10 +2237,10 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	numSTUNS := 3
 	urls := []*stun.URI{}
 	for i := range numSTUNS {
-		urls = append(urls, &stun.URI{Scheme: SchemeTypeSTUN, Host: localhostIPStr, Port: 3478 + i})
+		urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: 3478 + i})
 	}
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: urls, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMuxSrflx))
 	require.NoError(t, err)
 	var aClosed bool
 	defer func() {
@@ -2334,11 +2339,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
 
 	t.Run("GatherOnce completes gathering", func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{ //nolint:contextcheck
-			NetworkTypes:   []NetworkType{NetworkTypeUDP4},
-			CandidateTypes: []CandidateType{CandidateTypeHost},
-			LoggerFactory:  loggerFactory,
-		})
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithLoggerFactory(loggerFactory)) //nolint:contextcheck // Agent lifetime is managed by Close, not the gathering context.
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -2389,7 +2390,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 
 	t.Run("GatherContinually never completes", func(t *testing.T) {
 		monitorInterval := 500 * time.Millisecond
-		agent, err := NewAgentWithOptions( //nolint:contextcheck
+		agent, err := NewAgent( //nolint:contextcheck
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 			WithContinualGatheringPolicy(GatherContinually),
@@ -2437,7 +2438,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 
 	t.Run("Network monitoring interval is configurable", func(t *testing.T) {
 		customInterval := 100 * time.Millisecond
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -2448,7 +2449,7 @@ func TestContinualGatheringPolicy(t *testing.T) { //nolint:cyclop
 	})
 
 	t.Run("Default network monitoring interval", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -2469,7 +2470,7 @@ func TestNetworkChangeDetection(t *testing.T) {
 
 	t.Run("detectNetworkChanges identifies new interfaces", func(t *testing.T) {
 		customInterval := 100 * time.Millisecond
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithContinualGatheringPolicy(GatherContinually), WithNetworkMonitorInterval(customInterval))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -2631,7 +2632,7 @@ func TestGatherUsesStartingUfragAcrossRestart(t *testing.T) {
 	defer test.TimeOut(5 * time.Second).Stop()
 
 	mux := newGatedUDPMux(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 4000})
-	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	agent, err := NewAgent(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)})), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(mux), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 	defer mux.Release()
@@ -2703,7 +2704,11 @@ func TestTURNContext(t *testing.T) {
 		turnPacketSeenDone()
 	}()
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: supportedNetworkTypes(), Urls: []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: portFromAddr(t, listener.LocalAddr()), Username: "username", Password: "password"}}, CandidateTypes: []CandidateType{CandidateTypeRelay}})
+	agent, err := NewAgent(
+		WithNetworkTypes(supportedNetworkTypes()),
+		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: portFromAddr(t, listener.LocalAddr()), Username: "username", Password: "password"}}),
+		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
+	)
 	require.NoError(t, err)
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
@@ -2726,7 +2731,7 @@ func TestAddressRewritePortSrflx(t *testing.T) {
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(newStubNet(t)),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
@@ -2764,7 +2769,7 @@ func TestAddressRewritePortSrflx(t *testing.T) {
 func TestAddressRewritePort(t *testing.T) {
 	mux := newMockUDPMux([]net.Addr{&net.UDPAddr{IP: net.IP{10, 0, 0, 1}, Port: 1234}})
 
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(newStubNet(t)),
 		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),

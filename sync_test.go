@@ -55,7 +55,7 @@ func TestUDPMuxWriteWatchdogIdleClose(t *testing.T) {
 
 func TestAgentCloseAbortsBlockedUDPMuxWrite(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		agent, err := NewAgent(&AgentConfig{MulticastDNSMode: MulticastDNSModeDisabled})
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
 		require.NoError(t, err)
 
 		udpConn := newDeadlineBlockingPacketConn()
@@ -116,7 +116,7 @@ func TestAgentCloseAbortsBlockedUDPMuxSrflxGatherWrite(t *testing.T) {
 			_ = udpMux.Close()
 		}()
 
-		agent, err := NewAgent(&AgentConfig{MulticastDNSMode: MulticastDNSModeDisabled, NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}, UDPMuxSrflx: udpMux})
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}), WithUDPMuxSrflx(udpMux))
 		require.NoError(t, err)
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
@@ -153,7 +153,7 @@ func TestAgentCloseDoesNotAbortOtherAgentUDPMuxSrflxGatherWrite(t *testing.T) { 
 		newSrflxAgent := func(t *testing.T) *Agent {
 			t.Helper()
 
-			agent, err := NewAgent(&AgentConfig{MulticastDNSMode: MulticastDNSModeDisabled, NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, Urls: []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}, UDPMuxSrflx: udpMux})
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}), WithUDPMuxSrflx(udpMux))
 			require.NoError(t, err)
 
 			return agent
@@ -227,7 +227,7 @@ func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { 
 		newMuxAgent := func(t *testing.T) *Agent {
 			t.Helper()
 
-			agent, err := NewAgent(&AgentConfig{MulticastDNSMode: MulticastDNSModeDisabled, NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeHost}, UDPMux: udpMux, IncludeLoopback: true})
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(udpMux), WithIncludeLoopback())
 			require.NoError(t, err)
 
 			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag))

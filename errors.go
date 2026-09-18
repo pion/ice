@@ -13,18 +13,6 @@ var (
 	// ErrUnknownType indicates an error with Unknown info.
 	ErrUnknownType = errors.New("Unknown")
 
-	// ErrSchemeType indicates the scheme type could not be parsed.
-	ErrSchemeType = errors.New("unknown scheme type")
-
-	// ErrSTUNQuery indicates query arguments are provided in a STUN URL.
-	ErrSTUNQuery = errors.New("queries not supported in STUN address")
-
-	// ErrInvalidQuery indicates an malformed query is provided.
-	ErrInvalidQuery = errors.New("invalid query")
-
-	// ErrHost indicates malformed hostname is provided.
-	ErrHost = errors.New("invalid hostname")
-
 	// ErrPort indicates malformed port is provided.
 	ErrPort = errors.New("invalid port")
 
@@ -83,57 +71,20 @@ var (
 	// candidate required them.
 	ErrUselessUrlsProvided = errors.New("agent does not need URL with selected candidate types")
 
-	// ErrUnsupportedNAT1To1IPCandidateType indicates that the specified NAT1To1IPCandidateType is
-	// unsupported.
-	//
-	// Deprecated: use ErrUnsupportedAddressRewriteCandidateType instead. May still be returned
-	// when configuring address rewrite rules while NAT1:1 compatibility remains.
-	ErrUnsupportedNAT1To1IPCandidateType = errors.New("unsupported address rewrite candidate type")
-	// ErrUnsupportedAddressRewriteCandidateType is an alias for ErrUnsupportedNAT1To1IPCandidateType.
-	ErrUnsupportedAddressRewriteCandidateType = ErrUnsupportedNAT1To1IPCandidateType
+	// ErrUnsupportedAddressRewriteCandidateType indicates an unsupported rewrite candidate type.
+	ErrUnsupportedAddressRewriteCandidateType = errors.New("unsupported address rewrite candidate type")
 
-	// ErrInvalidNAT1To1IPMapping indicates that the given 1:1 NAT IP mapping is invalid.
-	//
-	// Deprecated: use ErrInvalidAddressRewriteMapping instead. May still be returned by
-	// WithAddressRewriteRules while NAT1:1 compatibility remains.
-	ErrInvalidNAT1To1IPMapping = errors.New("invalid address rewrite mapping")
-	// ErrInvalidAddressRewriteMapping is an alias for ErrInvalidNAT1To1IPMapping.
-	ErrInvalidAddressRewriteMapping = ErrInvalidNAT1To1IPMapping
+	// ErrInvalidAddressRewriteMapping indicates an invalid address rewrite mapping.
+	ErrInvalidAddressRewriteMapping = errors.New("invalid address rewrite mapping")
 
-	// ErrExternalMappedIPNotFound in address rewrite mapping.
-	//
-	// Kept for compatibility; current code paths treat "no externals" via match state and
-	// no longer return this error.
-	ErrExternalMappedIPNotFound = errors.New("external mapped IP not found")
+	// ErrMulticastDNSWithAddressRewrite indicates that mDNS gathering conflicts with host address rewriting.
+	ErrMulticastDNSWithAddressRewrite = errors.New("mDNS gathering cannot be used with address rewrite for host candidate")
 
-	// ErrMulticastDNSWithNAT1To1IPMapping indicates that the mDNS gathering cannot be used along
-	// with 1:1 NAT IP mapping for host candidate.
-	//
-	// Deprecated: use ErrMulticastDNSWithAddressRewrite instead. May still be returned by
-	// WithAddressRewriteRules while NAT1:1 compatibility remains.
-	ErrMulticastDNSWithNAT1To1IPMapping = errors.New(
-		"mDNS gathering cannot be used with address rewrite for host candidate",
-	)
-	// ErrMulticastDNSWithAddressRewrite is an alias for ErrMulticastDNSWithNAT1To1IPMapping.
-	ErrMulticastDNSWithAddressRewrite = ErrMulticastDNSWithNAT1To1IPMapping
+	// ErrIneffectiveAddressRewriteHost indicates that host rewriting was requested with host candidates disabled.
+	ErrIneffectiveAddressRewriteHost = errors.New("address rewrite for host candidate ineffective")
 
-	// ErrIneffectiveNAT1To1IPMappingHost indicates that 1:1 NAT IP mapping for host candidate is
-	// requested, but the host candidate type is disabled.
-	//
-	// Deprecated: use ErrIneffectiveAddressRewriteHost instead. May still be returned by
-	// WithAddressRewriteRules while NAT1:1 compatibility remains.
-	ErrIneffectiveNAT1To1IPMappingHost = errors.New("address rewrite for host candidate ineffective")
-	// ErrIneffectiveAddressRewriteHost is an alias for ErrIneffectiveNAT1To1IPMappingHost.
-	ErrIneffectiveAddressRewriteHost = ErrIneffectiveNAT1To1IPMappingHost
-
-	// ErrIneffectiveNAT1To1IPMappingSrflx indicates that 1:1 NAT IP mapping for srflx candidate is
-	// requested, but the srflx candidate type is disabled.
-	//
-	// Deprecated: use ErrIneffectiveAddressRewriteSrflx instead. May still be returned by
-	// WithAddressRewriteRules while NAT1:1 compatibility remains.
-	ErrIneffectiveNAT1To1IPMappingSrflx = errors.New("address rewrite for srflx candidate ineffective")
-	// ErrIneffectiveAddressRewriteSrflx is an alias for ErrIneffectiveNAT1To1IPMappingSrflx.
-	ErrIneffectiveAddressRewriteSrflx = ErrIneffectiveNAT1To1IPMappingSrflx
+	// ErrIneffectiveAddressRewriteSrflx indicates that srflx rewriting was requested with srflx candidates disabled.
+	ErrIneffectiveAddressRewriteSrflx = errors.New("address rewrite for srflx candidate ineffective")
 
 	// ErrInvalidMulticastDNSHostName indicates an invalid MulticastDNSHostName.
 	ErrInvalidMulticastDNSHostName = errors.New(
@@ -142,9 +93,6 @@ var (
 
 	// ErrRunCanceled indicates a run operation was canceled by its individual done.
 	ErrRunCanceled = errors.New("run was canceled by done")
-
-	// ErrTCPRemoteAddrAlreadyExists indicates we already have the connection with same remote addr.
-	ErrTCPRemoteAddrAlreadyExists = errors.New("conn with same remote addr already exists")
 
 	// ErrUnknownCandidateTyp indicates that a candidate had a unknown type value.
 	ErrUnknownCandidateTyp = errors.New("unknown candidate typ")
@@ -200,8 +148,4 @@ var (
 	errXORMappedAddrTimeout          = errors.New("timeout while waiting for XORMappedAddr")
 	errFailedToCastUDPAddr           = errors.New("failed to cast net.Addr to net.UDPAddr")
 	errInvalidIPAddress              = errors.New("invalid ip address")
-
-	// UDPMuxDefault should not listen on unspecified address, but to keep backward compatibility, don't return error now.
-	// will be used in the future.
-	// errListenUnspecified             = errors.New("can't listen on unspecified address").
 )

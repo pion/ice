@@ -414,7 +414,7 @@ You can modify the example to customize automatic renomination:
 
 ```go
 renominationInterval := 5 * time.Second  // How often to check (default: 3s)
-iceAgent, err = ice.NewAgentWithOptions(
+iceAgent, err = ice.NewAgent(
     ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
     ice.WithInterfaceFilter(interfaceFilter),
     ice.WithRenomination(ice.DefaultNominationValueGenerator()),
@@ -438,7 +438,7 @@ To use your real network interfaces instead:
 
 ```go
 // Option 1: Use all interfaces (no InterfaceFilter)
-iceAgent, err = ice.NewAgentWithOptions(
+iceAgent, err = ice.NewAgent(
     ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
     ice.WithRenomination(ice.DefaultNominationValueGenerator()),
     ice.WithAutomaticRenomination(renominationInterval),

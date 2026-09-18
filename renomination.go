@@ -14,7 +14,7 @@ import (
 const (
 	// DefaultNominationAttribute represents the default STUN Nomination attribute.
 	// This is a custom attribute for ICE renomination support.
-	// This value can be overridden via AgentConfig.NominationAttribute.
+	// This value can be overridden via WithNominationAttribute.
 	DefaultNominationAttribute stun.AttrType = 0xC001 // matching libwebrtc.
 )
 

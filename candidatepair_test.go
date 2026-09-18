@@ -95,7 +95,7 @@ func TestCandidatePair_TimeGetters_DefaultZero(t *testing.T) {
 
 	require.True(t, p.FirstRequestSentAt().IsZero(), "FirstRequestSentAt should be zero by default")
 	require.True(t, p.LastRequestSentAt().IsZero(), "LastRequestSentAt should be zero by default")
-	require.True(t, p.FirstReponseReceivedAt().IsZero(), "FirstReponseReceivedAt should be zero by default")
+	require.True(t, p.FirstResponseReceivedAt().IsZero(), "FirstResponseReceivedAt should be zero by default")
 	require.True(t, p.LastResponseReceivedAt().IsZero(), "LastResponseReceivedAt should be zero by default")
 	require.True(t, p.FirstRequestReceivedAt().IsZero(), "FirstRequestReceivedAt should be zero by default")
 	require.True(t, p.LastRequestReceivedAt().IsZero(), "LastRequestReceivedAt should be zero by default")

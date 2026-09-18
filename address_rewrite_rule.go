@@ -64,32 +64,16 @@ func validateFQDN(val string) bool {
 func validateIPString(ipStr string) (net.IP, bool, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return nil, false, ErrInvalidNAT1To1IPMapping
+		return nil, false, ErrInvalidAddressRewriteMapping
 	}
 
 	return ip, (ip.To4() != nil), nil
 }
 
-// ipMapping holds the mapping of local and external IP address
-//
-//	for a particular IP family.
+// ipMapping holds a rule's external addresses for one local IP family.
 type ipMapping struct {
-	ipSole      []string            // When non-empty, these are the catch-all external IPs for one local IP family
-	ipMap       map[string][]string // Local-to-external IP mapping (k: local, v: external IPs)
-	valid       bool                // If not set any external IP, valid is false
-	catchAllSet bool
-}
-
-func newIPMapping() ipMapping {
-	return ipMapping{
-		ipMap: make(map[string][]string),
-	}
-}
-
-func (m *ipMapping) addSoleIP(ip string) {
-	m.ipSole = append(m.ipSole, ip)
-	m.valid = true
-	m.catchAllSet = true
+	addresses []string
+	valid     bool // A valid empty mapping suppresses candidates in replace mode.
 }
 
 func addExternalMappings(
@@ -122,7 +106,9 @@ func addExternalMappings(
 			if !ruleMapping.isFamilyAllowed(ipv4) {
 				continue
 			}
-			ruleMapping.addImplicitMapping(extIPStr, ipv4, localAddr)
+			mapping := ruleMapping.mappingForFamily(ipv4)
+			mapping.addresses = append(mapping.addresses, extIPStr)
+			mapping.valid = true
 			added = true
 		}
 	}
@@ -143,26 +129,14 @@ func maybeMarkEmptyMapping(
 		localIsIPv4 := localAddr.To4() != nil
 		if ruleMapping.isFamilyAllowed(localIsIPv4) {
 			family := ruleMapping.mappingForFamily(localIsIPv4)
-			family.ipMap[localAddr.String()] = nil
 			family.valid = true
 		}
 
 		return
 	}
 
-	if ruleMapping.allowIPv4 {
-		ruleMapping.ipv4Mapping.valid = true
-		ruleMapping.ipv4Mapping.catchAllSet = true
-	}
-	if ruleMapping.allowIPv6 {
-		ruleMapping.ipv6Mapping.valid = true
-		ruleMapping.ipv6Mapping.catchAllSet = true
-	}
-}
-
-func (m *ipMapping) addIPMapping(locIP, extIP string) {
-	m.ipMap[locIP] = append(m.ipMap[locIP], extIP)
-	m.valid = true
+	ruleMapping.ipv4Mapping.valid = ruleMapping.allowIPv4
+	ruleMapping.ipv6Mapping.valid = ruleMapping.allowIPv6
 }
 
 type addressRewriteRuleMapping struct {
@@ -195,19 +169,6 @@ func (m *addressRewriteRuleMapping) isFamilyAllowed(isLocalIPv4 bool) bool {
 	return m.allowIPv6
 }
 
-func (m *addressRewriteRuleMapping) addImplicitMapping(
-	extIP string,
-	isLocalIPv4 bool,
-	localAddr net.IP,
-) {
-	mapping := m.mappingForFamily(isLocalIPv4)
-	if localAddr != nil {
-		mapping.addIPMapping(localAddr.String(), extIP)
-	} else {
-		mapping.addSoleIP(extIP)
-	}
-}
-
 type addressRewriteMapper struct {
 	rulesByCandidateType map[CandidateType][]*addressRewriteRuleMapping
 }
@@ -228,7 +189,7 @@ func newAddressRewriteMapper(rules []AddressRewriteRule) (*addressRewriteMapper,
 			candidateType = CandidateTypeHost
 		}
 		if candidateType == CandidateTypePeerReflexive {
-			return nil, ErrUnsupportedNAT1To1IPCandidateType
+			return nil, ErrUnsupportedAddressRewriteCandidateType
 		}
 
 		mode := rule.Mode
@@ -236,13 +197,12 @@ func newAddressRewriteMapper(rules []AddressRewriteRule) (*addressRewriteMapper,
 			mode = defaultAddressRewriteMode(candidateType)
 		}
 
+		rule.Local = strings.TrimSpace(rule.Local)
 		ruleMapping := &addressRewriteRuleMapping{
-			rule:        rule,
-			mode:        mode,
-			ipv4Mapping: newIPMapping(),
-			ipv6Mapping: newIPMapping(),
-			allowIPv4:   true,
-			allowIPv6:   true,
+			rule:      rule,
+			mode:      mode,
+			allowIPv4: true,
+			allowIPv6: true,
 		}
 
 		if len(rule.Networks) > 0 {
@@ -263,7 +223,7 @@ func newAddressRewriteMapper(rules []AddressRewriteRule) (*addressRewriteMapper,
 		if rule.CIDR != "" {
 			_, ipNet, err := net.ParseCIDR(rule.CIDR)
 			if err != nil {
-				return nil, ErrInvalidNAT1To1IPMapping
+				return nil, ErrInvalidAddressRewriteMapping
 			}
 			ruleMapping.cidr = ipNet
 		}
@@ -272,15 +232,16 @@ func newAddressRewriteMapper(rules []AddressRewriteRule) (*addressRewriteMapper,
 			localAddr net.IP
 			err       error
 		)
-		if trimmedLocal := strings.TrimSpace(rule.Local); trimmedLocal != "" {
-			localAddr, _, err = validateIPString(trimmedLocal)
+		if rule.Local != "" {
+			localAddr, _, err = validateIPString(rule.Local)
 			if err != nil {
 				return nil, err
 			}
 
 			if ruleMapping.cidr != nil && !ruleMapping.cidr.Contains(localAddr) {
-				return nil, fmt.Errorf("%w: Invalid local IP is outside CIDR", ErrInvalidNAT1To1IPMapping)
+				return nil, fmt.Errorf("%w: Invalid local IP is outside CIDR", ErrInvalidAddressRewriteMapping)
 			}
+			ruleMapping.rule.Local = localAddr.String()
 		}
 
 		added, mapErr := addExternalMappings(rule.External, ruleMapping, localAddr)
@@ -302,14 +263,7 @@ func newAddressRewriteMapper(rules []AddressRewriteRule) (*addressRewriteMapper,
 }
 
 func (m *addressRewriteMapper) hasCandidateType(candidateType CandidateType) bool {
-	rules := m.rulesByCandidateType[candidateType]
-	for _, rule := range rules {
-		if rule.hasMappings() {
-			return true
-		}
-	}
-
-	return false
+	return len(m.rulesByCandidateType[candidateType]) > 0
 }
 
 func (m *addressRewriteMapper) shouldReplace(candidateType CandidateType) bool {
@@ -356,18 +310,16 @@ func (m *addressRewriteMapper) findExternalPort(
 			continue
 		}
 
-		ipMapping, ok := ruleMappingForLookup(rule, locIP, isLocIPv4, iface)
+		_, ok := ruleMappingForLookup(rule, locIP, isLocIPv4, iface)
 		if !ok {
 			continue
 		}
-		if _, ok = ipMapping.ipMap[locIP.String()]; ok {
+		if rule.rule.Local != "" {
 			return rule.rule.NewPort
 		}
-		if ipMapping.catchAllSet {
-			if spec := catchAllSpecificity(rule, iface); spec > bestSpec {
-				mappedPort = rule.rule.NewPort
-				bestSpec = spec
-			}
+		if spec := catchAllSpecificity(rule, iface); spec > bestSpec {
+			mappedPort = rule.rule.NewPort
+			bestSpec = spec
 		}
 	}
 
@@ -384,6 +336,9 @@ func ruleMappingForLookup(
 		return nil, false
 	}
 	if rule.cidr != nil && !rule.cidr.Contains(locIP) {
+		return nil, false
+	}
+	if rule.rule.Local != "" && rule.rule.Local != locIP.String() {
 		return nil, false
 	}
 
@@ -418,7 +373,6 @@ func evaluateRewriteRules(
 	var (
 		catchAll     []string
 		catchAllMode AddressRewriteMode
-		hasCatchAll  bool
 		bestSpec     = -1
 	)
 
@@ -428,23 +382,19 @@ func evaluateRewriteRules(
 			continue
 		}
 
-		if explicit, ok := ipMapping.ipMap[locIP.String()]; ok {
-			return slices.Clone(explicit), true, rule.mode
+		if rule.rule.Local != "" {
+			return slices.Clone(ipMapping.addresses), true, rule.mode
 		}
 
-		if ipMapping.catchAllSet {
-			spec := catchAllSpecificity(rule, iface)
-			if !hasCatchAll || spec > bestSpec {
-				catchAll = slices.Clone(ipMapping.ipSole)
-				catchAllMode = rule.mode
-				hasCatchAll = true
-				bestSpec = spec
-			}
+		if spec := catchAllSpecificity(rule, iface); spec > bestSpec {
+			catchAll = ipMapping.addresses
+			catchAllMode = rule.mode
+			bestSpec = spec
 		}
 	}
 
-	if hasCatchAll {
-		return catchAll, true, catchAllMode
+	if bestSpec >= 0 {
+		return slices.Clone(catchAll), true, catchAllMode
 	}
 
 	return nil, false, addressRewriteModeUnspecified

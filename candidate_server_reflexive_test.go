@@ -32,9 +32,9 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 		require.NoError(t, server.Close())
 	}()
 
-	cfg := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, Urls: []*stun.URI{{Scheme: SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}}
+	cfg := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive})}
 
-	aAgent, err := NewAgent(cfg)
+	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, aAgent.Close())
@@ -43,7 +43,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-	bAgent, err := NewAgent(cfg)
+	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, bAgent.Close())

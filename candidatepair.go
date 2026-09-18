@@ -261,12 +261,6 @@ func (p *CandidatePair) LastRequestSentAt() time.Time {
 	return time.Time{}
 }
 
-// Deprecated: use FirstResponseReceivedAt
-// FirstReponseReceivedAt returns the timestamp of the first connectivity response received.
-func (p *CandidatePair) FirstReponseReceivedAt() time.Time {
-	return p.FirstResponseReceivedAt()
-}
-
 // FirstResponseReceivedAt returns the timestamp of the first connectivity response received.
 func (p *CandidatePair) FirstResponseReceivedAt() time.Time {
 	if v, ok := p.firstResponseReceivedAt.Load().(time.Time); ok {

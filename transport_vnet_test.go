@@ -36,7 +36,7 @@ func TestRemoteLocalAddr(t *testing.T) {
 	stunServerURL := &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}
 
 	t.Run("Disconnected Returns nil", func(t *testing.T) {
-		disconnectedAgent, err := NewAgent(&AgentConfig{})
+		disconnectedAgent, err := NewAgent()
 		require.NoError(t, err)
 
 		disconnectedConn := Conn{agent: disconnectedAgent}

@@ -80,11 +80,12 @@ type Agent struct {
 
 	maxBindingRequests uint16
 
-	hostAcceptanceMinWait  time.Duration
-	srflxAcceptanceMinWait time.Duration
-	prflxAcceptanceMinWait time.Duration
-	relayAcceptanceMinWait time.Duration
-	stunGatherTimeout      time.Duration
+	hostAcceptanceMinWait          time.Duration
+	srflxAcceptanceMinWait         time.Duration
+	prflxAcceptanceMinWait         time.Duration
+	relayAcceptanceMinWait         time.Duration
+	relayAcceptanceMinWaitExplicit bool
+	stunGatherTimeout              time.Duration
 
 	tcpPriorityOffset uint16
 	disableActiveTCP  bool
@@ -192,268 +193,62 @@ type Agent struct {
 
 // NewAgent creates a new Agent.
 //
-// Deprecated: use NewAgentWithOptions instead.
-func NewAgent(config *AgentConfig) (*Agent, error) {
-	return newAgentFromConfig(config)
-}
-
-// NewAgentWithOptions creates a new Agent with options only.
-func NewAgentWithOptions(opts ...AgentOption) (*Agent, error) {
-	return newAgentFromConfig(&AgentConfig{}, opts...)
-}
-
-func newAgentFromConfig(config *AgentConfig, opts ...AgentOption) (*Agent, error) {
-	if config == nil {
-		config = &AgentConfig{}
-	}
-
-	agent, err := createAgentBase(config)
+//nolint:gocognit,cyclop
+func NewAgent(opts ...AgentOption) (*Agent, error) {
+	mDNSName, err := generateMulticastDNSName()
 	if err != nil {
 		return nil, err
 	}
-
-	agent.localUfrag = config.LocalUfrag
-	agent.localPwd = config.LocalPwd
-	if config.NAT1To1IPs != nil {
-		if err := validateLegacyNAT1To1IPs(config.NAT1To1IPs); err != nil {
-			return nil, err
-		}
-
-		typ := CandidateTypeHost
-		if config.NAT1To1IPCandidateType != CandidateTypeUnspecified {
-			typ = config.NAT1To1IPCandidateType
-		}
-
-		agent.addressRewriteRules = legacyNAT1To1Rules(config.NAT1To1IPs, typ)
-	}
-
-	return newAgentWithConfig(agent, opts...)
-}
-
-func validateLegacyNAT1To1IPs(ips []string) error {
-	var hasIPv4CatchAll, hasIPv6CatchAll bool
-
-	for _, mapping := range ips {
-		trimmed := strings.TrimSpace(mapping)
-		var err error
-		hasIPv4CatchAll, hasIPv6CatchAll, err = validateLegacyNAT1To1Entry(trimmed, hasIPv4CatchAll, hasIPv6CatchAll)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func validateLegacyNAT1To1Entry(mapping string, hasIPv4CatchAll, hasIPv6CatchAll bool) (bool, bool, error) {
-	if mapping == "" {
-		return hasIPv4CatchAll, hasIPv6CatchAll, nil
-	}
-
-	parts := strings.Split(mapping, "/")
-	if len(parts) == 0 || len(parts) > 2 {
-		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
-	}
-
-	_, isIPv4, err := validateIPString(parts[0])
-	if err != nil {
-		return hasIPv4CatchAll, hasIPv6CatchAll, err
-	}
-
-	if len(parts) == 2 {
-		if _, _, err := validateIPString(strings.TrimSpace(parts[1])); err != nil {
-			return hasIPv4CatchAll, hasIPv6CatchAll, err
-		}
-
-		return hasIPv4CatchAll, hasIPv6CatchAll, nil
-	}
-
-	if isIPv4 {
-		if hasIPv4CatchAll {
-			return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
-		}
-
-		return true, hasIPv6CatchAll, nil
-	}
-
-	if hasIPv6CatchAll {
-		return hasIPv4CatchAll, hasIPv6CatchAll, ErrInvalidNAT1To1IPMapping
-	}
-
-	return hasIPv4CatchAll, true, nil
-}
-
-func legacyNAT1To1Rules(ips []string, candidateType CandidateType) []AddressRewriteRule {
-	var rules []AddressRewriteRule
-
-	for _, mapping := range ips {
-		trimmed := strings.TrimSpace(mapping)
-		if trimmed == "" {
-			continue
-		}
-
-		parts := strings.Split(trimmed, "/")
-		rule := AddressRewriteRule{
-			External:        []string{strings.TrimSpace(parts[0])},
-			AsCandidateType: candidateType,
-		}
-		if len(parts) == 2 {
-			rule.Local = strings.TrimSpace(parts[1])
-		}
-		rules = append(rules, rule)
-	}
-
-	return rules
-}
-
-func createAgentBase(config *AgentConfig) (*Agent, error) {
-	if config.PortMax < config.PortMin {
-		return nil, ErrPort
-	}
-
-	normalizedNetworkTypes, err := sanitizeTransportNetworkTypes(config.NetworkTypes)
-	if err != nil {
-		return nil, err
-	}
-
-	normalizedTURNTransportProtocols, err := sanitizeTransportNetworkTypes(config.turnTransportProtocols)
-	if err != nil {
-		return nil, err
-	}
-
-	mDNSName, mDNSMode, err := setupMDNSConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	loggerFactory := config.LoggerFactory
-	if loggerFactory == nil {
-		loggerFactory = logging.NewDefaultLoggerFactory()
-	}
+	loggerFactory := logging.NewDefaultLoggerFactory()
 	log := loggerFactory.NewLogger("ice")
-
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	agent := &Agent{
-		tieBreaker:                      globalMathRandomGenerator.Uint64(),
-		lite:                            config.Lite,
-		gatheringState:                  GatheringStateNew,
-		connectionState:                 ConnectionStateNew,
-		startedCandidates:               make(map[*candidateBase]struct{}),
-		localCandidates:                 make(map[NetworkType][]Candidate),
-		remoteCandidates:                make(map[NetworkType][]Candidate),
-		pairsByID:                       make(map[uint64]*CandidatePair),
-		urls:                            config.Urls,
-		networkTypes:                    normalizedNetworkTypes,
-		turnTransportProtocols:          normalizedTURNTransportProtocols,
-		onConnected:                     make(chan struct{}),
-		buf:                             packetio.NewBuffer(),
-		startedCh:                       startedCtx.Done(),
-		startedFn:                       startedFn,
-		portMin:                         config.PortMin,
-		portMax:                         config.PortMax,
-		loggerFactory:                   loggerFactory,
-		log:                             log,
-		net:                             config.Net,
-		proxyDialer:                     config.ProxyDialer,
-		tcpMux:                          config.TCPMux,
-		udpMux:                          config.UDPMux,
-		udpMuxSrflx:                     config.UDPMuxSrflx,
-		mDNSMode:                        mDNSMode,
-		mDNSName:                        mDNSName,
-		gatherCandidateCancel:           func() {},
-		forceCandidateContact:           make(chan bool, 1),
-		interfaceFilter:                 config.InterfaceFilter,
-		ipFilter:                        config.IPFilter,
-		remoteIPFilter:                  config.RemoteIPFilter,
-		insecureSkipVerify:              config.InsecureSkipVerify,
-		includeLoopback:                 config.IncludeLoopback,
-		disableActiveTCP:                config.DisableActiveTCP,
-		userBindingRequestHandler:       config.BindingRequestHandler,
-		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
-		enableRenomination:              false,
-		nominationValueGenerator:        nil,
-		nominationAttribute:             DefaultNominationAttribute,
-		continualGatheringPolicy:        GatherOnce, // Default to GatherOnce
-		networkMonitorInterval:          2 * time.Second,
-		lastKnownInterfaces:             make(map[string]netip.Addr),
-		automaticRenomination:           false,
-		renominationInterval:            3 * time.Second, // Default matching libwebrtc
-		turnClientFactory:               defaultTurnClient,
+		mDNSMode:                 MulticastDNSModeQueryOnly,
+		mDNSName:                 mDNSName,
+		maxBindingRequests:       defaultMaxBindingRequests,
+		hostAcceptanceMinWait:    defaultHostAcceptanceMinWait,
+		srflxAcceptanceMinWait:   defaultSrflxAcceptanceMinWait,
+		prflxAcceptanceMinWait:   defaultPrflxAcceptanceMinWait,
+		relayAcceptanceMinWait:   defaultRelayAcceptanceMinWait,
+		stunGatherTimeout:        defaultSTUNGatherTimeout,
+		tcpPriorityOffset:        defaultTCPPriorityOffset,
+		disconnectedTimeout:      defaultDisconnectedTimeout,
+		failedTimeout:            defaultFailedTimeout,
+		keepaliveInterval:        defaultKeepaliveInterval,
+		checkInterval:            defaultCheckInterval,
+		candidateTypes:           defaultCandidateTypes(),
+		tieBreaker:               globalMathRandomGenerator.Uint64(),
+		gatheringState:           GatheringStateNew,
+		connectionState:          ConnectionStateNew,
+		startedCandidates:        make(map[*candidateBase]struct{}),
+		localCandidates:          make(map[NetworkType][]Candidate),
+		remoteCandidates:         make(map[NetworkType][]Candidate),
+		pairsByID:                make(map[uint64]*CandidatePair),
+		onConnected:              make(chan struct{}),
+		buf:                      packetio.NewBuffer(),
+		startedCh:                startedCtx.Done(),
+		startedFn:                startedFn,
+		loggerFactory:            loggerFactory,
+		log:                      log,
+		gatherCandidateCancel:    func() {},
+		forceCandidateContact:    make(chan bool, 1),
+		nominationAttribute:      DefaultNominationAttribute,
+		continualGatheringPolicy: GatherOnce, // Default to GatherOnce
+		networkMonitorInterval:   2 * time.Second,
+		lastKnownInterfaces:      make(map[string]netip.Addr),
+		renominationInterval:     3 * time.Second, // Default matching libwebrtc
+		turnClientFactory:        defaultTurnClient,
 	}
-
-	config.initWithDefaults(agent)
-
-	return agent, nil
-}
-
-func applyAddressRewriteMapping(agent *Agent) error {
-	mapper, err := newAddressRewriteMapper(agent.addressRewriteRules)
-	if err != nil {
-		return err
-	}
-
-	agent.addressRewriteMapper = mapper
-	if agent.addressRewriteMapper == nil {
-		return nil
-	}
-
-	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeHost) {
-		// for mDNS QueryAndGather we never advertise rewritten host IPs to avoid
-		// leaking local addresses, this matches the legacy NAT1:1 behavior.
-		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
-			return ErrMulticastDNSWithNAT1To1IPMapping
-		}
-		// surface misconfiguration when host candidates are disabled but a host
-		// rewrite rule was provided.
-		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
-			return ErrIneffectiveNAT1To1IPMappingHost
-		}
-	}
-
-	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
-		// surface misconfiguration when srflx candidates are disabled but a srflx
-		// rewrite rule was provided.
-		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
-			return ErrIneffectiveNAT1To1IPMappingSrflx
-		}
-	}
-
-	return nil
-}
-
-// setupMDNSConfig validates and returns mDNS configuration.
-func setupMDNSConfig(config *AgentConfig) (string, MulticastDNSMode, error) {
-	mDNSName := config.MulticastDNSHostName
-	if mDNSName == "" {
-		var err error
-		if mDNSName, err = generateMulticastDNSName(); err != nil {
-			return "", 0, err
-		}
-	}
-
-	if !strings.HasSuffix(mDNSName, ".local") || len(strings.Split(mDNSName, ".")) != 2 {
-		return "", 0, ErrInvalidMulticastDNSHostName
-	}
-
-	mDNSMode := config.MulticastDNSMode
-	if mDNSMode == 0 {
-		mDNSMode = MulticastDNSModeQueryOnly
-	}
-
-	return mDNSName, mDNSMode, nil
-}
-
-// newAgentWithConfig finalizes a pre-configured agent with optional overrides.
-//
-//nolint:gocognit,cyclop
-func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
-	var err error
 
 	for _, opt := range opts {
 		if err = opt(agent); err != nil {
 			return nil, err
 		}
+	}
+
+	if !agent.relayAcceptanceMinWaitExplicit {
+		agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWaitFor(agent.candidateTypes)
 	}
 
 	agent.applyICELiteDisconnectedTimeoutDefault()
@@ -563,6 +358,41 @@ func newAgentWithConfig(agent *Agent, opts ...AgentOption) (*Agent, error) {
 	agent.constructed = true
 
 	return agent, nil
+}
+
+func applyAddressRewriteMapping(agent *Agent) error {
+	mapper, err := newAddressRewriteMapper(agent.addressRewriteRules)
+	if err != nil {
+		return err
+	}
+
+	agent.addressRewriteMapper = mapper
+	if agent.addressRewriteMapper == nil {
+		return nil
+	}
+
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeHost) {
+		// for mDNS QueryAndGather we never advertise rewritten host IPs to avoid
+		// leaking local addresses.
+		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
+			return ErrMulticastDNSWithAddressRewrite
+		}
+		// surface misconfiguration when host candidates are disabled but a host
+		// rewrite rule was provided.
+		if !containsCandidateType(CandidateTypeHost, agent.candidateTypes) {
+			return ErrIneffectiveAddressRewriteHost
+		}
+	}
+
+	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
+		// surface misconfiguration when srflx candidates are disabled but a srflx
+		// rewrite rule was provided.
+		if !containsCandidateType(CandidateTypeServerReflexive, agent.candidateTypes) {
+			return ErrIneffectiveAddressRewriteSrflx
+		}
+	}
+
+	return nil
 }
 
 func (a *Agent) applyICELiteDisconnectedTimeoutDefault() {

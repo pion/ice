@@ -21,16 +21,15 @@ import (
 
 // testBooleanOption is a helper function to test boolean agent options.
 type booleanOptionTest struct {
-	optionFunc   func() AgentOption
-	getValue     func(*Agent) bool
-	configSetter func(*AgentConfig, bool)
+	optionFunc func() AgentOption
+	getValue   func(*Agent) bool
 }
 
 func testBooleanOption(t *testing.T, test booleanOptionTest, optionName string) {
 	t.Helper()
 
 	t.Run("enables "+optionName, func(t *testing.T) {
-		agent, err := NewAgentWithOptions(test.optionFunc())
+		agent, err := NewAgent(test.optionFunc())
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -38,22 +37,11 @@ func testBooleanOption(t *testing.T, test booleanOptionTest, optionName string) 
 	})
 
 	t.Run("default is false", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
 		assert.False(t, test.getValue(agent))
-	})
-
-	t.Run("works with config", func(t *testing.T) {
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
-		test.configSetter(config, true)
-
-		agent, err := NewAgent(config)
-		assert.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.True(t, test.getValue(agent))
 	})
 }
 
@@ -80,7 +68,7 @@ func TestDefaultNominationValueGenerator(t *testing.T) {
 
 func TestWithLite(t *testing.T) {
 	t.Run("enables lite with host candidates", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithICELite(true))
+		agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithICELite(true))
 		require.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -88,25 +76,15 @@ func TestWithLite(t *testing.T) {
 	})
 
 	t.Run("default is not lite", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		require.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
 		assert.False(t, agent.lite)
 	})
 
-	t.Run("config sets lite", func(t *testing.T) {
-		config := &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, NetworkTypes: []NetworkType{NetworkTypeUDP4}}
-
-		agent, err := NewAgent(config)
-		require.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.True(t, agent.lite)
-	})
-
 	t.Run("errors when candidate types include non-host", func(t *testing.T) {
-		_, err := NewAgentWithOptions(WithICELite(true))
+		_, err := NewAgent(WithICELite(true))
 		assert.ErrorIs(t, err, ErrLiteUsingNonHostCandidates)
 	})
 }
@@ -116,7 +94,7 @@ func TestWithUrls(t *testing.T) {
 	require.NoError(t, err)
 
 	input := []*stun.URI{stunURL}
-	agent, err := NewAgentWithOptions(WithUrls(input))
+	agent, err := NewAgent(WithUrls(input))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -129,14 +107,14 @@ func TestWithUrls(t *testing.T) {
 }
 
 func TestWithPortRange(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithPortRange(1000, 2000))
+	agent, err := NewAgent(WithPortRange(1000, 2000))
 	require.NoError(t, err)
 
 	assert.Equal(t, uint16(1000), agent.portMin)
 	assert.Equal(t, uint16(2000), agent.portMax)
 
 	agent.Close() //nolint:gosec,errcheck
-	agent, err = NewAgentWithOptions(WithPortRange(2000, 0))
+	agent, err = NewAgent(WithPortRange(2000, 0))
 	assert.NoError(t, err)
 	defer agent.Close() //nolint:gosec,errcheck
 
@@ -145,7 +123,7 @@ func TestWithPortRange(t *testing.T) {
 }
 
 func TestWithTimeoutOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithDisconnectedTimeout(10*time.Second), WithFailedTimeout(20*time.Second), WithKeepaliveInterval(3*time.Second), WithCheckInterval(150*time.Millisecond))
+	agent, err := NewAgent(WithDisconnectedTimeout(10*time.Second), WithFailedTimeout(20*time.Second), WithKeepaliveInterval(3*time.Second), WithCheckInterval(150*time.Millisecond))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -159,18 +137,9 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 	explicitDisconnectedTimeout := 10 * time.Second
 	explicitFailedTimeout := 10 * time.Second
 
-	createFromConfig := func(t *testing.T, config *AgentConfig) *Agent {
-		t.Helper()
-		agent, err := NewAgent(config)
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, agent.Close()) })
-
-		return agent
-	}
-
 	createFromOptions := func(t *testing.T, options ...AgentOption) *Agent {
 		t.Helper()
-		agent, err := NewAgentWithOptions(options...)
+		agent, err := NewAgent(options...)
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, agent.Close()) })
 
@@ -179,21 +148,11 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 
 	tests := []struct {
 		name                        string
-		config                      *AgentConfig
 		options                     []AgentOption
 		expectedDisconnectedTimeout time.Duration
 		expectedFailedTimeout       time.Duration
 		expectedCheckingTimeout     time.Duration
 	}{
-		{name: "full config keeps full default", config: &AgentConfig{}, expectedDisconnectedTimeout: defaultDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
-		{name: "lite config uses lite default", config: &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}}, expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
-		{
-			name:                        "lite config preserves explicit timeout",
-			config:                      &AgentConfig{Lite: true, CandidateTypes: []CandidateType{CandidateTypeHost}, DisconnectedTimeout: &explicitDisconnectedTimeout},
-			expectedDisconnectedTimeout: explicitDisconnectedTimeout,
-			expectedFailedTimeout:       defaultFailedTimeout,
-			expectedCheckingTimeout:     explicitDisconnectedTimeout + defaultFailedTimeout,
-		},
 		{name: "full options keep full default", expectedDisconnectedTimeout: defaultDisconnectedTimeout, expectedFailedTimeout: defaultFailedTimeout, expectedCheckingTimeout: defaultDisconnectedTimeout + defaultFailedTimeout},
 		{
 			name: "lite options use lite default",
@@ -292,12 +251,7 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			var agent *Agent
-			if testCase.config == nil {
-				agent = createFromOptions(t, testCase.options...)
-			} else {
-				agent = createFromConfig(t, testCase.config)
-			}
+			agent := createFromOptions(t, testCase.options...)
 			assert.Equal(t, testCase.expectedDisconnectedTimeout, agent.disconnectedTimeout)
 			assert.Equal(t, testCase.expectedCheckingTimeout, agent.initialCheckingTimeout())
 			assert.Equal(t, testCase.expectedFailedTimeout, agent.failedTimeout)
@@ -307,7 +261,7 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 }
 
 func TestWithAcceptanceWaitOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithHostAcceptanceMinWait(1*time.Second), WithSrflxAcceptanceMinWait(2*time.Second), WithPrflxAcceptanceMinWait(3*time.Second), WithRelayAcceptanceMinWait(4*time.Second))
+	agent, err := NewAgent(WithHostAcceptanceMinWait(1*time.Second), WithSrflxAcceptanceMinWait(2*time.Second), WithPrflxAcceptanceMinWait(3*time.Second), WithRelayAcceptanceMinWait(4*time.Second))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -318,7 +272,7 @@ func TestWithAcceptanceWaitOptions(t *testing.T) {
 }
 
 func TestWithSTUNGatherTimeout(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithSTUNGatherTimeout(7 * time.Second))
+	agent, err := NewAgent(WithSTUNGatherTimeout(7 * time.Second))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -330,7 +284,7 @@ func TestWithIPFilterOption(t *testing.T) {
 		return ip.IsLoopback()
 	}
 
-	agent, err := NewAgentWithOptions(WithIPFilter(filter))
+	agent, err := NewAgent(WithIPFilter(filter))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -344,7 +298,7 @@ func TestWithRemoteIPFilterOption(t *testing.T) {
 		return ip.IsPrivate()
 	}
 
-	agent, err := NewAgentWithOptions(WithRemoteIPFilter(filter))
+	agent, err := NewAgent(WithRemoteIPFilter(filter))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -356,7 +310,7 @@ func TestWithRemoteIPFilterOption(t *testing.T) {
 func TestWithNetOption(t *testing.T) {
 	stub := newStubNet(t)
 
-	agent, err := NewAgentWithOptions(WithNet(stub))
+	agent, err := NewAgent(WithNet(stub))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
@@ -364,32 +318,32 @@ func TestWithNetOption(t *testing.T) {
 }
 
 func TestWithMulticastDNSOptions(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithMulticastDNSMode(MulticastDNSModeDisabled), WithMulticastDNSHostName("pion-test.local"))
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithMulticastDNSHostName("pion-test.local"))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
 	assert.Equal(t, MulticastDNSModeDisabled, agent.mDNSMode)
 	assert.Equal(t, "pion-test.local", agent.mDNSName)
 
-	_, err = NewAgentWithOptions(WithMulticastDNSHostName("invalid-host"))
+	_, err = NewAgent(WithMulticastDNSHostName("invalid-host"))
 	assert.ErrorIs(t, err, ErrInvalidMulticastDNSHostName)
 }
 
 func TestWithLocalCredentials(t *testing.T) {
 	password := strings.Repeat("p", minLenPwd)
 
-	agent, err := NewAgentWithOptions(WithLocalCredentials("abcd", password))
+	agent, err := NewAgent(WithLocalCredentials("abcd", password))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
 	assert.Equal(t, "abcd", agent.localUfrag)
 	assert.Equal(t, password, agent.localPwd)
 
-	_, err = NewAgentWithOptions(WithLocalCredentials("ab", password))
+	_, err = NewAgent(WithLocalCredentials("ab", password))
 	assert.ErrorIs(t, err, ErrLocalUfragInsufficientBits)
 
 	shortPassword := strings.Repeat("p", 10)
-	_, err = NewAgentWithOptions(WithLocalCredentials("abcd", shortPassword))
+	_, err = NewAgent(WithLocalCredentials("abcd", shortPassword))
 	assert.ErrorIs(t, err, ErrLocalPwdInsufficientBits)
 }
 
@@ -412,7 +366,7 @@ func TestLocalCredentialsLength(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run("WithLocalCredentials/"+test.name, func(t *testing.T) {
-			agent, err := NewAgentWithOptions(WithLocalCredentials(test.ufrag, test.pwd))
+			agent, err := NewAgent(WithLocalCredentials(test.ufrag, test.pwd))
 			if test.expected != nil {
 				assert.ErrorIs(t, err, test.expected)
 
@@ -426,7 +380,7 @@ func TestLocalCredentialsLength(t *testing.T) {
 		})
 
 		t.Run("Restart/"+test.name, func(t *testing.T) {
-			agent, err := NewAgentWithOptions()
+			agent, err := NewAgent()
 			require.NoError(t, err)
 			defer agent.Close() //nolint:errcheck
 
@@ -449,7 +403,7 @@ func TestWithMuxOptions(t *testing.T) {
 	udpMux := &stubUDPMux{}
 	udpMuxSrflx := &stubUniversalUDPMux{}
 
-	agent, err := NewAgentWithOptions(WithTCPMux(tcpMux), WithUDPMux(udpMux), WithUDPMuxSrflx(udpMuxSrflx))
+	agent, err := NewAgent(WithTCPMux(tcpMux), WithUDPMux(udpMux), WithUDPMuxSrflx(udpMuxSrflx))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -459,7 +413,7 @@ func TestWithMuxOptions(t *testing.T) {
 }
 
 func TestWithProxyDialer(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithProxyDialer(proxy.Direct))
+	agent, err := NewAgent(WithProxyDialer(proxy.Direct))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -467,7 +421,7 @@ func TestWithProxyDialer(t *testing.T) {
 }
 
 func TestWithMaxBindingRequests(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithMaxBindingRequests(3))
+	agent, err := NewAgent(WithMaxBindingRequests(3))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -483,7 +437,7 @@ func TestWithRenomination(t *testing.T) {
 			return counter * 10
 		}
 
-		agent, err := NewAgentWithOptions(WithRenomination(customGen))
+		agent, err := NewAgent(WithRenomination(customGen))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -494,7 +448,7 @@ func TestWithRenomination(t *testing.T) {
 	})
 
 	t.Run("enables renomination with default generator", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithRenomination(DefaultNominationValueGenerator()))
+		agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -505,14 +459,14 @@ func TestWithRenomination(t *testing.T) {
 	})
 
 	t.Run("rejects nil generator", func(t *testing.T) {
-		_, err := NewAgentWithOptions(WithRenomination(nil))
+		_, err := NewAgent(WithRenomination(nil))
 		assert.ErrorIs(t, err, ErrInvalidNominationValueGenerator)
 	})
 
 	t.Run("default agent has renomination disabled", func(t *testing.T) {
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
+		config := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
 
-		agent, err := NewAgent(config)
+		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -524,7 +478,7 @@ func TestWithRenomination(t *testing.T) {
 
 func TestWithNominationAttribute(t *testing.T) {
 	t.Run("sets custom nomination attribute", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNominationAttribute(0x0045))
+		agent, err := NewAgent(WithNominationAttribute(0x0045))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -532,14 +486,14 @@ func TestWithNominationAttribute(t *testing.T) {
 	})
 
 	t.Run("rejects invalid attribute 0x0000", func(t *testing.T) {
-		_, err := NewAgentWithOptions(WithNominationAttribute(0x0000))
+		_, err := NewAgent(WithNominationAttribute(0x0000))
 		assert.ErrorIs(t, err, ErrInvalidNominationAttribute)
 	})
 
 	t.Run("default value when no option", func(t *testing.T) {
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}}
+		config := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
 
-		agent, err := NewAgent(config)
+		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -550,16 +504,15 @@ func TestWithNominationAttribute(t *testing.T) {
 
 func TestWithIncludeLoopback(t *testing.T) {
 	testBooleanOption(t, booleanOptionTest{
-		optionFunc:   WithIncludeLoopback,
-		getValue:     func(a *Agent) bool { return a.includeLoopback },
-		configSetter: func(c *AgentConfig, v bool) { c.IncludeLoopback = v },
+		optionFunc: WithIncludeLoopback,
+		getValue:   func(a *Agent) bool { return a.includeLoopback },
 	}, "loopback addresses")
 }
 
 func TestWithTCPPriorityOffset(t *testing.T) {
 	t.Run("sets custom TCP priority offset", func(t *testing.T) {
 		customOffset := uint16(50)
-		agent, err := NewAgentWithOptions(WithTCPPriorityOffset(customOffset))
+		agent, err := NewAgent(WithTCPPriorityOffset(customOffset))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -567,30 +520,18 @@ func TestWithTCPPriorityOffset(t *testing.T) {
 	})
 
 	t.Run("default is 27", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
 		assert.Equal(t, uint16(27), agent.tcpPriorityOffset)
 	})
-
-	t.Run("works with config", func(t *testing.T) {
-		customOffset := uint16(100)
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, TCPPriorityOffset: &customOffset}
-
-		agent, err := NewAgent(config)
-		assert.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.Equal(t, customOffset, agent.tcpPriorityOffset)
-	})
 }
 
 func TestWithDisableActiveTCP(t *testing.T) {
 	testBooleanOption(t, booleanOptionTest{
-		optionFunc:   WithDisableActiveTCP,
-		getValue:     func(a *Agent) bool { return a.disableActiveTCP },
-		configSetter: func(c *AgentConfig, v bool) { c.DisableActiveTCP = v },
+		optionFunc: WithDisableActiveTCP,
+		getValue:   func(a *Agent) bool { return a.disableActiveTCP },
 	}, "active TCP disabling")
 }
 
@@ -603,7 +544,7 @@ func TestWithBindingRequestHandler(t *testing.T) {
 			return true
 		}
 
-		agent, err := NewAgentWithOptions(WithBindingRequestHandler(handler))
+		agent, err := NewAgent(WithBindingRequestHandler(handler))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -618,41 +559,18 @@ func TestWithBindingRequestHandler(t *testing.T) {
 	})
 
 	t.Run("default is nil", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
 		assert.Nil(t, agent.userBindingRequestHandler)
 	})
-
-	t.Run("works with config", func(t *testing.T) {
-		handlerCalled := false
-		handler := func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
-			handlerCalled = true
-
-			return true
-		}
-
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, BindingRequestHandler: handler}
-
-		agent, err := NewAgent(config)
-		assert.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.NotNil(t, agent.userBindingRequestHandler)
-
-		if agent.userBindingRequestHandler != nil {
-			agent.userBindingRequestHandler(nil, nil, nil, nil)
-			assert.True(t, handlerCalled)
-		}
-	})
 }
 
 func TestWithEnableUseCandidateCheckPriority(t *testing.T) {
 	testBooleanOption(t, booleanOptionTest{
-		optionFunc:   WithEnableUseCandidateCheckPriority,
-		getValue:     func(a *Agent) bool { return a.enableUseCandidateCheckPriority },
-		configSetter: func(c *AgentConfig, v bool) { c.EnableUseCandidateCheckPriority = v },
+		optionFunc: WithEnableUseCandidateCheckPriority,
+		getValue:   func(a *Agent) bool { return a.enableUseCandidateCheckPriority },
 	}, "use candidate check priority")
 }
 
@@ -666,7 +584,7 @@ func TestMultipleConfigOptions(t *testing.T) {
 			return true
 		}
 
-		agent, err := NewAgentWithOptions(WithIncludeLoopback(), WithTCPPriorityOffset(customOffset), WithDisableActiveTCP(), WithBindingRequestHandler(handler), WithEnableUseCandidateCheckPriority())
+		agent, err := NewAgent(WithIncludeLoopback(), WithTCPPriorityOffset(customOffset), WithDisableActiveTCP(), WithBindingRequestHandler(handler), WithEnableUseCandidateCheckPriority())
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -689,7 +607,7 @@ func TestWithInterfaceFilter(t *testing.T) {
 			return interfaceName == "eth0" // nolint:goconst
 		}
 
-		agent, err := NewAgentWithOptions(WithInterfaceFilter(filter))
+		agent, err := NewAgent(WithInterfaceFilter(filter))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -699,27 +617,11 @@ func TestWithInterfaceFilter(t *testing.T) {
 	})
 
 	t.Run("default is nil", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
 		assert.Nil(t, agent.interfaceFilter)
-	})
-
-	t.Run("works with config", func(t *testing.T) {
-		filter := func(interfaceName string) bool {
-			return interfaceName == "lo"
-		}
-
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, InterfaceFilter: filter}
-
-		agent, err := NewAgent(config)
-		assert.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.NotNil(t, agent.interfaceFilter)
-		assert.True(t, agent.interfaceFilter("lo"))
-		assert.False(t, agent.interfaceFilter("eth0")) // nolint:goconst
 	})
 }
 
@@ -728,7 +630,7 @@ func TestWithLoggerFactory(t *testing.T) {
 		loggerFactory := logging.NewDefaultLoggerFactory()
 		loggerFactory.DefaultLogLevel = logging.LogLevelDebug
 
-		agent, err := NewAgentWithOptions(WithLoggerFactory(loggerFactory))
+		agent, err := NewAgent(WithLoggerFactory(loggerFactory))
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -737,18 +639,7 @@ func TestWithLoggerFactory(t *testing.T) {
 	})
 
 	t.Run("default uses default logger", func(t *testing.T) {
-		agent, err := NewAgentWithOptions()
-		assert.NoError(t, err)
-		defer agent.Close() //nolint:errcheck
-
-		assert.NotNil(t, agent.log)
-	})
-
-	t.Run("works with config", func(t *testing.T) {
-		loggerFactory := logging.NewDefaultLoggerFactory()
-		config := &AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, LoggerFactory: loggerFactory}
-
-		agent, err := NewAgent(config)
+		agent, err := NewAgent()
 		assert.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -760,7 +651,7 @@ func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 	t.Run("ipv6 listen skipped when network types option restricts to ipv4", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := newAgentFromConfig(&AgentConfig{Net: stub}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+		agent, err := NewAgent(WithNet(stub), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 		require.NoError(t, err)
 		defer func() { require.NoError(t, agent.Close()) }()
 
@@ -770,7 +661,7 @@ func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 
 func TestWithNetworkTypes(t *testing.T) {
 	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -780,7 +671,7 @@ func TestWithNetworkTypes(t *testing.T) {
 	})
 
 	t.Run("deduplicates values", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -790,19 +681,19 @@ func TestWithNetworkTypes(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported value", func(t *testing.T) {
-		_, err := NewAgentWithOptions(WithNetworkTypes([]NetworkType{NetworkType(0)}))
+		_, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkType(0)}))
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 
 	t.Run("rejects unsupported value from config", func(t *testing.T) {
-		_, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkType(0)}})
+		_, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkType(0)}))
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 }
 
 func TestWithTURNTransportProtocols(t *testing.T) {
 	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}))
+		agent, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -812,7 +703,7 @@ func TestWithTURNTransportProtocols(t *testing.T) {
 	})
 
 	t.Run("deduplicates protocols", func(t *testing.T) {
-		agent, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}))
+		agent, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -822,12 +713,7 @@ func TestWithTURNTransportProtocols(t *testing.T) {
 	})
 
 	t.Run("rejects unsupported proto", func(t *testing.T) {
-		_, err := NewAgentWithOptions(WithTURNTransportProtocols([]NetworkType{NetworkType(0)}))
-		require.ErrorIs(t, err, ErrProtoType)
-	})
-
-	t.Run("rejects unsupported proto from config", func(t *testing.T) {
-		_, err := NewAgent(&AgentConfig{turnTransportProtocols: []NetworkType{NetworkType(0)}})
+		_, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkType(0)}))
 		require.ErrorIs(t, err, ErrProtoType)
 	})
 }
@@ -839,7 +725,7 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("default candidate types accept urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := newAgentFromConfig(&AgentConfig{Urls: []*stun.URI{stunURL}, Net: stub})
+		agent, err := NewAgent(WithUrls([]*stun.URI{stunURL}), WithNet(stub))
 		require.NoError(t, err)
 		require.NoError(t, agent.Close())
 	})
@@ -847,14 +733,14 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("host only candidate types reject urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := newAgentFromConfig(&AgentConfig{Urls: []*stun.URI{stunURL}, Net: stub}, WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+		_, err := NewAgent(WithUrls([]*stun.URI{stunURL}), WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
 		require.ErrorIs(t, err, ErrUselessUrlsProvided)
 	})
 }
 
 func TestWithAddressRewriteRulesAccumulatesAndCopies(t *testing.T) {
 	rules := []AddressRewriteRule{{External: []string{" 203.0.113.1 ", "203.0.113.1", "203.0.113.2 "}, Local: " 10.0.0.1 ", Networks: []NetworkType{NetworkTypeUDP4}}}
-	agent, err := NewAgentWithOptions(
+	agent, err := NewAgent(
 		WithNet(newStubNet(t)),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 		WithAddressRewriteRules(rules...),
@@ -902,7 +788,7 @@ func TestWithAddressRewriteRulesOverlapWarnings(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			logger := &recordingLogger{}
-			agent, err := NewAgentWithOptions(
+			agent, err := NewAgent(
 				WithNet(newStubNet(t)),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
 				WithLoggerFactory(&recordingLoggerFactory{logger: logger}),
@@ -930,7 +816,7 @@ func TestWithAddressRewriteRulesOverlapWarnings(t *testing.T) {
 
 	t.Run("disjoint scopes do not warn", func(t *testing.T) {
 		logger := &recordingLogger{}
-		agent, err := NewAgentWithOptions(
+		agent, err := NewAgent(
 			WithNet(newStubNet(t)),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithLoggerFactory(&recordingLoggerFactory{logger: logger}),
@@ -944,57 +830,6 @@ func TestWithAddressRewriteRulesOverlapWarnings(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, agent.Close()) })
 		require.Empty(t, logger.warnings)
 	})
-}
-
-func TestLegacyAddressRewriteTranslationAndOrdering(t *testing.T) {
-	for _, testCase := range []struct {
-		name          string
-		configured    CandidateType
-		candidateType CandidateType
-	}{
-		{"default host", CandidateTypeUnspecified, CandidateTypeHost},
-		{"explicit srflx", CandidateTypeServerReflexive, CandidateTypeServerReflexive},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			agent, err := newAgentFromConfig(&AgentConfig{
-				Net:                    newStubNet(t),
-				MulticastDNSMode:       MulticastDNSModeDisabled,
-				NAT1To1IPs:             []string{"", "203.0.113.1/10.0.0.1", "203.0.113.3/10.0.0.1", "2001:db8::1/2001:db8:1::1", "203.0.113.2", "2001:db8::2"},
-				NAT1To1IPCandidateType: testCase.configured,
-			}, WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, AsCandidateType: testCase.candidateType}))
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, agent.Close()) })
-
-			// Legacy entries retain their order and precede subsequently applied options.
-			for _, lookup := range []struct{ local, external string }{
-				{"10.0.0.1", "203.0.113.1"},
-				{"10.0.0.2", "203.0.113.2"},
-				{"2001:db8:1::1", "2001:db8::1"},
-				{"2001:db8:1::2", "2001:db8::2"},
-			} {
-				ips, matched, _, lookupErr := agent.addressRewriteMapper.findExternalIPs(testCase.candidateType, lookup.local, "")
-				require.NoError(t, lookupErr)
-				require.True(t, matched)
-				require.Equal(t, []string{lookup.external}, ips)
-			}
-		})
-	}
-}
-
-func TestWithCandidateTypesValidatesLegacyAddressRewrite(t *testing.T) {
-	for _, testCase := range []struct {
-		candidateType CandidateType
-		err           error
-	}{
-		{CandidateTypeHost, ErrIneffectiveNAT1To1IPMappingHost},
-		{CandidateTypeServerReflexive, ErrIneffectiveNAT1To1IPMappingSrflx},
-	} {
-		t.Run(testCase.candidateType.String(), func(t *testing.T) {
-			agent, err := newAgentFromConfig(&AgentConfig{Net: newStubNet(t), MulticastDNSMode: MulticastDNSModeDisabled, NAT1To1IPs: []string{"203.0.113.1"}, NAT1To1IPCandidateType: testCase.candidateType}, WithCandidateTypes([]CandidateType{CandidateTypeRelay}))
-			require.ErrorIs(t, err, testCase.err)
-			require.Nil(t, agent)
-		})
-	}
 }
 
 func TestAddressRewriteMapper(t *testing.T) {
@@ -1044,12 +879,21 @@ func TestAddressRewriteMapper(t *testing.T) {
 		},
 		{
 			name:          "explicit IPv4 local maps to IPv6 external",
-			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1", "relay.example"}, Local: "10.0.0.1", Networks: []NetworkType{NetworkTypeUDP4}}},
+			rules:         []AddressRewriteRule{{External: []string{"2001:db8::1", "relay.example"}, Local: " ::ffff:10.0.0.1 ", Networks: []NetworkType{NetworkTypeUDP4}}},
 			candidateType: CandidateTypeHost,
 			lookups: []lookup{
 				{local: "10.0.0.1", external: []string{"2001:db8::1", "relay.example"}, mode: AddressRewriteReplace},
 				{local: "10.0.0.2"},
 				{local: "2001:db8:1::1"},
+			},
+		},
+		{
+			name:          "empty explicit mapping still matches",
+			rules:         []AddressRewriteRule{{Local: "10.0.0.1"}},
+			candidateType: CandidateTypeHost,
+			lookups: []lookup{
+				{local: "10.0.0.1", mode: AddressRewriteReplace},
+				{local: "10.0.0.2"},
 			},
 		},
 		{
@@ -1158,11 +1002,8 @@ func TestAddressRewriteMapper(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					ips, matched, mode, err := mapper.findExternalIPs(testCase.candidateType, lookup.local, lookup.iface)
 					require.NoError(t, err)
-					require.Equal(t, len(lookup.external) > 0, matched)
+					require.Equal(t, lookup.mode != addressRewriteModeUnspecified, matched)
 					require.Equal(t, lookup.mode, mode)
-					if lookup.external == nil {
-						require.Nil(t, ips)
-					}
 					require.Equal(t, lookup.external, ips)
 					if len(ips) > 0 {
 						ips[0] = "mutated.example"
@@ -1183,7 +1024,7 @@ func TestAddressRewritePortValidation(t *testing.T) {
 			OriginalPort: ports[0],
 			NewPort:      ports[1],
 		})(&Agent{})
-		require.ErrorIs(t, err, ErrInvalidNAT1To1IPMapping)
+		require.ErrorIs(t, err, ErrInvalidAddressRewriteMapping)
 	}
 }
 
@@ -1356,4 +1197,17 @@ func (n *stubNet) CreateDialer(dialer *net.Dialer) transport.Dialer {
 
 func (n *stubNet) CreateListenConfig(listenerConfig *net.ListenConfig) transport.ListenConfig {
 	return nil
+}
+
+func TestWithInsecureSkipVerify(t *testing.T) {
+	agent, err := NewAgent(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+	require.False(t, agent.insecureSkipVerify)
+	require.ErrorIs(t, WithInsecureSkipVerify(true)(agent), ErrAgentOptionNotUpdatable)
+
+	insecureAgent, err := NewAgent(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled), WithInsecureSkipVerify(true))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, insecureAgent.Close()) })
+	require.True(t, insecureAgent.insecureSkipVerify)
 }

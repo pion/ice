@@ -271,7 +271,7 @@ func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
 
 func TestUDPMux_Agent_Restart(t *testing.T) {
 	oneSecond := time.Second
-	connA, connB := pipe(t, &AgentConfig{DisconnectedTimeout: &oneSecond, FailedTimeout: &oneSecond})
+	connA, connB := pipe(t, []AgentOption{WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond)})
 	defer closePipe(t, connA, connB)
 
 	aNotifier, aConnected := onConnected()
