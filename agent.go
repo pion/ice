@@ -150,9 +150,9 @@ type Agent struct {
 	gatherCandidateCancel func()
 	gatherCandidateDone   chan struct{}
 
-	connectionStateNotifier       *handlerNotifier
-	candidateNotifier             *handlerNotifier
-	selectedCandidatePairNotifier *handlerNotifier
+	connectionStateNotifier       *handlerNotifier[ConnectionState]
+	candidateNotifier             *handlerNotifier[Candidate]
+	selectedCandidatePairNotifier *handlerNotifier[*CandidatePair]
 
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
@@ -257,14 +257,14 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 
 	agent.applyICELiteDisconnectedTimeoutDefault()
 
-	agent.connectionStateNotifier = &handlerNotifier{
-		connectionStateFunc: agent.onConnectionStateChange,
-		done:                make(chan struct{}),
+	agent.connectionStateNotifier = &handlerNotifier[ConnectionState]{
+		handler: agent.onConnectionStateChange,
+		done:    make(chan struct{}),
 	}
-	agent.candidateNotifier = &handlerNotifier{candidateFunc: agent.onCandidate, done: make(chan struct{})}
-	agent.selectedCandidatePairNotifier = &handlerNotifier{
-		candidatePairFunc: agent.onSelectedCandidatePairChange,
-		done:              make(chan struct{}),
+	agent.candidateNotifier = &handlerNotifier[Candidate]{handler: agent.onCandidate, done: make(chan struct{})}
+	agent.selectedCandidatePairNotifier = &handlerNotifier[*CandidatePair]{
+		handler: agent.onSelectedCandidatePairChange,
+		done:    make(chan struct{}),
 	}
 
 	if agent.net == nil {
@@ -600,7 +600,7 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 
 		a.log.Infof("Setting new connection state: %s", newState)
 		a.connectionState = newState
-		a.connectionStateNotifier.EnqueueConnectionState(newState)
+		a.connectionStateNotifier.Enqueue(newState)
 	}
 }
 
@@ -624,7 +624,7 @@ func (a *Agent) setSelectedPair(pair *CandidatePair) {
 	a.updateConnectionState(ConnectionStateConnected)
 
 	// Notify when the selected candidate pair changes
-	a.selectedCandidatePairNotifier.EnqueueSelectedCandidatePair(pair)
+	a.selectedCandidatePairNotifier.Enqueue(pair)
 }
 
 func (a *Agent) pingAllCandidates() {
@@ -973,7 +973,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			a.localCandidates[localCandidate.NetworkType()],
 			localCandidate,
 		)
-		a.candidateNotifier.EnqueueCandidate(localCandidate)
+		a.candidateNotifier.Enqueue(localCandidate)
 
 		a.addPair(localCandidate, remoteCandidate)
 	}
@@ -1289,7 +1289,7 @@ func (a *Agent) addCandidate(
 		a.requestConnectivityCheck()
 
 		if !cand.filterForLocationTracking() {
-			a.candidateNotifier.EnqueueCandidate(cand)
+			a.candidateNotifier.Enqueue(cand)
 		}
 	})
 	if err != nil {
@@ -2030,7 +2030,7 @@ func (a *Agent) completeGathering(generation uint64) error {
 		}
 
 		a.gatheringState = GatheringStateComplete
-		a.candidateNotifier.EnqueueCandidate(nil)
+		a.candidateNotifier.Enqueue(nil)
 	}); err != nil {
 		return err
 	}

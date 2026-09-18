@@ -2397,9 +2397,9 @@ func TestValidateSelectedPairTransitions(t *testing.T) {
 		disconnectedTimeout: time.Second,
 		failedTimeout:       time.Second,
 		connectionState:     ConnectionStateConnected,
-		connectionStateNotifier: &handlerNotifier{
-			connectionStateFunc: func(ConnectionState) {},
-			done:                make(chan struct{}),
+		connectionStateNotifier: &handlerNotifier[ConnectionState]{
+			handler: func(ConnectionState) {},
+			done:    make(chan struct{}),
 		},
 		log: logging.NewDefaultLoggerFactory().NewLogger("test"),
 	}
