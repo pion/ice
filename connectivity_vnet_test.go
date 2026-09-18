@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -418,7 +419,20 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 		require.NoError(t, agentErr)
 		defer func() { require.NoError(t, agent.Close()) }()
 
-		return gatherForRewriteTest(t, agent)
+		candidates := gatherForRewriteTest(t, agent)
+		for _, candidate := range candidates {
+			copied, copyErr := candidate.copy()
+			require.NoError(t, copyErr)
+			require.Equal(t, candidate.Marshal(), copied.Marshal())
+			require.Equal(t, candidate.NetworkType(), copied.NetworkType())
+			for _, rule := range rules {
+				if rule.NewPort != 0 {
+					require.Equal(t, rule.NewPort, candidate.Port())
+				}
+			}
+		}
+
+		return candidates
 	}
 
 	addresses := func(candidates []Candidate, candidateType CandidateType) []string {
@@ -438,6 +452,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 	}
 	rewriteCases := func(candidateType CandidateType, original, replacement, addition, filtered string) []rewriteCase {
 		return []rewriteCase{
+			{name: "FQDN", rule: AddressRewriteRule{External: []string{"relay.example"}, AsCandidateType: candidateType, Mode: AddressRewriteReplace, NewPort: 54321}, expected: []string{"relay.example"}},
 			{name: "replace", rule: AddressRewriteRule{External: []string{replacement}, AsCandidateType: candidateType, Mode: AddressRewriteReplace}, expected: []string{replacement}},
 			{name: "append", rule: AddressRewriteRule{External: []string{addition}, AsCandidateType: candidateType, Mode: AddressRewriteAppend}, expected: []string{original, addition}},
 			{name: "replace with filtered external", rule: AddressRewriteRule{External: []string{filtered}, AsCandidateType: candidateType, Mode: AddressRewriteReplace, Networks: []NetworkType{NetworkTypeUDP4}}},
@@ -452,7 +467,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 			rules    []AddressRewriteRule
 			expected []string
 		}{
-			{name: "append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1"}, Local: vnetLocalIPA, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}}, expected: []string{vnetLocalIPA, "203.0.113.1"}},
+			{name: "append", rules: []AddressRewriteRule{{External: []string{"203.0.113.1", "relay.example"}, Local: vnetLocalIPA, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}}, expected: []string{vnetLocalIPA, "203.0.113.1", "relay.example"}},
 			{name: "replace with filtered external drops", rules: []AddressRewriteRule{{External: []string{"2001:db8::1"}, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace, Networks: []NetworkType{NetworkTypeUDP4}}}},
 			{name: "append with filtered external keeps", rules: []AddressRewriteRule{{External: []string{"2001:db8::2"}, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend, Networks: []NetworkType{NetworkTypeUDP4}}}, expected: []string{vnetLocalIPA}},
 			{name: "interface and CIDR scoped", rules: []AddressRewriteRule{{External: []string{"203.0.113.2"}, Iface: "eth0", CIDR: vnetLocalIPA + "/" + vnetLocalSubnetMaskA, AsCandidateType: CandidateTypeHost, Mode: AddressRewriteReplace, Networks: []NetworkType{NetworkTypeUDP4}}}, expected: []string{"203.0.113.2"}},
@@ -475,7 +490,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 			rule     AddressRewriteRule
 			expected []string
 		}{
-			{name: "multiple replacements", rule: AddressRewriteRule{External: []string{"203.0.113.10", "203.0.113.11"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}, expected: []string{"203.0.113.10", "203.0.113.11"}},
+			{name: "multiple replacements", rule: AddressRewriteRule{External: []string{"203.0.113.10", "203.0.113.11", "relay.example"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}, expected: []string{"203.0.113.10", "203.0.113.11", "relay.example"}},
 			{name: "replace with filtered external", rule: AddressRewriteRule{External: []string{"2001:db8::10"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace, Networks: []NetworkType{NetworkTypeUDP4}}},
 			{name: "append with filtered external", rule: AddressRewriteRule{External: []string{"2001:db8::11"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteAppend, Networks: []NetworkType{NetworkTypeUDP4}}, expected: []string{"0.0.0.0"}},
 			{name: "unmatched rule", rule: AddressRewriteRule{External: []string{"203.0.113.12"}, Local: "192.0.2.1", AsCandidateType: CandidateTypeServerReflexive}, expected: []string{"0.0.0.0"}},
@@ -533,6 +548,16 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 			err   error
 		}{
 			{name: "invalid external", rule: AddressRewriteRule{External: []string{"invalid"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "FQDNs", rule: AddressRewriteRule{External: []string{"foo.com", "relay.example.technology", "relay.example.", "xn--bcher-kva.example", "relay.xn--p1ai"}}},
+			{name: "leading hyphen", rule: AddressRewriteRule{External: []string{"-foo.example"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "trailing hyphen", rule: AddressRewriteRule{External: []string{"foo-.example"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "empty label", rule: AddressRewriteRule{External: []string{"foo..example"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "double trailing dot", rule: AddressRewriteRule{External: []string{"foo.example.."}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "underscore", rule: AddressRewriteRule{External: []string{"foo_bar.example"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "hostname with port", rule: AddressRewriteRule{External: []string{"foo.example:3478"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "invalid IPv4", rule: AddressRewriteRule{External: []string{"999.999.999.999"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "long label", rule: AddressRewriteRule{External: []string{strings.Repeat("a", 64) + ".example"}}, err: ErrInvalidNAT1To1IPMapping},
+			{name: "long hostname", rule: AddressRewriteRule{External: []string{strings.Repeat("abc.", 64) + "example"}}, err: ErrInvalidNAT1To1IPMapping},
 			{name: "invalid external after valid entry", rule: AddressRewriteRule{External: []string{"203.0.113.1", "invalid"}}, err: ErrInvalidNAT1To1IPMapping},
 			{name: "empty external", rule: AddressRewriteRule{}, err: ErrInvalidNAT1To1IPMapping},
 			{name: "blank external", rule: AddressRewriteRule{External: []string{" "}}, err: ErrInvalidNAT1To1IPMapping},
@@ -559,7 +584,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 					require.NoError(t, agent.Close())
 				}
 				require.ErrorIs(t, agentErr, testCase.err)
-				require.Nil(t, agent)
+				require.Equal(t, testCase.err == nil, agent != nil)
 			})
 		}
 	})

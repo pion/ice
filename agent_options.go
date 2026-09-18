@@ -37,7 +37,7 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 // existing configuration. Each `AddressRewriteRule` can limit the mapping to a specific
 // interface (`Iface`), local address (`Local`), CIDR block (`CIDR`), or subset
 // of network types (`Networks`), allowing fine-grained control over which local
-// addresses are replaced with the supplied external IPs.
+// addresses are replaced with the supplied external IPs or FQDNs.
 // Use `Mode` to control whether a rule replaces the original candidate (default for
 // host) or appends additional candidates (default for other types).
 //
@@ -176,7 +176,7 @@ func sanitizeExternalIPs(ips []string) ([]string, error) {
 			return nil, ErrInvalidNAT1To1IPMapping
 		}
 
-		if _, _, err := validateIPString(trimmed); err != nil {
+		if _, _, err := validateIPString(trimmed); err != nil && !validateFQDN(trimmed) {
 			return nil, err
 		}
 

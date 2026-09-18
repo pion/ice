@@ -188,10 +188,6 @@ func (a *Agent) shouldRewriteCandidateType(candidateType CandidateType) bool {
 	return a.addressRewriteMapper != nil && a.addressRewriteMapper.hasCandidateType(candidateType)
 }
 
-func (a *Agent) shouldRewriteHostCandidates() bool {
-	return a.mDNSMode != MulticastDNSModeQueryAndGather && a.shouldRewriteCandidateType(CandidateTypeHost)
-}
-
 func (a *Agent) rewriteCandidatePort(candidate *candidateBase, localIP, iface string) {
 	if a.addressRewriteMapper != nil {
 		candidate.port = a.addressRewriteMapper.findExternalPort(
@@ -203,82 +199,43 @@ func (a *Agent) rewriteCandidatePort(candidate *candidateBase, localIP, iface st
 	}
 }
 
-func applyAddressRewrite(
-	original, mapped []net.IP,
-	matched bool,
-	mode AddressRewriteMode,
-	appendOriginal bool,
-) ([]net.IP, bool) {
+func (a *Agent) rewriteCandidateAddresses(
+	candidateType CandidateType,
+	address, localIP, iface string,
+) ([]string, bool) {
+	original := []string{address}
+	if !a.shouldRewriteCandidateType(candidateType) ||
+		(candidateType == CandidateTypeHost && a.mDNSMode == MulticastDNSModeQueryAndGather) {
+		return original, true
+	}
+
+	mapped, matched, mode, err := a.addressRewriteMapper.findExternalIPs(candidateType, localIP, iface)
+	if err != nil {
+		a.log.Warnf("Address rewrite mapping failed for %s: %v", localIP, err)
+
+		return original, candidateType == CandidateTypeHost
+	}
 	if !matched {
 		return original, true
 	}
 	if len(mapped) == 0 {
 		return original, mode != AddressRewriteReplace
 	}
-	if mode == AddressRewriteReplace || !appendOriginal {
+	// Mapped srflx candidates supplement the separately gathered STUN candidates.
+	if mode == AddressRewriteReplace || candidateType == CandidateTypeServerReflexive {
 		return mapped, true
 	}
 
 	return append(original, mapped...), true
 }
 
-func (a *Agent) applyHostAddressRewrite(addr netip.Addr, mappedAddrs []netip.Addr, iface string) ([]netip.Addr, bool) {
-	mappedIPs, matched, mode, innerErr := a.addressRewriteMapper.findExternalIPs(
-		CandidateTypeHost,
-		addr.String(),
-		iface,
-	)
-	if innerErr != nil {
-		a.log.Warnf("Address rewrite mapping is enabled but no external IP is found for %s", addr.String())
-
-		return mappedAddrs, true
-	}
-	if !matched {
-		return mappedAddrs, true
+// rewrittenCandidateIP preserves the transport IP when advertising an FQDN.
+func rewrittenCandidateIP(address string, fallback net.IP) net.IP {
+	if ip := net.ParseIP(address); ip != nil {
+		return ip
 	}
 
-	if mode == AddressRewriteReplace {
-		mappedAddrs = mappedAddrs[:0]
-	}
-	mappedAddrs = appendHostMappedAddrs(mappedAddrs, mappedIPs, addr, a.log)
-	if len(mappedAddrs) == 0 && mode == AddressRewriteReplace {
-		a.log.Warnf("Address rewrite mapping is enabled but produced no usable external IP for %s", addr.String())
-
-		return mappedAddrs, false
-	}
-
-	return mappedAddrs, true
-}
-
-func appendHostMappedAddrs(
-	mappedAddrs []netip.Addr,
-	mappedIPs []net.IP,
-	addr netip.Addr,
-	log logging.LeveledLogger,
-) []netip.Addr {
-	for _, mappedIP := range mappedIPs {
-		conv, ok := netip.AddrFromSlice(mappedIP)
-		if !ok {
-			log.Warnf("failed to convert mapped external IP to netip.Addr'%s'", addr.String())
-
-			continue
-		}
-		// we'd rather have an IPv4-mapped IPv6 become IPv4 so that it is usable
-		mappedAddrs = append(mappedAddrs, conv.Unmap())
-	}
-
-	return mappedAddrs
-}
-
-func (a *Agent) applyHostRewriteForUDPMux(candidateIPs []net.IP, udpAddr *net.UDPAddr) ([]net.IP, bool) {
-	mappedIPs, matched, mode, err := a.addressRewriteMapper.findExternalIPs(CandidateTypeHost, udpAddr.IP.String(), "")
-	if err != nil {
-		a.log.Warnf("Address rewrite mapping is enabled but failed for %s: %v", udpAddr.IP.String(), err)
-
-		return candidateIPs, false
-	}
-
-	return applyAddressRewrite(candidateIPs, mappedIPs, matched, mode, true)
+	return fallback
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
@@ -369,17 +326,17 @@ func (a *Agent) gatherCandidatesLocal(
 	for _, info := range localAddrs {
 		addr := info.addr
 		ifaceName := info.iface
-		mappedAddrs := []netip.Addr{addr}
-		if a.shouldRewriteHostCandidates() {
-			var ok bool
-			mappedAddrs, ok = a.applyHostAddressRewrite(addr, mappedAddrs, ifaceName)
-			if !ok {
-				continue
-			}
+		mappedAddrs, ok := a.rewriteCandidateAddresses(CandidateTypeHost, addr.String(), addr.String(), ifaceName)
+		if !ok {
+			continue
 		}
 
-		for _, mappedIP := range mappedAddrs {
-			address := mappedIP.String()
+		for _, address := range mappedAddrs {
+			mappedIP, parseErr := netip.ParseAddr(address)
+			if parseErr != nil {
+				mappedIP = addr
+			}
+			mappedIP = mappedIP.Unmap()
 			var isLocationTracked bool
 			if a.mDNSMode == MulticastDNSModeQueryAndGather {
 				address = a.mDNSName
@@ -485,13 +442,16 @@ func (a *Agent) gatherCandidatesLocal(
 				for _, connAndPort := range conns {
 					hostConfig := CandidateHostConfig{
 						Network:   network,
-						Address:   address,
+						Address:   mappedIP.String(),
 						Port:      connAndPort.port,
 						Component: ComponentRTP,
 						TCPType:   tcpType,
 						// we will still process this candidate so that we start up the right
 						// listeners.
 						IsLocationTracked: isLocationTracked,
+					}
+					if a.mDNSMode == MulticastDNSModeQueryAndGather {
+						hostConfig.Address = address
 					}
 
 					candidateHost, err := NewCandidateHost(&hostConfig)
@@ -512,6 +472,7 @@ func (a *Agent) gatherCandidatesLocal(
 
 						continue
 					}
+					candidateHost.address = address
 					a.rewriteCandidatePort(&candidateHost.candidateBase, addr.String(), ifaceName)
 
 					if err := a.addCandidate(ctx, candidateHost, connAndPort.conn, &generation, false); err != nil {
@@ -564,20 +525,15 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 		if !ok {
 			return errInvalidAddress
 		}
-		candidateIPs := []net.IP{udpAddr.IP}
-
-		if _, ok := a.udpMux.(*UDPMuxDefault); ok && !a.includeLoopback && udpAddr.IP.IsLoopback() {
+		if _, isDefault := a.udpMux.(*UDPMuxDefault); isDefault && !a.includeLoopback && udpAddr.IP.IsLoopback() {
 			// Unlike MultiUDPMux Default, UDPMuxDefault doesn't have
 			// a separate param to include loopback, so we respect agent config
 			continue
 		}
 
-		if a.shouldRewriteHostCandidates() {
-			var ok bool
-			candidateIPs, ok = a.applyHostRewriteForUDPMux(candidateIPs, udpAddr)
-			if !ok {
-				continue
-			}
+		candidateIPs, ok := a.rewriteCandidateAddresses(CandidateTypeHost, udpAddr.IP.String(), udpAddr.IP.String(), "")
+		if !ok {
+			continue
 		}
 
 		for _, candidateIP := range candidateIPs {
@@ -586,11 +542,11 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 			if a.mDNSMode == MulticastDNSModeQueryAndGather {
 				address = a.mDNSName
 			} else {
-				address = candidateIP.String()
+				address = candidateIP
 				// Here, we are not doing multicast gathering, so we will need to skip this address so
 				// that we don't accidentally reveal location tracking information. Otherwise, the
 				// case above hides the IP behind an mDNS address.
-				isLocationTracked = shouldFilterLocationTracked(candidateIP)
+				isLocationTracked = shouldFilterLocationTracked(rewrittenCandidateIP(candidateIP, udpAddr.IP))
 			}
 
 			hostConfig := CandidateHostConfig{
@@ -614,13 +570,18 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 				return err
 			}
 
-			cand, err := NewCandidateHost(&hostConfig)
+			transportConfig := hostConfig
+			if a.mDNSMode != MulticastDNSModeQueryAndGather {
+				transportConfig.Address = rewrittenCandidateIP(address, udpAddr.IP).String()
+			}
+			cand, err := NewCandidateHost(&transportConfig)
 			if err != nil {
 				closeConnAndLog(conn, a.log, "failed to create host mux candidate: %s %d: %v", candidateIP, udpAddr.Port, err)
 
 				continue
 			}
 
+			cand.address = address
 			a.rewriteCandidatePort(&cand.candidateBase, udpAddr.IP.String(), "")
 
 			if err := a.addCandidate(ctx, cand, conn, &generation, false); err != nil {
@@ -676,7 +637,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 			}
 
 			iface := findIfaceForIP(ifaces, lAddr.IP)
-			addresses, ok := a.resolveSrflxAddresses(lAddr.IP, iface)
+			addresses, ok := a.rewriteCandidateAddresses(CandidateTypeServerReflexive, lAddr.IP.String(), lAddr.IP.String(), iface)
 			if !ok {
 				closeConnAndLog(
 					conn, a.log, "Address rewrite mapping did not provide usable external IPs for %s", lAddr.IP.String(),
@@ -712,7 +673,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					}
 				}
 
-				if shouldFilterLocationTracked(mappedIP) {
+				if shouldFilterLocationTracked(rewrittenCandidateIP(mappedIP, currentAddr.IP)) {
 					closeConnAndLog(currentConn, a.log, "external IP is somehow filtered for location tracking reasons %s", mappedIP)
 
 					continue
@@ -720,7 +681,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 
 				srflxConfig := CandidateServerReflexiveConfig{
 					Network:   network,
-					Address:   mappedIP.String(),
+					Address:   rewrittenCandidateIP(mappedIP, currentAddr.IP).String(),
 					Port:      currentAddr.Port,
 					Component: ComponentRTP,
 					RelAddr:   currentAddr.IP.String(),
@@ -730,12 +691,13 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				if err != nil {
 					closeConnAndLog(currentConn, a.log, "failed to create server reflexive candidate: %s %s %d: %v",
 						network,
-						mappedIP.String(),
+						mappedIP,
 						currentAddr.Port,
 						err)
 
 					continue
 				}
+				candidate.address = mappedIP
 				a.rewriteCandidatePort(&candidate.candidateBase, lAddr.IP.String(), iface)
 
 				if err := a.addCandidate(ctx, candidate, currentConn, &generation, false); err != nil {
@@ -1304,48 +1266,6 @@ type relayEndpoint struct {
 	closeConn func()
 }
 
-func (a *Agent) resolveRelayAddresses(ep relayEndpoint) ([]net.IP, bool) {
-	addresses := []net.IP{ep.address}
-	if !a.shouldRewriteCandidateType(CandidateTypeRelay) {
-		return addresses, true
-	}
-
-	mappedIPs, matched, mode, err := a.addressRewriteMapper.findExternalIPs(
-		CandidateTypeRelay,
-		ep.relAddr,
-		ep.iface,
-	)
-	if err != nil {
-		return nil, false
-	}
-	addresses, ok := applyAddressRewrite(addresses, mappedIPs, matched, mode, true)
-	if !ok {
-		a.log.Warnf("Address rewrite mapping returned no external relay addresses for %s", ep.relAddr)
-	}
-
-	return addresses, ok
-}
-
-func (a *Agent) resolveSrflxAddresses(localIP net.IP, iface string) ([]net.IP, bool) {
-	addresses := []net.IP{localIP}
-	if !a.shouldRewriteCandidateType(CandidateTypeServerReflexive) {
-		return addresses, true
-	}
-
-	mappedIPs, matched, mode, err := a.addressRewriteMapper.findExternalIPs(
-		CandidateTypeServerReflexive,
-		localIP.String(),
-		iface,
-	)
-	if err != nil {
-		a.log.Warnf("Address rewrite mapping is enabled but no external IP is found for %s: %v", localIP.String(), err)
-
-		return nil, false
-	}
-
-	return applyAddressRewrite(addresses, mappedIPs, matched, mode, false)
-}
-
 func findIfaceForIP(ifaces []ifaceAddr, ip net.IP) string {
 	if ip == nil {
 		return ""
@@ -1360,12 +1280,12 @@ func findIfaceForIP(ifaces []ifaceAddr, ip net.IP) string {
 }
 
 func (a *Agent) createRelayCandidate(
-	ctx context.Context, ep relayEndpoint, ip net.IP, generation uint64, onClose func() error,
+	ctx context.Context, ep relayEndpoint, ip string, generation uint64, onClose func() error,
 ) error {
 	relayConfig := CandidateRelayConfig{
 		Network:       ep.network,
 		Component:     ComponentRTP,
-		Address:       ip.String(),
+		Address:       rewrittenCandidateIP(ip, ep.address).String(),
 		Port:          ep.port,
 		RelAddr:       ep.relAddr,
 		RelPort:       ep.relPort,
@@ -1378,6 +1298,7 @@ func (a *Agent) createRelayCandidate(
 
 		return err
 	}
+	candidate.address = ip
 	a.rewriteCandidatePort(&candidate.candidateBase, ep.relAddr, ep.iface)
 
 	if err := a.addCandidate(ctx, candidate, ep.conn, &generation, false); err != nil {
@@ -1397,7 +1318,7 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 		return
 	}
 
-	addresses, ok := a.resolveRelayAddresses(ep)
+	addresses, ok := a.rewriteCandidateAddresses(CandidateTypeRelay, ep.address.String(), ep.relAddr, ep.iface)
 	if !ok {
 		a.closeRelayEndpoint(ep)
 
@@ -1406,7 +1327,8 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 
 	// Candidate families are independent of the transport used to reach TURN.
 	allowedNetworks := relayNetworkTypesForConfiguredCandidates(a.networkTypes)
-	addresses = slices.DeleteFunc(addresses, func(ip net.IP) bool {
+	addresses = slices.DeleteFunc(addresses, func(address string) bool {
+		ip := rewrittenCandidateIP(address, ep.address)
 		network := NetworkTypeUDP6
 		if ip.To4() != nil {
 			network = NetworkTypeUDP4

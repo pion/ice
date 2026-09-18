@@ -1831,6 +1831,7 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 		{name: "default families keep both aliases", rule: appendRule, expected: []string{"2001:db8::1", "203.0.113.77"}},
 		{name: "IPv4 keeps mapped alias", networks: []NetworkType{NetworkTypeUDP4}, rule: appendRule, expected: []string{"203.0.113.77"}},
 		{name: "IPv6 keeps original alias", networks: []NetworkType{NetworkTypeUDP6}, rule: appendRule, expected: []string{"2001:db8::1"}},
+		{name: "FQDN relay", networks: []NetworkType{NetworkTypeUDP6}, rule: AddressRewriteRule{External: []string{"relay.example"}, AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}, expected: []string{"relay.example"}},
 		{name: "rule filter removes all replacements", networks: []NetworkType{NetworkTypeUDP4}, rule: AddressRewriteRule{External: []string{"2001:db8::77"}, AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace, Networks: []NetworkType{NetworkTypeUDP4}}, immediateCloses: 1},
 		{name: "candidate family removes all replacements", networks: []NetworkType{NetworkTypeUDP6}, rule: AddressRewriteRule{External: []string{"203.0.113.77"}, AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}, immediateCloses: 1},
 	} {
@@ -1856,6 +1857,9 @@ func TestAddRelayCandidatesWithRewrite(t *testing.T) {
 			addresses := make([]string, 0, len(candidates))
 			for _, candidate := range candidates {
 				addresses = append(addresses, candidate.Address())
+				copied, copyErr := candidate.copy()
+				require.NoError(t, copyErr)
+				require.Equal(t, candidate.Marshal(), copied.Marshal())
 			}
 			require.ElementsMatch(t, testCase.expected, addresses)
 			require.Equal(t, testCase.immediateCloses, allocationCloses)
@@ -1877,21 +1881,17 @@ func TestResolveAddressRewriteRespectsInterface(t *testing.T) {
 				t.Run(iface, func(t *testing.T) {
 					localIP := net.ParseIP("198.51.100.6")
 					original := localIP
-					var addresses []net.IP
-					var ok bool
 					if candidateType == CandidateTypeRelay {
 						original = net.ParseIP("10.0.0.41")
-						addresses, ok = agent.resolveRelayAddresses(relayEndpoint{address: original, relAddr: localIP.String(), iface: iface})
-					} else {
-						addresses, ok = agent.resolveSrflxAddresses(localIP, iface)
 					}
+					addresses, ok := agent.rewriteCandidateAddresses(candidateType, original.String(), localIP.String(), iface)
 					require.True(t, ok)
 					require.Len(t, addresses, 1)
 					expected := original.String()
 					if iface == "hosttest0" {
 						expected = "203.0.113.41"
 					}
-					require.Equal(t, expected, addresses[0].String())
+					require.Equal(t, expected, addresses[0])
 				})
 			}
 		})
@@ -1900,29 +1900,37 @@ func TestResolveAddressRewriteRespectsInterface(t *testing.T) {
 
 func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 	for _, testCase := range []struct {
-		name    string
-		network NetworkType
-		muxes   int
+		name     string
+		network  NetworkType
+		muxes    int
+		external string
 	}{
-		{name: "TCP mux", network: NetworkTypeTCP4, muxes: 1},
-		{name: "multi TCP mux", network: NetworkTypeTCP4, muxes: 2},
-		{name: "multi UDP mux", network: NetworkTypeUDP4, muxes: 2},
+		{name: "TCP mux", network: NetworkTypeTCP4, muxes: 1, external: "198.51.100.1"},
+		{name: "multi TCP mux", network: NetworkTypeTCP4, muxes: 2, external: "198.51.100.1"},
+		{name: "multi UDP mux", network: NetworkTypeUDP4, muxes: 2, external: "198.51.100.1"},
+		{name: "FQDN TCP mux", network: NetworkTypeTCP4, muxes: 1, external: "relay.example"},
+		{name: "FQDN UDP mux", network: NetworkTypeUDP4, muxes: 1, external: "relay.example"},
+		{name: "FQDN UDP6 mux", network: NetworkTypeUDP6, muxes: 1, external: "relay.example"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Cleanup(test.CheckRoutines(t))
+			localIP := net.IPv4(127, 0, 0, 1)
+			if testCase.network.IsIPv6() {
+				localIP = net.IPv6loopback
+			}
 			options := []AgentOption{
-				WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})),
+				WithNet(newHostGatherNet(&net.UDPAddr{IP: localIP})),
 				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithNetworkTypes([]NetworkType{testCase.network}),
 				WithIncludeLoopback(),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, Local: "127.0.0.1", AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
+				WithAddressRewriteRules(AddressRewriteRule{External: []string{testCase.external}, Local: localIP.String(), AsCandidateType: CandidateTypeHost, Mode: AddressRewriteAppend}),
 			}
 			ports := make([]int, 0, testCase.muxes)
 			if testCase.network.IsTCP() {
 				muxes := make([]TCPMux, 0, testCase.muxes)
 				for range testCase.muxes {
-					listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+					listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: localIP})
 					require.NoError(t, err)
 					child := NewTCPMuxDefault(TCPMuxParams{Listener: listener, ReadBufferSize: 20})
 					t.Cleanup(func() { require.NoError(t, child.Close()) })
@@ -1939,7 +1947,7 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 			} else {
 				muxes := make([]UDPMux, 0, testCase.muxes)
 				for range testCase.muxes {
-					conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+					conn, err := net.ListenUDP(udp, &net.UDPAddr{IP: localIP})
 					require.NoError(t, err)
 					child := NewUDPMuxDefault(UDPMuxParams{UDPConn: conn})
 					t.Cleanup(func() { require.NoError(t, child.Close()) })
@@ -1966,6 +1974,10 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 				if testCase.network.IsTCP() {
 					require.Equal(t, TCPTypePassive, host.TCPType())
 				}
+				copied, copyErr := host.copy()
+				require.NoError(t, copyErr)
+				require.Equal(t, host.Marshal(), copied.Marshal())
+				require.Equal(t, host.NetworkType(), copied.NetworkType())
 				byPort[host.Port()] = append(byPort[host.Port()], host)
 			}
 			require.Len(t, byPort, testCase.muxes)
@@ -1994,7 +2006,7 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 			for _, port := range ports {
 				group := byPort[port]
 				require.Len(t, group, 2, "two aliases per mux port")
-				require.ElementsMatch(t, []string{"127.0.0.1", "198.51.100.1"}, []string{group[0].Address(), group[1].Address()})
+				require.ElementsMatch(t, []string{localIP.String(), testCase.external}, []string{group[0].Address(), group[1].Address()})
 				first, second := unwrap(group[0]), unwrap(group[1])
 				require.NotSame(t, first, second)
 				require.Same(t, first.underlying, second.underlying)
