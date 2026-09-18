@@ -46,30 +46,19 @@ func (a *Agent) onConnectionStateChange(s ConnectionState) {
 	}
 }
 
-type handlerNotifier struct {
+type handlerNotifier[T any] struct {
 	sync.Mutex
-	runningConnectionStates bool
-	runningCandidates       bool
-	runningCandidatePairs   bool
-	notifiers               sync.WaitGroup
-
-	connectionStates    []ConnectionState
-	connectionStateFunc func(ConnectionState)
-
-	candidates    []Candidate
-	candidateFunc func(Candidate)
-
-	selectedCandidatePairs []*CandidatePair
-	candidatePairFunc      func(*CandidatePair)
-
-	// State for closing
-	done chan struct{}
+	running   bool
+	notifiers sync.WaitGroup
+	queue     []T
+	handler   func(T)
+	done      chan struct{}
 }
 
-func (h *handlerNotifier) Close(graceful bool) {
+func (h *handlerNotifier[T]) Close(graceful bool) {
 	if graceful {
 		// if we were closed ungracefully before, we now
-		// want ot wait.
+		// want to wait.
 		defer h.notifiers.Wait()
 	}
 
@@ -86,7 +75,7 @@ func (h *handlerNotifier) Close(graceful bool) {
 	h.Unlock()
 }
 
-func (h *handlerNotifier) EnqueueConnectionState(state ConnectionState) {
+func (h *handlerNotifier[T]) Enqueue(value T) {
 	h.Lock()
 	defer h.Unlock()
 
@@ -100,92 +89,22 @@ func (h *handlerNotifier) EnqueueConnectionState(state ConnectionState) {
 		defer h.notifiers.Done()
 		for {
 			h.Lock()
-			if len(h.connectionStates) == 0 {
-				h.runningConnectionStates = false
+			if len(h.queue) == 0 {
+				h.running = false
 				h.Unlock()
 
 				return
 			}
-			notification := h.connectionStates[0]
-			h.connectionStates = h.connectionStates[1:]
+			notification := h.queue[0]
+			h.queue = h.queue[1:]
 			h.Unlock()
-			h.connectionStateFunc(notification)
+			h.handler(notification)
 		}
 	}
 
-	h.connectionStates = append(h.connectionStates, state)
-	if !h.runningConnectionStates {
-		h.runningConnectionStates = true
-		h.notifiers.Add(1)
-		go notify()
-	}
-}
-
-func (h *handlerNotifier) EnqueueCandidate(cand Candidate) {
-	h.Lock()
-	defer h.Unlock()
-
-	select {
-	case <-h.done:
-		return
-	default:
-	}
-
-	notify := func() {
-		defer h.notifiers.Done()
-		for {
-			h.Lock()
-			if len(h.candidates) == 0 {
-				h.runningCandidates = false
-				h.Unlock()
-
-				return
-			}
-			notification := h.candidates[0]
-			h.candidates = h.candidates[1:]
-			h.Unlock()
-			h.candidateFunc(notification)
-		}
-	}
-
-	h.candidates = append(h.candidates, cand)
-	if !h.runningCandidates {
-		h.runningCandidates = true
-		h.notifiers.Add(1)
-		go notify()
-	}
-}
-
-func (h *handlerNotifier) EnqueueSelectedCandidatePair(pair *CandidatePair) {
-	h.Lock()
-	defer h.Unlock()
-
-	select {
-	case <-h.done:
-		return
-	default:
-	}
-
-	notify := func() {
-		defer h.notifiers.Done()
-		for {
-			h.Lock()
-			if len(h.selectedCandidatePairs) == 0 {
-				h.runningCandidatePairs = false
-				h.Unlock()
-
-				return
-			}
-			notification := h.selectedCandidatePairs[0]
-			h.selectedCandidatePairs = h.selectedCandidatePairs[1:]
-			h.Unlock()
-			h.candidatePairFunc(notification)
-		}
-	}
-
-	h.selectedCandidatePairs = append(h.selectedCandidatePairs, pair)
-	if !h.runningCandidatePairs {
-		h.runningCandidatePairs = true
+	h.queue = append(h.queue, value)
+	if !h.running {
+		h.running = true
 		h.notifiers.Add(1)
 		go notify()
 	}

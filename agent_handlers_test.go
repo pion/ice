@@ -17,8 +17,8 @@ func TestConnectionStateNotifier(t *testing.T) {
 		defer test.CheckRoutines(t)()
 
 		updates := make(chan struct{}, 1)
-		notifier := &handlerNotifier{
-			connectionStateFunc: func(_ ConnectionState) {
+		notifier := &handlerNotifier[ConnectionState]{
+			handler: func(_ ConnectionState) {
 				updates <- struct{}{}
 			},
 			done: make(chan struct{}),
@@ -26,7 +26,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 		// Enqueue all updates upfront to ensure that it
 		// doesn't block
 		for range 10000 {
-			notifier.EnqueueConnectionState(ConnectionStateNew)
+			notifier.Enqueue(ConnectionStateNew)
 		}
 		done := make(chan struct{})
 		go func() {
@@ -46,8 +46,8 @@ func TestConnectionStateNotifier(t *testing.T) {
 	t.Run("TestUpdateOrdering", func(t *testing.T) {
 		defer test.CheckRoutines(t)()
 		updates := make(chan ConnectionState)
-		notifer := &handlerNotifier{
-			connectionStateFunc: func(cs ConnectionState) {
+		notifer := &handlerNotifier[ConnectionState]{
+			handler: func(cs ConnectionState) {
 				updates <- cs
 			},
 			done: make(chan struct{}),
@@ -65,7 +65,7 @@ func TestConnectionStateNotifier(t *testing.T) {
 			close(done)
 		}()
 		for i := range 10000 {
-			notifer.EnqueueConnectionState(ConnectionState(i))
+			notifer.Enqueue(ConnectionState(i))
 		}
 		<-done
 		notifer.Close(true)
@@ -75,11 +75,9 @@ func TestConnectionStateNotifier(t *testing.T) {
 func TestHandlerNotifier_Close_AlreadyClosed(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	notifier := &handlerNotifier{
-		connectionStateFunc: func(ConnectionState) {},
-		candidateFunc:       func(Candidate) {},
-		candidatePairFunc:   func(*CandidatePair) {},
-		done:                make(chan struct{}),
+	notifier := &handlerNotifier[ConnectionState]{
+		handler: func(ConnectionState) {},
+		done:    make(chan struct{}),
 	}
 
 	// first close
@@ -116,25 +114,21 @@ func TestHandlerNotifier_Close_AlreadyClosed(t *testing.T) {
 	assert.True(t, isClosed(notifier.done), "expected h.done to remain closed after second Close")
 
 	// sanity: no enqueues should start after close.
-	require.False(t, notifier.runningConnectionStates)
-	require.False(t, notifier.runningCandidates)
-	require.False(t, notifier.runningCandidatePairs)
-	require.Zero(t, len(notifier.connectionStates))
-	require.Zero(t, len(notifier.candidates))
-	require.Zero(t, len(notifier.selectedCandidatePairs))
+	require.False(t, notifier.running)
+	require.Zero(t, len(notifier.queue))
 }
 
 func TestHandlerNotifier_EnqueueConnectionState_AfterClose(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	connCh := make(chan struct{}, 1)
-	notifier := &handlerNotifier{
-		connectionStateFunc: func(ConnectionState) { connCh <- struct{}{} },
-		done:                make(chan struct{}),
+	notifier := &handlerNotifier[ConnectionState]{
+		handler: func(ConnectionState) { connCh <- struct{}{} },
+		done:    make(chan struct{}),
 	}
 
 	notifier.Close(false)
-	notifier.EnqueueConnectionState(ConnectionStateConnected)
+	notifier.Enqueue(ConnectionStateConnected)
 
 	assert.Never(t, func() bool {
 		select {
@@ -150,13 +144,13 @@ func TestHandlerNotifier_EnqueueCandidate_AfterClose(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	candidateCh := make(chan struct{}, 1)
-	h := &handlerNotifier{
-		candidateFunc: func(Candidate) { candidateCh <- struct{}{} },
-		done:          make(chan struct{}),
+	h := &handlerNotifier[Candidate]{
+		handler: func(Candidate) { candidateCh <- struct{}{} },
+		done:    make(chan struct{}),
 	}
 
 	h.Close(false)
-	h.EnqueueCandidate(nil)
+	h.Enqueue(nil)
 
 	assert.Never(t, func() bool {
 		select {
@@ -172,13 +166,13 @@ func TestHandlerNotifier_EnqueueSelectedCandidatePair_AfterClose(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	pairCh := make(chan struct{}, 1)
-	h := &handlerNotifier{
-		candidatePairFunc: func(*CandidatePair) { pairCh <- struct{}{} },
-		done:              make(chan struct{}),
+	h := &handlerNotifier[*CandidatePair]{
+		handler: func(*CandidatePair) { pairCh <- struct{}{} },
+		done:    make(chan struct{}),
 	}
 
 	h.Close(false)
-	h.EnqueueSelectedCandidatePair(nil)
+	h.Enqueue(nil)
 
 	assert.Never(t, func() bool {
 		select {

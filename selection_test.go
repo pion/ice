@@ -255,19 +255,19 @@ func bareAgentForPing() *Agent {
 		keepaliveInterval: time.Second,
 		checkInterval:     time.Second,
 
-		connectionStateNotifier: &handlerNotifier{
-			done:                make(chan struct{}),
-			connectionStateFunc: func(ConnectionState) {},
+		connectionStateNotifier: &handlerNotifier[ConnectionState]{
+			done:    make(chan struct{}),
+			handler: func(ConnectionState) {},
 		}, //nolint formatting
 
-		candidateNotifier: &handlerNotifier{
-			done:          make(chan struct{}),
-			candidateFunc: func(Candidate) {},
+		candidateNotifier: &handlerNotifier[Candidate]{
+			done:    make(chan struct{}),
+			handler: func(Candidate) {},
 		}, //nolint formatting
 
-		selectedCandidatePairNotifier: &handlerNotifier{
-			done:              make(chan struct{}),
-			candidatePairFunc: func(*CandidatePair) {},
+		selectedCandidatePairNotifier: &handlerNotifier[*CandidatePair]{
+			done:    make(chan struct{}),
+			handler: func(*CandidatePair) {},
 		}, //nolint formatting
 	}
 }
