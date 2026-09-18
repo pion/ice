@@ -1815,3 +1815,23 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	require.True(t, sendUntilDone(t, controllingConn, controlledConn, 100))
 	require.True(t, sendUntilDone(t, controlledConn, controllingConn, 120))
 }
+
+func TestCandidatePairQualityTypeScores(t *testing.T) {
+	scores := map[CandidateType]float64{
+		CandidateTypeUnspecified: 0, CandidateTypeHost: 100,
+		CandidateTypeServerReflexive: 50, CandidateTypePeerReflexive: 30,
+		CandidateTypeRelay: 10, CandidateType(255): 0,
+	}
+	agent := &Agent{}
+	for localType, localScore := range scores {
+		for remoteType, remoteScore := range scores {
+			pair := newCandidatePair(
+				&candidateBase{candidateType: localType},
+				&candidateBase{candidateType: remoteType}, true,
+			)
+			pair.state = CandidatePairStateSucceeded
+			// No RTT samples incur a fixed penalty of 30.
+			require.Equal(t, (localScore+remoteScore)/2-30, agent.evaluateCandidatePairQuality(pair))
+		}
+	}
+}

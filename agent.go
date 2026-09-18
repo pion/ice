@@ -2145,37 +2145,21 @@ func (a *Agent) evaluateCandidatePairQuality(pair *CandidatePair) float64 { //no
 
 	score := float64(0)
 
-	// Type preference scoring (host=100, srflx=50, prflx=30, relay=10)
-	localTypeScore := float64(0)
-	switch pair.Local.Type() {
-	case CandidateTypeHost:
-		localTypeScore = 100
-	case CandidateTypeServerReflexive:
-		localTypeScore = 50
-	case CandidateTypePeerReflexive:
-		localTypeScore = 30
-	case CandidateTypeRelay:
-		localTypeScore = 10
-	case CandidateTypeUnspecified:
-		localTypeScore = 0
+	// Average the local and remote type preferences (host=100, srflx=50, prflx=30, relay=10).
+	for _, candidateType := range []CandidateType{pair.Local.Type(), pair.Remote.Type()} {
+		switch candidateType {
+		case CandidateTypeHost:
+			score += 100
+		case CandidateTypeServerReflexive:
+			score += 50
+		case CandidateTypePeerReflexive:
+			score += 30
+		case CandidateTypeRelay:
+			score += 10
+		case CandidateTypeUnspecified:
+		}
 	}
-
-	remoteTypeScore := float64(0)
-	switch pair.Remote.Type() {
-	case CandidateTypeHost:
-		remoteTypeScore = 100
-	case CandidateTypeServerReflexive:
-		remoteTypeScore = 50
-	case CandidateTypePeerReflexive:
-		remoteTypeScore = 30
-	case CandidateTypeRelay:
-		remoteTypeScore = 10
-	case CandidateTypeUnspecified:
-		remoteTypeScore = 0
-	}
-
-	// Combined type score (average of local and remote)
-	score += (localTypeScore + remoteTypeScore) / 2
+	score /= 2
 
 	// RTT scoring (convert to penalty, lower RTT = higher score)
 	// Use current RTT if available, otherwise assume high latency
