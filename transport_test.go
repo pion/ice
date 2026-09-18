@@ -270,7 +270,7 @@ func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
 	bNotifier, bConnected := onConnected()
 
 	cfg := append([]AgentOption{WithNetworkTypes(supportedNetworkTypes())}, defaultConfig...)
-	cfg = append(cfg, WithUrls(urls))
+	cfg = append(cfg, WithURLs(urls))
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(tb, err)
@@ -304,7 +304,7 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg := []AgentOption{WithUrls(urls), WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
+	cfg := []AgentOption{WithURLs(urls), WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)

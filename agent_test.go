@@ -885,7 +885,7 @@ func TestConnectivityLite(t *testing.T) {
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg0 := []AgentOption{WithUrls([]*stun.URI{stunServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vent.net0)}
+	cfg0 := []AgentOption{WithURLs([]*stun.URI{stunServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vent.net0)}
 
 	aAgent, err := NewAgent(cfg0...)
 	require.NoError(t, err)
@@ -895,7 +895,7 @@ func TestConnectivityLite(t *testing.T) {
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
 	cfg1 := []AgentOption{
-		WithUrls([]*stun.URI{}),
+		WithURLs([]*stun.URI{}),
 		WithICELite(true),
 		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 		WithNetworkTypes(supportedNetworkTypes()),
@@ -930,7 +930,7 @@ func TestLiteAgentDoesNotSendConnectivityChecks(t *testing.T) {
 	require.NoError(t, err)
 	defer virtualNet.close()
 
-	fullAgent, err := NewAgent(WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(virtualNet.net0))
+	fullAgent, err := NewAgent(WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(virtualNet.net0))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, fullAgent.Close()) }()
 
@@ -1303,7 +1303,7 @@ func TestConnectionStateCallback(t *testing.T) { //nolint:cyclop
 	failedDuration := time.Second
 	KeepaliveInterval := time.Duration(0)
 
-	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithInterfaceFilter(problematicNetworkInterfaces)}
+	cfg := []AgentOption{WithURLs([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithInterfaceFilter(problematicNetworkInterfaces)}
 
 	isClosed := make(chan any)
 
@@ -2198,7 +2198,7 @@ func TestCloseInConnectionStateCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 500 * time.Millisecond
 
-	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
+	cfg := []AgentOption{WithURLs([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(disconnectedDuration), WithFailedTimeout(failedDuration), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -2246,7 +2246,7 @@ func TestRunTaskInConnectionStateCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 50 * time.Millisecond
 
-	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
+	cfg := []AgentOption{WithURLs([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -2284,7 +2284,7 @@ func TestRunTaskInSelectedCandidatePairChangeCallback(t *testing.T) {
 	KeepaliveInterval := time.Duration(0)
 	CheckInterval := 50 * time.Millisecond
 
-	cfg := []AgentOption{WithUrls([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
+	cfg := []AgentOption{WithURLs([]*stun.URI{}), WithNetworkTypes(supportedNetworkTypes()), WithDisconnectedTimeout(oneSecond), WithFailedTimeout(oneSecond), WithKeepaliveInterval(KeepaliveInterval), WithCheckInterval(CheckInterval)}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -3208,7 +3208,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 
 		newURLs := []*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "1.2.3.4", Port: 3478, Proto: stun.ProtoTypeUDP}}
 
-		require.NoError(t, a.UpdateOptions(WithUrls(newURLs)))
+		require.NoError(t, a.UpdateOptions(WithURLs(newURLs)))
 	})
 
 	t.Run("UpdateOptions on closed agent fails", func(t *testing.T) {
@@ -3216,7 +3216,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, a.Close())
 
-		require.Equal(t, ErrClosed, a.UpdateOptions(WithUrls([]*stun.URI{})))
+		require.Equal(t, ErrClosed, a.UpdateOptions(WithURLs([]*stun.URI{})))
 	})
 
 	t.Run("Non-updatable options are rejected", func(t *testing.T) { //nolint:varnamelen
@@ -3226,7 +3226,7 @@ func TestAgentUpdateOptions(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		// All options except WithUrls should be rejected on a running agent.
+		// All options except WithURLs should be rejected on a running agent.
 		// When adding new options, add them here if they are not runtime-updatable.
 		nonUpdatableOptions := map[string]AgentOption{
 			"WithAddressRewriteRules":             WithAddressRewriteRules(AddressRewriteRule{External: []string{"1.2.3.4"}}),
@@ -3324,7 +3324,7 @@ func TestMDNSQueryTimeout(t *testing.T) {
 
 func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 	t.Run("accepts UDP relay candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3342,7 +3342,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 
 	// nolint:dupl
 	t.Run("accepts UDP host candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3360,7 +3360,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 
 	// nolint:dupl
 	t.Run("accepts UDP srflx candidate with tcp-only configured network types and TURN/TCP URL", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3377,7 +3377,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 	})
 
 	t.Run("stores UDP relay candidate regardless of TURN URL transport", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "turn.example.com", Port: 3478}}))
+		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeTCP4}), WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "turn.example.com", Port: 3478}}))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -3833,7 +3833,7 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg0 := []AgentOption{WithUrls(a0TestConfig.urls), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vnet.net0)}
+	cfg0 := []AgentOption{WithURLs(a0TestConfig.urls), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vnet.net0)}
 	if a0TestConfig.rewriteCandidateType != CandidateTypeUnspecified {
 		cfg0 = append(cfg0, WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: a0TestConfig.rewriteCandidateType}))
 	}
@@ -3843,7 +3843,7 @@ func pipeWithVNet(t *testing.T, vnet *virtualNet, a0TestConfig, a1TestConfig *ag
 	t.Cleanup(func() { require.NoError(t, aAgent.Close()) })
 	require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
 
-	cfg1 := []AgentOption{WithUrls(a1TestConfig.urls), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vnet.net1)}
+	cfg1 := []AgentOption{WithURLs(a1TestConfig.urls), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(vnet.net1)}
 	if a1TestConfig.rewriteCandidateType != CandidateTypeUnspecified {
 		cfg1 = append(cfg1, WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPB}, AsCandidateType: a1TestConfig.rewriteCandidateType}))
 	}
@@ -4032,7 +4032,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 			WithCandidateTypes(candidateTypes),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithAddressRewriteRules(rules...),
-			WithUrls(urls),
+			WithURLs(urls),
 		}
 		agent, agentErr := NewAgent(append(options, extra...)...)
 		require.NoError(t, agentErr)

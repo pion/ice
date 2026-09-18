@@ -36,7 +36,7 @@ func TestRelayOnlyConnection(t *testing.T) {
 		require.NoError(t, server.Close())
 	}()
 
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr + "", Username: "username", Password: "password", Port: serverPort, Proto: stun.ProtoTypeUDP}}), WithCandidateTypes([]CandidateType{CandidateTypeRelay})}
+	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr + "", Username: "username", Password: "password", Port: serverPort, Proto: stun.ProtoTypeUDP}}), WithCandidateTypes([]CandidateType{CandidateTypeRelay})}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)

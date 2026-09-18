@@ -324,7 +324,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		!containsCandidateType(CandidateTypeRelay, agent.candidateTypes) {
 		agent.closeMulticastConn()
 
-		return nil, ErrUselessUrlsProvided
+		return nil, ErrUselessURLsProvided
 	}
 
 	if err = applyAddressRewriteMapping(agent); err != nil {
@@ -1938,7 +1938,7 @@ func (a *Agent) SetRemoteICELite(lite bool) error {
 
 // UpdateOptions applies the given options to the agent at runtime.
 // Only a subset of options can be updated after agent creation:
-//   - WithUrls: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
+//   - WithURLs: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
 //
 // Returns an error if the agent is closed or if an unsupported option is provided.
 func (a *Agent) UpdateOptions(opts ...AgentOption) error {

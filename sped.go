@@ -9,18 +9,18 @@ import (
 	"github.com/pion/stun/v4"
 )
 
-// DtlsInStunAttribute is a STUN attribute for carrying DTLS embedded in STUN.
-type DtlsInStunAttribute []byte
+// DTLSInSTUNAttribute is a STUN attribute for carrying DTLS embedded in STUN.
+type DTLSInSTUNAttribute []byte
 
 // AddTo adds DTLS-in-STUN attribute to message.
-func (d DtlsInStunAttribute) AddTo(m *stun.Message) error {
+func (d DTLSInSTUNAttribute) AddTo(m *stun.Message) error {
 	m.Add(stun.AttrDtlsInStun, d)
 
 	return nil
 }
 
 // GetFrom decodes DTLS-in-STUN attribute from message.
-func (d *DtlsInStunAttribute) GetFrom(m *stun.Message) error {
+func (d *DTLSInSTUNAttribute) GetFrom(m *stun.Message) error {
 	v, err := m.Get(stun.AttrDtlsInStun)
 	if err != nil {
 		return err
