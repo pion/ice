@@ -428,10 +428,15 @@ func WithUrls(urls []*stun.URI) AgentOption {
 }
 
 // WithPortRange sets the UDP port range for host candidates.
+// It returns ErrPort if portMax is less than portMin.
 func WithPortRange(portMin, portMax uint16) AgentOption {
 	return func(a *Agent) error {
 		if a.constructed {
 			return ErrAgentOptionNotUpdatable
+		}
+
+		if portMax < portMin {
+			return ErrPort
 		}
 
 		a.portMin = portMin
