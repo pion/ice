@@ -242,6 +242,10 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 	}
 
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+
 		if err = opt(agent); err != nil {
 			return nil, err
 		}
