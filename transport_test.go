@@ -7,6 +7,8 @@ package ice
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -15,9 +17,11 @@ import (
 	"time"
 
 	"github.com/pion/ice/v4/internal/taskloop"
+	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
 	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/transport/v5/test"
+	"github.com/pion/transport/v5/vnet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -786,4 +790,144 @@ func BenchmarkUDPConnWriteRead(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func TestWriteUseValidPair(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(time.Second * 10).Stop()
+
+	loggerFactory := logging.NewDefaultLoggerFactory()
+
+	// Create a network with two interfaces
+	wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "0.0.0.0/0", LoggerFactory: loggerFactory})
+	require.NoError(t, err)
+
+	wan.AddChunkFilter(func(c vnet.Chunk) bool {
+		if stun.IsMessage(c.UserData()) {
+			m := &stun.Message{Raw: c.UserData()}
+			if decErr := m.Decode(); decErr != nil {
+				return false
+			} else if m.Contains(stun.AttrUseCandidate) {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.1"}})
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net0))
+
+	net1, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.2"}})
+	require.NoError(t, err)
+	require.NoError(t, wan.AddNet(net1))
+
+	require.NoError(t, wan.Start())
+
+	// Create two agents and connect them
+	controllingAgent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net0))
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controllingAgent.Close())
+	}()
+
+	controlledAgent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1))
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, controlledAgent.Close())
+	}()
+
+	gatherAndExchangeCandidates(t, controllingAgent, controlledAgent)
+
+	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	controlledUfrag, controlledPwd, err := controlledAgent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	require.NoError(t, controllingAgent.startConnectivityChecks(true, controlledUfrag, controlledPwd))
+	require.NoError(t, controlledAgent.startConnectivityChecks(false, controllingUfrag, controllingPwd))
+
+	testMessage := []byte("Test Message")
+	go func() {
+		for {
+			if _, writeErr := (&Conn{agent: controllingAgent}).Write(testMessage); writeErr != nil {
+				if !errors.Is(writeErr, ErrNoCandidatePairs) {
+					return
+				}
+			}
+
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+
+	readBuf := make([]byte, len(testMessage))
+	_, err = (&Conn{agent: controlledAgent}).Read(readBuf)
+	require.NoError(t, err)
+
+	require.Equal(t, readBuf, testMessage)
+
+	require.NoError(t, wan.Stop())
+}
+
+func TestRemoteLocalAddr(t *testing.T) {
+	// Check for leaking routines
+	defer test.CheckRoutines(t)()
+
+	// Limit runtime in case of deadlocks
+	defer test.TimeOut(time.Second * 20).Stop()
+
+	// Agent0 is behind 1:1 NAT
+	natType0 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+	// Agent1 is behind 1:1 NAT
+	natType1 := &vnet.NATType{Mode: vnet.NATModeNAT1To1}
+
+	builtVnet, errVnet := buildVNet(natType0, natType1)
+	require.NoError(t, errVnet, "should succeed")
+	defer builtVnet.close()
+
+	stunServerURL := &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: vnetSTUNServerIP, Port: vnetSTUNServerPort, Proto: stun.ProtoTypeUDP}
+
+	t.Run("Disconnected Returns nil", func(t *testing.T) {
+		disconnectedAgent, err := NewAgent()
+		require.NoError(t, err)
+
+		disconnectedConn := Conn{agent: disconnectedAgent}
+		require.Nil(t, disconnectedConn.RemoteAddr())
+		require.Nil(t, disconnectedConn.LocalAddr())
+
+		require.NoError(t, disconnectedConn.Close())
+	})
+
+	t.Run("Remote/Local Pair Match between Agents", func(t *testing.T) {
+		ca, cb := pipeWithVNet(t, builtVnet, &agentTestConfig{urls: []*stun.URI{stunServerURL}}, &agentTestConfig{urls: []*stun.URI{stunServerURL}})
+		defer closePipe(t, ca, cb)
+
+		aRAddr := ca.RemoteAddr()
+		aLAddr := ca.LocalAddr()
+		bRAddr := cb.RemoteAddr()
+		bLAddr := cb.LocalAddr()
+
+		// Assert that nothing is nil
+		require.NotNil(t, aRAddr)
+		require.NotNil(t, aLAddr)
+		require.NotNil(t, bRAddr)
+		require.NotNil(t, bLAddr)
+
+		// Assert addresses
+		require.Equal(t, aLAddr.String(),
+			fmt.Sprintf("%s:%d", vnetLocalIPA, bRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		)
+		require.Equal(t, bLAddr.String(),
+			fmt.Sprintf("%s:%d", vnetLocalIPB, aRAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		)
+		require.Equal(t, aRAddr.String(),
+			fmt.Sprintf("%s:%d", vnetGlobalIPB, bLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		)
+		require.Equal(t, bRAddr.String(),
+			fmt.Sprintf("%s:%d", vnetGlobalIPA, aLAddr.(*net.UDPAddr).Port), //nolint:forcetypeassert
+		)
+	})
 }
