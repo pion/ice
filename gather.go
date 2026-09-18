@@ -203,6 +203,25 @@ func (a *Agent) rewriteCandidatePort(candidate *candidateBase, localIP, iface st
 	}
 }
 
+func applyAddressRewrite(
+	original, mapped []net.IP,
+	matched bool,
+	mode AddressRewriteMode,
+	appendOriginal bool,
+) ([]net.IP, bool) {
+	if !matched {
+		return original, true
+	}
+	if len(mapped) == 0 {
+		return original, mode != AddressRewriteReplace
+	}
+	if mode == AddressRewriteReplace || !appendOriginal {
+		return mapped, true
+	}
+
+	return append(original, mapped...), true
+}
+
 func (a *Agent) applyHostAddressRewrite(addr netip.Addr, mappedAddrs []netip.Addr, iface string) ([]netip.Addr, bool) {
 	mappedIPs, matched, mode, innerErr := a.addressRewriteMapper.findExternalIPs(
 		CandidateTypeHost,
@@ -258,21 +277,8 @@ func (a *Agent) applyHostRewriteForUDPMux(candidateIPs []net.IP, udpAddr *net.UD
 
 		return candidateIPs, false
 	}
-	if !matched {
-		return candidateIPs, true
-	}
-	if len(mappedIPs) == 0 {
-		if mode == AddressRewriteReplace {
-			return candidateIPs, false
-		}
 
-		return candidateIPs, true
-	}
-	if mode == AddressRewriteReplace {
-		candidateIPs = candidateIPs[:0]
-	}
-
-	return append(candidateIPs, mappedIPs...), true
+	return applyAddressRewrite(candidateIPs, mappedIPs, matched, mode, true)
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
@@ -1312,23 +1318,12 @@ func (a *Agent) resolveRelayAddresses(ep relayEndpoint) ([]net.IP, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if !matched {
-		return addresses, true
-	}
-	if len(mappedIPs) == 0 {
-		if mode == AddressRewriteReplace {
-			a.log.Warnf("Address rewrite mapping returned no external relay addresses for %s", ep.relAddr)
-
-			return nil, false
-		}
-
-		return addresses, true
-	}
-	if mode == AddressRewriteReplace {
-		return mappedIPs, true
+	addresses, ok := applyAddressRewrite(addresses, mappedIPs, matched, mode, true)
+	if !ok {
+		a.log.Warnf("Address rewrite mapping returned no external relay addresses for %s", ep.relAddr)
 	}
 
-	return append(addresses, mappedIPs...), true
+	return addresses, ok
 }
 
 func (a *Agent) resolveSrflxAddresses(localIP net.IP, iface string) ([]net.IP, bool) {
@@ -1348,23 +1343,7 @@ func (a *Agent) resolveSrflxAddresses(localIP net.IP, iface string) ([]net.IP, b
 		return nil, false
 	}
 
-	if !matched {
-		return addresses, true
-	}
-
-	if len(mappedIPs) == 0 {
-		if mode == AddressRewriteReplace {
-			return nil, false
-		}
-
-		return addresses, true
-	}
-
-	if mode == AddressRewriteReplace {
-		return mappedIPs, true
-	}
-
-	return mappedIPs, true
+	return applyAddressRewrite(addresses, mappedIPs, matched, mode, false)
 }
 
 func findIfaceForIP(ifaces []ifaceAddr, ip net.IP) string {
