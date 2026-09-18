@@ -1946,6 +1946,10 @@ func (a *Agent) UpdateOptions(opts ...AgentOption) error {
 
 	err := a.loop.Run(a.loop, func(_ context.Context) {
 		for _, opt := range opts {
+			if opt == nil {
+				continue
+			}
+
 			if optErr = opt(a); optErr != nil {
 				return
 			}
