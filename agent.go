@@ -49,7 +49,7 @@ type Agent struct {
 	startedCandidates   map[*candidateBase]struct{}
 
 	// constructed is set to true after the agent is fully initialized.
-	// Options can check this flag to reject updates that are only valid during construction.
+	// Restart uses it to distinguish initialization from subsequent restarts.
 	constructed bool
 
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
@@ -317,14 +317,6 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		agent.closeMulticastConn()
 
 		return nil, ErrLiteUsingNonHostCandidates
-	}
-
-	if len(agent.urls) > 0 &&
-		!slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive) &&
-		!slices.Contains(agent.candidateTypes, CandidateTypeRelay) {
-		agent.closeMulticastConn()
-
-		return nil, ErrUselessURLsProvided
 	}
 
 	if err = applyAddressRewriteMapping(agent); err != nil {
@@ -1936,30 +1928,20 @@ func (a *Agent) SetRemoteICELite(lite bool) error {
 	})
 }
 
-// UpdateOptions applies the given options to the agent at runtime.
-// Only a subset of options can be updated after agent creation:
-//   - WithURLs: updates STUN/TURN server URLs (takes effect on next GatherCandidates call)
-//
-// Returns an error if the agent is closed or if an unsupported option is provided.
-func (a *Agent) UpdateOptions(opts ...AgentOption) error {
-	var optErr error
-
-	err := a.loop.Run(a.loop, func(_ context.Context) {
-		for _, opt := range opts {
-			if opt == nil {
-				continue
-			}
-
-			if optErr = opt(a); optErr != nil {
-				return
-			}
-		}
-	})
-	if err != nil {
-		return err
+// SetURLs updates the STUN/TURN server URLs for the next GatherCandidates call.
+// It copies the slice, but callers must not modify the URI objects while in use.
+// It returns ErrUselessURLsProvided if non-empty URLs are set with both srflx and relay candidates disabled.
+// It returns ErrClosed if the agent is closed.
+func (a *Agent) SetURLs(urls []*stun.URI) error {
+	if len(urls) > 0 &&
+		!slices.Contains(a.candidateTypes, CandidateTypeServerReflexive) &&
+		!slices.Contains(a.candidateTypes, CandidateTypeRelay) {
+		return ErrUselessURLsProvided
 	}
 
-	return optErr
+	return a.loop.Run(a.loop, func(_ context.Context) {
+		a.urls = slices.Clone(urls)
+	})
 }
 
 // Restart restarts the ICE Agent with the provided ufrag/pwd

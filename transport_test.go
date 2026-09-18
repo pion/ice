@@ -264,13 +264,11 @@ func connect(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
 
 func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
 	tb.Helper()
-	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
 	cfg := append([]AgentOption{WithNetworkTypes(supportedNetworkTypes())}, defaultConfig...)
-	cfg = append(cfg, WithURLs(urls))
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(tb, err)
@@ -299,12 +297,11 @@ func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
 
 func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive time.Duration) (*Conn, *Conn) {
 	t.Helper()
-	var urls []*stun.URI
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg := []AgentOption{WithURLs(urls), WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
+	cfg := []AgentOption{WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)

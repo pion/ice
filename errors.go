@@ -118,9 +118,6 @@ var (
 	// ErrInvalidNetworkMonitorInterval indicates an invalid network monitor interval was provided.
 	ErrInvalidNetworkMonitorInterval = errors.New("network monitor interval must be greater than 0")
 
-	// ErrAgentOptionNotUpdatable indicates an option cannot be updated after construction.
-	ErrAgentOptionNotUpdatable = errors.New("option can only be set during agent construction")
-
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errCandidatePacketConnNil        = errors.New("candidate packet connection is nil")
 	errDuplicateCandidate            = errors.New("candidate already added")

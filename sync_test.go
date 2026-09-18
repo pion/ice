@@ -116,8 +116,9 @@ func TestAgentCloseAbortsBlockedUDPMuxSrflxGatherWrite(t *testing.T) {
 			_ = udpMux.Close()
 		}()
 
-		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}), WithUDPMuxSrflx(udpMux))
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMux))
 		require.NoError(t, err)
+		require.NoError(t, agent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}))
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 		require.NoError(t, agent.GatherCandidates())
@@ -153,8 +154,9 @@ func TestAgentCloseDoesNotAbortOtherAgentUDPMuxSrflxGatherWrite(t *testing.T) { 
 		newSrflxAgent := func(t *testing.T) *Agent {
 			t.Helper()
 
-			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}), WithUDPMuxSrflx(udpMux))
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMux))
 			require.NoError(t, err)
+			require.NoError(t, agent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}))
 
 			return agent
 		}
