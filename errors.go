@@ -67,9 +67,9 @@ var (
 	// ErrLiteUsingNonHostCandidates indicates non host candidates were selected for a lite agent.
 	ErrLiteUsingNonHostCandidates = errors.New("lite agents must only use host candidates")
 
-	// ErrUselessUrlsProvided indicates that one or more URL was provided to the agent but no host
+	// ErrUselessURLsProvided indicates that one or more URL was provided to the agent but no host
 	// candidate required them.
-	ErrUselessUrlsProvided = errors.New("agent does not need URL with selected candidate types")
+	ErrUselessURLsProvided = errors.New("agent does not need URL with selected candidate types")
 
 	// ErrUnsupportedAddressRewriteCandidateType indicates an unsupported rewrite candidate type.
 	ErrUnsupportedAddressRewriteCandidateType = errors.New("unsupported address rewrite candidate type")

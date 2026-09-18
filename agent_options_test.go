@@ -89,12 +89,12 @@ func TestWithLite(t *testing.T) {
 	})
 }
 
-func TestWithUrls(t *testing.T) {
+func TestWithURLs(t *testing.T) {
 	stunURL, err := stun.ParseURI("stun:example.com:3478")
 	require.NoError(t, err)
 
 	input := []*stun.URI{stunURL}
-	agent, err := NewAgent(WithUrls(input))
+	agent, err := NewAgent(WithURLs(input))
 	require.NoError(t, err)
 	defer agent.Close() //nolint:errcheck
 
@@ -740,7 +740,7 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("default candidate types accept urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		agent, err := NewAgent(WithUrls([]*stun.URI{stunURL}), WithNet(stub))
+		agent, err := NewAgent(WithURLs([]*stun.URI{stunURL}), WithNet(stub))
 		require.NoError(t, err)
 		require.NoError(t, agent.Close())
 	})
@@ -748,8 +748,8 @@ func TestWithCandidateTypesAffectsURLValidation(t *testing.T) {
 	t.Run("host only candidate types reject urls", func(t *testing.T) {
 		stub := newStubNet(t)
 
-		_, err := NewAgent(WithUrls([]*stun.URI{stunURL}), WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
-		require.ErrorIs(t, err, ErrUselessUrlsProvided)
+		_, err := NewAgent(WithURLs([]*stun.URI{stunURL}), WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+		require.ErrorIs(t, err, ErrUselessURLsProvided)
 	})
 }
 

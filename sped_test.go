@@ -11,22 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDtlsInStunAttribute_GetFrom(t *testing.T) {
+func TestDTLSInSTUNAttribute_GetFrom(t *testing.T) {
 	m := new(stun.Message)
-	var dtlsInStun DtlsInStunAttribute
+	var dtlsInStun DTLSInSTUNAttribute
 	require.ErrorIs(t, stun.ErrAttributeNotFound, dtlsInStun.GetFrom(m))
 
 	expectedValue := []byte{0x01, 0x02, 0x03, 0x04}
 	m.Add(stun.AttrDtlsInStun, expectedValue)
 
-	var dtlsInStun1 DtlsInStunAttribute
+	var dtlsInStun1 DTLSInSTUNAttribute
 	require.NoError(t, dtlsInStun1.GetFrom(m))
 	require.Equal(t, expectedValue, []byte(dtlsInStun1))
 }
 
-func TestDtlsInStunAttribute_AddTo(t *testing.T) {
+func TestDTLSInSTUNAttribute_AddTo(t *testing.T) {
 	m := new(stun.Message)
-	dtlsInStun := DtlsInStunAttribute([]byte{0x05, 0x06, 0x07, 0x08})
+	dtlsInStun := DTLSInSTUNAttribute([]byte{0x05, 0x06, 0x07, 0x08})
 	require.NoError(t, dtlsInStun.AddTo(m))
 
 	v, err := m.Get(stun.AttrDtlsInStun)

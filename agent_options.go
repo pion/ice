@@ -410,8 +410,8 @@ func WithICELite(lite bool) AgentOption {
 	}
 }
 
-// WithUrls sets the STUN/TURN server URLs used by the agent.
-func WithUrls(urls []*stun.URI) AgentOption {
+// WithURLs sets the STUN/TURN server URLs used by the agent.
+func WithURLs(urls []*stun.URI) AgentOption {
 	return func(a *Agent) error {
 		if len(urls) == 0 {
 			a.urls = nil

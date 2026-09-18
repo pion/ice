@@ -349,7 +349,7 @@ func TestSTUNConcurrency(t *testing.T) {
 		_ = tcpMux.Close()
 	}()
 
-	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}), WithTCPMux(tcpMux))
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithURLs(urls), WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}), WithTCPMux(tcpMux))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -407,7 +407,7 @@ func TestTURNConcurrency(t *testing.T) {
 		}
 		urls = append(urls, &stun.URI{Scheme: scheme, Host: localhostIPStr, Username: "username", Password: "password", Proto: protocol, Port: serverPort})
 
-		agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithInsecureSkipVerify(true), WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls))
+		agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeRelay}), WithInsecureSkipVerify(true), WithNetworkTypes(supportedNetworkTypes()), WithURLs(urls))
 		require.NoError(t, err)
 		defer func() {
 			require.NoError(t, agent.Close())
@@ -487,7 +487,7 @@ func TestSTUNTURNConcurrency(t *testing.T) {
 	}
 	urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"})
 
-	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithURLs(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -532,7 +532,7 @@ func TestTURNSrflx(t *testing.T) {
 
 	urls := []*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: serverPort, Username: "username", Password: "password"}}
 
-	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithURLs(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive, CandidateTypeRelay}))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -598,7 +598,7 @@ func TestGatherCandidatesRelayProducesRelay(t *testing.T) {
 				WithTURNTransportProtocols([]NetworkType{network}),
 				WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
-				WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: host, Port: portFromAddr(t, addr), Proto: proto, Username: "username", Password: "password"}}),
+				WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: host, Port: portFromAddr(t, addr), Proto: proto, Username: "username", Password: "password"}}),
 			)
 			require.NoError(t, err)
 			defer func() { require.NoError(t, agent.Close()) }()
@@ -1237,7 +1237,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.77"}, Local: "10.0.0.1", Iface: "relaytest0", AsCandidateType: CandidateTypeRelay, Mode: AddressRewriteReplace}),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1292,7 +1292,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 		WithInterfaceFilter(func(iface string) bool {
 			return iface == "eth0" //nolint:goconst
 		}),
@@ -1352,7 +1352,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 						WithTURNTransportProtocols([]NetworkType{transportType}),
 						WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 						WithMulticastDNSMode(MulticastDNSModeDisabled),
-						WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
+						WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
 					)
 					require.NoError(t, err)
 					defer func() { require.NoError(t, agent.Close()) }()
@@ -1394,7 +1394,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 			WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-			WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
+			WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "127.0.0.1", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 		)
 		require.NoError(t, err)
@@ -1438,7 +1438,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "127.0.0.1", Port: 3478, Username: "user", Password: "pass"}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: "127.0.0.1", Port: 3478, Username: "user", Password: "pass"}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1538,7 +1538,7 @@ func TestTURNProxyDialer(t *testing.T) {
 	agent, err := NewAgent(
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 		WithNetworkTypes(supportedNetworkTypes()),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP, Port: 5000}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: localhostIPStr, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP, Port: 5000}}),
 		WithProxyDialer(proxyDialer),
 	)
 	require.NoError(t, err)
@@ -1569,7 +1569,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "example.com", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "example.com", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1619,7 +1619,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}),
 		WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "unresolvable.invalid", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "unresolvable.invalid", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeTCP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -1724,7 +1724,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: 9}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: 9}}),
 		WithInterfaceFilter(func(iface string) bool {
 			return iface == "eth0"
 		}),
@@ -2241,7 +2241,7 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 		urls = append(urls, &stun.URI{Scheme: stun.SchemeTypeSTUN, Host: localhostIPStr, Port: 3478 + i})
 	}
 
-	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithUrls(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMuxSrflx))
+	agent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithURLs(urls), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMuxSrflx))
 	require.NoError(t, err)
 	var aClosed bool
 	defer func() {
@@ -2707,7 +2707,7 @@ func TestTURNContext(t *testing.T) {
 
 	agent, err := NewAgent(
 		WithNetworkTypes(supportedNetworkTypes()),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: portFromAddr(t, listener.LocalAddr()), Username: "username", Password: "password"}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeUDP, Host: localhostIPStr, Port: portFromAddr(t, listener.LocalAddr()), Username: "username", Password: "password"}}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 	)
 	require.NoError(t, err)
@@ -2995,7 +2995,7 @@ func TestGatherAddressRewriteSrflxModes(t *testing.T) {
 				WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
 				WithUDPMuxSrflx(mux),
-				WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 3478}}),
+				WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: 3478}}),
 				WithAddressRewriteRules(AddressRewriteRule{External: []string{"203.0.113.50"}, AsCandidateType: CandidateTypeServerReflexive, Mode: testCase.mode}),
 			)
 			require.NoError(t, err)
@@ -3133,7 +3133,7 @@ func TestGatherRelayWithVNet(t *testing.T) {
 		WithNet(clientNet),
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: turnAddr.IP.String(), Port: turnAddr.Port, Username: turnUser, Password: turnPass, Proto: stun.ProtoTypeUDP}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: turnAddr.IP.String(), Port: turnAddr.Port, Username: turnUser, Password: turnPass, Proto: stun.ProtoTypeUDP}}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 	)
 	require.NoError(t, err)
@@ -3183,7 +3183,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 	require.NoError(t, err, "should succeed")
 	defer v.close()
 
-	cfg0 := []AgentOption{WithUrls([]*stun.URI{turnServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeHost}), WithNet(v.net0)}
+	cfg0 := []AgentOption{WithURLs([]*stun.URI{turnServerURL}), WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithAddressRewriteRules(AddressRewriteRule{External: []string{vnetGlobalIPA}, AsCandidateType: CandidateTypeHost}), WithNet(v.net0)}
 	aAgent, err := NewAgent(cfg0...)
 	require.NoError(t, err, "should succeed")
 	defer func() {
@@ -3496,7 +3496,7 @@ func TestTransportFilteringRelayMatrix(t *testing.T) { // nolint:cyclop
 				WithNetworkTypes(tc.networkTypes),
 				WithMulticastDNSMode(MulticastDNSModeDisabled),
 				WithIncludeLoopback(),
-				WithUrls([]*stun.URI{url}),
+				WithURLs([]*stun.URI{url}),
 			}
 			if len(tc.turnAllowed) > 0 {
 				opts = append(opts, WithTURNTransportProtocols(tc.turnAllowed))
@@ -3593,7 +3593,7 @@ func TestTransportFilteringSrflxMatrix(t *testing.T) {
 			netFW := newFirewallNet(tc.allowUDP, true)
 			url := &stun.URI{Scheme: tc.turnScheme, Proto: tc.turnProto, Host: localhostIPStr, Port: serverPort, Username: "user", Password: "pass"}
 
-			agent, err := NewAgent(WithNet(netFW), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes(tc.networkTypes), WithMulticastDNSMode(MulticastDNSModeDisabled), WithIncludeLoopback(), WithSTUNGatherTimeout(200*time.Millisecond), WithUrls([]*stun.URI{url}))
+			agent, err := NewAgent(WithNet(netFW), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithNetworkTypes(tc.networkTypes), WithMulticastDNSMode(MulticastDNSModeDisabled), WithIncludeLoopback(), WithSTUNGatherTimeout(200*time.Millisecond), WithURLs([]*stun.URI{url}))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -3695,7 +3695,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 		WithIncludeLoopback(),
-		WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}),
+		WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Proto: stun.ProtoTypeTCP, Host: "turn.example.com", Port: 3478, Username: "user", Password: "pass"}}),
 	)
 	require.NoError(t, err)
 	defer func() {
