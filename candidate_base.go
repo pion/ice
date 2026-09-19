@@ -66,6 +66,10 @@ type writeAborter interface {
 	abortWrite() error
 }
 
+type writeTargetChecker interface {
+	canWriteTo(netip.AddrPort) bool
+}
+
 // Save a time reference to calculate monotonic time for candidate last sent/received.
 // nolint: gochecknoglobals
 var timeRef = time.Now()
@@ -618,6 +622,12 @@ func (c *candidateBase) addr() net.Addr {
 
 func (c *candidateBase) addrPort() netip.AddrPort {
 	return c.resolvedAddrPort
+}
+
+func (c *candidateBase) canWriteTo(remote Candidate) bool {
+	checker, hasWriteTarget := c.conn.(writeTargetChecker)
+
+	return !hasWriteTarget || checker.canWriteTo(remote.addrPort())
 }
 
 func (c *candidateBase) setResolvedAddr(addr net.Addr) {

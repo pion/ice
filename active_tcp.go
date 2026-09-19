@@ -17,10 +17,13 @@ import (
 
 type activeTCPConn struct {
 	readBuffer, writeBuffer *packetio.Buffer
+	dialAddr                netip.AddrPort
 	localAddr, remoteAddr   atomic.Value
 	conn                    atomic.Value // stores net.Conn
 	closed                  atomic.Bool
 }
+
+var _ writeTargetChecker = (*activeTCPConn)(nil)
 
 func newActiveTCPConn(
 	ctx context.Context,
@@ -31,6 +34,7 @@ func newActiveTCPConn(
 	a = &activeTCPConn{
 		readBuffer:  packetio.NewBuffer(),
 		writeBuffer: packetio.NewBuffer(),
+		dialAddr:    remoteAddress,
 	}
 
 	laddr, err := getTCPAddrOnInterface(localAddress)
@@ -101,6 +105,19 @@ func newActiveTCPConn(
 	}()
 
 	return a
+}
+
+// canWriteTo reports whether this destination-bound connection can write to
+// remote. The dial address may carry an IPv6 link-local zone that is local
+// dialing context rather than part of the signaled candidate address.
+func (a *activeTCPConn) canWriteTo(remote netip.AddrPort) bool {
+	if !a.dialAddr.IsValid() || !remote.IsValid() || a.dialAddr.Port() != remote.Port() {
+		return false
+	}
+
+	// canonicalAddrPort preserves link-local zones. The dial address's zone is
+	// local dialing context, so strip it before comparing the signaled remote.
+	return a.dialAddr.Addr().Unmap().WithZone("") == remote.Addr().Unmap().WithZone("")
 }
 
 func (a *activeTCPConn) ReadFrom(buff []byte) (n int, srcAddr net.Addr, err error) {
