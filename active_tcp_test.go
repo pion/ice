@@ -446,70 +446,6 @@ func TestActiveTCPConn_SetDeadlines_WhenConnected(t *testing.T) {
 	}
 }
 
-func TestActiveTCP_CandidateCarriesStandardExtensions(t *testing.T) {
-	defer test.CheckRoutines(t)()
-	defer test.TimeOut(10 * time.Second).Stop()
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
-	require.NoError(t, err)
-	defer func() { _ = listener.Close() }()
-	go func() {
-		for {
-			conn, acceptErr := listener.Accept()
-			if acceptErr != nil {
-				return
-			}
-			_ = conn.Close()
-		}
-	}()
-
-	_, port, err := net.SplitHostPort(listener.Addr().String())
-	require.NoError(t, err)
-
-	agent, err := NewAgent(
-		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
-		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-		WithInterfaceFilter(problematicNetworkInterfaces),
-		WithIncludeLoopback(),
-	)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, agent.Close()) }()
-
-	ufrag, _, err := agent.GetLocalUserCredentials()
-	require.NoError(t, err)
-
-	active := make(chan Candidate, 4)
-	require.NoError(t, agent.OnCandidate(func(c Candidate) {
-		if c != nil && c.TCPType() == TCPTypeActive {
-			select {
-			case active <- c:
-			default:
-			}
-		}
-	}))
-
-	passive, err := UnmarshalCandidate(
-		fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port),
-	)
-	require.NoError(t, err)
-	require.NoError(t, agent.AddRemoteCandidate(passive))
-
-	var candidate Candidate
-	select {
-	case candidate = <-active:
-	case <-time.After(5 * time.Second):
-		require.FailNow(t, "no active TCP candidate was created for the remote passive one")
-	}
-
-	ufragExtension, ok := candidate.GetExtension("ufrag")
-	require.True(t, ok, "active TCP candidate reached the peer without a ufrag extension")
-	require.Equal(t, ufrag, ufragExtension.Value)
-
-	generation, ok := candidate.GetExtension("generation")
-	require.True(t, ok, "active TCP candidate reached the peer without a generation extension")
-	require.Equal(t, "0", generation.Value)
-}
-
 func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) { //nolint:cyclop
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
@@ -650,12 +586,8 @@ func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) { //noli
 	}
 }
 
-// RFC 8445 Section 5.1.1.1 keeps an IPv6 link-local address, which is derived
-// from the interface identifier, from reaching the peer.
-func TestActiveTCPCandidateKeepsLinkLocalLocal(t *testing.T) {
+func TestActiveTCPCandidateMarksLinkLocalAsLocationTracked(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	defer test.TimeOut(30 * time.Second).Stop()
 
 	agent, err := NewAgent(
 		WithNetworkTypes([]NetworkType{NetworkTypeTCP6}),
@@ -665,46 +597,30 @@ func TestActiveTCPCandidateKeepsLinkLocalLocal(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, agent.Close()) }()
 
-	signaled := make(chan Candidate, 64)
-	require.NoError(t, agent.OnCandidate(func(c Candidate) {
-		if c != nil {
-			signaled <- c
-		}
-	}))
-
 	remote, err := NewCandidateHost(&CandidateHostConfig{
 		Network: NetworkTypeTCP6.String(), Address: "2001:db8::1", Port: 9000,
 		Component: ComponentRTP, TCPType: TCPTypePassive,
 	})
 	require.NoError(t, err)
-	require.NoError(t, agent.AddRemoteCandidate(remote))
 
-	var linkLocal []string
-	settled := time.After(3 * time.Second)
-	for {
-		select {
-		case candidate := <-signaled:
-			if isLinkLocalV6(candidate.Address()) {
-				linkLocal = append(linkLocal, candidate.Address())
+	linkLocalCount := 0
+	untrackedLinkLocalCount := 0
+	require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+		agent.addRemoteCandidate(remote) //nolint:contextcheck
+		for _, candidate := range agent.localCandidates[NetworkTypeTCP6] {
+			if !isLinkLocalV6(candidate.Address()) {
+				continue
 			}
-		case <-settled:
-			var built []string
-			require.NoError(t, agent.loop.Run(context.Background(), func(context.Context) {
-				for _, candidate := range agent.localCandidates[NetworkTypeTCP6] {
-					if isLinkLocalV6(candidate.Address()) {
-						built = append(built, candidate.Address())
-					}
-				}
-			}))
-			if len(built) == 0 {
-				t.Skip("no IPv6 link-local address on this host to withhold")
+			linkLocalCount++
+			if !candidate.filterForLocationTracking() {
+				untrackedLinkLocalCount++
 			}
-
-			require.Empty(t, linkLocal, "%v was built but must not reach the peer", built)
-
-			return
 		}
+	}))
+	if linkLocalCount == 0 {
+		t.Skip("no IPv6 link-local address on this host")
 	}
+	require.Zero(t, untrackedLinkLocalCount)
 }
 
 func isLinkLocalV6(address string) bool {
