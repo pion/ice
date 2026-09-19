@@ -280,22 +280,16 @@ func TestUDPMux_Agent_Restart(t *testing.T) {
 	bNotifier, bConnected := onConnected()
 	require.NoError(t, connB.agent.OnConnectionStateChange(bNotifier))
 
-	// Maintain Credentials across restarts
+	// Restart with new credentials and re-signal.
+	restart := []GatherOption{WithLocalCredentials("", "")}
+	gatherAndExchangeCandidates(t, connA.agent, connB.agent, restart, restart)
 	ufragA, pwdA, err := connA.agent.GetLocalUserCredentials()
 	require.NoError(t, err)
-
 	ufragB, pwdB, err := connB.agent.GetLocalUserCredentials()
 	require.NoError(t, err)
 
-	require.NoError(t, err)
-
-	// Restart and Re-Signal
-	require.NoError(t, connA.agent.Restart(ufragA, pwdA))
-	require.NoError(t, connB.agent.Restart(ufragB, pwdB))
-
 	require.NoError(t, connA.agent.SetRemoteCredentials(ufragB, pwdB))
 	require.NoError(t, connB.agent.SetRemoteCredentials(ufragA, pwdA))
-	gatherAndExchangeCandidates(t, connA.agent, connB.agent)
 
 	// Wait until both have gone back to connected
 	<-aConnected

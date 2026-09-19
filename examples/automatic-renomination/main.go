@@ -142,7 +142,6 @@ func main() { //nolint:cyclop,maintidx
 	if isControlling {
 		renominationInterval := 3 * time.Second
 		iceAgent, err = ice.NewAgent(
-			ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
 			ice.WithInterfaceFilter(interfaceFilter),
 			ice.WithLoggerFactory(loggerFactory),
 			ice.WithRenomination(ice.DefaultNominationValueGenerator()),
@@ -150,7 +149,6 @@ func main() { //nolint:cyclop,maintidx
 		)
 	} else {
 		iceAgent, err = ice.NewAgent(
-			ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
 			ice.WithInterfaceFilter(interfaceFilter),
 			ice.WithLoggerFactory(loggerFactory),
 		)
@@ -200,6 +198,10 @@ func main() { //nolint:cyclop,maintidx
 		panic(err)
 	}
 
+	if err = iceAgent.Gather(ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6})); err != nil {
+		panic(err)
+	}
+
 	// Get the local auth details and send to remote peer
 	localUfrag, localPwd, err := iceAgent.GetLocalUserCredentials()
 	if err != nil {
@@ -217,10 +219,6 @@ func main() { //nolint:cyclop,maintidx
 
 	remoteUfrag := <-remoteAuthChannel
 	remotePwd := <-remoteAuthChannel
-
-	if err = iceAgent.GatherCandidates(); err != nil {
-		panic(err)
-	}
 
 	fmt.Println("Gathering candidates...")
 	time.Sleep(2 * time.Second) // Give time for candidate gathering

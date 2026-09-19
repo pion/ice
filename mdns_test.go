@@ -39,7 +39,8 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			cfg := []AgentOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces)}
+			cfgGatherOptions := []GatherOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+			cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces)}
 
 			aAgent, err := NewAgent(cfg...)
 			require.NoError(t, err)
@@ -59,7 +60,7 @@ func TestMulticastDNSOnlyConnection(t *testing.T) {
 			bNotifier, bConnected := onConnected()
 			require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-			connect(t, aAgent, bAgent)
+			connect(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
 			<-aConnected
 			<-bConnected
 		})
@@ -85,7 +86,8 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			aAgent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces))
+			aAgentGatherOptions := []GatherOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+			aAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, aAgent.Close())
@@ -93,8 +95,8 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 
 			aNotifier, aConnected := onConnected()
 			require.NoError(t, aAgent.OnConnectionStateChange(aNotifier))
-
-			bAgent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryOnly), WithInterfaceFilter(problematicNetworkInterfaces))
+			bAgentGatherOptions := []GatherOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+			bAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeQueryOnly), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, bAgent.Close())
@@ -103,7 +105,7 @@ func TestMulticastDNSMixedConnection(t *testing.T) {
 			bNotifier, bConnected := onConnected()
 			require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-			connect(t, aAgent, bAgent)
+			connect(t, aAgent, bAgent, aAgentGatherOptions, bAgentGatherOptions)
 			<-aConnected
 			<-bConnected
 		})
@@ -128,10 +130,10 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			_, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("invalidHostName"), WithInterfaceFilter(problematicNetworkInterfaces))
+			_, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("invalidHostName"), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.Equal(t, err, ErrInvalidMulticastDNSHostName)
-
-			agent, err := NewAgent(WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("validName.local"), WithInterfaceFilter(problematicNetworkInterfaces))
+			agentGatherOptions := []GatherOption{WithNetworkTypes(tc.NetworkTypes), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeQueryAndGather), WithMulticastDNSHostName("validName.local"), WithInterfaceFilter(problematicNetworkInterfaces))
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, agent.Close())
@@ -144,7 +146,7 @@ func TestMulticastDNSStaticHostName(t *testing.T) {
 				}
 			}))
 
-			require.NoError(t, agent.GatherCandidates())
+			require.NoError(t, agent.Gather(agentGatherOptions...))
 			<-correctHostName.Done()
 		})
 	}

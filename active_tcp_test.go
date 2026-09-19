@@ -125,7 +125,8 @@ func TestActiveTCP(t *testing.T) {
 			req.NotNil(tcpMux.LocalAddr(), "tcpMux.LocalAddr() is nil")
 
 			hostAcceptanceMinWait := 100 * time.Millisecond
-			cfg := []AgentOption{WithTCPMux(tcpMux), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes), WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
+			cfgGatherOptions := []GatherOption{WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes)}
+			cfg := []AgentOption{WithTCPMux(tcpMux), WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
 			if testCase.useMDNS {
 				cfg = append(cfg, WithMulticastDNSMode(MulticastDNSModeQueryAndGather))
 			}
@@ -135,8 +136,8 @@ func TestActiveTCP(t *testing.T) {
 			defer func() {
 				req.NoError(passiveAgent.Close())
 			}()
-
-			activeAgent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes), WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback())
+			activeAgentGatherOptions := []GatherOption{WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes(testCase.networkTypes)}
+			activeAgent, err := NewAgent(WithLoggerFactory(loggerFactory), WithHostAcceptanceMinWait(hostAcceptanceMinWait), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback())
 
 			req.NoError(err)
 			req.NotNil(activeAgent)
@@ -144,7 +145,7 @@ func TestActiveTCP(t *testing.T) {
 				req.NoError(activeAgent.Close())
 			}()
 
-			passiveAgentConn, activeAgenConn := connect(t, passiveAgent, activeAgent)
+			passiveAgentConn, activeAgenConn := connect(t, passiveAgent, activeAgent, cfgGatherOptions, activeAgentGatherOptions)
 			req.NotNil(passiveAgentConn)
 			req.NotNil(activeAgenConn)
 
@@ -183,8 +184,8 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
 	defer test.TimeOut(time.Second * 5).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithInterfaceFilter(problematicNetworkInterfaces)}
+	cfgGatherOptions := []GatherOption{WithNetworkTypes(supportedNetworkTypes())}
+	cfg := []AgentOption{WithInterfaceFilter(problematicNetworkInterfaces)}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -214,7 +215,7 @@ func TestActiveTCP_NonBlocking(t *testing.T) {
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 
-	connect(t, aAgent, bAgent)
+	connect(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
 
 	<-isConnected
 }
@@ -242,8 +243,8 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 			atomic.AddUint64(&incomingTCPCount, ^uint64(0))
 		}
 	}()
-
-	cfg := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6}), WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
+	cfgGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6, NetworkTypeTCP6})}
+	cfg := []AgentOption{WithInterfaceFilter(problematicNetworkInterfaces), WithIncludeLoopback()}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -267,12 +268,14 @@ func TestActiveTCP_Respect_NetworkTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	gatherAndExchangeCandidates(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
+
 	invalidCandidate, err := UnmarshalCandidate(fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port))
 	require.NoError(t, err)
 	require.NoError(t, aAgent.AddRemoteCandidate(invalidCandidate))
 	require.NoError(t, bAgent.AddRemoteCandidate(invalidCandidate))
 
-	connect(t, aAgent, bAgent)
+	connectGathered(t, aAgent, bAgent)
 
 	<-isConnected
 	require.NoError(t, tcpListener.Close())

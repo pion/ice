@@ -193,8 +193,13 @@ func stressDuplex(t *testing.T) {
 	require.NoError(t, test.StressDuplex(ca, cb, opt))
 }
 
-func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent) {
+func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent, options ...[]GatherOption) {
 	tb.Helper()
+	var aOptions, bOptions []GatherOption
+	if len(options) > 0 {
+		aOptions = options[0]
+		bOptions = options[1]
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -203,16 +208,18 @@ func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent) {
 			wg.Done()
 		}
 	}))
-	require.NoError(tb, aAgent.GatherCandidates())
+	require.NoError(tb, aAgent.Gather(aOptions...))
 
 	require.NoError(tb, bAgent.OnCandidate(func(candidate Candidate) {
 		if candidate == nil {
 			wg.Done()
 		}
 	}))
-	require.NoError(tb, bAgent.GatherCandidates())
+	require.NoError(tb, bAgent.Gather(bOptions...))
 
 	wg.Wait()
+	require.NoError(tb, aAgent.OnCandidate(func(Candidate) {}))
+	require.NoError(tb, bAgent.OnCandidate(func(Candidate) {}))
 
 	candidates, err := aAgent.GetLocalCandidates()
 	require.NoError(tb, err)
@@ -236,10 +243,15 @@ func gatherAndExchangeCandidates(tb testing.TB, aAgent, bAgent *Agent) {
 	}
 }
 
-func connect(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
+func connect(tb testing.TB, aAgent, bAgent *Agent, options ...[]GatherOption) (*Conn, *Conn) {
 	tb.Helper()
-	gatherAndExchangeCandidates(tb, aAgent, bAgent)
+	gatherAndExchangeCandidates(tb, aAgent, bAgent, options...)
 
+	return connectGathered(tb, aAgent, bAgent)
+}
+
+func connectGathered(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
+	tb.Helper()
 	accepted := make(chan struct{})
 	var aConn *Conn
 
@@ -262,13 +274,13 @@ func connect(tb testing.TB, aAgent, bAgent *Agent) (*Conn, *Conn) {
 	return aConn, bConn
 }
 
-func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
+func pipe(tb testing.TB, defaultConfig []AgentOption, gatherOptions ...GatherOption) (*Conn, *Conn) {
 	tb.Helper()
-
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
 
-	cfg := append([]AgentOption{WithNetworkTypes(supportedNetworkTypes())}, defaultConfig...)
+	cfg := defaultConfig
+	cfgGatherOptions := gatherOptions
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(tb, err)
@@ -285,7 +297,7 @@ func pipe(tb testing.TB, defaultConfig []AgentOption) (*Conn, *Conn) {
 		require.NoError(tb, bAgent.Close())
 	})
 
-	aConn, bConn := connect(tb, aAgent, bAgent)
+	aConn, bConn := connect(tb, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -300,8 +312,8 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
-
-	cfg := []AgentOption{WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive), WithNetworkTypes(supportedNetworkTypes())}
+	cfgGatherOptions := []GatherOption{WithNetworkTypes(supportedNetworkTypes())}
+	cfg := []AgentOption{WithDisconnectedTimeout(disconnectTimeout), WithKeepaliveInterval(iceKeepalive)}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
@@ -317,7 +329,7 @@ func pipeWithTimeout(t *testing.T, disconnectTimeout time.Duration, iceKeepalive
 		require.NoError(t, bAgent.Close())
 	})
 
-	aConn, bConn := connect(t, aAgent, bAgent)
+	aConn, bConn := connect(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
 
 	// Ensure pair selected
 	// Note: this assumes ConnectionStateConnected is thrown after selecting the final pair
@@ -382,8 +394,7 @@ func TestConnStats(t *testing.T) {
 
 func TestAgent_connect_ErrEarly(t *testing.T) {
 	defer test.CheckRoutines(t)()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes())}
+	cfg := []AgentOption{}
 	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 
@@ -404,8 +415,7 @@ func TestAgent_connect_ErrEarly(t *testing.T) {
 func TestConn_Write_RejectsSTUN(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeDisabled)}
 	a, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
@@ -427,8 +437,7 @@ func TestConn_Write_RejectsSTUN(t *testing.T) {
 func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeDisabled)}
 	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
@@ -441,6 +450,7 @@ func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 		require.NoError(t, b.Close())
 	}()
 
+	gatherAndCollectCandidates(t, b, WithCandidateTypes(nil))
 	bUfrag, bPwd, err := b.GetLocalUserCredentials()
 	require.NoError(t, err)
 
@@ -495,8 +505,7 @@ func TestConn_GetCandidatePairsInfo(t *testing.T) {
 func TestConn_WriteToPair_InvalidID(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeDisabled)}
 	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
@@ -514,8 +523,7 @@ func TestConn_WriteToPair_InvalidID(t *testing.T) {
 func TestConn_WriteToPair_NotSucceeded(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeDisabled)}
 	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
@@ -547,8 +555,7 @@ func TestConn_WriteToPair_NotSucceeded(t *testing.T) {
 func TestConn_WriteToPair_RejectsSTUN(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	defer test.TimeOut(10 * time.Second).Stop()
-
-	cfg := []AgentOption{WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled)}
+	cfg := []AgentOption{WithMulticastDNSMode(MulticastDNSModeDisabled)}
 	agent, err := NewAgent(cfg...)
 	require.NoError(t, err)
 	defer func() {
@@ -626,7 +633,7 @@ func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
 	// one candidate each and no keepalives: a single pair leaves nothing
 	// checking alongside the data path once it is connected.
 	noKeepalive := time.Duration(0)
-	ca, cb := pipe(t, []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)})
+	ca, cb := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	defer closePipe(t, ca, cb)
 
 	packet := make([]byte, 1200)
@@ -770,7 +777,7 @@ func TestCustomTCPMuxAddrPortCapability(t *testing.T) {
 }
 
 func BenchmarkUDPConnWriteRead(b *testing.B) {
-	ca, cb := pipe(b, []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})})
+	ca, cb := pipe(b, nil, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	defer closePipe(b, ca, cb)
 
 	// Note: this loop needs to keep the writes and reads synchronous to keep
@@ -822,21 +829,21 @@ func TestWriteUseValidPair(t *testing.T) {
 	require.NoError(t, wan.AddNet(net1))
 
 	require.NoError(t, wan.Start())
-
 	// Create two agents and connect them
-	controllingAgent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net0))
+	controllingAgentGatherOptions := []GatherOption{WithNetworkTypes(supportedNetworkTypes())}
+	controllingAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net0))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controllingAgent.Close())
 	}()
-
-	controlledAgent, err := NewAgent(WithNetworkTypes(supportedNetworkTypes()), WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1))
+	controlledAgentGatherOptions := []GatherOption{WithNetworkTypes(supportedNetworkTypes())}
+	controlledAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNet(net1))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, controlledAgent.Close())
 	}()
 
-	gatherAndExchangeCandidates(t, controllingAgent, controlledAgent)
+	gatherAndExchangeCandidates(t, controllingAgent, controlledAgent, controllingAgentGatherOptions, controlledAgentGatherOptions)
 
 	controllingUfrag, controllingPwd, err := controllingAgent.GetLocalUserCredentials()
 	require.NoError(t, err)

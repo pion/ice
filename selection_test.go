@@ -85,7 +85,8 @@ func TestBindingRequestHandler(t *testing.T) {
 
 	aNotifier, aConnected := onConnected()
 	bNotifier, bConnected := onConnected()
-	controllingAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
+	controllingAgentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6})}
+	controllingAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 		controlledLoggingFired.Store(true)
 
 		return false
@@ -93,8 +94,8 @@ func TestBindingRequestHandler(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, controllingAgent.Close()) }()
 	require.NoError(t, controllingAgent.OnConnectionStateChange(aNotifier))
-
-	controlledAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
+	controlledAgentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+	controlledAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithBindingRequestHandler(func(_ *stun.Message, _, _ Candidate, _ *CandidatePair) bool {
 		// Don't switch candidate pair until we are ready
 		val, ok := switchToNewCandidatePair.Load().(bool)
 
@@ -104,7 +105,7 @@ func TestBindingRequestHandler(t *testing.T) {
 	defer func() { require.NoError(t, controlledAgent.Close()) }()
 	require.NoError(t, controlledAgent.OnConnectionStateChange(bNotifier))
 
-	controlledConn, controllingConn := connect(t, controlledAgent, controllingAgent)
+	controlledConn, controllingConn := connect(t, controlledAgent, controllingAgent, controlledAgentGatherOptions, controllingAgentGatherOptions)
 	defer closePipe(t, controllingConn, controlledConn)
 	<-aConnected
 	<-bConnected
@@ -810,8 +811,8 @@ func TestAutomaticRenominationIntegration(t *testing.T) { //nolint:cyclop
 		})
 		require.NoError(t, err)
 
-		require.NoError(t, aAgent.GatherCandidates())
-		require.NoError(t, bAgent.GatherCandidates())
+		require.NoError(t, aAgent.Gather())
+		require.NoError(t, bAgent.Gather())
 
 		// Wait for gathering to complete
 		time.Sleep(100 * time.Millisecond)
@@ -1690,14 +1691,16 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 
 	// Full agent — will become the controlling agent (Dial).
 	fullNotifier, fullConnected := onConnected()
-	fullAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour))
+	fullAgentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+	fullAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour))
 	require.NoError(t, err)
 	require.NoError(t, fullAgent.OnConnectionStateChange(fullNotifier))
 	t.Cleanup(func() { require.NoError(t, fullAgent.Close()) })
 
 	// Lite agent — will become the controlled agent (Accept).
 	liteNotifier, liteConnected := onConnected()
-	liteAgent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithICELite(true), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
+	liteAgentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+	liteAgent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(keepaliveInterval), WithCheckInterval(oneHour), WithICELite(true))
 	require.NoError(t, err)
 	require.NoError(t, liteAgent.OnConnectionStateChange(liteNotifier))
 	t.Cleanup(func() { require.NoError(t, liteAgent.Close()) })
@@ -1705,7 +1708,7 @@ func TestLiteMode_FullToLite_Integration(t *testing.T) {
 	// connect() calls aAgent.Accept (controlled) and bAgent.Dial (controlling).
 	// To test the common full (controlling) -> lite (controlled) case, pass liteAgent
 	// as aAgent and fullAgent as bAgent.
-	liteConn, fullConn := connect(t, liteAgent, fullAgent)
+	liteConn, fullConn := connect(t, liteAgent, fullAgent, liteAgentGatherOptions, fullAgentGatherOptions)
 	defer closePipe(t, liteConn, fullConn)
 
 	<-fullConnected
@@ -1769,8 +1772,6 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	newLiteAgent := func(network *vnet.Net, externalIP string) *Agent {
 		agent, newAgentErr := NewAgent(
 			WithICELite(true),
-			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
-			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
 			WithMulticastDNSMode(MulticastDNSModeDisabled),
 			WithNet(network),
 			WithAddressRewriteRules(AddressRewriteRule{External: []string{externalIP}, AsCandidateType: CandidateTypeHost}),
@@ -1786,7 +1787,7 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	defer func() { require.NoError(t, controllingAgent.Close()) }()
 	require.NoError(t, controlledAgent.SetRemoteICELite(true))
 	require.NoError(t, controllingAgent.SetRemoteICELite(true))
-	gatherAndExchangeCandidates(t, controlledAgent, controllingAgent)
+	gatherAndExchangeCandidates(t, controlledAgent, controllingAgent, []GatherOption{WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}, []GatherOption{WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4})})
 
 	controlledUfrag, controlledPwd, err := controlledAgent.GetLocalUserCredentials()
 	require.NoError(t, err)

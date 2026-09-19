@@ -88,9 +88,7 @@ func main() { //nolint
 		panic(err)
 	}
 
-	iceAgent, err = ice.NewAgent(
-		ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4}),
-	)
+	iceAgent, err = ice.NewAgent()
 	if err != nil {
 		panic(err)
 	}
@@ -119,6 +117,10 @@ func main() { //nolint
 		panic(err)
 	}
 
+	if err = iceAgent.Gather(ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4})); err != nil {
+		panic(err)
+	}
+
 	// Get the local auth details and send to remote peer
 	localUfrag, localPwd, err := iceAgent.GetLocalUserCredentials()
 	if err != nil {
@@ -136,10 +138,6 @@ func main() { //nolint
 
 	remoteUfrag := <-remoteAuthChannel
 	remotePwd := <-remoteAuthChannel
-
-	if err = iceAgent.GatherCandidates(); err != nil {
-		panic(err)
-	}
 
 	// Start the ICE Agent. One side must be controlled, and the other must be controlling
 	if isControlling {

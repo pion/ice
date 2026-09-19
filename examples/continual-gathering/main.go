@@ -45,8 +45,6 @@ func main() { //nolint:cyclop
 
 	// Create ICE agent with the specified gathering policy using AgentOptions
 	agent, err := ice.NewAgent(
-		ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}),
-		ice.WithCandidateTypes([]ice.CandidateType{ice.CandidateTypeHost}),
 		ice.WithContinualGatheringPolicy(policy),
 		ice.WithNetworkMonitorInterval(monitorInterval),
 	)
@@ -88,7 +86,7 @@ func main() { //nolint:cyclop
 
 	// Start gathering
 	fmt.Println("\n=== Starting candidate gathering ===")
-	err = agent.GatherCandidates()
+	err = agent.Gather(ice.WithNetworkTypes([]ice.NetworkType{ice.NetworkTypeUDP4, ice.NetworkTypeUDP6}), ice.WithCandidateTypes([]ice.CandidateType{ice.CandidateTypeHost}))
 	if err != nil {
 		log.Fatalf("Failed to start gathering: %v", err)
 	}

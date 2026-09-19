@@ -8,6 +8,9 @@ package ice
 import (
 	"context"
 	"io"
+	"net"
+	"os"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -15,6 +18,46 @@ import (
 	"github.com/pion/stun/v4"
 	"github.com/stretchr/testify/require"
 )
+
+type deadlineBlockingPacketConn struct {
+	*blockingWritePacketConn
+	writeDeadlineSet  chan struct{}
+	writeDeadlineOnce sync.Once
+}
+
+func newDeadlineBlockingPacketConn() *deadlineBlockingPacketConn {
+	return &deadlineBlockingPacketConn{
+		blockingWritePacketConn: newBlockingWritePacketConn(),
+		writeDeadlineSet:        make(chan struct{}),
+	}
+}
+
+func (b *deadlineBlockingPacketConn) WriteTo([]byte, net.Addr) (int, error) {
+	b.writeStartedOnce.Do(func() {
+		close(b.writeStarted)
+	})
+
+	select {
+	case <-b.closed:
+		return 0, io.ErrClosedPipe
+	case <-b.writeDeadlineSet:
+		return 0, os.ErrDeadlineExceeded
+	}
+}
+
+func (b *deadlineBlockingPacketConn) SetDeadline(t time.Time) error {
+	return b.SetWriteDeadline(t)
+}
+
+func (b *deadlineBlockingPacketConn) SetWriteDeadline(t time.Time) error {
+	if !t.IsZero() {
+		b.writeDeadlineOnce.Do(func() {
+			close(b.writeDeadlineSet)
+		})
+	}
+
+	return nil
+}
 
 func TestUDPMuxWriteWatchdogIdleClose(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -115,13 +158,12 @@ func TestAgentCloseAbortsBlockedUDPMuxSrflxGatherWrite(t *testing.T) {
 		defer func() {
 			_ = udpMux.Close()
 		}()
-
-		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMux))
+		agentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}})}
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithUDPMuxSrflx(udpMux))
 		require.NoError(t, err)
-		require.NoError(t, agent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}))
 
 		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
-		require.NoError(t, agent.GatherCandidates())
+		require.NoError(t, agent.Gather(agentGatherOptions...))
 
 		select {
 		case <-udpConn.writeStarted:
@@ -151,12 +193,11 @@ func TestAgentCloseDoesNotAbortOtherAgentUDPMuxSrflxGatherWrite(t *testing.T) { 
 			_ = udpMux.Close()
 		}()
 
+		agentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}})}
 		newSrflxAgent := func(t *testing.T) *Agent {
 			t.Helper()
-
-			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}), WithUDPMuxSrflx(udpMux))
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithUDPMuxSrflx(udpMux))
 			require.NoError(t, err)
-			require.NoError(t, agent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "192.0.2.2", Port: 3478}}))
 
 			return agent
 		}
@@ -172,7 +213,7 @@ func TestAgentCloseDoesNotAbortOtherAgentUDPMuxSrflxGatherWrite(t *testing.T) { 
 		}()
 
 		require.NoError(t, agent2.OnCandidate(func(Candidate) {}))
-		require.NoError(t, agent2.GatherCandidates())
+		require.NoError(t, agent2.Gather(agentGatherOptions...))
 
 		select {
 		case <-udpConn.writeStarted:
@@ -228,11 +269,11 @@ func TestAgentCloseClearsSharedUDPMuxAbortDeadlineForOtherAgent(t *testing.T) { 
 
 		newMuxAgent := func(t *testing.T) *Agent {
 			t.Helper()
-
-			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithUDPMux(udpMux), WithIncludeLoopback())
+			agentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
+			agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled), WithUDPMux(udpMux), WithIncludeLoopback())
 			require.NoError(t, err)
 
-			require.NoError(t, agent.gatherCandidatesLocalUDPMux(context.Background(), agent.gatherGeneration, agent.localUfrag))
+			gatherAndCollectCandidates(t, agent, agentGatherOptions...)
 
 			return agent
 		}

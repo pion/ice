@@ -6,6 +6,7 @@ package ice
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -23,6 +24,181 @@ import (
 	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/turn/v5"
 )
+
+// GatherOption configures a gathering pass.
+type GatherOption func(*gatherConfig) error
+
+type gatherConfig struct {
+	mDNSMode               MulticastDNSMode
+	urls                   []*stun.URI
+	candidateTypes         []CandidateType
+	networkTypes           []NetworkType
+	turnTransportProtocols []NetworkType
+	localUfrag             string
+	localPwd               string
+	localCredentialsSet    bool
+}
+
+func newGatherConfig(opts ...GatherOption) (*gatherConfig, error) {
+	config := &gatherConfig{candidateTypes: defaultCandidateTypes()}
+	for _, opt := range opts {
+		if opt != nil {
+			if err := opt(config); err != nil {
+				return nil, err
+			}
+		}
+	}
+	config.networkTypes = configuredNetworkTypes(config.networkTypes)
+
+	return config, nil
+}
+
+func (config *gatherConfig) resolveLocalCredentials(ufrag, pwd string) error {
+	if !config.localCredentialsSet {
+		config.localUfrag, config.localPwd = ufrag, pwd
+	}
+	var err error
+	if config.localUfrag == "" {
+		config.localUfrag, err = generateUFrag()
+		if err != nil {
+			return err
+		}
+	}
+	if config.localPwd == "" {
+		config.localPwd, err = generatePwd()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// WithURLs sets the STUN/TURN server URLs used for this gathering pass.
+func WithURLs(urls []*stun.URI) GatherOption {
+	return func(config *gatherConfig) error {
+		if len(urls) == 0 {
+			config.urls = nil
+
+			return nil
+		}
+
+		cloned := make([]*stun.URI, len(urls))
+		for i, url := range urls {
+			if url == nil {
+				return ErrInvalidURL
+			}
+			value := *url
+			cloned[i] = &value
+		}
+		config.urls = cloned
+
+		return nil
+	}
+}
+
+// WithLocalCredentials sets the local ICE username fragment and password.
+// If this option is omitted on the first Gather call, both credentials are generated
+// randomly. They are available through GetLocalUserCredentials when Gather returns.
+// Subsequent Gather calls without this option reuse the existing credentials and do
+// not restart ICE.
+//
+// Changing either credential starts a new ICE generation and restarts ICE. Each empty
+// string supplied to this option generates a fresh value: WithLocalCredentials("", "").
+func WithLocalCredentials(ufrag, pwd string) GatherOption {
+	return func(config *gatherConfig) error {
+		if err := validateLocalCredentials(ufrag, pwd); err != nil {
+			return err
+		}
+
+		config.localUfrag = ufrag
+		config.localPwd = pwd
+		config.localCredentialsSet = true
+
+		return nil
+	}
+}
+
+// WithNetworkTypes sets the enabled candidate network types for candidate gathering.
+// This controls the network types exposed in ICE candidates and used for pairing.
+// Use WithTURNTransportProtocols to control the local TURN client-to-server transport.
+// By default, all network types are enabled.
+//
+// Example:
+//
+//	err := agent.Gather(
+//		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
+//	)
+func WithNetworkTypes(networkTypes []NetworkType) GatherOption {
+	return func(config *gatherConfig) error {
+		normalized, err := sanitizeTransportNetworkTypes(networkTypes)
+		if err != nil {
+			return err
+		}
+
+		config.networkTypes = normalized
+
+		return nil
+	}
+}
+
+// WithTURNTransportProtocols restricts protocols used for this gathering pass when
+// connecting to TURN servers (TURN client <-> TURN server transport).
+//
+// This is independent from WithNetworkTypes, which controls ICE candidate
+// network types announced to the peer. Supported values are
+// NetworkTypeUDP4/UDP6 and NetworkTypeTCP4/TCP6.
+func WithTURNTransportProtocols(protocols []NetworkType) GatherOption {
+	return func(config *gatherConfig) error {
+		normalized, err := sanitizeTransportNetworkTypes(protocols)
+		if err != nil {
+			return err
+		}
+
+		config.turnTransportProtocols = normalized
+
+		return nil
+	}
+}
+
+// WithCandidateTypes sets the enabled candidate types for gathering.
+// By default, host, server reflexive, and relay candidates are enabled.
+//
+// Example:
+//
+//	err := agent.Gather(
+//		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
+//	)
+func WithCandidateTypes(candidateTypes []CandidateType) GatherOption {
+	return func(config *gatherConfig) error {
+		config.candidateTypes = append([]CandidateType(nil), candidateTypes...)
+
+		return nil
+	}
+}
+
+func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {
+	if len(types) == 0 {
+		return nil, nil
+	}
+
+	seen := map[NetworkType]struct{}{}
+	out := make([]NetworkType, 0, len(types))
+	for _, networkType := range types {
+		if !networkType.IsUDP() && !networkType.IsTCP() {
+			return nil, ErrProtoType
+		}
+
+		if _, ok := seen[networkType]; ok {
+			continue
+		}
+
+		seen[networkType] = struct{}{}
+		out = append(out, networkType)
+	}
+
+	return out, nil
+}
 
 type turnClient interface {
 	Listen() error
@@ -113,36 +289,119 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 	}
 }
 
-// GatherCandidates initiates the trickle based gathering process.
-func (a *Agent) GatherCandidates() error {
+// Gather asynchronously gathers candidates, restarting ICE only when the local credentials change.
+// Call OnCandidate before Gather. Local credentials are available when Gather returns.
+// Calling Gather again cancels the previous gather. If the
+// credentials are unchanged, existing candidates and connectivity are preserved.
+// Changed credentials clear candidates and remote credentials and restart connectivity checks.
+//
+//nolint:cyclop
+func (a *Agent) Gather(opts ...GatherOption) error {
+	config, err := newGatherConfig(opts...)
+	if err != nil {
+		return err
+	}
 	var gatherErr error
-
-	if runErr := a.loop.Run(a.loop, func(ctx context.Context) {
-		if a.gatheringState != GatheringStateNew {
-			gatherErr = ErrMultipleGatherAttempted
-
+	if err = a.loop.Run(a.loop, func(ctx context.Context) {
+		if gatherErr = a.validateGatherConfig(config); gatherErr != nil {
 			return
-		} else if a.onCandidateHdlr.Load() == nil {
+		}
+		if a.onCandidateHdlr.Load() == nil {
 			gatherErr = ErrNoOnCandidateHandler
 
 			return
 		}
+		if gatherErr = config.resolveLocalCredentials(a.localUfrag, a.localPwd); gatherErr != nil {
+			return
+		}
 
-		a.gatherCandidateCancel() // Cancel previous gathering routine
+		interfaces, _, interfaceErr := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
+		if interfaceErr != nil {
+			gatherErr = fmt.Errorf("error getting local interfaces: %w", interfaceErr)
+
+			return
+		}
+
+		a.gatherCandidateCancel()
+		if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
+			a.startGatherGeneration(config)
+		}
+		config.mDNSMode = a.mDNSMode
+		if a.mDNSConn == nil || !slices.Equal(a.networkTypes, config.networkTypes) {
+			a.closeMulticastConn()
+			var mdnsErr error
+			a.mDNSConn, config.mDNSMode, mdnsErr = createMulticastDNS(
+				a.net, config.networkTypes, interfaces, a.includeLoopback,
+				mDNSLocalAddressFromTCPMux(a.tcpMux, config.networkTypes), a.mDNSMode, a.mDNSName, a.log, a.loggerFactory,
+			)
+			if mdnsErr != nil {
+				a.log.Warnf("Failed to initialize mDNS %s: %v", a.mDNSName, mdnsErr)
+			}
+		}
+
+		a.networkTypes = config.networkTypes
+		if !a.relayAcceptanceMinWaitExplicit {
+			a.relayAcceptanceMinWait = defaultRelayAcceptanceMinWaitFor(config.candidateTypes)
+		}
+
 		ctx, cancel := context.WithCancel(ctx)
 		a.gatherCandidateCancel = cancel
 		done := make(chan struct{})
+		previousDone := a.gatherCandidateDone
 		a.gatherCandidateDone = done
 		generation := a.gatherGeneration
-		localUfrag := a.localUfrag
 		a.gatheringState = GatheringStateGathering
-
-		go a.gatherCandidates(ctx, done, generation, localUfrag)
-	}); runErr != nil {
-		return runErr
+		go func() {
+			// Join previous workers, including continual monitoring, before reusing muxes.
+			if previousDone != nil {
+				<-previousDone
+			}
+			a.gatherCandidates(ctx, done, generation, config.localUfrag, config)
+		}()
+	}); err != nil {
+		return err
 	}
 
 	return gatherErr
+}
+
+// startGatherGeneration runs on the agent loop when the local credentials change.
+func (a *Agent) startGatherGeneration(config *gatherConfig) {
+	if a.gatheringState != GatheringStateNew {
+		a.gatherGeneration++
+	}
+	a.removeUfragFromMux()
+	a.localUfrag, a.localPwd = config.localUfrag, config.localPwd
+	a.remoteUfrag, a.remotePwd = "", ""
+	a.remoteCandidateGeneration.Add(1)
+	a.checklist = nil
+	a.pairsByID = make(map[uint64]*CandidatePair)
+	a.pendingBindingRequests = nil
+	a.setSelectedPair(nil)
+	a.deleteAllCandidates()
+	a.setSelector()
+	if a.connectionState != ConnectionStateNew {
+		a.updateConnectionState(ConnectionStateChecking)
+	}
+}
+
+func (a *Agent) validateGatherConfig(config *gatherConfig) error { //nolint:cyclop
+	if a.lite && (len(config.candidateTypes) != 1 || config.candidateTypes[0] != CandidateTypeHost) {
+		return ErrLiteUsingNonHostCandidates
+	}
+	if len(config.urls) > 0 && !slices.Contains(config.candidateTypes, CandidateTypeServerReflexive) && !slices.Contains(config.candidateTypes, CandidateTypeRelay) {
+		return ErrUselessURLsProvided
+	}
+	if a.addressRewriteMapper != nil {
+		if a.addressRewriteMapper.hasCandidateType(CandidateTypeHost) && !slices.Contains(config.candidateTypes, CandidateTypeHost) {
+			return ErrIneffectiveAddressRewriteHost
+		}
+		if a.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) && !slices.Contains(config.candidateTypes, CandidateTypeServerReflexive) {
+			return ErrIneffectiveAddressRewriteSrflx
+		}
+	}
+
+	return nil
 }
 
 func (a *Agent) gatherCandidates(
@@ -150,26 +409,28 @@ func (a *Agent) gatherCandidates(
 	done chan struct{},
 	generation uint64,
 	localUfrag string,
+	config *gatherConfig,
 ) { //nolint:cyclop
 	defer close(done)
 	if ctx.Err() != nil {
 		return
 	}
 
-	a.gatherCandidatesInternal(ctx, generation, localUfrag)
+	a.gatherCandidatesInternal(ctx, generation, localUfrag, config)
 
 	switch a.continualGatheringPolicy {
 	case GatherOnce:
-		if err := a.completeGathering(generation); err != nil { //nolint:contextcheck
+		if err := a.completeGathering(ctx, generation); err != nil && ctx.Err() == nil {
 			a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
 		}
 	case GatherContinually:
+		a.lastKnownInterfaces = make(map[string]netip.Addr)
 		// Initialize known interfaces before starting monitoring
 		_, addrs, err := localInterfaces(
 			a.net,
 			a.interfaceFilter,
 			a.ipFilter,
-			a.networkTypes,
+			config.networkTypes,
 			a.includeLoopback,
 		)
 		if err != nil {
@@ -180,7 +441,7 @@ func (a *Agent) gatherCandidates(
 			}
 			a.log.Infof("Initialized network monitoring with %d IP addresses", len(addrs))
 		}
-		go a.startNetworkMonitoring(ctx, generation, localUfrag)
+		a.startNetworkMonitoring(ctx, generation, localUfrag, config)
 	}
 }
 
@@ -239,22 +500,22 @@ func rewrittenCandidateIP(address string, fallback net.IP) net.IP {
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
-func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64, localUfrag string) {
+func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64, localUfrag string, config *gatherConfig) {
 	var wg sync.WaitGroup
-	for _, t := range a.candidateTypes {
+	for _, t := range config.candidateTypes {
 		switch t {
 		case CandidateTypeHost:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesLocal(ctx, a.networkTypes, generation, localUfrag)
+				a.gatherCandidatesLocal(ctx, config.networkTypes, generation, localUfrag, config.mDNSMode)
 				wg.Done()
 			}()
 		case CandidateTypeServerReflexive:
-			a.gatherServerReflexiveCandidates(ctx, &wg, generation, localUfrag)
+			a.gatherServerReflexiveCandidates(ctx, &wg, generation, localUfrag, config)
 		case CandidateTypeRelay:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesRelay(ctx, a.urls, generation)
+				a.gatherCandidatesRelay(ctx, config, generation)
 				wg.Done()
 			}()
 		case CandidateTypePeerReflexive, CandidateTypeUnspecified:
@@ -270,15 +531,16 @@ func (a *Agent) gatherServerReflexiveCandidates(
 	wg *sync.WaitGroup,
 	generation uint64,
 	localUfrag string,
+	config *gatherConfig,
 ) {
 	replaceSrflx := a.addressRewriteMapper != nil && a.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive)
 	if !replaceSrflx {
 		wg.Add(1)
 		go func() {
 			if a.udpMuxSrflx != nil {
-				a.gatherCandidatesSrflxUDPMux(ctx, a.urls, a.networkTypes, generation, localUfrag)
+				a.gatherCandidatesSrflxUDPMux(ctx, config.urls, config.networkTypes, generation, localUfrag)
 			} else {
-				a.gatherCandidatesSrflx(ctx, a.urls, a.networkTypes, generation)
+				a.gatherCandidatesSrflx(ctx, config.urls, config.networkTypes, generation)
 			}
 			wg.Done()
 		}()
@@ -286,7 +548,7 @@ func (a *Agent) gatherServerReflexiveCandidates(
 	if a.addressRewriteMapper != nil && a.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
 		wg.Add(1)
 		go func() {
-			a.gatherCandidatesSrflxMapped(ctx, a.networkTypes, generation)
+			a.gatherCandidatesSrflxMapped(ctx, config.networkTypes, generation)
 			wg.Done()
 		}()
 	}
@@ -298,6 +560,7 @@ func (a *Agent) gatherCandidatesLocal(
 	networkTypes []NetworkType,
 	generation uint64,
 	localUfrag string,
+	mdnsMode MulticastDNSMode,
 ) {
 	networks := map[string]struct{}{}
 	for _, networkType := range networkTypes {
@@ -310,7 +573,7 @@ func (a *Agent) gatherCandidatesLocal(
 
 	// When UDPMux is enabled, skip other UDP candidates
 	if a.udpMux != nil {
-		if err := a.gatherCandidatesLocalUDPMux(ctx, generation, localUfrag); err != nil {
+		if err := a.gatherCandidatesLocalUDPMux(ctx, generation, localUfrag, mdnsMode); err != nil {
 			a.log.Warnf("Failed to create host candidate for UDPMux: %s", err)
 		}
 		delete(networks, udp)
@@ -338,7 +601,7 @@ func (a *Agent) gatherCandidatesLocal(
 			}
 			mappedIP = mappedIP.Unmap()
 			var isLocationTracked bool
-			if a.mDNSMode == MulticastDNSModeQueryAndGather {
+			if mdnsMode == MulticastDNSModeQueryAndGather {
 				address = a.mDNSName
 			} else {
 				// Here, we are not doing multicast gathering, so we will need to skip this address so
@@ -450,13 +713,13 @@ func (a *Agent) gatherCandidatesLocal(
 						// listeners.
 						IsLocationTracked: isLocationTracked,
 					}
-					if a.mDNSMode == MulticastDNSModeQueryAndGather {
+					if mdnsMode == MulticastDNSModeQueryAndGather {
 						hostConfig.Address = address
 					}
 
 					candidateHost, err := NewCandidateHost(&hostConfig)
 
-					if err == nil && a.mDNSMode == MulticastDNSModeQueryAndGather {
+					if err == nil && mdnsMode == MulticastDNSModeQueryAndGather {
 						err = candidateHost.setIPAddr(addr)
 					}
 
@@ -512,6 +775,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 	ctx context.Context,
 	generation uint64,
 	localUfrag string,
+	mdnsMode MulticastDNSMode,
 ) error {
 	if a.udpMux == nil {
 		return errUDPMuxDisabled
@@ -539,7 +803,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 		for _, candidateIP := range candidateIPs {
 			var address string
 			var isLocationTracked bool
-			if a.mDNSMode == MulticastDNSModeQueryAndGather {
+			if mdnsMode == MulticastDNSModeQueryAndGather {
 				address = a.mDNSName
 			} else {
 				address = candidateIP
@@ -571,7 +835,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 			}
 
 			transportConfig := hostConfig
-			if a.mDNSMode != MulticastDNSModeQueryAndGather {
+			if mdnsMode != MulticastDNSModeQueryAndGather {
 				transportConfig.Address = rewrittenCandidateIP(address, udpAddr.IP).String()
 			}
 			cand, err := NewCandidateHost(&transportConfig)
@@ -959,10 +1223,10 @@ func (a *Agent) gatherCandidatesSrflx(
 }
 
 //nolint:maintidx,gocognit,gocyclo,cyclop
-func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, generation uint64) {
+func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig, generation uint64) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	_, ifaces, _ := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, a.networkTypes, a.includeLoopback)
+	_, ifaces, _ := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
 
 	useFilteredLocalAddrs := a.interfaceFilter != nil || a.ipFilter != nil
 	localAddrs := []ifaceAddr{}
@@ -973,11 +1237,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, gen
 		}
 	}
 
-	if len(relayNetworkTypesForConfiguredCandidates(a.networkTypes)) == 0 {
+	if len(relayNetworkTypesForConfiguredCandidates(config.networkTypes)) == 0 {
 		return
 	}
 
-	for _, url := range urls {
+	for _, url := range config.urls {
 		switch {
 		case url.Scheme != stun.SchemeTypeTURN && url.Scheme != stun.SchemeTypeTURNS:
 			continue
@@ -993,7 +1257,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, gen
 
 		urlProto := effectiveURLProtoType(*url)
 
-		networkTypes := turnNetworkTypesForURL(*url, a.turnTransportProtocols)
+		networkTypes := turnNetworkTypesForURL(*url, config.turnTransportProtocols)
 		if len(networkTypes) == 0 {
 			continue
 		}
@@ -1231,7 +1495,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, gen
 
 					// Relay allocations currently produce UDP relay endpoints regardless of
 					// whether the TURN control connection uses UDP/TCP/TLS/DTLS.
-					a.addRelayCandidates(ctx, generation, relayEndpoint{
+					a.addRelayCandidates(ctx, generation, config.networkTypes, relayEndpoint{
 						network:  udp,
 						address:  rAddr.IP,
 						port:     rAddr.Port,
@@ -1313,7 +1577,7 @@ func (a *Agent) createRelayCandidate(
 	return nil
 }
 
-func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep relayEndpoint) { //nolint:cyclop
+func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, networkTypes []NetworkType, ep relayEndpoint) { //nolint:cyclop
 	if ep.conn == nil || ep.address == nil {
 		return
 	}
@@ -1326,7 +1590,7 @@ func (a *Agent) addRelayCandidates(ctx context.Context, generation uint64, ep re
 	}
 
 	// Candidate families are independent of the transport used to reach TURN.
-	allowedNetworks := relayNetworkTypesForConfiguredCandidates(a.networkTypes)
+	allowedNetworks := relayNetworkTypesForConfiguredCandidates(networkTypes)
 	addresses = slices.DeleteFunc(addresses, func(address string) bool {
 		ip := rewrittenCandidateIP(address, ep.address)
 		network := NetworkTypeUDP6
@@ -1377,7 +1641,7 @@ func (a *Agent) closeRelayEndpoint(ep relayEndpoint) {
 
 // startNetworkMonitoring starts a goroutine that periodically checks for network changes
 // and re-gathers candidates when changes are detected. This is only used with GatherContinually policy.
-func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64, localUfrag string) {
+func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64, localUfrag string, config *gatherConfig) {
 	ticker := time.NewTicker(a.networkMonitorInterval)
 	defer ticker.Stop()
 
@@ -1386,15 +1650,15 @@ func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64, l
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if a.detectNetworkChanges() {
-				a.gatherCandidatesInternal(ctx, generation, localUfrag)
+			if a.detectNetworkChanges(config.networkTypes) {
+				a.gatherCandidatesInternal(ctx, generation, localUfrag, config)
 			}
 		}
 	}
 }
 
 // detectNetworkChanges checks if the network interfaces have changed since the last check.
-func (a *Agent) detectNetworkChanges() bool {
+func (a *Agent) detectNetworkChanges(networkTypes []NetworkType) bool {
 	// Try to refresh interfaces if using stdnet
 	if stdNet, ok := a.net.(*stdnet.Net); ok {
 		if err := stdNet.UpdateInterfaces(); err != nil {
@@ -1406,7 +1670,7 @@ func (a *Agent) detectNetworkChanges() bool {
 		a.net,
 		a.interfaceFilter,
 		a.ipFilter,
-		a.networkTypes,
+		networkTypes,
 		a.includeLoopback,
 	)
 	if err != nil {

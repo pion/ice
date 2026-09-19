@@ -302,15 +302,16 @@ func runScenario(ctx context.Context, sc scenario) error { //nolint:cyclop
 	printRules(sc.RewriteRules)
 
 	var opts []ice.AgentOption
+	var gatherOptions []ice.GatherOption
 
 	if len(sc.RewriteRules) > 0 {
 		opts = append(opts, ice.WithAddressRewriteRules(sc.RewriteRules...))
 	}
 	if len(sc.NetworkTypes) > 0 {
-		opts = append(opts, ice.WithNetworkTypes(sc.NetworkTypes))
+		gatherOptions = append(gatherOptions, ice.WithNetworkTypes(sc.NetworkTypes))
 	}
 	if len(sc.CandidateTypes) > 0 {
-		opts = append(opts, ice.WithCandidateTypes(sc.CandidateTypes))
+		gatherOptions = append(gatherOptions, ice.WithCandidateTypes(sc.CandidateTypes))
 	}
 
 	var tcpMux *ice.TCPMuxDefault
@@ -366,7 +367,7 @@ func runScenario(ctx context.Context, sc scenario) error { //nolint:cyclop
 		return fmt.Errorf("scenario %s: set candidate handler: %w", sc.Key, err)
 	}
 
-	if err := agent.GatherCandidates(); err != nil { //nolint:contextcheck
+	if err := agent.Gather(gatherOptions...); err != nil { //nolint:contextcheck
 		return fmt.Errorf("scenario %s: gather: %w", sc.Key, err)
 	}
 

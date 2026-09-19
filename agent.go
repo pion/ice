@@ -48,10 +48,6 @@ type Agent struct {
 	startedCandidatesMu sync.Mutex
 	startedCandidates   map[*candidateBase]struct{}
 
-	// constructed is set to true after the agent is fully initialized.
-	// Restart uses it to distinguish initialization from subsequent restarts.
-	constructed bool
-
 	onConnectionStateChangeHdlr       atomic.Value // func(ConnectionState)
 	onSelectedCandidatePairChangeHdlr atomic.Value // func(Candidate, Candidate)
 	onCandidateHdlr                   atomic.Value // func(Candidate)
@@ -93,8 +89,6 @@ type Agent struct {
 	portMin uint16
 	portMax uint16
 
-	candidateTypes []CandidateType
-
 	// How long the selected pair can receive no traffic before the ICE Agent
 	// goes to disconnected.
 	disconnectedTimeout         time.Duration
@@ -119,7 +113,7 @@ type Agent struct {
 	remotePwd                 string
 	remoteLite                bool
 	remoteCandidates          map[NetworkType][]Candidate
-	remoteCandidateGeneration uint64
+	remoteCandidateGeneration atomic.Uint64
 
 	checklist  []*CandidatePair
 	nextPairID uint64
@@ -130,10 +124,8 @@ type Agent struct {
 
 	selectedPair atomic.Value // *CandidatePair
 
-	urls                   []*stun.URI
-	networkTypes           []NetworkType
-	turnTransportProtocols []NetworkType
-	addressRewriteRules    []AddressRewriteRule
+	networkTypes        []NetworkType
+	addressRewriteRules []AddressRewriteRule
 
 	buf *packetio.Buffer
 
@@ -217,7 +209,6 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		failedTimeout:            defaultFailedTimeout,
 		keepaliveInterval:        defaultKeepaliveInterval,
 		checkInterval:            defaultCheckInterval,
-		candidateTypes:           defaultCandidateTypes(),
 		tieBreaker:               globalMathRandomGenerator.Uint64(),
 		gatheringState:           GatheringStateNew,
 		connectionState:          ConnectionStateNew,
@@ -251,10 +242,6 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		}
 	}
 
-	if !agent.relayAcceptanceMinWaitExplicit {
-		agent.relayAcceptanceMinWait = defaultRelayAcceptanceMinWaitFor(agent.candidateTypes)
-	}
-
 	agent.applyICELiteDisconnectedTimeoutDefault()
 
 	agent.connectionStateNotifier = &handlerNotifier[ConnectionState]{
@@ -279,45 +266,10 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		}
 	}
 
-	localIfcs, _, err := localInterfaces(
-		agent.net,
-		agent.interfaceFilter,
-		agent.ipFilter,
-		agent.networkTypes,
-		agent.includeLoopback,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error getting local interfaces: %w", err)
-	}
-
-	mDNSLocalAddress := mDNSLocalAddressFromTCPMux(agent.tcpMux, agent.networkTypes)
-
-	// Opportunistic mDNS: If we can't open the connection, that's ok: we
-	// can continue without it.
-	if agent.mDNSConn, agent.mDNSMode, err = createMulticastDNS(
-		agent.net,
-		agent.networkTypes,
-		localIfcs,
-		agent.includeLoopback,
-		mDNSLocalAddress,
-		agent.mDNSMode,
-		agent.mDNSName,
-		agent.log,
-		agent.loggerFactory,
-	); err != nil {
-		agent.log.Warnf("Failed to initialize mDNS %s: %v", agent.mDNSName, err)
-	}
-
 	// Make sure the buffer doesn't grow indefinitely.
 	// NOTE: We actually won't get anywhere close to this limit.
 	// SRTP will constantly read from the endpoint and drop packets if it's full.
 	agent.buf.SetLimitSize(maxBufferSize)
-
-	if agent.lite && (len(agent.candidateTypes) != 1 || agent.candidateTypes[0] != CandidateTypeHost) {
-		agent.closeMulticastConn()
-
-		return nil, ErrLiteUsingNonHostCandidates
-	}
 
 	if err = applyAddressRewriteMapping(agent); err != nil {
 		agent.closeMulticastConn()
@@ -343,15 +295,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		agent.updateConnectionState(ConnectionStateClosed)
 	})
 
-	// Restart is also used to initialize the agent for the first time
-	if err := agent.Restart(agent.localUfrag, agent.localPwd); err != nil {
-		agent.closeMulticastConn()
-		_ = agent.Close()
-
-		return nil, err
-	}
-
-	agent.constructed = true
+	agent.setSelector()
 
 	return agent, nil
 }
@@ -372,19 +316,6 @@ func applyAddressRewriteMapping(agent *Agent) error {
 		// leaking local addresses.
 		if agent.mDNSMode == MulticastDNSModeQueryAndGather {
 			return ErrMulticastDNSWithAddressRewrite
-		}
-		// surface misconfiguration when host candidates are disabled but a host
-		// rewrite rule was provided.
-		if !slices.Contains(agent.candidateTypes, CandidateTypeHost) {
-			return ErrIneffectiveAddressRewriteHost
-		}
-	}
-
-	if agent.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
-		// surface misconfiguration when srflx candidates are disabled but a srflx
-		// rewrite rule was provided.
-		if !slices.Contains(agent.candidateTypes, CandidateTypeServerReflexive) {
-			return ErrIneffectiveAddressRewriteSrflx
 		}
 	}
 
@@ -806,8 +737,13 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 		return a.addRemoteMulticastCandidate(cand)
 	}
 
+	generation := a.remoteCandidateGeneration.Load()
+
 	go func() {
 		if err := a.loop.Run(a.loop, func(_ context.Context) {
+			if generation != a.remoteCandidateGeneration.Load() {
+				return
+			}
 			// nolint: contextcheck
 			a.addRemoteCandidate(cand)
 		}); err != nil {
@@ -849,7 +785,7 @@ func (a *Agent) addRemoteMulticastCandidate(cand Candidate) error {
 
 	var generation uint64
 	if err := a.loop.Run(a.loop, func(_ context.Context) {
-		generation = a.remoteCandidateGeneration
+		generation = a.remoteCandidateGeneration.Load()
 	}); err != nil {
 		return err
 	}
@@ -859,14 +795,15 @@ func (a *Agent) addRemoteMulticastCandidate(cand Candidate) error {
 }
 
 func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation uint64) {
-	if a.mDNSConn == nil {
+	var conn *mdns.Conn
+	if err := a.loop.Run(a.loop, func(context.Context) { conn = a.mDNSConn }); err != nil || conn == nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(a.loop, a.mDNSQueryTimeout())
 	defer cancel()
 
-	_, src, err := a.mDNSConn.QueryAddr(ctx, cand.Address())
+	_, src, err := conn.QueryAddr(ctx, cand.Address())
 	if err != nil {
 		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
 
@@ -880,7 +817,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation 
 	}
 
 	if err = a.loop.Run(a.loop, func(_ context.Context) {
-		if generation != a.remoteCandidateGeneration {
+		if generation != a.remoteCandidateGeneration.Load() {
 			return
 		}
 
@@ -1218,6 +1155,19 @@ func (a *Agent) cleanupCandidate(cand Candidate, candidateConn net.PacketConn, r
 	if err := cand.close(); err != nil {
 		a.log.Warnf("Failed to close %s candidate: %v", reason, err)
 	}
+	a.startedCandidatesMu.Lock()
+	shared := false
+	for candidate := range a.startedCandidates {
+		if candidate.conn == candidateConn {
+			shared = true
+
+			break
+		}
+	}
+	a.startedCandidatesMu.Unlock()
+	if shared {
+		return
+	}
 	if err := candidateConn.Close(); err != nil {
 		a.log.Warnf("Failed to close %s candidate connection: %v", reason, err)
 	}
@@ -1236,6 +1186,9 @@ func (a *Agent) addCandidate(
 
 	var addErr error
 	err := a.loop.Run(ctx, func(context.Context) {
+		if addErr = ctx.Err(); addErr != nil {
+			return
+		}
 		candidateGeneration := a.gatherGeneration
 		if generation != nil {
 			candidateGeneration = *generation
@@ -1252,19 +1205,17 @@ func (a *Agent) addCandidate(
 		}
 
 		set := a.localCandidates[cand.NetworkType()]
-		for _, candidate := range set {
-			if candidate.Equal(cand) {
-				if errorOnDuplicate {
-					addErr = errDuplicateCandidate
-
-					return
-				}
-
-				a.log.Debugf("Ignore duplicate candidate: %s", cand)
-				a.cleanupCandidate(cand, candidateConn, "duplicate")
+		if slices.ContainsFunc(set, func(existing Candidate) bool { return existing.Equal(cand) }) {
+			if errorOnDuplicate {
+				addErr = errDuplicateCandidate
 
 				return
 			}
+
+			a.log.Debugf("Ignore duplicate candidate: %s", cand)
+			a.cleanupCandidate(cand, candidateConn, "duplicate")
+
+			return
 		}
 
 		a.setCandidateExtensions(cand, candidateGeneration)
@@ -1928,86 +1879,9 @@ func (a *Agent) SetRemoteICELite(lite bool) error {
 	})
 }
 
-// SetURLs updates the STUN/TURN server URLs for the next GatherCandidates call.
-// It copies the slice, but callers must not modify the URI objects while in use.
-// It returns ErrUselessURLsProvided if non-empty URLs are set with both srflx and relay candidates disabled.
-// It returns ErrClosed if the agent is closed.
-func (a *Agent) SetURLs(urls []*stun.URI) error {
-	if len(urls) > 0 &&
-		!slices.Contains(a.candidateTypes, CandidateTypeServerReflexive) &&
-		!slices.Contains(a.candidateTypes, CandidateTypeRelay) {
-		return ErrUselessURLsProvided
-	}
-
-	return a.loop.Run(a.loop, func(_ context.Context) {
-		a.urls = slices.Clone(urls)
-	})
-}
-
-// Restart restarts the ICE Agent with the provided ufrag/pwd
-// If no ufrag/pwd is provided the Agent will generate one itself
-//
-// If there is a gatherer routine currently running, Restart will
-// cancel it.
-// After a Restart, the user must then call GatherCandidates explicitly
-// to start generating new ones.
-func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
-	if ufrag == "" {
-		var err error
-		ufrag, err = generateUFrag()
-		if err != nil {
-			return err
-		}
-	}
-	if pwd == "" {
-		var err error
-		pwd, err = generatePwd()
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := validateLocalCredentials(ufrag, pwd); err != nil {
-		return err
-	}
-
-	if runErr := a.loop.Run(a.loop, func(_ context.Context) {
-		// Cancel the previous gather before resetting its state.
-		a.gatherCandidateCancel()
-		if a.constructed {
-			a.gatherGeneration++
-		}
-		a.gatheringState = GatheringStateNew
-
-		// Clear all agent needed to take back to fresh state
-		a.removeUfragFromMux()
-		a.localUfrag = ufrag
-		a.localPwd = pwd
-		a.remoteUfrag = ""
-		a.remotePwd = ""
-		a.remoteCandidateGeneration++
-		a.checklist = make([]*CandidatePair, 0)
-		a.pairsByID = make(map[uint64]*CandidatePair)
-		a.pendingBindingRequests = make([]bindingRequest, 0)
-		a.setSelectedPair(nil)
-		a.deleteAllCandidates()
-		a.setSelector()
-
-		// Restart is used by NewAgent. Accept/Connect should be used to move to checking
-		// for new Agents
-		if a.connectionState != ConnectionStateNew {
-			a.updateConnectionState(ConnectionStateChecking)
-		}
-	}); runErr != nil {
-		return runErr
-	}
-
-	return nil
-}
-
-func (a *Agent) completeGathering(generation uint64) error {
-	if err := a.loop.Run(a.loop, func(context.Context) {
-		if generation != a.gatherGeneration || a.gatheringState != GatheringStateGathering {
+func (a *Agent) completeGathering(ctx context.Context, generation uint64) error {
+	if err := a.loop.Run(ctx, func(context.Context) {
+		if ctx.Err() != nil || generation != a.gatherGeneration || a.gatheringState != GatheringStateGathering {
 			return
 		}
 

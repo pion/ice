@@ -777,8 +777,7 @@ func TestAgentWithCustomNominationAttribute(t *testing.T) {
 	})
 
 	t.Run("agent uses default nomination attribute when not configured", func(t *testing.T) {
-		// Create agent without custom nomination attribute
-		agentConfig := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+		agentConfig := []AgentOption{}
 
 		agent, err := NewAgent(agentConfig...)
 		assert.NoError(t, err)

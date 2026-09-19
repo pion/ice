@@ -31,12 +31,12 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	defer func() {
 		require.NoError(t, server.Close())
 	}()
-
-	cfg := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive})}
+	cfgGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}), WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive})}
+	cfg := []AgentOption{}
 
 	aAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
-	require.NoError(t, aAgent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}))
+
 	defer func() {
 		require.NoError(t, aAgent.Close())
 	}()
@@ -46,7 +46,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 
 	bAgent, err := NewAgent(cfg...)
 	require.NoError(t, err)
-	require.NoError(t, bAgent.SetURLs([]*stun.URI{{Scheme: stun.SchemeTypeSTUN, Host: "127.0.0.1", Port: serverPort}}))
+
 	defer func() {
 		require.NoError(t, bAgent.Close())
 	}()
@@ -54,7 +54,7 @@ func TestServerReflexiveOnlyConnection(t *testing.T) {
 	bNotifier, bConnected := onConnected()
 	require.NoError(t, bAgent.OnConnectionStateChange(bNotifier))
 
-	connect(t, aAgent, bAgent)
+	connect(t, aAgent, bAgent, cfgGatherOptions, cfgGatherOptions)
 	<-aConnected
 	<-bConnected
 }

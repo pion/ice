@@ -81,7 +81,6 @@ func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Durat
 }
 
 // AgentOption configures an Agent during NewAgent.
-// Options must not be applied to a running agent. Use SetURLs to update server URLs.
 type AgentOption func(*Agent) error
 
 // NominationValueGenerator is a function that generates nomination values for renomination.
@@ -524,21 +523,6 @@ func WithMulticastDNSHostName(hostName string) AgentOption {
 	}
 }
 
-// WithLocalCredentials sets the local ICE username fragment and password used during Restart.
-// If empty strings are provided, the agent will generate values during Restart.
-func WithLocalCredentials(ufrag, pwd string) AgentOption {
-	return func(a *Agent) error { //nolint:varnamelen
-		if err := validateLocalCredentials(ufrag, pwd); err != nil {
-			return err
-		}
-
-		a.localUfrag = ufrag
-		a.localPwd = pwd
-
-		return nil
-	}
-}
-
 // WithTCPMux sets the TCP mux for ICE TCP multiplexing.
 func WithTCPMux(tcpMux TCPMux) AgentOption {
 	return func(a *Agent) error {
@@ -754,87 +738,6 @@ func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
 			return ErrInvalidNetworkMonitorInterval
 		}
 		a.networkMonitorInterval = interval
-
-		return nil
-	}
-}
-
-// WithNetworkTypes sets the enabled candidate network types for candidate gathering.
-// This controls the network types exposed in ICE candidates and used for pairing.
-// Use WithTURNTransportProtocols to control the local TURN client-to-server transport.
-// By default, all network types are enabled.
-//
-// Example:
-//
-//	agent, err := NewAgent(
-//		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
-//	)
-func WithNetworkTypes(networkTypes []NetworkType) AgentOption {
-	return func(a *Agent) error {
-		normalized, err := sanitizeTransportNetworkTypes(networkTypes)
-		if err != nil {
-			return err
-		}
-
-		a.networkTypes = normalized
-
-		return nil
-	}
-}
-
-// WithTURNTransportProtocols restricts protocols used by this agent when
-// connecting to TURN servers (TURN client <-> TURN server transport).
-//
-// This is independent from WithNetworkTypes, which controls ICE candidate
-// network types announced to the peer. Supported values are
-// NetworkTypeUDP4/UDP6 and NetworkTypeTCP4/TCP6.
-func WithTURNTransportProtocols(protocols []NetworkType) AgentOption {
-	return func(a *Agent) error {
-		normalized, err := sanitizeTransportNetworkTypes(protocols)
-		if err != nil {
-			return err
-		}
-
-		a.turnTransportProtocols = normalized
-
-		return nil
-	}
-}
-
-func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {
-	if len(types) == 0 {
-		return nil, nil
-	}
-
-	seen := map[NetworkType]struct{}{}
-	out := make([]NetworkType, 0, len(types))
-	for _, networkType := range types {
-		if !networkType.IsUDP() && !networkType.IsTCP() {
-			return nil, ErrProtoType
-		}
-
-		if _, ok := seen[networkType]; ok {
-			continue
-		}
-
-		seen[networkType] = struct{}{}
-		out = append(out, networkType)
-	}
-
-	return out, nil
-}
-
-// WithCandidateTypes sets the enabled candidate types for gathering.
-// By default, host, server reflexive, and relay candidates are enabled.
-//
-// Example:
-//
-//	agent, err := NewAgent(
-//		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
-//	)
-func WithCandidateTypes(candidateTypes []CandidateType) AgentOption {
-	return func(a *Agent) error {
-		a.candidateTypes = candidateTypes
 
 		return nil
 	}

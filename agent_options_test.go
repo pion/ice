@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -68,7 +67,7 @@ func TestDefaultNominationValueGenerator(t *testing.T) {
 
 func TestWithLite(t *testing.T) {
 	t.Run("enables lite with host candidates", func(t *testing.T) {
-		agent, err := NewAgent(WithCandidateTypes([]CandidateType{CandidateTypeHost}), WithICELite(true))
+		agent, err := NewAgent(WithICELite(true))
 		require.NoError(t, err)
 		defer agent.Close() //nolint:errcheck
 
@@ -84,8 +83,11 @@ func TestWithLite(t *testing.T) {
 	})
 
 	t.Run("errors when candidate types include non-host", func(t *testing.T) {
-		_, err := NewAgent(WithICELite(true))
-		assert.ErrorIs(t, err, ErrLiteUsingNonHostCandidates)
+		agent, err := NewAgent(WithICELite(true))
+		require.NoError(t, err)
+		defer agent.Close() //nolint:errcheck
+		require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+		assert.ErrorIs(t, agent.Gather(), ErrLiteUsingNonHostCandidates)
 	})
 }
 
@@ -155,7 +157,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "lite options use lite default",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 			},
 			expectedDisconnectedTimeout: defaultLiteDisconnectedTimeout,
@@ -165,7 +166,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "explicit lite default value uses explicit checking deadline",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 				WithDisconnectedTimeout(defaultLiteDisconnectedTimeout),
 			},
@@ -176,7 +176,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "lite default combines with explicit failed timeout during checking",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 				WithFailedTimeout(explicitFailedTimeout),
 			},
@@ -187,7 +186,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "explicit option before lite is preserved",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithDisconnectedTimeout(explicitDisconnectedTimeout),
 				WithICELite(true),
 			},
@@ -198,7 +196,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "explicit option after lite is preserved",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 				WithDisconnectedTimeout(explicitDisconnectedTimeout),
 			},
@@ -209,7 +206,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "explicit zero is preserved",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 				WithDisconnectedTimeout(0),
 			},
@@ -219,7 +215,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "zero failed timeout disables initial checking timeout",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithFailedTimeout(0),
 			},
 			expectedDisconnectedTimeout: defaultDisconnectedTimeout,
@@ -228,7 +223,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "zero disconnected and failed timeouts disable initial checking timeout",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithDisconnectedTimeout(0),
 				WithFailedTimeout(0),
 			},
@@ -237,7 +231,6 @@ func TestICELiteDisconnectedTimeoutDefault(t *testing.T) {
 		{
 			name: "final full mode keeps full default",
 			options: []AgentOption{
-				WithCandidateTypes([]CandidateType{CandidateTypeHost}),
 				WithICELite(true),
 				WithICELite(false),
 			},
@@ -327,75 +320,6 @@ func TestWithMulticastDNSOptions(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidMulticastDNSHostName)
 }
 
-func TestWithLocalCredentials(t *testing.T) {
-	password := strings.Repeat("p", minLenPwd)
-
-	agent, err := NewAgent(WithLocalCredentials("abcd", password))
-	require.NoError(t, err)
-	defer agent.Close() //nolint:errcheck
-
-	assert.Equal(t, "abcd", agent.localUfrag)
-	assert.Equal(t, password, agent.localPwd)
-
-	_, err = NewAgent(WithLocalCredentials("ab", password))
-	assert.ErrorIs(t, err, ErrLocalUfragInsufficientBits)
-
-	shortPassword := strings.Repeat("p", 10)
-	_, err = NewAgent(WithLocalCredentials("abcd", shortPassword))
-	assert.ErrorIs(t, err, ErrLocalPwdInsufficientBits)
-}
-
-func TestLocalCredentialsLength(t *testing.T) {
-	ufrag, shortUfrag := strings.Repeat("u", minLenUFrag), strings.Repeat("u", minLenUFrag-1)
-	pwd, shortPwd := strings.Repeat("p", minLenPwd), strings.Repeat("p", minLenPwd-1)
-
-	tests := []struct {
-		name       string
-		ufrag, pwd string
-		expected   error
-	}{
-		{"ufrag too short", shortUfrag, pwd, ErrLocalUfragInsufficientBits},
-		{"ufrag at minimum", ufrag, pwd, nil},
-		{"pwd too short", ufrag, shortPwd, ErrLocalPwdInsufficientBits},
-		{"pwd at minimum", ufrag, pwd, nil},
-		{"stateless token", strings.Repeat("u", 24), strings.Repeat("p", 32), nil},
-		{"both empty", "", "", nil},
-	}
-
-	for _, test := range tests {
-		t.Run("WithLocalCredentials/"+test.name, func(t *testing.T) {
-			agent, err := NewAgent(WithLocalCredentials(test.ufrag, test.pwd))
-			if test.expected != nil {
-				assert.ErrorIs(t, err, test.expected)
-
-				return
-			}
-			require.NoError(t, err)
-			defer agent.Close() //nolint:errcheck
-
-			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
-			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
-		})
-
-		t.Run("Restart/"+test.name, func(t *testing.T) {
-			agent, err := NewAgent()
-			require.NoError(t, err)
-			defer agent.Close() //nolint:errcheck
-
-			err = agent.Restart(test.ufrag, test.pwd)
-			if test.expected != nil {
-				assert.ErrorIs(t, err, test.expected)
-
-				return
-			}
-			require.NoError(t, err)
-
-			assert.GreaterOrEqual(t, len([]rune(agent.localUfrag)), minLenUFrag)
-			assert.GreaterOrEqual(t, len([]rune(agent.localPwd)), minLenPwd)
-		})
-	}
-}
-
 func TestWithMuxOptions(t *testing.T) {
 	tcpMux := &stubTCPMux{}
 	udpMux := &stubUDPMux{}
@@ -462,7 +386,7 @@ func TestWithRenomination(t *testing.T) {
 	})
 
 	t.Run("default agent has renomination disabled", func(t *testing.T) {
-		config := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+		config := []AgentOption{}
 
 		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
@@ -489,7 +413,7 @@ func TestWithNominationAttribute(t *testing.T) {
 	})
 
 	t.Run("default value when no option", func(t *testing.T) {
-		config := []AgentOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+		config := []AgentOption{}
 
 		agent, err := NewAgent(config...)
 		assert.NoError(t, err)
@@ -645,100 +569,15 @@ func TestWithLoggerFactory(t *testing.T) {
 	})
 }
 
-func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
-	t.Run("ipv6 listen skipped when network types option restricts to ipv4", func(t *testing.T) {
-		stub := newStubNet(t)
-
-		agent, err := NewAgent(WithNet(stub), WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
-		require.NoError(t, err)
-		defer func() { require.NoError(t, agent.Close()) }()
-
-		assert.Zero(t, stub.udp6ListenCount, "unexpected ipv6 listen before restart")
-	})
-}
-
-func TestWithNetworkTypes(t *testing.T) {
-	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}))
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		require.Equal(t, []NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}, agent.networkTypes)
-	})
-
-	t.Run("deduplicates values", func(t *testing.T) {
-		agent, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP4, NetworkTypeTCP4}))
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		require.Equal(t, []NetworkType{NetworkTypeUDP4, NetworkTypeTCP4}, agent.networkTypes)
-	})
-
-	t.Run("rejects unsupported value", func(t *testing.T) {
-		_, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkType(0)}))
-		require.ErrorIs(t, err, ErrProtoType)
-	})
-
-	t.Run("rejects unsupported value from config", func(t *testing.T) {
-		_, err := NewAgent(WithNetworkTypes([]NetworkType{NetworkType(0)}))
-		require.ErrorIs(t, err, ErrProtoType)
-	})
-}
-
-func TestWithTURNTransportProtocols(t *testing.T) {
-	t.Run("applies option", func(t *testing.T) {
-		agent, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4}))
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		require.Equal(t, []NetworkType{NetworkTypeTCP4}, agent.turnTransportProtocols)
-	})
-
-	t.Run("deduplicates protocols", func(t *testing.T) {
-		agent, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkTypeTCP4, NetworkTypeTCP4, NetworkTypeUDP4}))
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, agent.Close())
-		}()
-
-		require.Equal(t, []NetworkType{NetworkTypeTCP4, NetworkTypeUDP4}, agent.turnTransportProtocols)
-	})
-
-	t.Run("rejects unsupported proto", func(t *testing.T) {
-		_, err := NewAgent(WithTURNTransportProtocols([]NetworkType{NetworkType(0)}))
-		require.ErrorIs(t, err, ErrProtoType)
-	})
-}
-
-func TestSetURLsValidatesCandidateTypes(t *testing.T) {
-	stunURL, err := stun.ParseURI("stun:example.com:3478")
+func TestConstructorDoesNotCreateGeneration(t *testing.T) {
+	agent, err := NewAgent(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled))
 	require.NoError(t, err)
-
-	t.Run("default candidate types accept urls", func(t *testing.T) {
-		stub := newStubNet(t)
-
-		agent, err := NewAgent(WithNet(stub))
-		require.NoError(t, err)
-		require.NoError(t, agent.SetURLs([]*stun.URI{stunURL}))
-		require.NoError(t, agent.Close())
-	})
-
-	t.Run("host only candidate types reject urls", func(t *testing.T) {
-		stub := newStubNet(t)
-
-		agent, err := NewAgent(WithNet(stub), WithCandidateTypes([]CandidateType{CandidateTypeHost}))
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, agent.Close()) })
-		require.ErrorIs(t, agent.SetURLs([]*stun.URI{stunURL}), ErrUselessURLsProvided)
-		require.Empty(t, agent.urls)
-		require.NoError(t, agent.SetURLs(nil))
-	})
+	defer agent.Close() //nolint:errcheck
+	ufrag, pwd, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	require.Empty(t, ufrag)
+	require.Empty(t, pwd)
+	require.Equal(t, GatheringStateNew, agent.gatheringState)
 }
 
 func TestWithAddressRewriteRulesAccumulatesAndCopies(t *testing.T) {
