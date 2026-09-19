@@ -946,12 +946,15 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			continue
 		}
 
+		// Active TCP candidates do not use mDNS hostnames, so keep link-local
+		// interface addresses local even when mDNS gathering is enabled.
 		localCandidate, err := NewCandidateHost(&CandidateHostConfig{
-			Network:   remoteCandidate.NetworkType().String(),
-			Address:   localIPs[i].addr.String(),
-			Port:      tcpAddr.Port,
-			Component: ComponentRTP,
-			TCPType:   TCPTypeActive,
+			Network:           remoteCandidate.NetworkType().String(),
+			Address:           localIPs[i].addr.String(),
+			Port:              tcpAddr.Port,
+			Component:         ComponentRTP,
+			TCPType:           TCPTypeActive,
+			IsLocationTracked: shouldFilterLocationTrackedIP(localIPs[i].addr),
 		})
 		if err != nil {
 			closeConnAndLog(conn, a.log, "Failed to create Active ICE-TCP Candidate: %v", err)
@@ -959,15 +962,9 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			continue
 		}
 
-		localCandidate.start(a, conn, a.startedCh)
-		a.setUniqueLiteCandidatePriority(localCandidate)
-		a.localCandidates[localCandidate.NetworkType()] = append(
-			a.localCandidates[localCandidate.NetworkType()],
-			localCandidate,
-		)
-		a.candidateNotifier.Enqueue(localCandidate)
-
-		a.addPair(localCandidate, remoteCandidate)
+		if err := a.addCandidateOnLoop(localCandidate, conn, a.gatherGeneration, false); err != nil {
+			closeConnAndLog(conn, a.log, "Failed to add Active ICE-TCP Candidate: %v", err)
+		}
 	}
 }
 
@@ -1144,19 +1141,19 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 		}
 	}
 
+	// Register the remote first so each destination-bound active candidate
+	// created below pairs only with the passive remote it dials.
+	set = append(set, cand)
+	a.remoteCandidates[cand.NetworkType()] = set
+
 	if acceptRemotePassiveTCPCandidate {
 		a.addRemotePassiveTCPCandidate(cand)
 	}
 
-	set = append(set, cand)
-	a.remoteCandidates[cand.NetworkType()] = set
-
 	if cand.TCPType() != TCPTypePassive {
 		if localCandidates, ok := a.localCandidates[cand.NetworkType()]; ok {
 			for _, localCandidate := range localCandidates {
-				if a.findPair(localCandidate, cand) == nil {
-					a.addPair(localCandidate, cand)
-				}
+				a.addPairIfWritable(localCandidate, cand)
 			}
 		}
 	}
@@ -1223,6 +1220,66 @@ func (a *Agent) cleanupCandidate(cand Candidate, candidateConn net.PacketConn, r
 	}
 }
 
+// addCandidateOnLoop registers a local candidate and pairs it with remotes the
+// candidate can write to. Callers already holding the event loop use it instead
+// of addCandidate, whose loop.Run would block on the task they are running in.
+func (a *Agent) addCandidateOnLoop(
+	cand Candidate,
+	candidateConn net.PacketConn,
+	generation uint64,
+	errorOnDuplicate bool,
+) error {
+	if a.gatherGeneration != generation {
+		a.log.Debugf(
+			"Ignoring candidate from different gather generation (a: %d c: %d)",
+			a.gatherGeneration,
+			generation,
+		)
+		a.cleanupCandidate(cand, candidateConn, "old")
+
+		return nil
+	}
+
+	set := a.localCandidates[cand.NetworkType()]
+	for _, candidate := range set {
+		if candidate.Equal(cand) {
+			if errorOnDuplicate {
+				return errDuplicateCandidate
+			}
+
+			a.log.Debugf("Ignore duplicate candidate: %s", cand)
+			a.cleanupCandidate(cand, candidateConn, "duplicate")
+
+			return nil
+		}
+	}
+
+	a.setCandidateExtensions(cand, generation)
+	cand.start(a, candidateConn, a.startedCh)
+	a.setUniqueLiteCandidatePriority(cand)
+	a.localCandidates[cand.NetworkType()] = append(set, cand)
+
+	for _, remote := range a.remoteCandidates[cand.NetworkType()] {
+		a.addPairIfWritable(cand, remote)
+	}
+
+	a.requestConnectivityCheck()
+
+	if !cand.filterForLocationTracking() {
+		a.candidateNotifier.Enqueue(cand)
+	}
+
+	return nil
+}
+
+// addPairIfWritable prevents destination-bound connections from being paired
+// with a remote other than the destination they were created for.
+func (a *Agent) addPairIfWritable(local, remote Candidate) {
+	if local.canWriteTo(remote) && a.findPair(local, remote) == nil {
+		a.addPair(local, remote)
+	}
+}
+
 func (a *Agent) addCandidate(
 	ctx context.Context,
 	cand Candidate,
@@ -1240,49 +1297,7 @@ func (a *Agent) addCandidate(
 		if generation != nil {
 			candidateGeneration = *generation
 		}
-		if a.gatherGeneration != candidateGeneration {
-			a.log.Debugf(
-				"Ignoring candidate from different gather generation (a: %d c: %d)",
-				a.gatherGeneration,
-				candidateGeneration,
-			)
-			a.cleanupCandidate(cand, candidateConn, "old")
-
-			return
-		}
-
-		set := a.localCandidates[cand.NetworkType()]
-		for _, candidate := range set {
-			if candidate.Equal(cand) {
-				if errorOnDuplicate {
-					addErr = errDuplicateCandidate
-
-					return
-				}
-
-				a.log.Debugf("Ignore duplicate candidate: %s", cand)
-				a.cleanupCandidate(cand, candidateConn, "duplicate")
-
-				return
-			}
-		}
-
-		a.setCandidateExtensions(cand, candidateGeneration)
-		cand.start(a, candidateConn, a.startedCh)
-		a.setUniqueLiteCandidatePriority(cand)
-
-		set = append(set, cand)
-		a.localCandidates[cand.NetworkType()] = set
-
-		for _, remoteCandidate := range a.remoteCandidates[cand.NetworkType()] {
-			a.addPair(cand, remoteCandidate)
-		}
-
-		a.requestConnectivityCheck()
-
-		if !cand.filterForLocationTracking() {
-			a.candidateNotifier.Enqueue(cand)
-		}
+		addErr = a.addCandidateOnLoop(cand, candidateConn, candidateGeneration, errorOnDuplicate)
 	})
 	if err != nil {
 		return err

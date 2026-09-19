@@ -6,6 +6,7 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -443,4 +444,271 @@ func TestActiveTCPConn_SetDeadlines_WhenConnected(t *testing.T) {
 		_ = srvConn.Close()
 	default:
 	}
+}
+
+func TestActiveTCP_CandidateCarriesStandardExtensions(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+
+	agent, err := NewAgent(
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithInterfaceFilter(problematicNetworkInterfaces),
+		WithIncludeLoopback(),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	ufrag, _, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+
+	active := make(chan Candidate, 4)
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c != nil && c.TCPType() == TCPTypeActive {
+			select {
+			case active <- c:
+			default:
+			}
+		}
+	}))
+
+	passive, err := UnmarshalCandidate(
+		fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port),
+	)
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(passive))
+
+	var candidate Candidate
+	select {
+	case candidate = <-active:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "no active TCP candidate was created for the remote passive one")
+	}
+
+	ufragExtension, ok := candidate.GetExtension("ufrag")
+	require.True(t, ok, "active TCP candidate reached the peer without a ufrag extension")
+	require.Equal(t, ufrag, ufragExtension.Value)
+
+	generation, ok := candidate.GetExtension("generation")
+	require.True(t, ok, "active TCP candidate reached the peer without a generation extension")
+	require.Equal(t, "0", generation.Value)
+}
+
+func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) { //nolint:cyclop
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+	secondListener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
+	require.NoError(t, err)
+	defer func() { _ = secondListener.Close() }()
+
+	for _, tcpListener := range []net.Listener{listener, secondListener} {
+		go func() {
+			for {
+				conn, acceptErr := tcpListener.Accept()
+				if acceptErr != nil {
+					return
+				}
+				_ = conn.Close()
+			}
+		}()
+	}
+
+	agent, err := NewAgent(
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithInterfaceFilter(problematicNetworkInterfaces),
+		WithIncludeLoopback(),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	active := make(chan Candidate, 1)
+	require.NoError(t, agent.OnCandidate(func(candidate Candidate) {
+		if candidate != nil && candidate.TCPType() == TCPTypeActive {
+			select {
+			case active <- candidate:
+			default:
+			}
+		}
+	}))
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	passive, err := UnmarshalCandidate(
+		fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.1 %s typ host tcptype passive", port),
+	)
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(passive))
+	_, secondPort, err := net.SplitHostPort(secondListener.Addr().String())
+	require.NoError(t, err)
+	secondPassive, err := UnmarshalCandidate(
+		fmt.Sprintf("1052353102 1 tcp 1675624447 127.0.0.2 %s typ host tcptype passive", secondPort),
+	)
+	require.NoError(t, err)
+
+	select {
+	case <-active:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "no active TCP candidate was created")
+	}
+
+	peerReflexive, err := NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
+		Network:   NetworkTypeTCP4.String(),
+		Address:   "127.0.0.1",
+		Port:      10,
+		Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+
+	unrelatedRemotes := []struct {
+		name      string
+		candidate Candidate
+	}{
+		{
+			name: "simultaneous-open",
+			candidate: mustCandidateHost(t, &CandidateHostConfig{
+				Network:   NetworkTypeTCP4.String(),
+				Address:   "127.0.0.1",
+				Port:      9,
+				Component: ComponentRTP,
+				TCPType:   TCPTypeSimultaneousOpen,
+			}),
+		},
+		{name: "peer-reflexive", candidate: peerReflexive},
+		{
+			name: "same-port-different-address",
+			candidate: mustCandidateHost(t, &CandidateHostConfig{
+				Network:   NetworkTypeTCP4.String(),
+				Address:   "127.0.0.2",
+				Port:      passive.Port(),
+				Component: ComponentRTP,
+				TCPType:   TCPTypeSimultaneousOpen,
+			}),
+		},
+	}
+
+	activeCandidateCount := 0
+	activeCandidatesWithUnexpectedPassivePairCount := 0
+	unrelatedPairCounts := make([]int, len(unrelatedRemotes))
+	require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+		agent.addRemoteCandidate(secondPassive) //nolint:contextcheck
+		for _, remote := range unrelatedRemotes {
+			agent.addRemoteCandidate(remote.candidate) //nolint:contextcheck
+		}
+
+		for _, local := range agent.localCandidates[NetworkTypeTCP4] {
+			if local.TCPType() != TCPTypeActive {
+				continue
+			}
+			activeCandidateCount++
+			passivePairCount := 0
+			for _, pair := range agent.checklist {
+				if pair.Local == local && pair.Remote.TCPType() == TCPTypePassive {
+					passivePairCount++
+				}
+			}
+			if passivePairCount != 1 {
+				activeCandidatesWithUnexpectedPassivePairCount++
+			}
+		}
+		for _, pair := range agent.checklist {
+			for i, remote := range unrelatedRemotes {
+				if pair.Local.TCPType() == TCPTypeActive && pair.Remote.Equal(remote.candidate) {
+					unrelatedPairCounts[i]++
+				}
+			}
+		}
+	}))
+	require.Positive(t, activeCandidateCount)
+	t.Run("passive", func(t *testing.T) {
+		require.Zero(t, activeCandidatesWithUnexpectedPassivePairCount)
+	})
+	for i, remote := range unrelatedRemotes {
+		t.Run(remote.name, func(t *testing.T) {
+			require.Zero(t, unrelatedPairCounts[i])
+		})
+	}
+}
+
+// RFC 8445 Section 5.1.1.1 keeps an IPv6 link-local address, which is derived
+// from the interface identifier, from reaching the peer.
+func TestActiveTCPCandidateKeepsLinkLocalLocal(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	defer test.TimeOut(30 * time.Second).Stop()
+
+	agent, err := NewAgent(
+		WithNetworkTypes([]NetworkType{NetworkTypeTCP6}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	signaled := make(chan Candidate, 64)
+	require.NoError(t, agent.OnCandidate(func(c Candidate) {
+		if c != nil {
+			signaled <- c
+		}
+	}))
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network: NetworkTypeTCP6.String(), Address: "2001:db8::1", Port: 9000,
+		Component: ComponentRTP, TCPType: TCPTypePassive,
+	})
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(remote))
+
+	var linkLocal []string
+	settled := time.After(3 * time.Second)
+	for {
+		select {
+		case candidate := <-signaled:
+			if isLinkLocalV6(candidate.Address()) {
+				linkLocal = append(linkLocal, candidate.Address())
+			}
+		case <-settled:
+			var built []string
+			require.NoError(t, agent.loop.Run(context.Background(), func(context.Context) {
+				for _, candidate := range agent.localCandidates[NetworkTypeTCP6] {
+					if isLinkLocalV6(candidate.Address()) {
+						built = append(built, candidate.Address())
+					}
+				}
+			}))
+			if len(built) == 0 {
+				t.Skip("no IPv6 link-local address on this host to withhold")
+			}
+
+			require.Empty(t, linkLocal, "%v was built but must not reach the peer", built)
+
+			return
+		}
+	}
+}
+
+func isLinkLocalV6(address string) bool {
+	addr, err := netip.ParseAddr(address)
+
+	return err == nil && addr.Is6() && addr.IsLinkLocalUnicast()
 }
