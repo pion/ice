@@ -6,10 +6,12 @@
 package ice
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/netip"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -446,4 +448,91 @@ func TestActiveTCPConn_SetDeadlines_WhenConnected(t *testing.T) {
 		_ = srvConn.Close()
 	default:
 	}
+}
+
+func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(10 * time.Second).Stop()
+
+	var passives []Candidate
+	for range 2 {
+		listener, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
+		require.NoError(t, err)
+		defer func() { _ = listener.Close() }()
+		_, port, _, err := parseAddr(listener.Addr())
+		require.NoError(t, err)
+		passives = append(passives, mustCandidateHost(t, &CandidateHostConfig{
+			Network: "tcp4", Address: "127.0.0.1", Port: port, Component: ComponentRTP, TCPType: TCPTypePassive,
+		}))
+	}
+	peerReflexive, err := NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
+		Network: "tcp4", Address: "127.0.0.1", Port: 10, Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	unrelated := []Candidate{
+		peerReflexive,
+		mustCandidateHost(t, &CandidateHostConfig{
+			Network: "tcp4", Address: "127.0.0.1", Port: 9, Component: ComponentRTP, TCPType: TCPTypeSimultaneousOpen,
+		}),
+		mustCandidateHost(t, &CandidateHostConfig{
+			Network: "tcp4", Address: "127.0.0.2", Port: passives[0].Port(), Component: ComponentRTP, TCPType: TCPTypeSimultaneousOpen,
+		}),
+	}
+
+	for order, remotes := range map[string][]Candidate{
+		"before": slices.Concat(unrelated, passives),
+		"after":  slices.Concat(passives, unrelated),
+	} {
+		t.Run(order, func(t *testing.T) {
+			agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithIncludeLoopback())
+			require.NoError(t, err)
+			defer func() { require.NoError(t, agent.Close()) }()
+
+			var pairs []*CandidatePair
+			require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+				for _, remote := range remotes {
+					agent.addRemoteCandidate(remote) //nolint:contextcheck
+				}
+				pairs = append(pairs, agent.checklist...)
+			}))
+			require.Len(t, pairs, len(passives))
+			for i, pair := range pairs {
+				require.Equal(t, TCPTypeActive, pair.Local.TCPType())
+				require.Equal(t, passives[i], pair.Remote)
+			}
+		})
+	}
+}
+
+func TestActiveTCPCandidateMarksLinkLocalAsLocationTracked(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	remote, err := NewCandidateHost(&CandidateHostConfig{
+		Network: NetworkTypeTCP6.String(), Address: "2001:db8::1", Port: 9000,
+		Component: ComponentRTP, TCPType: TCPTypePassive,
+	})
+	require.NoError(t, err)
+
+	linkLocalCount := 0
+	untrackedLinkLocalCount := 0
+	require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+		agent.addRemoteCandidate(remote) //nolint:contextcheck
+		for _, candidate := range agent.localCandidates[NetworkTypeTCP6] {
+			if !candidate.addrPort().Addr().IsLinkLocalUnicast() {
+				continue
+			}
+			linkLocalCount++
+			if !candidate.filterForLocationTracking() {
+				untrackedLinkLocalCount++
+			}
+		}
+	}))
+	if linkLocalCount == 0 {
+		t.Skip("no IPv6 link-local address on this host")
+	}
+	require.Zero(t, untrackedLinkLocalCount)
 }

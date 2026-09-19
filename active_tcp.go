@@ -17,6 +17,7 @@ import (
 
 type activeTCPConn struct {
 	readBuffer, writeBuffer *packetio.Buffer
+	dialAddr                netip.AddrPort
 	localAddr, remoteAddr   atomic.Value
 	conn                    atomic.Value // stores net.Conn
 	closed                  atomic.Bool
@@ -31,6 +32,7 @@ func newActiveTCPConn(
 	a = &activeTCPConn{
 		readBuffer:  packetio.NewBuffer(),
 		writeBuffer: packetio.NewBuffer(),
+		dialAddr:    remoteAddress,
 	}
 
 	laddr, err := getTCPAddrOnInterface(localAddress)

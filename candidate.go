@@ -89,6 +89,7 @@ type Candidate interface {
 
 	addr() net.Addr
 	addrPort() netip.AddrPort
+	canWriteTo(Candidate) bool
 	filterForLocationTracking() bool
 	agent() *Agent
 	context() context.Context
