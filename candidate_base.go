@@ -620,6 +620,20 @@ func (c *candidateBase) addrPort() netip.AddrPort {
 	return c.resolvedAddrPort
 }
 
+func (c *candidateBase) canWriteTo(remote Candidate) bool {
+	conn, ok := c.conn.(*activeTCPConn)
+	if !ok {
+		return true
+	}
+	target := remote.addrPort()
+	if !conn.dialAddr.IsValid() || !target.IsValid() || conn.dialAddr.Port() != target.Port() {
+		return false
+	}
+
+	// IPv6 zones describe the local dialing interface, not the signaled remote.
+	return conn.dialAddr.Addr().Unmap().WithZone("") == target.Addr().Unmap().WithZone("")
+}
+
 func (c *candidateBase) setResolvedAddr(addr net.Addr) {
 	c.resolvedAddr = addr
 	c.resolvedAddrPort = netAddrToAddrPort(addr)
