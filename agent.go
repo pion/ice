@@ -170,11 +170,6 @@ type Agent struct {
 	nominationValueGenerator func() uint32
 	nominationAttribute      stun.AttrType
 
-	// Continual gathering support
-	continualGatheringPolicy ContinualGatheringPolicy
-	networkMonitorInterval   time.Duration
-	lastKnownInterfaces      map[string]netip.Addr // map[iface+ip] for deduplication
-
 	// Automatic renomination
 	automaticRenomination bool
 	renominationInterval  time.Duration
@@ -196,40 +191,37 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 	startedCtx, startedFn := context.WithCancel(context.Background())
 
 	agent := &Agent{
-		mDNSMode:                 MulticastDNSModeQueryOnly,
-		mDNSName:                 mDNSName,
-		maxBindingRequests:       defaultMaxBindingRequests,
-		hostAcceptanceMinWait:    defaultHostAcceptanceMinWait,
-		srflxAcceptanceMinWait:   defaultSrflxAcceptanceMinWait,
-		prflxAcceptanceMinWait:   defaultPrflxAcceptanceMinWait,
-		relayAcceptanceMinWait:   defaultRelayAcceptanceMinWait,
-		stunGatherTimeout:        defaultSTUNGatherTimeout,
-		tcpPriorityOffset:        defaultTCPPriorityOffset,
-		disconnectedTimeout:      defaultDisconnectedTimeout,
-		failedTimeout:            defaultFailedTimeout,
-		keepaliveInterval:        defaultKeepaliveInterval,
-		checkInterval:            defaultCheckInterval,
-		tieBreaker:               globalMathRandomGenerator.Uint64(),
-		gatheringState:           GatheringStateNew,
-		connectionState:          ConnectionStateNew,
-		startedCandidates:        make(map[*candidateBase]struct{}),
-		localCandidates:          make(map[NetworkType][]Candidate),
-		remoteCandidates:         make(map[NetworkType][]Candidate),
-		pairsByID:                make(map[uint64]*CandidatePair),
-		onConnected:              make(chan struct{}),
-		buf:                      packetio.NewBuffer(),
-		startedCh:                startedCtx.Done(),
-		startedFn:                startedFn,
-		loggerFactory:            loggerFactory,
-		log:                      log,
-		gatherCandidateCancel:    func() {},
-		forceCandidateContact:    make(chan bool, 1),
-		nominationAttribute:      DefaultNominationAttribute,
-		continualGatheringPolicy: GatherOnce, // Default to GatherOnce
-		networkMonitorInterval:   2 * time.Second,
-		lastKnownInterfaces:      make(map[string]netip.Addr),
-		renominationInterval:     3 * time.Second, // Default matching libwebrtc
-		turnClientFactory:        defaultTurnClient,
+		mDNSMode:               MulticastDNSModeQueryOnly,
+		mDNSName:               mDNSName,
+		maxBindingRequests:     defaultMaxBindingRequests,
+		hostAcceptanceMinWait:  defaultHostAcceptanceMinWait,
+		srflxAcceptanceMinWait: defaultSrflxAcceptanceMinWait,
+		prflxAcceptanceMinWait: defaultPrflxAcceptanceMinWait,
+		relayAcceptanceMinWait: defaultRelayAcceptanceMinWait,
+		stunGatherTimeout:      defaultSTUNGatherTimeout,
+		tcpPriorityOffset:      defaultTCPPriorityOffset,
+		disconnectedTimeout:    defaultDisconnectedTimeout,
+		failedTimeout:          defaultFailedTimeout,
+		keepaliveInterval:      defaultKeepaliveInterval,
+		checkInterval:          defaultCheckInterval,
+		tieBreaker:             globalMathRandomGenerator.Uint64(),
+		gatheringState:         GatheringStateNew,
+		connectionState:        ConnectionStateNew,
+		startedCandidates:      make(map[*candidateBase]struct{}),
+		localCandidates:        make(map[NetworkType][]Candidate),
+		remoteCandidates:       make(map[NetworkType][]Candidate),
+		pairsByID:              make(map[uint64]*CandidatePair),
+		onConnected:            make(chan struct{}),
+		buf:                    packetio.NewBuffer(),
+		startedCh:              startedCtx.Done(),
+		startedFn:              startedFn,
+		loggerFactory:          loggerFactory,
+		log:                    log,
+		gatherCandidateCancel:  func() {},
+		forceCandidateContact:  make(chan bool, 1),
+		nominationAttribute:    DefaultNominationAttribute,
+		renominationInterval:   3 * time.Second, // Default matching libwebrtc
+		turnClientFactory:      defaultTurnClient,
 	}
 
 	for _, opt := range opts {

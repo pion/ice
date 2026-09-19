@@ -705,44 +705,6 @@ func WithEnableUseCandidateCheckPriority() AgentOption {
 	}
 }
 
-// WithContinualGatheringPolicy sets the continual gathering policy for the agent.
-// When set to GatherContinually, the agent will continuously monitor network interfaces
-// and gather new candidates as they become available.
-// When set to GatherOnce (default), gathering completes after the initial phase.
-//
-// Example:
-//
-//	agent, err := NewAgent(WithContinualGatheringPolicy(GatherContinually))
-func WithContinualGatheringPolicy(policy ContinualGatheringPolicy) AgentOption {
-	return func(a *Agent) error {
-		a.continualGatheringPolicy = policy
-
-		return nil
-	}
-}
-
-// WithNetworkMonitorInterval sets the interval at which the agent checks for network interface changes
-// when using GatherContinually policy. This option only has effect when used with
-// WithContinualGatheringPolicy(GatherContinually).
-// Default is 2 seconds if not specified.
-//
-// Example:
-//
-//	agent, err := NewAgent(
-//		WithContinualGatheringPolicy(GatherContinually),
-//		WithNetworkMonitorInterval(5 * time.Second),
-//	)
-func WithNetworkMonitorInterval(interval time.Duration) AgentOption {
-	return func(a *Agent) error {
-		if interval <= 0 {
-			return ErrInvalidNetworkMonitorInterval
-		}
-		a.networkMonitorInterval = interval
-
-		return nil
-	}
-}
-
 // WithAutomaticRenomination enables automatic renomination of candidate pairs
 // when better pairs become available after initial connection establishment.
 // This feature requires renomination to be enabled and both agents to support it.

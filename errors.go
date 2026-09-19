@@ -115,9 +115,6 @@ var (
 	// ErrInvalidNominationValueGenerator indicates a nil nomination value generator was provided.
 	ErrInvalidNominationValueGenerator = errors.New("nomination value generator cannot be nil")
 
-	// ErrInvalidNetworkMonitorInterval indicates an invalid network monitor interval was provided.
-	ErrInvalidNetworkMonitorInterval = errors.New("network monitor interval must be greater than 0")
-
 	errAttributeTooShortICECandidate = errors.New("attribute not long enough to be ICE candidate")
 	errCandidatePacketConnNil        = errors.New("candidate packet connection is nil")
 	errDuplicateCandidate            = errors.New("candidate already added")

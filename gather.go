@@ -21,7 +21,6 @@ import (
 	stunx "github.com/pion/ice/v4/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
-	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/turn/v5"
 )
 
@@ -294,6 +293,7 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 // Calling Gather again cancels the previous gather. If the
 // credentials are unchanged, existing candidates and connectivity are preserved.
 // Changed credentials clear candidates and remote credentials and restart connectivity checks.
+// Each pass signals completion with a nil candidate. Call Gather again to gather more candidates.
 //
 //nolint:cyclop
 func (a *Agent) Gather(opts ...GatherOption) error {
@@ -352,7 +352,7 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 		generation := a.gatherGeneration
 		a.gatheringState = GatheringStateGathering
 		go func() {
-			// Join previous workers, including continual monitoring, before reusing muxes.
+			// Join previous workers before reusing muxes.
 			if previousDone != nil {
 				<-previousDone
 			}
@@ -410,7 +410,7 @@ func (a *Agent) gatherCandidates(
 	generation uint64,
 	localUfrag string,
 	config *gatherConfig,
-) { //nolint:cyclop
+) {
 	defer close(done)
 	if ctx.Err() != nil {
 		return
@@ -418,30 +418,8 @@ func (a *Agent) gatherCandidates(
 
 	a.gatherCandidatesInternal(ctx, generation, localUfrag, config)
 
-	switch a.continualGatheringPolicy {
-	case GatherOnce:
-		if err := a.completeGathering(ctx, generation); err != nil && ctx.Err() == nil {
-			a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
-		}
-	case GatherContinually:
-		a.lastKnownInterfaces = make(map[string]netip.Addr)
-		// Initialize known interfaces before starting monitoring
-		_, addrs, err := localInterfaces(
-			a.net,
-			a.interfaceFilter,
-			a.ipFilter,
-			config.networkTypes,
-			a.includeLoopback,
-		)
-		if err != nil {
-			a.log.Warnf("Failed to get initial interfaces for monitoring: %v", err)
-		} else {
-			for _, info := range addrs {
-				a.lastKnownInterfaces[info.addr.String()] = info.addr
-			}
-			a.log.Infof("Initialized network monitoring with %d IP addresses", len(addrs))
-		}
-		a.startNetworkMonitoring(ctx, generation, localUfrag, config)
+	if err := a.completeGathering(ctx, generation); err != nil && ctx.Err() == nil {
+		a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
 	}
 }
 
@@ -1637,64 +1615,4 @@ func (a *Agent) closeRelayEndpoint(ep relayEndpoint) {
 			a.log.Warnf("Failed to close filtered relay connection: %v", err)
 		}
 	}
-}
-
-// startNetworkMonitoring starts a goroutine that periodically checks for network changes
-// and re-gathers candidates when changes are detected. This is only used with GatherContinually policy.
-func (a *Agent) startNetworkMonitoring(ctx context.Context, generation uint64, localUfrag string, config *gatherConfig) {
-	ticker := time.NewTicker(a.networkMonitorInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if a.detectNetworkChanges(config.networkTypes) {
-				a.gatherCandidatesInternal(ctx, generation, localUfrag, config)
-			}
-		}
-	}
-}
-
-// detectNetworkChanges checks if the network interfaces have changed since the last check.
-func (a *Agent) detectNetworkChanges(networkTypes []NetworkType) bool {
-	// Try to refresh interfaces if using stdnet
-	if stdNet, ok := a.net.(*stdnet.Net); ok {
-		if err := stdNet.UpdateInterfaces(); err != nil {
-			a.log.Warnf("Failed to update interfaces: %v", err)
-		}
-	}
-
-	_, currentAddrs, err := localInterfaces(
-		a.net,
-		a.interfaceFilter,
-		a.ipFilter,
-		networkTypes,
-		a.includeLoopback,
-	)
-	if err != nil {
-		a.log.Warnf("Failed to get local interfaces during network monitoring: %v", err)
-
-		return false
-	}
-
-	currentInterfaces := make(map[string]netip.Addr)
-	for _, info := range currentAddrs {
-		key := info.addr.String()
-		currentInterfaces[key] = info.addr
-	}
-
-	hasAdditions := false
-
-	for key, addr := range currentInterfaces {
-		if _, exists := a.lastKnownInterfaces[key]; !exists {
-			a.log.Infof("New IP address detected: %s", addr)
-			hasAdditions = true
-		}
-	}
-
-	a.lastKnownInterfaces = currentInterfaces
-
-	return hasAdditions
 }
