@@ -4199,9 +4199,9 @@ func TestDisconnectedToConnected(t *testing.T) {
 	wan, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "0.0.0.0/0", LoggerFactory: loggerFactory})
 	require.NoError(t, err)
 
-	var dropAllData uint64
+	var dropAllData atomic.Bool
 	wan.AddChunkFilter(func(vnet.Chunk) bool {
-		return atomic.LoadUint64(&dropAllData) != 1
+		return !dropAllData.Load()
 	})
 
 	net0, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"192.168.0.1"}})
@@ -4254,12 +4254,12 @@ func TestDisconnectedToConnected(t *testing.T) {
 	blockUntilStateSeen(ConnectionStateConnected, controlledStateChanges)
 
 	// Drop all packets, and block until we have gone to disconnected
-	atomic.StoreUint64(&dropAllData, 1)
+	dropAllData.Store(true)
 	blockUntilStateSeen(ConnectionStateDisconnected, controllingStateChanges)
 	blockUntilStateSeen(ConnectionStateDisconnected, controlledStateChanges)
 
 	// Allow all packets through again, block until we have gone to connected
-	atomic.StoreUint64(&dropAllData, 0)
+	dropAllData.Store(false)
 	blockUntilStateSeen(ConnectionStateConnected, controllingStateChanges)
 	blockUntilStateSeen(ConnectionStateConnected, controlledStateChanges)
 
