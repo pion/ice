@@ -23,7 +23,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 			gen: func(t *testing.T) string {
 				t.Helper()
 
-				s, err := generatePwd()
+				s, err := GeneratePwd()
 				require.NoError(t, err)
 
 				return s
@@ -33,7 +33,7 @@ func TestRandomGeneratorCollision(t *testing.T) {
 			gen: func(t *testing.T) string {
 				t.Helper()
 
-				s, err := generateUFrag()
+				s, err := GenerateUFrag()
 				require.NoError(t, err)
 
 				return s

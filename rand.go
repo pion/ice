@@ -46,14 +46,12 @@ func generateCandidateID() string {
 	return "candidate:" + globalMathRandomGenerator.GenerateString(32, runesCandidateIDFoundation)
 }
 
-// generatePwd generates ICE pwd.
-// This internally uses generateCryptoRandomString.
-func generatePwd() (string, error) {
+// GeneratePwd generates a cryptographically random ICE password.
+func GeneratePwd() (string, error) {
 	return randutil.GenerateCryptoRandomString(lenPwd, runesAlpha)
 }
 
-// generateUFrag generates ICE user fragment.
-// This internally uses generateCryptoRandomString.
-func generateUFrag() (string, error) {
+// GenerateUFrag generates a cryptographically random ICE username fragment.
+func GenerateUFrag() (string, error) {
 	return randutil.GenerateCryptoRandomString(lenUFrag, runesAlpha)
 }

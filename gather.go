@@ -58,13 +58,13 @@ func (config *gatherConfig) resolveLocalCredentials(ufrag, pwd string) error {
 	}
 	var err error
 	if config.localUfrag == "" {
-		config.localUfrag, err = generateUFrag()
+		config.localUfrag, err = GenerateUFrag()
 		if err != nil {
 			return err
 		}
 	}
 	if config.localPwd == "" {
-		config.localPwd, err = generatePwd()
+		config.localPwd, err = GeneratePwd()
 		if err != nil {
 			return err
 		}
