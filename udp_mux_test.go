@@ -981,29 +981,32 @@ func TestUDPMux_connWorker_STUNNoUsername(t *testing.T) {
 func TestUDPMux_connWorker_WritePacketError(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
-	local := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 7003}
 	remote := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 5555}
-	payload := []byte("0123456789ABCDEF")
 
 	pc := &scriptedUDPPC{
-		local: local,
+		local: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 7003},
 		seq: []struct {
 			data []byte
 			addr net.Addr
 			err  error
 		}{
-			{data: payload, addr: remote, err: nil},
+			{data: []byte("0123456789ABCDEF"), addr: remote, err: nil},
 			{data: nil, addr: remote, err: errIoEOF}, // exit loop
 		},
 	}
-	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
+	mux := newUDPMuxDefault(UDPMuxParams{UDPConn: pc})
 	require.NotNil(t, mux)
 	defer func() {
 		_ = mux.Close()
 	}()
 
 	// shrink pool to force io.ErrShortBuffer in writePacket
-	mux.bufferPool = &sync.Pool{New: func() any { return newBufferHolder(8) }}
+	shortBufferUsed := false
+	mux.bufferPool = &sync.Pool{New: func() any {
+		shortBufferUsed = true
+
+		return newBufferHolder(8)
+	}}
 
 	// make connWorker route to new conn.
 	c, err := mux.GetConn("ufragX", mux.LocalAddr())
@@ -1012,13 +1015,11 @@ func TestUDPMux_connWorker_WritePacketError(t *testing.T) {
 		_ = c.Close()
 	}()
 
-	ipport := canonicalAddrPort(remote.AddrPort())
-
-	cInner, ok := c.(*sharedPacketConn)
-	require.True(t, ok, "expected *sharedPacketConn from UDPMuxDefault.GetConn")
-	muxedConn, ok := cInner.underlying.(*udpMuxedConn)
-	require.True(t, ok, "expected sharedPacketConn to wrap *udpMuxedConn")
-	mux.registerConnForAddress(muxedConn, ipport)
+	muxedConn, ok := mux.getConn("ufragX", false)
+	require.True(t, ok)
+	mux.registerConnForAddress(muxedConn, canonicalAddrPort(remote.AddrPort()))
+	mux.connWorker()
+	require.True(t, shortBufferUsed, "worker must attempt to buffer the routed packet")
 }
 
 // Two GetConn calls with the same ufrag/network must return distinct wrappers

@@ -720,6 +720,18 @@ func (c *candidateBase) marshalAddress(address string) string {
 	return val
 }
 
+func (c *candidateBase) setIPAddr(addr netip.Addr) error {
+	networkType, err := determineNetworkType(c.NetworkType().NetworkShort(), addr)
+	if err != nil {
+		return err
+	}
+
+	c.networkType = networkType
+	c.setResolvedAddr(createAddr(networkType, addr, c.port))
+
+	return nil
+}
+
 // CandidateExtension represents a single candidate extension
 // as defined in https://tools.ietf.org/html/rfc5245#section-15.1
 // .
