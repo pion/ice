@@ -31,6 +31,28 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+var defaultNet atomic.Pointer[stdnet.Net] //nolint:gochecknoglobals
+
+func getSharedNet() (*stdnet.Net, error) {
+	if network := defaultNet.Load(); network != nil {
+		return network, nil
+	}
+
+	network, err := stdnet.NewNet()
+	if err != nil {
+		return nil, err
+	}
+	if !defaultNet.CompareAndSwap(nil, network) {
+		return defaultNet.Load(), nil
+	}
+
+	time.AfterFunc(20*time.Second, func() {
+		defaultNet.CompareAndSwap(network, nil)
+	})
+
+	return network, nil
+}
+
 type bindingRequest struct {
 	timestamp       time.Time
 	transactionID   [stun.TransactionIDSize]byte
@@ -247,7 +269,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 	}
 
 	if agent.net == nil {
-		agent.net, err = stdnet.NewNet()
+		agent.net, err = getSharedNet()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create network: %w", err)
 		}

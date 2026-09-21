@@ -21,6 +21,7 @@ import (
 	"github.com/pion/ice/v4/internal/fakenet"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
+	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/transport/v5/test"
 	"github.com/pion/transport/v5/vnet"
 	"github.com/pion/turn/v5"
@@ -4316,4 +4317,39 @@ func newHostLocal(t *testing.T) *CandidateHost {
 	require.NoError(t, err)
 
 	return hostLocal
+}
+
+// BenchmarkCreateAgents compares per-agent networks with the shared cache.
+// Each operation creates 100 agent.
+func BenchmarkCreateAgents(b *testing.B) {
+	before := func(agent *Agent) error {
+		network, err := stdnet.NewNet()
+		agent.net = network
+
+		return err
+	}
+	b.Run("Before", func(b *testing.B) { benchmarkCreateAgents(b, before) })
+	b.Run("After", func(b *testing.B) { benchmarkCreateAgents(b) })
+}
+
+func benchmarkCreateAgents(b *testing.B, opts ...AgentOption) {
+	b.Helper()
+	b.ReportAllocs()
+	for range b.N {
+		agents := make([]*Agent, 0, 100)
+		for range 100 {
+			agent, err := NewAgent(opts...)
+			if err != nil {
+				b.Fatal(err)
+			}
+			agents = append(agents, agent)
+		}
+		b.StopTimer()
+		for _, agent := range agents {
+			if err := agent.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+		b.StartTimer()
+	}
 }
