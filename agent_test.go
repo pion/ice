@@ -4266,6 +4266,106 @@ func TestDisconnectedToConnected(t *testing.T) {
 	require.NoError(t, wan.Stop())
 }
 
+func TestHandleFQDNRemote(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 30).Stop()
+
+	t.Run("rejected", func(t *testing.T) {
+		for _, scenario := range []string{"lookup error", "no addresses", "stale generation", "closed agent"} {
+			t.Run(scenario, func(t *testing.T) {
+				agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+				require.NoError(t, err)
+				defer func() { require.NoError(t, agent.Close()) }()
+
+				candidate, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "remote.invalid", Port: 1234, Component: 1})
+				require.NoError(t, err)
+				agent.lookupNetIP = func(_ context.Context, network, host string) ([]netip.Addr, error) {
+					require.Equal(t, "ip4", network)
+					require.Equal(t, candidate.Address(), host)
+					switch scenario {
+					case "lookup error":
+						return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+					case "no addresses":
+						return nil, nil
+					case "stale generation":
+						agent.remoteCandidateGeneration.Add(1)
+					case "closed agent":
+						require.NoError(t, agent.Close())
+					}
+
+					return []netip.Addr{netip.MustParseAddr("192.0.2.1")}, nil
+				}
+
+				agent.resolveAndAddFQDNCandidate(candidate, agent.remoteCandidateGeneration.Load())
+				candidates, err := agent.GetRemoteCandidates()
+				if scenario == "closed agent" {
+					require.ErrorIs(t, err, ErrClosed)
+				} else {
+					require.NoError(t, err)
+				}
+				require.Empty(t, candidates)
+			})
+		}
+	})
+
+	t.Run("connected", func(t *testing.T) {
+		lookupNetIP := func(_ context.Context, _, host string) ([]netip.Addr, error) {
+			addr, ok := map[string]netip.Addr{
+				"webrtc-server.bar.com": netip.MustParseAddr(vnetGlobalIPA),
+				"webrtc-server.foo.com": netip.MustParseAddr(vnetGlobalIPB),
+			}[host]
+			if !ok {
+				return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+			}
+
+			return []netip.Addr{addr}, nil
+		}
+
+		vent, err := buildVNet(
+			&vnet.NATType{Mode: vnet.NATModeNAT1To1},
+			&vnet.NATType{Mode: vnet.NATModeNAT1To1},
+		)
+		require.NoError(t, err, "should succeed")
+		defer vent.close()
+
+		aAgent, err := NewAgent(
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"webrtc-server.bar.com"}, AsCandidateType: CandidateTypeHost}),
+			WithNet(vent.net0),
+		)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, aAgent.Close()) }()
+
+		aAgent.lookupNetIP = lookupNetIP
+
+		bAgent, err := NewAgent(
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNet(vent.net1),
+			WithAddressRewriteRules(AddressRewriteRule{External: []string{"webrtc-server.foo.com"}, AsCandidateType: CandidateTypeHost}),
+		)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, bAgent.Close()) }()
+		bAgent.lookupNetIP = lookupNetIP
+
+		gatherOptions := []GatherOption{
+			WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		}
+		connectWithVNet(t, bAgent, aAgent, gatherOptions, gatherOptions)
+
+		aPair, err := aAgent.GetSelectedCandidatePair()
+		require.NoError(t, err)
+		require.NotNil(t, aPair)
+		require.Equal(t, "webrtc-server.foo.com", aPair.Remote.Address())
+		require.Equal(t, netip.MustParseAddr(vnetGlobalIPB), aPair.Remote.addrPort().Addr())
+		bPair, err := bAgent.GetSelectedCandidatePair()
+		require.NoError(t, err)
+		require.NotNil(t, bPair)
+		require.Equal(t, "webrtc-server.bar.com", bPair.Remote.Address())
+		require.Equal(t, netip.MustParseAddr(vnetGlobalIPA), bPair.Remote.addrPort().Addr())
+	})
+}
+
 // Agent.Write should use the best valid pair if a selected pair is not yet available.
 
 func newHostRemote(t *testing.T) *CandidateHost {

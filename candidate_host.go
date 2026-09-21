@@ -11,8 +11,6 @@ import (
 // CandidateHost is a candidate of type host.
 type CandidateHost struct {
 	candidateBase
-
-	network string
 }
 
 // CandidateHostConfig is the config required to create a new CandidateHost.
@@ -30,6 +28,11 @@ type CandidateHostConfig struct {
 
 // NewCandidateHost creates a new host candidate.
 func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
+	networkType, err := determineNetworkType(config.Network, netip.IPv4Unspecified())
+	if err != nil {
+		return nil, err
+	}
+
 	candidateID := config.CandidateID
 
 	if candidateID == "" {
@@ -39,6 +42,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 	candidateHost := &CandidateHost{
 		candidateBase: candidateBase{
 			id:                 candidateID,
+			networkType:        networkType,
 			address:            config.Address,
 			candidateType:      CandidateTypeHost,
 			component:          config.Component,
@@ -48,7 +52,6 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			priorityOverride:   config.Priority,
 			isLocationTracked:  config.IsLocationTracked,
 		},
-		network: config.Network,
 	}
 
 	if !strings.HasSuffix(config.Address, ".local") && !strings.HasSuffix(config.Address, ".invalid") {
@@ -60,22 +63,7 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 		if err := candidateHost.setIPAddr(ipAddr); err != nil {
 			return nil, err
 		}
-	} else {
-		// Until mDNS candidate is resolved assume it is UDPv4
-		candidateHost.candidateBase.networkType = NetworkTypeUDP4
 	}
 
 	return candidateHost, nil
-}
-
-func (c *CandidateHost) setIPAddr(addr netip.Addr) error {
-	networkType, err := determineNetworkType(c.network, addr)
-	if err != nil {
-		return err
-	}
-
-	c.candidateBase.networkType = networkType
-	c.candidateBase.setResolvedAddr(createAddr(networkType, addr, c.port))
-
-	return nil
 }

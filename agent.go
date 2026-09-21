@@ -162,6 +162,7 @@ type Agent struct {
 	insecureSkipVerify bool
 
 	proxyDialer proxy.Dialer
+	lookupNetIP func(context.Context, string, string) ([]netip.Addr, error)
 
 	enableUseCandidateCheckPriority bool
 
@@ -222,6 +223,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		nominationAttribute:    DefaultNominationAttribute,
 		renominationInterval:   3 * time.Second, // Default matching libwebrtc
 		turnClientFactory:      defaultTurnClient,
+		lookupNetIP:            net.DefaultResolver.LookupNetIP,
 	}
 
 	for _, opt := range opts {
@@ -724,13 +726,28 @@ func (a *Agent) AddRemoteCandidate(cand Candidate) error {
 		return nil
 	}
 
-	// If we have a mDNS Candidate lets fully resolve it before adding it locally
 	if isMulticastDNSCandidate(cand) {
-		return a.addRemoteMulticastCandidate(cand)
+		if a.mDNSMode == MulticastDNSModeDisabled {
+			a.log.Warnf("Remote mDNS candidate added, but mDNS is disabled: (%s)", cand.Address())
+
+			return nil
+		}
+
+		hostCandidate, ok := cand.(*CandidateHost)
+		if !ok {
+			return ErrAddressParseFailed
+		}
+
+		go a.resolveAndAddMulticastCandidate(hostCandidate, a.remoteCandidateGeneration.Load())
+
+		return nil
+	} else if validateFQDN(cand.Address()) {
+		go a.resolveAndAddFQDNCandidate(cand, a.remoteCandidateGeneration.Load())
+
+		return nil
 	}
 
 	generation := a.remoteCandidateGeneration.Load()
-
 	go func() {
 		if err := a.loop.Run(a.loop, func(_ context.Context) {
 			if generation != a.remoteCandidateGeneration.Load() {
@@ -763,27 +780,35 @@ func isMulticastDNSCandidate(cand Candidate) bool {
 	return cand.Type() == CandidateTypeHost && strings.HasSuffix(cand.Address(), ".local")
 }
 
-func (a *Agent) addRemoteMulticastCandidate(cand Candidate) error {
-	if a.mDNSMode == MulticastDNSModeDisabled {
-		a.log.Warnf("Remote mDNS candidate added, but mDNS is disabled: (%s)", cand.Address())
+func (a *Agent) addResolvedCandidate(cand Candidate, resolved netip.Addr, generation uint64) {
+	err := cand.setIPAddr(resolved)
+	if err != nil {
+		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
 
-		return nil
+		return
 	}
 
-	hostCandidate, ok := cand.(*CandidateHost)
-	if !ok {
-		return ErrAddressParseFailed
-	}
+	if err = a.loop.Run(a.loop, func(_ context.Context) {
+		if generation != a.remoteCandidateGeneration.Load() {
+			return
+		}
 
-	var generation uint64
-	if err := a.loop.Run(a.loop, func(_ context.Context) {
-		generation = a.remoteCandidateGeneration.Load()
+		// nolint: contextcheck
+		a.addRemoteCandidate(cand)
 	}); err != nil {
-		return err
+		a.log.Warnf("Failed to add mDNS candidate %s: %v", cand.Address(), err)
 	}
-	go a.resolveAndAddMulticastCandidate(hostCandidate, generation)
+}
 
-	return nil
+func (a *Agent) resolveAndAddFQDNCandidate(cand Candidate, generation uint64) {
+	resolved, err := a.lookupNetIP(a.loop, "ip4", cand.Address())
+	if err != nil || len(resolved) == 0 {
+		a.log.Warnf("Failed to resolve FQDN candidate %s: %v", cand.Address(), err)
+
+		return
+	}
+
+	a.addResolvedCandidate(cand, resolved[0], generation)
 }
 
 func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation uint64) {
@@ -802,24 +827,7 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation 
 		return
 	}
 
-	if err = cand.setIPAddr(src); err != nil {
-		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
-
-		return
-	}
-
-	if err = a.loop.Run(a.loop, func(_ context.Context) {
-		if generation != a.remoteCandidateGeneration.Load() {
-			return
-		}
-
-		// nolint: contextcheck
-		a.addRemoteCandidate(cand)
-	}); err != nil {
-		a.log.Warnf("Failed to add mDNS candidate %s: %v", cand.Address(), err)
-
-		return
-	}
+	a.addResolvedCandidate(cand, src, generation)
 }
 
 func (a *Agent) mDNSQueryTimeout() time.Duration {
