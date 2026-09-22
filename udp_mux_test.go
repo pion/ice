@@ -168,18 +168,16 @@ func testMuxConnection(t *testing.T, udpMux *UDPMuxDefault, networkNet transport
 func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn transport.UDPConn, ufrag string) {
 	t.Helper()
 
-	// Initial messages are dropped
-	_, err := remoteConn.Write([]byte("dropped bytes"))
-	require.NoError(t, err)
-	// Wait for packet to be consumed
-	time.Sleep(time.Millisecond)
+	deadline := time.Now().Add(5 * time.Second)
+	require.NoError(t, pktConn.SetReadDeadline(deadline))
+	require.NoError(t, remoteConn.SetReadDeadline(deadline))
 
 	// Write out to establish connection
 	msg := stun.New()
 	msg.Type = stun.MessageType{Method: stun.MethodBinding, Class: stun.ClassRequest}
 	msg.Add(stun.AttrUsername, []byte(ufrag+":otherufrag"))
 	msg.Encode()
-	_, err = pktConn.WriteTo(msg.Raw, remoteConn.LocalAddr())
+	_, err := pktConn.WriteTo(msg.Raw, remoteConn.LocalAddr())
 	require.NoError(t, err)
 
 	// Ensure received
@@ -188,52 +186,9 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn tran
 	require.NoError(t, err)
 	require.Equal(t, msg.Raw, buf[:n])
 
-	// Start writing packets through mux
+	// Complete each round trip before sending the next packet..
 	targetSize := 1 * 1024 * 1024
-	readDone := make(chan struct{}, 1)
-	remoteReadDone := make(chan struct{}, 1)
-
-	// Read packets from the muxed side
-	go func() {
-		defer func() {
-			t.Logf("closing read chan for: %s", ufrag)
-			close(readDone)
-		}()
-		readBuf := make([]byte, receiveMTU)
-		nextSeq := uint32(0)
-		for read := 0; read < targetSize; {
-			n, _, err := pktConn.ReadFrom(readBuf)
-			require.NoError(t, err)
-			require.Equal(t, receiveMTU, n)
-
-			verifyPacket(t, readBuf[:n], nextSeq)
-
-			// Write it back to sender
-			_, err = pktConn.WriteTo(readBuf[:n], remoteConn.LocalAddr())
-			require.NoError(t, err)
-
-			read += n
-			nextSeq++
-		}
-	}()
-
-	go func() {
-		defer func() {
-			close(remoteReadDone)
-		}()
-		readBuf := make([]byte, receiveMTU)
-		nextSeq := uint32(0)
-		for read := 0; read < targetSize; {
-			n, _, err := remoteConn.ReadFrom(readBuf)
-			require.NoError(t, err)
-			require.Equal(t, receiveMTU, n)
-
-			verifyPacket(t, readBuf[:n], nextSeq)
-
-			read += n
-			nextSeq++
-		}
-	}()
+	readBuf := make([]byte, receiveMTU)
 
 	sequence := 0
 	for written := 0; written < targetSize; {
@@ -250,14 +205,22 @@ func testMuxConnectionPair(t *testing.T, pktConn net.PacketConn, remoteConn tran
 		_, err = remoteConn.Write(buf)
 		require.NoError(t, err)
 
+		n, _, err := pktConn.ReadFrom(readBuf)
+		require.NoError(t, err)
+		require.Equal(t, receiveMTU, n)
+		verifyPacket(t, readBuf[:n], uint32(sequence)) //nolint:gosec // G115
+
+		_, err = pktConn.WriteTo(readBuf[:n], remoteConn.LocalAddr())
+		require.NoError(t, err)
+
+		n, err = remoteConn.Read(readBuf)
+		require.NoError(t, err)
+		require.Equal(t, receiveMTU, n)
+		verifyPacket(t, readBuf[:n], uint32(sequence)) //nolint:gosec // G115
+
 		written += len(buf)
 		sequence++
-
-		time.Sleep(time.Millisecond)
 	}
-
-	<-readDone
-	<-remoteReadDone
 }
 
 func verifyPacket(t *testing.T, b []byte, nextSeq uint32) {
