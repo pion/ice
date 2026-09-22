@@ -28,6 +28,7 @@ import (
 type GatherOption func(*gatherConfig) error
 
 type gatherConfig struct {
+	localAddrs             []ifaceAddr
 	mDNSMode               MulticastDNSMode
 	urls                   []*stun.URI
 	candidateTypes         []CandidateType
@@ -315,12 +316,14 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 			return
 		}
 
-		interfaces, _, interfaceErr := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
+		interfaces, localAddrs, interfaceErr := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
 		if interfaceErr != nil {
 			gatherErr = fmt.Errorf("error getting local interfaces: %w", interfaceErr)
 
 			return
 		}
+
+		config.localAddrs = localAddrs
 
 		a.gatherCandidateCancel()
 		if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
@@ -356,7 +359,7 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 			if previousDone != nil {
 				<-previousDone
 			}
-			a.gatherCandidates(ctx, done, generation, config.localUfrag, config)
+			a.gatherCandidates(ctx, done, generation, config)
 		}()
 	}); err != nil {
 		return err
@@ -404,19 +407,13 @@ func (a *Agent) validateGatherConfig(config *gatherConfig) error { //nolint:cycl
 	return nil
 }
 
-func (a *Agent) gatherCandidates(
-	ctx context.Context,
-	done chan struct{},
-	generation uint64,
-	localUfrag string,
-	config *gatherConfig,
-) {
+func (a *Agent) gatherCandidates(ctx context.Context, done chan struct{}, generation uint64, config *gatherConfig) {
 	defer close(done)
 	if ctx.Err() != nil {
 		return
 	}
 
-	a.gatherCandidatesInternal(ctx, generation, localUfrag, config)
+	a.gatherCandidatesInternal(ctx, config, generation)
 
 	if err := a.completeGathering(ctx, generation); err != nil && ctx.Err() == nil {
 		a.log.Warnf("Failed to set gatheringState to GatheringStateComplete: %v", err)
@@ -478,18 +475,18 @@ func rewrittenCandidateIP(address string, fallback net.IP) net.IP {
 }
 
 // gatherCandidatesInternal performs the actual candidate gathering for all configured types.
-func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64, localUfrag string, config *gatherConfig) {
+func (a *Agent) gatherCandidatesInternal(ctx context.Context, config *gatherConfig, generation uint64) {
 	var wg sync.WaitGroup
 	for _, t := range config.candidateTypes {
 		switch t {
 		case CandidateTypeHost:
 			wg.Add(1)
 			go func() {
-				a.gatherCandidatesLocal(ctx, config.networkTypes, generation, localUfrag, config.mDNSMode)
+				a.gatherCandidatesLocal(ctx, config, generation)
 				wg.Done()
 			}()
 		case CandidateTypeServerReflexive:
-			a.gatherServerReflexiveCandidates(ctx, &wg, generation, localUfrag, config)
+			a.gatherServerReflexiveCandidates(ctx, &wg, config, generation)
 		case CandidateTypeRelay:
 			wg.Add(1)
 			go func() {
@@ -504,21 +501,15 @@ func (a *Agent) gatherCandidatesInternal(ctx context.Context, generation uint64,
 	wg.Wait()
 }
 
-func (a *Agent) gatherServerReflexiveCandidates(
-	ctx context.Context,
-	wg *sync.WaitGroup,
-	generation uint64,
-	localUfrag string,
-	config *gatherConfig,
-) {
+func (a *Agent) gatherServerReflexiveCandidates(ctx context.Context, wg *sync.WaitGroup, config *gatherConfig, generation uint64) {
 	replaceSrflx := a.addressRewriteMapper != nil && a.addressRewriteMapper.shouldReplace(CandidateTypeServerReflexive)
 	if !replaceSrflx {
 		wg.Add(1)
 		go func() {
 			if a.udpMuxSrflx != nil {
-				a.gatherCandidatesSrflxUDPMux(ctx, config.urls, config.networkTypes, generation, localUfrag)
+				a.gatherCandidatesSrflxUDPMux(ctx, config.urls, config.networkTypes, generation, config.localUfrag)
 			} else {
-				a.gatherCandidatesSrflx(ctx, config.urls, config.networkTypes, generation)
+				a.gatherCandidatesSrflx(ctx, config, generation)
 			}
 			wg.Done()
 		}()
@@ -526,22 +517,17 @@ func (a *Agent) gatherServerReflexiveCandidates(
 	if a.addressRewriteMapper != nil && a.addressRewriteMapper.hasCandidateType(CandidateTypeServerReflexive) {
 		wg.Add(1)
 		go func() {
-			a.gatherCandidatesSrflxMapped(ctx, config.networkTypes, generation)
+			a.gatherCandidatesSrflxMapped(ctx, config, generation)
 			wg.Done()
 		}()
 	}
 }
 
 //nolint:gocognit,gocyclo,cyclop,maintidx
-func (a *Agent) gatherCandidatesLocal(
-	ctx context.Context,
-	networkTypes []NetworkType,
-	generation uint64,
-	localUfrag string,
-	mdnsMode MulticastDNSMode,
-) {
+func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig, generation uint64) {
+	localUfrag, mdnsMode := config.localUfrag, config.mDNSMode
 	networks := map[string]struct{}{}
-	for _, networkType := range networkTypes {
+	for _, networkType := range config.networkTypes {
 		if networkType.IsTCP() {
 			networks[tcp] = struct{}{}
 		} else {
@@ -557,14 +543,7 @@ func (a *Agent) gatherCandidatesLocal(
 		delete(networks, udp)
 	}
 
-	_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes, a.includeLoopback)
-	if err != nil {
-		a.log.Warnf("Failed to iterate local interfaces, host candidates will not be gathered %s", err)
-
-		return
-	}
-
-	for _, info := range localAddrs {
+	for _, info := range config.localAddrs {
 		addr := info.addr
 		ifaceName := info.iface
 		mappedAddrs, ok := a.rewriteCandidateAddresses(CandidateTypeHost, addr.String(), addr.String(), ifaceName)
@@ -618,6 +597,7 @@ func (a *Agent) gatherCandidatesLocal(
 
 					// Handle ICE TCP passive mode
 					var muxConns []net.PacketConn
+					var err error
 					if multi, ok := a.tcpMux.(AllConnsGetter); ok {
 						a.log.Debugf("GetAllConns by ufrag: %s", localUfrag)
 						// Note: this is missing zone for IPv6 by just grabbing the IP slice
@@ -841,13 +821,11 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 }
 
 //nolint:gocognit,cyclop
-func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []NetworkType, generation uint64) {
+func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherConfig, generation uint64) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	_, ifaces, _ := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes, a.includeLoopback)
-
-	for _, networkType := range networkTypes {
+	for _, networkType := range config.networkTypes {
 		if networkType.IsTCP() {
 			continue
 		}
@@ -878,7 +856,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 				return
 			}
 
-			iface := findIfaceForIP(ifaces, lAddr.IP)
+			iface := findIfaceForIP(config.localAddrs, lAddr.IP)
 			addresses, ok := a.rewriteCandidateAddresses(CandidateTypeServerReflexive, lAddr.IP.String(), lAddr.IP.String(), iface)
 			if !ok {
 				closeConnAndLog(
@@ -1062,23 +1040,12 @@ func getXORMappedAddr(
 }
 
 //nolint:cyclop,gocognit
-func (a *Agent) gatherCandidatesSrflx(
-	ctx context.Context, urls []*stun.URI, networkTypes []NetworkType, generation uint64,
-) {
+func (a *Agent) gatherCandidatesSrflx(ctx context.Context, config *gatherConfig, generation uint64) {
+	urls, localAddrs := config.urls, config.localAddrs
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	useFilteredLocalAddrs := a.interfaceFilter != nil || a.ipFilter != nil
-	localAddrs := []ifaceAddr{}
-	if useFilteredLocalAddrs {
-		_, addrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, networkTypes, a.includeLoopback)
-		if err != nil {
-			a.log.Warnf("Failed to iterate local interfaces, srflx candidates will not be gathered %s", err)
-
-			return
-		}
-		localAddrs = addrs
-	}
 
 	gatherForURL := func(url stun.URI, network string, listenAddr *net.UDPAddr) {
 		defer wg.Done()
@@ -1164,7 +1131,7 @@ func (a *Agent) gatherCandidatesSrflx(
 		}
 	}
 
-	for _, networkType := range networkTypes {
+	for _, networkType := range config.networkTypes {
 		if networkType.IsTCP() {
 			continue
 		}
@@ -1204,15 +1171,11 @@ func (a *Agent) gatherCandidatesSrflx(
 func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig, generation uint64) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	_, ifaces, _ := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
 
 	useFilteredLocalAddrs := a.interfaceFilter != nil || a.ipFilter != nil
-	localAddrs := []ifaceAddr{}
-	if useFilteredLocalAddrs {
-		localAddrs = append(localAddrs, ifaces...)
-		if len(localAddrs) == 0 {
-			return
-		}
+	localAddrs := config.localAddrs
+	if useFilteredLocalAddrs && len(localAddrs) == 0 {
+		return
 	}
 
 	if len(relayNetworkTypesForConfiguredCandidates(config.networkTypes)) == 0 {
@@ -1479,7 +1442,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig,
 						port:     rAddr.Port,
 						relAddr:  relAddr,
 						relPort:  relPort,
-						iface:    findIfaceForIP(ifaces, net.ParseIP(relAddr)),
+						iface:    findIfaceForIP(localAddrs, net.ParseIP(relAddr)),
 						protocol: relayProtocol,
 						conn:     relayConn,
 						onClose: func() error {
