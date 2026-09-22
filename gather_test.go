@@ -241,6 +241,49 @@ func TestRegatherCompletesWithoutRestart(t *testing.T) {
 	}
 }
 
+func TestGatherRefreshesInterfaceSnapshot(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	ips := []string{"10.0.0.1", "10.0.0.2"}
+	nw, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: ips})
+	require.NoError(t, err)
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24", LoggerFactory: logging.NewDefaultLoggerFactory()})
+	require.NoError(t, err)
+	require.NoError(t, router.AddNet(nw))
+	network := &mutableNet{Net: nw}
+	var scans atomic.Int32
+	agent, err := NewAgent(
+		WithNet(network),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithInterfaceFilter(func(string) bool {
+			// Exactly one interface is exposed, so each filter call is one scan.
+			scans.Add(1)
+
+			return true
+		}),
+		WithAddressRewriteRules(AddressRewriteRule{
+			External: []string{"203.0.113.50"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteAppend,
+		}),
+	)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	for i, ip := range ips {
+		iface := transport.NewInterface(net.Interface{Index: 1, Name: "eth0", Flags: net.FlagUp})
+		iface.AddAddress(&net.IPNet{IP: net.ParseIP(ip), Mask: net.CIDRMask(24, 32)})
+		network.setInterfaces([]*transport.Interface{iface})
+
+		// Default candidate types exercise host, STUN, mapped srflx, and TURN gathering.
+		candidates := gatherAndCollectCandidates(t, agent, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+		require.EqualValues(t, i+1, scans.Load(), "one interface scan per gather")
+		addresses := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			addresses = append(addresses, candidate.Address())
+		}
+		require.ElementsMatch(t, []string{ip, "203.0.113.50"}, addresses)
+	}
+}
+
 func TestLoopbackCandidate(t *testing.T) {
 	defer test.CheckRoutines(t)()
 
@@ -1257,7 +1300,7 @@ func TestGatherCandidatesRelayCallsAddRelayCandidates(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+	agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	var cand Candidate
 	select {
@@ -1312,7 +1355,7 @@ func TestGatherCandidatesRelayRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+	agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	listenAddrs := netCapture.listenAddresses()
 	require.NotEmpty(t, listenAddrs)
@@ -1368,7 +1411,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 						return client, nil
 					}
 					require.NoError(t, agent.OnCandidate(func(Candidate) {}))
-					agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+					agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 					require.True(t, client.allocateCalled, "TURN transport must remain independent of candidate family")
 					candidates, err := agent.GetLocalCandidates()
 					require.NoError(t, err)
@@ -1423,7 +1466,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 			}
 		}))
 
-		agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+		agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 		select {
 		case <-candidateCh:
@@ -1462,7 +1505,7 @@ func TestGatherCandidatesRelayDefaultClientError(t *testing.T) {
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+	agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	select {
 	case <-candidateCh:
@@ -1612,7 +1655,7 @@ func TestGatherCandidatesRelayTURNOverTCPProducesUDPRelayCandidate(t *testing.T)
 		}
 	}))
 
-	agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+	agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	select {
 	case relay := <-relayCandidateCh:
@@ -1649,7 +1692,7 @@ func TestGatherCandidatesRelayProxySkipsTURNResolution(t *testing.T) {
 		return nil, errors.New("stop after capturing config") //nolint:err113 // test
 	}
 
-	agent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, agentGatherOptions...), agent.gatherGeneration)
+	agent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	var config *turn.ClientConfig
 	select {
@@ -1756,7 +1799,7 @@ func TestGatherCandidatesSrflxRespectsInterfaceFilter(t *testing.T) {
 
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesSrflx(context.Background(), mustGatherConfig(t, agentGatherOptions...).urls, []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration)
+	agent.gatherCandidatesSrflx(context.Background(), mustGatherConfigForAgent(t, agent, agentGatherOptions...), agent.gatherGeneration)
 
 	listenIPs := netCapture.listenCallIPs()
 	require.NotEmpty(t, listenIPs)
@@ -2128,7 +2171,7 @@ func TestGatherCandidatesLocalTCPMuxSkipsUnboundInterfaces(t *testing.T) {
 	})
 	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
 
-	agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeTCP4}, agent.gatherGeneration, agent.localUfrag, agent.mDNSMode)
+	agent.gatherCandidatesLocal(context.Background(), mustGatherConfigForAgent(t, agent, WithNetworkTypes([]NetworkType{NetworkTypeTCP4})), agent.gatherGeneration)
 
 	cands, err := agent.GetLocalCandidates()
 	require.NoError(t, err)
@@ -2164,7 +2207,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 		agent.includeLoopback = true
 		agent.mDNSName = "invalid-mdns" // no .local suffix -> NewCandidateHost parse fails
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag, agent.mDNSMode)
+		agent.gatherCandidatesLocal(context.Background(), mustGatherConfigForAgent(t, agent, WithNetworkTypes([]NetworkType{NetworkTypeUDP4})), agent.gatherGeneration)
 
 		cands, err := agent.GetLocalCandidates()
 		require.NoError(t, err)
@@ -2182,7 +2225,7 @@ func TestGatherCandidatesLocalHostErrorPaths(t *testing.T) {
 
 		agent.loop.Close()
 
-		agent.gatherCandidatesLocal(context.Background(), []NetworkType{NetworkTypeUDP4}, agent.gatherGeneration, agent.localUfrag, agent.mDNSMode)
+		agent.gatherCandidatesLocal(context.Background(), mustGatherConfigForAgent(t, agent, WithNetworkTypes([]NetworkType{NetworkTypeUDP4})), agent.gatherGeneration)
 
 		agent.loop.Run(agent.loop, func(context.Context) { //nolint:errcheck,gosec
 			assert.Empty(t, agent.localCandidates[NetworkTypeUDP4])
@@ -3027,7 +3070,7 @@ func TestVNetGather_TURNConnectionLeak(t *testing.T) {
 		require.NoError(t, aAgent.Close())
 	}()
 
-	aAgent.gatherCandidatesRelay(context.Background(), mustGatherConfig(t, cfg0GatherOptions...), aAgent.gatherGeneration)
+	aAgent.gatherCandidatesRelay(context.Background(), mustGatherConfigForAgent(t, aAgent, cfg0GatherOptions...), aAgent.gatherGeneration)
 }
 
 var errFirewallBlocked = errors.New("firewall blocked protocol")
@@ -3573,4 +3616,15 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 		require.True(t, c.NetworkType().IsUDP())
 	}
 	require.Greater(t, relayCandidates, 0)
+}
+
+func mustGatherConfigForAgent(tb testing.TB, agent *Agent, options ...GatherOption) *gatherConfig {
+	tb.Helper()
+	config := mustGatherConfig(tb, options...)
+	config.localUfrag, config.mDNSMode = agent.localUfrag, agent.mDNSMode
+	_, addrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, config.networkTypes, agent.includeLoopback)
+	require.NoError(tb, err)
+	config.localAddrs = addrs
+
+	return config
 }
