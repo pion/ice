@@ -442,6 +442,9 @@ func (a *Agent) connectivityChecks() { //nolint:cyclop
 			default:
 			}
 
+			if err := a.renominateCandidate(a.getSelector().PendingNomination()); err != nil {
+				a.log.Errorf("Failed to renominate candidate pair: %v", err)
+			}
 			a.getSelector().ContactCandidates()
 		}); err != nil {
 			a.log.Warnf("Failed to start connectivity checks: %v", err)
@@ -1964,8 +1967,16 @@ func (a *Agent) getNominationValue() uint32 {
 
 // RenominateCandidate allows the controlling ICE agent to nominate a new candidate pair.
 // This implements the continuous renomination feature from draft-thatcher-ice-renomination-01.
+// It returns once the request is queued; a later call replaces any unsent request.
+// The agent loop looks up the pair and sends the request, logging errors (including
+// a missing candidate pair) instead of returning them to the caller.
 func (a *Agent) RenominateCandidate(local, remote Candidate) error {
-	if !a.isControlling.Load() {
+	pending := a.getSelector().PendingNomination()
+	if err := a.loop.Err(); err != nil {
+		return err
+	}
+
+	if pending == nil {
 		return ErrOnlyControllingAgentCanRenominate
 	}
 
@@ -1973,10 +1984,28 @@ func (a *Agent) RenominateCandidate(local, remote Candidate) error {
 		return ErrRenominationNotEnabled
 	}
 
+	pending.Store(&pendingNomination{local: local, remote: remote})
+	a.requestConnectivityCheck()
+
+	return nil
+}
+
+func (a *Agent) renominateCandidate(slot *atomic.Pointer[pendingNomination]) error {
+	if slot == nil {
+		return nil
+	}
+	pending := slot.Swap(nil)
+	if pending == nil {
+		return nil
+	}
+
 	// Find the candidate pair
-	pair := a.findPair(local, remote)
+	pair := a.findPair(pending.local, pending.remote)
 	if pair == nil {
 		return ErrCandidatePairNotFound
+	}
+	if pair.state == CandidatePairStateFailed {
+		return nil
 	}
 
 	// Send nomination with custom attribute
