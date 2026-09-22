@@ -83,7 +83,7 @@ func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Durat
 // AgentOption configures an Agent during NewAgent.
 type AgentOption func(*Agent) error
 
-// NominationValueGenerator is a function that generates nomination values for renomination.
+// NominationValueGenerator generates strictly increasing nomination values for renomination.
 type NominationValueGenerator func() uint32
 
 // DefaultNominationValueGenerator returns a generator that starts at 1 and increments for each call.
@@ -582,6 +582,7 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 // and the controlled agent follows "last nomination wins" rule.
 //
 // The generator parameter specifies how nomination values are generated.
+// Each value must be greater than every value previously returned for the agent.
 // Use DefaultNominationValueGenerator() for a simple incrementing counter,
 // or provide a custom generator for more complex scenarios.
 //

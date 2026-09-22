@@ -5,6 +5,7 @@ package ice
 
 import (
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/logging"
@@ -14,9 +15,14 @@ import (
 type pairCandidateSelector interface {
 	Start()
 	ContactCandidates()
+	PendingNomination() *atomic.Pointer[pendingNomination]
 	PingCandidate(local, remote Candidate)
 	HandleSuccessResponse(m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort)
 	HandleBindingRequest(m *stun.Message, local, remote Candidate)
+}
+
+type pendingNomination struct {
+	local, remote Candidate
 }
 
 // responseSymmetric implements the transport-address check in RFC 8445 §7.2.5.2.1.
@@ -30,11 +36,19 @@ type controllingSelector struct {
 	agent         *Agent
 	nominatedPair *CandidatePair
 	log           logging.LeveledLogger
+
+	pendingNomination atomic.Pointer[pendingNomination]
+	lastNomination    *uint32 // Highest nomination value applied from a success response.
 }
 
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
 	s.nominatedPair = nil
+	s.lastNomination = nil
+}
+
+func (s *controllingSelector) PendingNomination() *atomic.Pointer[pendingNomination] {
+	return &s.pendingNomination
 }
 
 func (s *controllingSelector) isNominatable(c Candidate) bool {
@@ -201,12 +215,15 @@ func (s *controllingSelector) HandleSuccessResponse(
 	if pendingRequest.isUseCandidate {
 		selectedPair := s.agent.getSelectedPair()
 
-		// If this is a renomination request (has nomination value), always update the selected pair
+		// Apply a renomination only if its value is newer than the last applied response.
 		// If it's a standard nomination (no value), only set if no pair is selected yet
 		if pendingRequest.nominationValue != nil {
-			s.log.Infof("Renomination success response received for pair %s (nomination value: %d), switching to this pair",
-				pair, *pendingRequest.nominationValue)
-			s.agent.setSelectedPair(pair)
+			if s.lastNomination == nil || *pendingRequest.nominationValue > *s.lastNomination {
+				s.lastNomination = pendingRequest.nominationValue
+				s.log.Infof("Renomination success response received for pair %s (nomination value: %d), switching to this pair",
+					pair, *pendingRequest.nominationValue)
+				s.agent.setSelectedPair(pair)
+			}
 		} else if selectedPair == nil {
 			s.agent.setSelectedPair(pair)
 		}
@@ -307,6 +324,10 @@ type controlledSelector struct {
 
 func (s *controlledSelector) Start() {
 	s.lastNomination = nil
+}
+
+func (s *controlledSelector) PendingNomination() *atomic.Pointer[pendingNomination] {
+	return nil
 }
 
 // shouldAcceptNomination checks if a nomination should be accepted based on renomination rules.

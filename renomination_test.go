@@ -6,6 +6,7 @@
 package ice
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/pion/ice/v4/internal/fakenet"
 	"github.com/pion/stun/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -55,7 +57,7 @@ func createRenominationTestAgent(t *testing.T, controlling bool) (*Agent, Candid
 	agent, err := NewAgent(WithRenomination(func() uint32 { return 1 }))
 	assert.NoError(t, err)
 
-	agent.isControlling.Store(controlling)
+	agent.setRole(controlling)
 
 	local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 	assert.NoError(t, err)
@@ -187,8 +189,53 @@ func TestControlledSelectorNominationDisabled(t *testing.T) {
 	assert.True(t, selector.shouldAcceptNomination(&nomination3))
 }
 
+func TestRenominateRace(t *testing.T) {
+	agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+	agent.localUfrag, agent.remoteUfrag, agent.remotePwd = testLocalUfrag, testRemoteUfrag, testRemotePwd
+	agent.setRole(true)
+
+	newPair := func(port int) (Candidate, Candidate) {
+		local, err := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: "127.0.0.1", Port: port, Component: ComponentRTP,
+		})
+		require.NoError(t, err)
+		local.conn = &mockPacketConnWithCapture{}
+		remote, err := NewCandidateHost(&CandidateHostConfig{
+			Network: "udp", Address: "127.0.0.2", Port: port, Component: ComponentRTP,
+		})
+		require.NoError(t, err)
+
+		return local, remote
+	}
+
+	local, remote := newPair(1000)
+	require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) { agent.addPair(local, remote) }))
+	go agent.connectivityChecks()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 20 {
+			l, r := newPair(2000 + i)
+			_ = agent.loop.Run(t.Context(), func(context.Context) {
+				agent.addPair(l, r)
+				agent.getSelector().ContactCandidates()
+			})
+		}
+	}()
+	for range 20 {
+		_ = agent.RenominateCandidate(local, remote)
+	}
+	<-done
+	require.Eventually(t, func() bool {
+		return agent.getSelector().PendingNomination().Load() == nil
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestAgentRenominateCandidate(t *testing.T) {
-	t.Run("controlling agent can renominate", func(t *testing.T) {
+	t.Run("controlling agent can renominate from binding request handler", func(t *testing.T) {
 		nominationCounter := uint32(0)
 		agent, err := NewAgent(WithRenomination(func() uint32 {
 			nominationCounter++
@@ -207,7 +254,7 @@ func TestAgentRenominateCandidate(t *testing.T) {
 		agent.remotePwd = testRemotePwd
 
 		// Set agent as controlling
-		agent.isControlling.Store(true)
+		agent.setRole(true)
 
 		// Create test candidates with mock connection
 		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
@@ -225,8 +272,59 @@ func TestAgentRenominateCandidate(t *testing.T) {
 		pair.state = CandidatePairStateSucceeded
 
 		// Test renomination
-		err = agent.RenominateCandidate(local, remote)
-		assert.NoError(t, err)
+		var handlerErr error
+		agent.userBindingRequestHandler = func(_ *stun.Message, local, remote Candidate, _ *CandidatePair) bool {
+			handlerErr = agent.RenominateCandidate(local, remote)
+
+			return false
+		}
+		done := make(chan error, 1)
+		go func() {
+			done <- agent.loop.Run(t.Context(), func(context.Context) {
+				agent.handleBindingRequestWithCustomHandler(nil, local, remote, pair)
+			})
+		}()
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			require.FailNow(t, "renomination blocked the binding request handler")
+		}
+		require.NoError(t, handlerErr)
+		require.Len(t, agent.forceCandidateContact, 1)
+		go agent.connectivityChecks()
+		require.Eventually(t, func() bool {
+			return agent.getSelector().PendingNomination().Load() == nil
+		}, time.Second, 10*time.Millisecond)
+
+		require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+			assert.Equal(t, uint32(1), nominationCounter)
+			if assert.NotEmpty(t, agent.pendingBindingRequests) {
+				assert.Equal(t, uint32(1), *agent.pendingBindingRequests[0].nominationValue)
+			}
+		}))
+
+		for i, invalidate := range []func(){
+			func() { agent.setSelector() },
+			func() {
+				agent.setRole(false)
+				agent.setRole(true)
+			},
+		} {
+			oldSlot := agent.getSelector().PendingNomination()
+			require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+				invalidate()
+				oldSlot.Store(&pendingNomination{local: local, remote: remote})
+				assert.NoError(t, agent.RenominateCandidate(local, remote))
+			}))
+			require.Eventually(t, func() bool {
+				return agent.getSelector().PendingNomination().Load() == nil
+			}, time.Second, 10*time.Millisecond)
+			require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+				assert.EqualValues(t, i+2, nominationCounter)
+			}))
+			require.NotNil(t, oldSlot.Load())
+		}
 	})
 
 	t.Run("non-controlling agent cannot renominate", func(t *testing.T) {
@@ -249,7 +347,7 @@ func TestAgentRenominateCandidate(t *testing.T) {
 			assert.NoError(t, agent.Close())
 		}()
 
-		agent.isControlling.Store(true)
+		agent.setRole(true)
 
 		local, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "127.0.0.1", Port: 12345, Component: 1})
 		assert.NoError(t, err)
@@ -262,17 +360,83 @@ func TestAgentRenominateCandidate(t *testing.T) {
 		assert.Contains(t, err.Error(), "renomination is not enabled")
 	})
 
-	t.Run("renomination with non-existent candidate pair", func(t *testing.T) {
+	t.Run("pair fails before queued renomination is sent", func(t *testing.T) {
+		agent, local, remote := createRenominationTestAgent(t, true)
+		defer func() { require.NoError(t, agent.Close()) }()
+		localHost, ok := local.(*CandidateHost)
+		require.True(t, ok)
+		conn := &mockPacketConnWithCapture{}
+		localHost.conn = conn
+
+		require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+			pair := agent.addPair(local, remote)
+			pair.state = CandidatePairStateSucceeded
+			assert.NoError(t, agent.RenominateCandidate(local, remote))
+			pair.state = CandidatePairStateFailed
+
+			slot := agent.getSelector().PendingNomination()
+			assert.NoError(t, agent.renominateCandidate(slot))
+			assert.Nil(t, slot.Load())
+			assert.Empty(t, agent.pendingBindingRequests)
+			assert.Empty(t, conn.sentPackets)
+		}))
+	})
+
+	t.Run("renomination with non-existent candidate pair is dropped", func(t *testing.T) {
 		agent, local, remote := createRenominationTestAgent(t, true)
 		defer func() {
 			assert.NoError(t, agent.Close())
 		}()
 
-		// Don't add pair to agent - should fail
 		err := agent.RenominateCandidate(local, remote)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "candidate pair not found")
+		require.NoError(t, err)
+		go agent.connectivityChecks()
+		require.Eventually(t, func() bool {
+			return agent.getSelector().PendingNomination().Load() == nil
+		}, time.Second, 10*time.Millisecond)
+		require.NoError(t, agent.loop.Run(t.Context(), func(context.Context) {
+			assert.Empty(t, agent.pendingBindingRequests)
+		}))
 	})
+}
+
+func TestControllingRenominationResponseOrder(t *testing.T) {
+	agent, local, remote := createRenominationTestAgent(t, true)
+	defer func() { require.NoError(t, agent.Close()) }()
+	localHost, ok := local.(*CandidateHost)
+	require.True(t, ok)
+	localHost.conn = &mockPacketConnWithCapture{}
+	other, err := NewCandidateHost(&CandidateHostConfig{
+		Network: "udp", Address: "127.0.0.1", Port: 54322, Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	first := agent.addPair(local, remote)
+	second := agent.addPair(local, other)
+	requests := []struct {
+		pair  *CandidatePair
+		value uint32
+	}{
+		{first, 1},
+		{second, 2},
+		{first, 2},
+		{first, 3},
+	}
+	responses := make([]*stun.Message, len(requests))
+	for i, request := range requests {
+		require.NoError(t, agent.sendNominationRequest(request.pair, request.value))
+		responses[i] = &stun.Message{TransactionID: agent.pendingBindingRequests[i].transactionID}
+	}
+
+	// A newer response wins; delayed lower and equal values must not undo it.
+	for _, i := range []int{1, 0, 2, 3} {
+		pair := requests[i].pair
+		agent.getSelector().HandleSuccessResponse(responses[i], pair.Local, pair.Remote, pair.Remote.addrPort())
+		if i == 3 {
+			require.Same(t, first, agent.getSelectedPair())
+		} else {
+			require.Same(t, second, agent.getSelectedPair())
+		}
+	}
 }
 
 func TestSendNominationRequest(t *testing.T) {

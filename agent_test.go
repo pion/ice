@@ -36,6 +36,8 @@ func (r *recordingSelector) Start() {}
 
 func (r *recordingSelector) ContactCandidates() {}
 
+func (r *recordingSelector) PendingNomination() *atomic.Pointer[pendingNomination] { return nil }
+
 func (r *recordingSelector) PingCandidate(Candidate, Candidate) {}
 
 func (r *recordingSelector) HandleSuccessResponse(*stun.Message, Candidate, Candidate, netip.AddrPort) {
