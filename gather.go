@@ -25,7 +25,13 @@ import (
 )
 
 // GatherOption configures a gathering pass.
-type GatherOption func(*gatherConfig) error
+type GatherOption interface {
+	applyGather(*gatherConfig) error
+}
+
+type gatherOnlyOption func(*gatherConfig) error
+
+func (o gatherOnlyOption) applyGather(config *gatherConfig) error { return o(config) }
 
 type gatherConfig struct {
 	localAddrs             []ifaceAddr
@@ -43,7 +49,7 @@ func newGatherConfig(opts ...GatherOption) (*gatherConfig, error) {
 	config := &gatherConfig{candidateTypes: defaultCandidateTypes()}
 	for _, opt := range opts {
 		if opt != nil {
-			if err := opt(config); err != nil {
+			if err := opt.applyGather(config); err != nil {
 				return nil, err
 			}
 		}
@@ -76,7 +82,7 @@ func (config *gatherConfig) resolveLocalCredentials(ufrag, pwd string) error {
 
 // WithURLs sets the STUN/TURN server URLs used for this gathering pass.
 func WithURLs(urls []*stun.URI) GatherOption {
-	return func(config *gatherConfig) error {
+	return gatherOnlyOption(func(config *gatherConfig) error {
 		if len(urls) == 0 {
 			config.urls = nil
 
@@ -94,28 +100,42 @@ func WithURLs(urls []*stun.URI) GatherOption {
 		config.urls = cloned
 
 		return nil
-	}
+	})
 }
 
 // WithLocalCredentials sets the local ICE username fragment and password.
-// If this option is omitted on the first Gather call, both credentials are generated
-// randomly. They are available through GetLocalUserCredentials when Gather returns.
-// Subsequent Gather calls without this option reuse the existing credentials and do
-// not restart ICE.
+// With NewAgent, credentials are available immediately through GetLocalUserCredentials.
+// Each empty string generates a random value.
 //
-// Changing either credential starts a new ICE generation and restarts ICE. Each empty
-// string supplied to this option generates a fresh value: WithLocalCredentials("", "").
-func WithLocalCredentials(ufrag, pwd string) GatherOption {
-	return func(config *gatherConfig) error {
+// Gather without this option reuses existing credentials, generating any missing values.
+// With this option, changing either credential starts a new ICE generation and restarts
+// ICE. Each empty string generates a fresh value: WithLocalCredentials("", "").
+func WithLocalCredentials(ufrag, pwd string) Option {
+	gatherOption := gatherOnlyOption(func(config *gatherConfig) error {
 		if err := validateLocalCredentials(ufrag, pwd); err != nil {
 			return err
 		}
-
 		config.localUfrag = ufrag
 		config.localPwd = pwd
 		config.localCredentialsSet = true
 
 		return nil
+	})
+
+	return sharedOption{
+		agentOnlyOption: func(agent *Agent) error {
+			config := &gatherConfig{}
+			if err := gatherOption.applyGather(config); err != nil {
+				return err
+			}
+			if err := config.resolveLocalCredentials("", ""); err != nil {
+				return err
+			}
+			agent.localUfrag, agent.localPwd = config.localUfrag, config.localPwd
+
+			return nil
+		},
+		gatherOnlyOption: gatherOption,
 	}
 }
 
@@ -130,7 +150,7 @@ func WithLocalCredentials(ufrag, pwd string) GatherOption {
 //		WithNetworkTypes([]NetworkType{NetworkTypeUDP4, NetworkTypeUDP6}),
 //	)
 func WithNetworkTypes(networkTypes []NetworkType) GatherOption {
-	return func(config *gatherConfig) error {
+	return gatherOnlyOption(func(config *gatherConfig) error {
 		normalized, err := sanitizeTransportNetworkTypes(networkTypes)
 		if err != nil {
 			return err
@@ -139,7 +159,7 @@ func WithNetworkTypes(networkTypes []NetworkType) GatherOption {
 		config.networkTypes = normalized
 
 		return nil
-	}
+	})
 }
 
 // WithTURNTransportProtocols restricts protocols used for this gathering pass when
@@ -149,7 +169,7 @@ func WithNetworkTypes(networkTypes []NetworkType) GatherOption {
 // network types announced to the peer. Supported values are
 // NetworkTypeUDP4/UDP6 and NetworkTypeTCP4/TCP6.
 func WithTURNTransportProtocols(protocols []NetworkType) GatherOption {
-	return func(config *gatherConfig) error {
+	return gatherOnlyOption(func(config *gatherConfig) error {
 		normalized, err := sanitizeTransportNetworkTypes(protocols)
 		if err != nil {
 			return err
@@ -158,7 +178,7 @@ func WithTURNTransportProtocols(protocols []NetworkType) GatherOption {
 		config.turnTransportProtocols = normalized
 
 		return nil
-	}
+	})
 }
 
 // WithCandidateTypes sets the enabled candidate types for gathering.
@@ -170,11 +190,11 @@ func WithTURNTransportProtocols(protocols []NetworkType) GatherOption {
 //		WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
 //	)
 func WithCandidateTypes(candidateTypes []CandidateType) GatherOption {
-	return func(config *gatherConfig) error {
+	return gatherOnlyOption(func(config *gatherConfig) error {
 		config.candidateTypes = append([]CandidateType(nil), candidateTypes...)
 
 		return nil
-	}
+	})
 }
 
 func sanitizeTransportNetworkTypes(types []NetworkType) ([]NetworkType, error) {

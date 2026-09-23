@@ -83,7 +83,24 @@ func defaultRelayAcceptanceMinWaitFor(candidateTypes []CandidateType) time.Durat
 }
 
 // AgentOption configures an Agent during NewAgent.
-type AgentOption func(*Agent) error
+type AgentOption interface {
+	applyAgent(*Agent) error
+}
+
+// Option can be used with both NewAgent and Gather.
+type Option interface {
+	AgentOption
+	GatherOption
+}
+
+type agentOnlyOption func(*Agent) error
+
+func (o agentOnlyOption) applyAgent(a *Agent) error { return o(a) }
+
+type sharedOption struct {
+	agentOnlyOption
+	gatherOnlyOption
+}
 
 // NominationValueGenerator generates strictly increasing nomination values for renomination.
 type NominationValueGenerator func() uint32
@@ -114,9 +131,9 @@ func DefaultNominationValueGenerator() NominationValueGenerator {
 // iface-only, then global) while still keeping rule order meaningful.
 // Overlapping rules in the same scope are logged as warnings.
 func WithAddressRewriteRules(rules ...AddressRewriteRule) AgentOption {
-	return func(agent *Agent) error {
+	return agentOnlyOption(func(agent *Agent) error {
 		return appendAddressRewriteRules(agent, rules...)
-	}
+	})
 }
 
 func warnOnAddressRewriteConflicts(agent *Agent) {
@@ -376,17 +393,17 @@ func deriveAddressRewriteFamilyScopeKey(ipStr string) string {
 // WithICELite configures whether the agent operates in lite mode.
 // Lite agents do not perform connectivity checks and only provide host candidates.
 func WithICELite(lite bool) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.lite = lite
 
 		return nil
-	}
+	})
 }
 
 // WithPortRange sets the UDP port range for host candidates.
 // It returns ErrPort if portMax is less than portMin.
 func WithPortRange(portMin, portMax uint16) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		if portMax < portMin {
 			return ErrPort
 		}
@@ -395,127 +412,127 @@ func WithPortRange(portMin, portMax uint16) AgentOption {
 		a.portMax = portMax
 
 		return nil
-	}
+	})
 }
 
 // WithDisconnectedTimeout sets the duration before the agent transitions to disconnected state.
 // A timeout of 0 disables the transition.
 func WithDisconnectedTimeout(timeout time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.disconnectedTimeout = timeout
 		a.disconnectedTimeoutExplicit = true
 
 		return nil
-	}
+	})
 }
 
 // WithFailedTimeout sets the duration before the agent transitions to failed state after disconnected.
 // A timeout of 0 disables the transition.
 func WithFailedTimeout(timeout time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.failedTimeout = timeout
 
 		return nil
-	}
+	})
 }
 
 // WithKeepaliveInterval sets how often ICE keepalive packets are sent.
 // An interval of 0 disables extra keepalives. Full ICE agents still send consent
 // freshness requests at the default interval (2 seconds), regardless of traffic.
 func WithKeepaliveInterval(interval time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.keepaliveInterval = interval
 
 		return nil
-	}
+	})
 }
 
 // WithHostAcceptanceMinWait sets the minimum wait before selecting host candidates.
 func WithHostAcceptanceMinWait(wait time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.hostAcceptanceMinWait = wait
 
 		return nil
-	}
+	})
 }
 
 // WithSrflxAcceptanceMinWait sets the minimum wait before selecting srflx candidates.
 func WithSrflxAcceptanceMinWait(wait time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.srflxAcceptanceMinWait = wait
 
 		return nil
-	}
+	})
 }
 
 // WithPrflxAcceptanceMinWait sets the minimum wait before selecting prflx candidates.
 func WithPrflxAcceptanceMinWait(wait time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.prflxAcceptanceMinWait = wait
 
 		return nil
-	}
+	})
 }
 
 // WithRelayAcceptanceMinWait sets the minimum wait before selecting relay candidates.
 func WithRelayAcceptanceMinWait(wait time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.relayAcceptanceMinWait = wait
 		a.relayAcceptanceMinWaitExplicit = true
 
 		return nil
-	}
+	})
 }
 
 // WithSTUNGatherTimeout sets the STUN gather timeout.
 func WithSTUNGatherTimeout(timeout time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.stunGatherTimeout = timeout
 
 		return nil
-	}
+	})
 }
 
 // WithIPFilter sets a filter for IP addresses used during candidate gathering.
 func WithIPFilter(filter func(net.IP) bool) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.ipFilter = filter
 
 		return nil
-	}
+	})
 }
 
 // WithRemoteIPFilter sets a filter for remote candidate IP addresses.
 // Candidates for which this function returns false are ignored.
 func WithRemoteIPFilter(filter func(net.IP) bool) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.remoteIPFilter = filter
 
 		return nil
-	}
+	})
 }
 
 // WithNet sets the underlying network implementation for the agent.
 func WithNet(net transport.Net) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.net = net
 
 		return nil
-	}
+	})
 }
 
 // WithMulticastDNSMode configures mDNS behavior for the agent.
 func WithMulticastDNSMode(mode MulticastDNSMode) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.mDNSMode = mode
 
 		return nil
-	}
+	})
 }
 
 // WithMulticastDNSHostName sets the mDNS host name used by the agent.
 func WithMulticastDNSHostName(hostName string) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		if !strings.HasSuffix(hostName, ".local") || len(strings.Split(hostName, ".")) != 2 {
 			return ErrInvalidMulticastDNSHostName
 		}
@@ -523,61 +540,61 @@ func WithMulticastDNSHostName(hostName string) AgentOption {
 		a.mDNSName = hostName
 
 		return nil
-	}
+	})
 }
 
 // WithTCPMux sets the TCP mux for ICE TCP multiplexing.
 func WithTCPMux(tcpMux TCPMux) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.tcpMux = tcpMux
 
 		return nil
-	}
+	})
 }
 
 // WithUDPMux sets the UDP mux used for multiplexing host candidates.
 func WithUDPMux(udpMux UDPMux) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.udpMux = udpMux
 
 		return nil
-	}
+	})
 }
 
 // WithUDPMuxSrflx sets the UDP mux for server reflexive candidates.
 func WithUDPMuxSrflx(udpMuxSrflx UniversalUDPMux) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.udpMuxSrflx = udpMuxSrflx
 
 		return nil
-	}
+	})
 }
 
 // WithProxyDialer sets the proxy dialer used for TURN over TCP/TLS/DTLS connections.
 func WithProxyDialer(dialer proxy.Dialer) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.proxyDialer = dialer
 
 		return nil
-	}
+	})
 }
 
 // WithMaxBindingRequests sets the maximum number of binding requests before considering a pair failed.
 func WithMaxBindingRequests(limit uint16) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.maxBindingRequests = limit
 
 		return nil
-	}
+	})
 }
 
 // WithCheckInterval sets how often the agent runs connectivity checks while connecting.
 func WithCheckInterval(interval time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.checkInterval = interval
 
 		return nil
-	}
+	})
 }
 
 // WithRenomination enables ICE renomination as described in draft-thatcher-ice-renomination-01.
@@ -593,7 +610,7 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 //
 //	agent, err := NewAgent(WithRenomination(DefaultNominationValueGenerator()))
 func WithRenomination(generator NominationValueGenerator) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		if generator == nil {
 			return ErrInvalidNominationValueGenerator
 		}
@@ -601,7 +618,7 @@ func WithRenomination(generator NominationValueGenerator) AgentOption {
 		a.nominationValueGenerator = generator
 
 		return nil
-	}
+	})
 }
 
 // WithNominationAttribute sets the STUN attribute type to use for ICE renomination.
@@ -612,7 +629,7 @@ func WithRenomination(generator NominationValueGenerator) AgentOption {
 // Currently, validation ensures the attribute is not 0x0000 (reserved).
 // Additional validation may be added in the future.
 func WithNominationAttribute(attrType uint16) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		// Basic validation: ensure it's not the reserved 0x0000
 		if attrType == 0x0000 {
 			return ErrInvalidNominationAttribute
@@ -621,7 +638,7 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 		a.nominationAttribute = stun.AttrType(attrType)
 
 		return nil
-	}
+	})
 }
 
 // WithIncludeLoopback includes loopback addresses in the candidate list.
@@ -631,11 +648,11 @@ func WithNominationAttribute(attrType uint16) AgentOption {
 //
 //	agent, err := NewAgent(WithIncludeLoopback())
 func WithIncludeLoopback() AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.includeLoopback = true
 
 		return nil
-	}
+	})
 }
 
 // WithTCPPriorityOffset sets a number which is subtracted from the default (UDP) candidate type preference
@@ -647,11 +664,11 @@ func WithIncludeLoopback() AgentOption {
 //
 //	agent, err := NewAgent(WithTCPPriorityOffset(50))
 func WithTCPPriorityOffset(offset uint16) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.tcpPriorityOffset = offset
 
 		return nil
-	}
+	})
 }
 
 // WithDisableActiveTCP disables Active TCP candidates.
@@ -662,11 +679,11 @@ func WithTCPPriorityOffset(offset uint16) AgentOption {
 //
 //	agent, err := NewAgent(WithDisableActiveTCP())
 func WithDisableActiveTCP() AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.disableActiveTCP = true
 
 		return nil
-	}
+	})
 }
 
 // WithBindingRequestHandler sets a handler to allow applications to perform logic on incoming STUN Binding Requests.
@@ -685,11 +702,11 @@ func WithDisableActiveTCP() AgentOption {
 func WithBindingRequestHandler(
 	handler func(m *stun.Message, local, remote Candidate, pair *CandidatePair) bool,
 ) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.userBindingRequestHandler = handler
 
 		return nil
-	}
+	})
 }
 
 // WithEnableUseCandidateCheckPriority enables checking for equal or higher priority when
@@ -702,11 +719,11 @@ func WithBindingRequestHandler(
 //
 //	agent, err := NewAgent(WithEnableUseCandidateCheckPriority())
 func WithEnableUseCandidateCheckPriority() AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.enableUseCandidateCheckPriority = true
 
 		return nil
-	}
+	})
 }
 
 // WithAutomaticRenomination enables automatic renomination of candidate pairs
@@ -727,14 +744,14 @@ func WithEnableUseCandidateCheckPriority() AgentOption {
 //		WithAutomaticRenomination(3*time.Second),
 //	)
 func WithAutomaticRenomination(interval time.Duration) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.automaticRenomination = true
 		if interval > 0 {
 			a.renominationInterval = interval
 		}
 		// Note: renomination must be enabled separately via WithRenomination
 		return nil
-	}
+	})
 }
 
 // WithInterfaceFilter sets a filter function to whitelist or blacklist network interfaces
@@ -752,11 +769,11 @@ func WithAutomaticRenomination(interval time.Duration) AgentOption {
 //		}),
 //	)
 func WithInterfaceFilter(filter func(string) bool) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.interfaceFilter = filter
 
 		return nil
-	}
+	})
 }
 
 // WithLoggerFactory sets the logger factory for the agent.
@@ -769,21 +786,21 @@ func WithInterfaceFilter(filter func(string) bool) AgentOption {
 //	loggerFactory.DefaultLogLevel = logging.LogLevelDebug
 //	agent, err := NewAgent(WithLoggerFactory(loggerFactory))
 func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		// Logger factory will be passed down to objects created by the agent
 		a.loggerFactory = loggerFactory
 		a.log = loggerFactory.NewLogger("ice")
 
 		return nil
-	}
+	})
 }
 
 // WithInsecureSkipVerify controls whether TURN TLS and DTLS connections skip certificate verification.
 // By default, certificates are verified.
 func WithInsecureSkipVerify(insecureSkipVerify bool) AgentOption {
-	return func(a *Agent) error {
+	return agentOnlyOption(func(a *Agent) error {
 		a.insecureSkipVerify = insecureSkipVerify
 
 		return nil
-	}
+	})
 }

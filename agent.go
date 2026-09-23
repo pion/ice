@@ -234,7 +234,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 			continue
 		}
 
-		if err = opt(agent); err != nil {
+		if err = opt.applyAgent(agent); err != nil {
 			return nil, err
 		}
 	}

@@ -865,7 +865,7 @@ func TestAddressRewritePortValidation(t *testing.T) {
 			External:     []string{"203.0.113.1"},
 			OriginalPort: ports[0],
 			NewPort:      ports[1],
-		})(&Agent{})
+		}).applyAgent(&Agent{})
 		require.ErrorIs(t, err, ErrInvalidAddressRewriteMapping)
 	}
 }
@@ -1051,4 +1051,18 @@ func TestWithInsecureSkipVerify(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, insecureAgent.Close()) })
 	require.True(t, insecureAgent.insecureSkipVerify)
+}
+
+func TestWithLocalCredentials(t *testing.T) {
+	const ufrag = "test-ufrag"
+	const pwd = "test-password-with-enough-bits"
+
+	agent, err := NewAgent(WithNet(newStubNet(t)), WithLocalCredentials(ufrag, pwd))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+	gotUfrag, gotPwd, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	require.Equal(t, ufrag, gotUfrag)
+	require.Equal(t, pwd, gotPwd)
 }

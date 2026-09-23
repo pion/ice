@@ -3004,7 +3004,7 @@ func TestAgentOptionsUseProvidedValues(t *testing.T) {
 	cfg := []AgentOption{WithMaxBindingRequests(valMaxBindingReq), WithSrflxAcceptanceMinWait(valSrflxWait), WithPrflxAcceptanceMinWait(valPrflxWait), WithRelayAcceptanceMinWait(valRelayWait), WithSTUNGatherTimeout(valStunTimeout)}
 	var a Agent
 	for _, opt := range cfg {
-		require.NoError(t, opt(&a))
+		require.NoError(t, opt.applyAgent(&a))
 	}
 
 	require.Equal(t, valMaxBindingReq, a.maxBindingRequests, "expected override for MaxBindingRequests")
