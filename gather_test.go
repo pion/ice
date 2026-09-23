@@ -212,6 +212,44 @@ func TestCompleteGatheringIgnoresOldGeneration(t *testing.T) {
 	}, 50*time.Millisecond, time.Millisecond)
 }
 
+func TestInitialGatherPreservesRemoteState(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	remote, err := UnmarshalCandidate("1 1 udp 2130706431 192.0.2.1 5000 typ host")
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(remote))
+	require.Eventually(t, func() bool {
+		candidates, candidatesErr := agent.GetRemoteCandidates()
+
+		return candidatesErr == nil && len(candidates) == 1
+	}, time.Second, time.Millisecond)
+	require.NoError(t, agent.startConnectivityChecks(false, "remote", "remote-password-123456789"))
+
+	options := []GatherOption{WithCandidateTypes([]CandidateType{}), WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
+	gatherAndCollectCandidates(t, agent, options...)
+	ufrag, password, err := agent.GetRemoteUserCredentials()
+	require.NoError(t, err)
+	require.Equal(t, "remote", ufrag)
+	require.Equal(t, "remote-password-123456789", password)
+	candidates, err := agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Equal(t, []Candidate{remote}, candidates)
+
+	// Changing established local credentials still clears remote state.
+	gatherAndCollectCandidates(t, agent, append(options, WithLocalCredentials("", ""))...)
+	ufrag, password, err = agent.GetRemoteUserCredentials()
+	require.NoError(t, err)
+	require.Empty(t, ufrag)
+	require.Empty(t, password)
+	candidates, err = agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Empty(t, candidates)
+}
+
 func TestRegatherCompletesWithoutRestart(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	options := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4}), WithCandidateTypes([]CandidateType{CandidateTypeHost})}
