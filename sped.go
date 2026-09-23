@@ -31,9 +31,9 @@ func (d *DTLSInSTUNAttribute) GetFrom(m *stun.Message) error {
 	return nil
 }
 
-// DtlsInStunAckAttribute is a STUN attribute for acknowledging the receipt
+// DTLSInSTUNAckAttribute is a STUN attribute for acknowledging the receipt
 // of DTLS packets (embedded in STUN or without embedding).
-type DtlsInStunAckAttribute []uint32
+type DTLSInSTUNAckAttribute []uint32
 
 // ACKs are 32-bit values, and the attribute can carry up to four of them.
 const (
@@ -42,7 +42,7 @@ const (
 )
 
 // AddTo adds DTLS-in-STUN-ACK attribute to message.
-func (a DtlsInStunAckAttribute) AddTo(m *stun.Message) error {
+func (a DTLSInSTUNAckAttribute) AddTo(m *stun.Message) error {
 	if len(a) > ackSizeValues {
 		return stun.ErrAttributeSizeInvalid
 	}
@@ -56,7 +56,7 @@ func (a DtlsInStunAckAttribute) AddTo(m *stun.Message) error {
 }
 
 // GetFrom decodes DTLS-in-STUN-ACK attribute from message.
-func (a *DtlsInStunAckAttribute) GetFrom(m *stun.Message) error {
+func (a *DTLSInSTUNAckAttribute) GetFrom(m *stun.Message) error {
 	v, err := m.Get(stun.AttrDtlsInStunAck)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (a *DtlsInStunAckAttribute) GetFrom(m *stun.Message) error {
 	for i := range u {
 		u[i] = binary.BigEndian.Uint32(v[i*4 : (i+1)*4])
 	}
-	*a = DtlsInStunAckAttribute(u)
+	*a = DTLSInSTUNAckAttribute(u)
 
 	return nil
 }
