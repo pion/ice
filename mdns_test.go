@@ -16,10 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMulticastDNSOnlyConnection(t *testing.T) {
+func skipMulticastDNSOnDarwin(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS == "darwin" {
 		t.Skip("mDNS multicast bind is unreliable on the macOS CI runner")
 	}
+}
+
+func TestMulticastDNSOnlyConnection(t *testing.T) {
+	skipMulticastDNSOnDarwin(t)
 
 	defer test.CheckRoutines(t)()
 
@@ -158,4 +163,53 @@ func TestGenerateMulticastDNSName(t *testing.T) {
 	isMDNSName := regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}.local+$`).MatchString
 
 	require.True(t, isMDNSName(name))
+}
+
+func TestMulticastDNSNetworkChanges(t *testing.T) {
+	skipMulticastDNSOnDarwin(t)
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(15 * time.Second).Stop()
+
+	allowInterfaces := true
+	agent, err := NewAgent(WithIncludeLoopback(), WithInterfaceFilter(func(name string) bool {
+		return allowInterfaces && problematicNetworkInterfaces(name)
+	}))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+	require.NotNil(t, agent.mDNSConn)
+	complete := make(chan struct{}, 1)
+	require.NoError(t, agent.OnCandidate(func(candidate Candidate) {
+		if candidate == nil {
+			complete <- struct{}{}
+		}
+	}))
+	gather := func(networkTypes ...NetworkType) {
+		t.Helper()
+		require.NoError(t, agent.Gather(WithNetworkTypes(networkTypes),
+			WithCandidateTypes([]CandidateType{CandidateTypeHost})))
+		<-complete
+	}
+
+	initial := agent.mDNSConn
+	gather()
+	require.Same(t, initial, agent.mDNSConn)
+	gather(NetworkTypeUDP4, NetworkTypeUDP6)
+	require.Same(t, initial, agent.mDNSConn)
+	gather(NetworkTypeTCP6, NetworkTypeTCP4)
+	require.Same(t, initial, agent.mDNSConn)
+	gather(NetworkTypeUDP4)
+	require.NotNil(t, agent.mDNSConn)
+	require.NotSame(t, initial, agent.mDNSConn)
+
+	allowInterfaces = false
+	gather(NetworkTypeUDP4)
+	require.Nil(t, agent.mDNSConn)
+	require.Equal(t, MulticastDNSModeQueryOnly, agent.mDNSMode)
+
+	allowInterfaces = true
+	gather(NetworkTypeUDP4)
+	require.NotNil(t, agent.mDNSConn)
+	current := agent.mDNSConn
+	gather(NetworkTypeUDP4)
+	require.Same(t, current, agent.mDNSConn)
 }

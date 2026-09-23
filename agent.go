@@ -66,9 +66,10 @@ type Agent struct {
 	gatheringState   GatheringState
 	gatherGeneration uint64
 
-	mDNSMode MulticastDNSMode
-	mDNSName string
-	mDNSConn *mdns.Conn
+	mDNSMode    MulticastDNSMode
+	mDNSName    string
+	mDNSConn    *mdns.Conn
+	mDNSNetwork multicastDNSNetwork
 
 	muHaveStarted sync.Mutex
 	startedCh     <-chan struct{}
@@ -272,6 +273,17 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 		agent.closeMulticastConn()
 
 		return nil, err
+	}
+
+	if agent.mDNSMode != MulticastDNSModeDisabled {
+		networkTypes := configuredNetworkTypes(nil)
+		interfaces, localAddrs, interfaceErr := localInterfaces(
+			agent.net, agent.interfaceFilter, agent.ipFilter, networkTypes, agent.includeLoopback,
+		)
+		if interfaceErr != nil {
+			return nil, fmt.Errorf("error getting local interfaces: %w", interfaceErr)
+		}
+		agent.updateMulticastDNS(networkTypes, interfaces, localAddrs)
 	}
 
 	agent.loop = taskloop.New(func() {
@@ -944,14 +956,27 @@ func (a *Agent) resolveAndAddMulticastCandidate(cand *CandidateHost, generation 
 	ctx, cancel := context.WithTimeout(a.loop, a.mDNSQueryTimeout())
 	defer cancel()
 
-	_, src, err := conn.QueryAddr(ctx, cand.Address())
-	if err != nil {
-		a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
+	for {
+		_, src, err := conn.QueryAddr(ctx, cand.Address())
+		if err == nil {
+			a.addResolvedCandidate(cand, src, generation)
 
-		return
+			return
+		}
+
+		// A gather may replace the connection while this query is in flight.
+		// retain the original query deadline.
+		var current *mdns.Conn
+		if loopErr := a.loop.Run(ctx, func(context.Context) { current = a.mDNSConn }); loopErr != nil {
+			return
+		}
+		if current == nil || current == conn || ctx.Err() != nil {
+			a.log.Warnf("Failed to discover mDNS candidate %s: %v", cand.Address(), err)
+
+			return
+		}
+		conn = current
 	}
-
-	a.addResolvedCandidate(cand, src, generation)
 }
 
 func (a *Agent) mDNSQueryTimeout() time.Duration {
@@ -2036,6 +2061,7 @@ func (a *Agent) closeMulticastConn() {
 		if err := a.mDNSConn.Close(); err != nil {
 			a.log.Warnf("Failed to close mDNS Conn: %v", err)
 		}
+		a.mDNSConn = nil
 	}
 }
 

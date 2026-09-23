@@ -5,6 +5,8 @@ package ice
 
 import (
 	"net"
+	"reflect"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/pion/logging"
@@ -30,12 +32,70 @@ const (
 	MulticastDNSModeQueryAndGather
 )
 
+// multicastDNSNetwork records the network used by the current mDNS connection.
+type multicastDNSNetwork struct {
+	useIPv4      bool
+	useIPv6      bool
+	interfaces   []net.Interface
+	localAddrs   []ifaceAddr
+	localAddress net.IP
+}
+
+func (a *Agent) updateMulticastDNS(
+	networkTypes []NetworkType, interfaces []*transport.Interface, localAddrs []ifaceAddr,
+) MulticastDNSMode {
+	network := multicastDNSNetwork{
+		localAddrs:   slices.Clone(localAddrs),
+		localAddress: slices.Clone(mDNSLocalAddressFromTCPMux(a.tcpMux, networkTypes)),
+	}
+	// mDNS always uses UDP. changing ICE transports alone must not restart.
+	network.useIPv4, network.useIPv6 = multicastDNSIPFamilies(networkTypes)
+	for _, iface := range interfaces {
+		ifc := iface.Interface
+		ifc.HardwareAddr = slices.Clone(ifc.HardwareAddr)
+		network.interfaces = append(network.interfaces, ifc)
+	}
+	if a.mDNSConn != nil && reflect.DeepEqual(a.mDNSNetwork, network) {
+		return a.mDNSMode
+	}
+
+	a.closeMulticastConn()
+	a.mDNSNetwork = network
+	if a.mDNSMode == MulticastDNSModeDisabled || len(interfaces) == 0 {
+		return MulticastDNSModeDisabled
+	}
+
+	var err error
+	a.mDNSConn, _, err = createMulticastDNS(
+		a.net, networkTypes, interfaces, a.includeLoopback, network.localAddress,
+		a.mDNSMode, a.mDNSName, a.log, a.loggerFactory,
+	)
+	if err != nil {
+		a.log.Warnf("Failed to initialize mDNS %s: %v", a.mDNSName, err)
+		a.closeMulticastConn()
+	}
+	if a.mDNSConn == nil {
+		return MulticastDNSModeDisabled
+	}
+
+	return a.mDNSMode
+}
+
 func generateMulticastDNSName() (string, error) {
 	// https://tools.ietf.org/id/draft-ietf-rtcweb-mdns-ice-candidates-02.html#gathering
 	// The unique name MUST consist of a version 4 UUID as defined in [RFC4122], followed by “.local”.
 	u, err := uuid.NewRandom()
 
 	return u.String() + ".local", err
+}
+
+func multicastDNSIPFamilies(networkTypes []NetworkType) (useIPv4, useIPv6 bool) {
+	for _, networkType := range configuredNetworkTypes(networkTypes) {
+		useIPv4 = useIPv4 || networkType.IsIPv4()
+		useIPv6 = useIPv6 || networkType.IsIPv6()
+	}
+
+	return useIPv4, useIPv6
 }
 
 //nolint:cyclop
@@ -54,22 +114,7 @@ func createMulticastDNS(
 		return nil, mDNSMode, nil
 	}
 
-	var useV4, useV6 bool
-	if len(networkTypes) == 0 {
-		useV4 = true
-		useV6 = true
-	} else {
-		for _, nt := range networkTypes {
-			if nt.IsIPv4() {
-				useV4 = true
-
-				continue
-			}
-			if nt.IsIPv6() {
-				useV6 = true
-			}
-		}
-	}
+	useV4, useV6 := multicastDNSIPFamilies(networkTypes)
 
 	addr4, mdnsErr := netTransport.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if mdnsErr != nil {
@@ -94,7 +139,18 @@ func createMulticastDNS(
 		pktConnV4 = ipv4.NewPacketConn(l)
 	}
 
+	started := false
+	defer func() {
+		if !started && pktConnV4 != nil {
+			_ = pktConnV4.Close()
+		}
+	}()
 	var pktConnV6 *ipv6.PacketConn
+	defer func() {
+		if !started && pktConnV6 != nil {
+			_ = pktConnV6.Close()
+		}
+	}()
 	var mdns6Err error
 	if useV6 {
 		var l transport.UDPConn
@@ -131,6 +187,8 @@ func createMulticastDNS(
 			LoggerFactory:   loggerFactory,
 		})
 
+		started = err == nil
+
 		return conn, mDNSMode, err
 	case MulticastDNSModeQueryAndGather:
 		//nolint:staticcheck // NewServer is unavailable in the pinned mDNS version.
@@ -141,6 +199,8 @@ func createMulticastDNS(
 			LocalNames:      []string{mDNSName},
 			LoggerFactory:   loggerFactory,
 		})
+
+		started = err == nil
 
 		return conn, mDNSMode, err
 	default:

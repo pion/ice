@@ -333,18 +333,7 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 		} else if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
 			a.startGatherGeneration(config)
 		}
-		config.mDNSMode = a.mDNSMode
-		if a.mDNSConn == nil || !slices.Equal(a.networkTypes, config.networkTypes) {
-			a.closeMulticastConn()
-			var mdnsErr error
-			a.mDNSConn, config.mDNSMode, mdnsErr = createMulticastDNS(
-				a.net, config.networkTypes, interfaces, a.includeLoopback,
-				mDNSLocalAddressFromTCPMux(a.tcpMux, config.networkTypes), a.mDNSMode, a.mDNSName, a.log, a.loggerFactory,
-			)
-			if mdnsErr != nil {
-				a.log.Warnf("Failed to initialize mDNS %s: %v", a.mDNSName, mdnsErr)
-			}
-		}
+		config.mDNSMode = a.updateMulticastDNS(config.networkTypes, interfaces, localAddrs)
 
 		a.networkTypes = config.networkTypes
 		if !a.relayAcceptanceMinWaitExplicit {
