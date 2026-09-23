@@ -1052,17 +1052,3 @@ func TestWithInsecureSkipVerify(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, insecureAgent.Close()) })
 	require.True(t, insecureAgent.insecureSkipVerify)
 }
-
-func TestWithLocalCredentials(t *testing.T) {
-	const ufrag = "test-ufrag"
-	const pwd = "test-password-with-enough-bits"
-
-	agent, err := NewAgent(WithNet(newStubNet(t)), WithLocalCredentials(ufrag, pwd))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, agent.Close()) })
-
-	gotUfrag, gotPwd, err := agent.GetLocalUserCredentials()
-	require.NoError(t, err)
-	require.Equal(t, ufrag, gotUfrag)
-	require.Equal(t, pwd, gotPwd)
-}

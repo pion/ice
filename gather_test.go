@@ -2331,11 +2331,11 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 	require.NoError(t, agent.Close())
 	aClosed = true
 
-	// Twice because of 2 STUN servers configured
+	// Once for each configured STUN server.
 	require.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
-	// One for Restart() when agent has been initialized and one time when Close() the agent
-	require.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
-	// Twice because of 2 STUN servers configured
+	// The ufrag is removed once when the agent is closed.
+	require.Equal(t, 1, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
+	// Once for each configured STUN server.
 	require.Equal(t, numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
 }
 
@@ -3627,4 +3627,48 @@ func mustGatherConfigForAgent(tb testing.TB, agent *Agent, options ...GatherOpti
 	config.localAddrs = addrs
 
 	return config
+}
+
+func TestFirstGatherSet0generation(t *testing.T) {
+	agent, err := NewAgent(WithNet(newHostGatherNet(nil)), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+	candidate, err := NewCandidateHost(&CandidateHostConfig{
+		Network: "udp", Address: "192.0.2.1", Port: 1234, Component: ComponentRTP,
+	})
+	require.NoError(t, err)
+	require.NoError(t, agent.AddRemoteCandidate(candidate))
+	require.Eventually(t, func() bool {
+		candidates, candidatesErr := agent.GetRemoteCandidates()
+
+		return candidatesErr == nil && len(candidates) == 1
+	}, time.Second, time.Millisecond)
+	require.NoError(t, agent.SetRemoteCredentials("remote-ufrag", "remote-password"))
+
+	const ufrag = "local-ufrag"
+	const pwd = "local-password-with-enough-bits"
+	gatherAndCollectCandidates(t, agent, WithCandidateTypes(nil), WithLocalCredentials(ufrag, pwd))
+
+	localUfrag, localPwd, err := agent.GetLocalUserCredentials()
+	require.NoError(t, err)
+	require.Equal(t, ufrag, localUfrag)
+	require.Equal(t, pwd, localPwd)
+	candidates, err := agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Equal(t, []Candidate{candidate}, candidates)
+	remoteUfrag, remotePwd, err := agent.GetRemoteUserCredentials()
+	require.NoError(t, err)
+	require.Equal(t, "remote-ufrag", remoteUfrag)
+	require.Equal(t, "remote-password", remotePwd)
+
+	gatherAndCollectCandidates(t, agent, WithCandidateTypes(nil), WithLocalCredentials("next-ufrag", pwd))
+
+	candidates, err = agent.GetRemoteCandidates()
+	require.NoError(t, err)
+	require.Empty(t, candidates)
+	remoteUfrag, remotePwd, err = agent.GetRemoteUserCredentials()
+	require.NoError(t, err)
+	require.Empty(t, remoteUfrag)
+	require.Empty(t, remotePwd)
 }

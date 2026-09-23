@@ -103,15 +103,12 @@ func WithURLs(urls []*stun.URI) GatherOption {
 	})
 }
 
-// WithLocalCredentials sets the local ICE username fragment and password.
-// With NewAgent, credentials are available immediately through GetLocalUserCredentials.
-// Each empty string generates a random value.
-//
-// Gather without this option reuses existing credentials, generating any missing values.
-// With this option, changing either credential starts a new ICE generation and restarts
-// ICE. Each empty string generates a fresh value: WithLocalCredentials("", "").
-func WithLocalCredentials(ufrag, pwd string) Option {
-	gatherOption := gatherOnlyOption(func(config *gatherConfig) error {
+// WithLocalCredentials sets the local ICE username fragment and password for gathering.
+// Gather calls without this option reuse the existing credentials.
+// Changing either credential on a subsequent Gather starts a new ICE generation
+// and restarts ICE. Each empty string generates a fresh value.
+func WithLocalCredentials(ufrag, pwd string) GatherOption {
+	return gatherOnlyOption(func(config *gatherConfig) error {
 		if err := validateLocalCredentials(ufrag, pwd); err != nil {
 			return err
 		}
@@ -121,22 +118,6 @@ func WithLocalCredentials(ufrag, pwd string) Option {
 
 		return nil
 	})
-
-	return sharedOption{
-		agentOnlyOption: func(agent *Agent) error {
-			config := &gatherConfig{}
-			if err := gatherOption.applyGather(config); err != nil {
-				return err
-			}
-			if err := config.resolveLocalCredentials("", ""); err != nil {
-				return err
-			}
-			agent.localUfrag, agent.localPwd = config.localUfrag, config.localPwd
-
-			return nil
-		},
-		gatherOnlyOption: gatherOption,
-	}
 }
 
 // WithNetworkTypes sets the enabled candidate network types for candidate gathering.
@@ -313,7 +294,8 @@ func closeConnAndLog(c io.Closer, log logging.LeveledLogger, msg string, args ..
 // Call OnCandidate before Gather. Local credentials are available when Gather returns.
 // Calling Gather again cancels the previous gather. If the
 // credentials are unchanged, existing candidates and connectivity are preserved.
-// Changed credentials clear candidates and remote credentials and restart connectivity checks.
+// The first pass sets local credentials, Later credential changes clear candidates and
+// remote credentials and restart connectivity checks.
 // Each pass signals completion with a nil candidate. Call Gather again to gather more candidates.
 //
 //nolint:cyclop
@@ -346,7 +328,9 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 		config.localAddrs = localAddrs
 
 		a.gatherCandidateCancel()
-		if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
+		if a.gatheringState == GatheringStateNew {
+			a.localUfrag, a.localPwd = config.localUfrag, config.localPwd
+		} else if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
 			a.startGatherGeneration(config)
 		}
 		config.mDNSMode = a.mDNSMode

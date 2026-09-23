@@ -97,11 +97,6 @@ type agentOnlyOption func(*Agent) error
 
 func (o agentOnlyOption) applyAgent(a *Agent) error { return o(a) }
 
-type sharedOption struct {
-	agentOnlyOption
-	gatherOnlyOption
-}
-
 // NominationValueGenerator generates strictly increasing nomination values for renomination.
 type NominationValueGenerator func() uint32
 
