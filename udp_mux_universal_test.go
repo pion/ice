@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/ice/v4/internal/fakenet"
-	stunx "github.com/pion/ice/v4/internal/stun"
+	"github.com/pion/ice/v5/internal/fakenet"
+	stunx "github.com/pion/ice/v5/internal/stun"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
 	"github.com/stretchr/testify/require"
