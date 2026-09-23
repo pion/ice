@@ -6,7 +6,7 @@ package ice
 import (
 	"errors"
 
-	"github.com/pion/ice/v4/internal/taskloop"
+	"github.com/pion/ice/v5/internal/taskloop"
 )
 
 var (

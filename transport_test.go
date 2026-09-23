@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/ice/v4/internal/taskloop"
+	"github.com/pion/ice/v5/internal/taskloop"
 	"github.com/pion/logging"
 	"github.com/pion/stun/v4"
 	"github.com/pion/transport/v5/packetio"

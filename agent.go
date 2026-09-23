@@ -18,8 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	stunx "github.com/pion/ice/v4/internal/stun"
-	"github.com/pion/ice/v4/internal/taskloop"
+	stunx "github.com/pion/ice/v5/internal/stun"
+	"github.com/pion/ice/v5/internal/taskloop"
 	"github.com/pion/logging"
 	"github.com/pion/mdns/v2"
 	"github.com/pion/stun/v4"
