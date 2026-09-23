@@ -34,9 +34,9 @@ func TestDTLSInSTUNAttribute_AddTo(t *testing.T) {
 	require.Equal(t, []byte{0x05, 0x06, 0x07, 0x08}, v)
 }
 
-func TestDtlsInStunAckAttribute_GetFrom(t *testing.T) {
+func TestDTLSInSTUNAckAttribute_GetFrom(t *testing.T) {
 	m := new(stun.Message)
-	var dtlsInStunAck DtlsInStunAckAttribute
+	var dtlsInStunAck DTLSInSTUNAckAttribute
 	require.ErrorIs(t, stun.ErrAttributeNotFound, dtlsInStunAck.GetFrom(m))
 
 	// Test with valid data
@@ -46,7 +46,7 @@ func TestDtlsInStunAckAttribute_GetFrom(t *testing.T) {
 	binary.BigEndian.PutUint32(byteValue[4:8], expectedValue[1])
 	m.Add(stun.AttrDtlsInStunAck, byteValue)
 
-	var dtlsInStunAck1 DtlsInStunAckAttribute
+	var dtlsInStunAck1 DTLSInSTUNAckAttribute
 	require.NoError(t, dtlsInStunAck1.GetFrom(m))
 	require.Equal(t, expectedValue, []uint32(dtlsInStunAck1))
 
@@ -54,28 +54,28 @@ func TestDtlsInStunAckAttribute_GetFrom(t *testing.T) {
 	m4 := new(stun.Message)
 	maxValue := make([]byte, ackSizeBytes)
 	m4.Add(stun.AttrDtlsInStunAck, maxValue)
-	var dtlsInStunAck4 DtlsInStunAckAttribute
+	var dtlsInStunAck4 DTLSInSTUNAckAttribute
 	require.NoError(t, dtlsInStunAck4.GetFrom(m4))
 	require.Len(t, dtlsInStunAck4, ackSizeValues)
 
 	// Test with invalid size (not multiple of 4)
 	m2 := new(stun.Message)
 	m2.Add(stun.AttrDtlsInStunAck, []byte{0x01, 0x02, 0x03})
-	var dtlsInStunAck2 DtlsInStunAckAttribute
+	var dtlsInStunAck2 DTLSInSTUNAckAttribute
 	require.ErrorIs(t, stun.ErrAttributeSizeInvalid, dtlsInStunAck2.GetFrom(m2))
 	require.Empty(t, dtlsInStunAck2)
 
 	// Test with invalid size (greater than ackSize)
 	m3 := new(stun.Message)
 	m3.Add(stun.AttrDtlsInStunAck, make([]byte, ackSizeBytes+4))
-	var dtlsInStunAck3 DtlsInStunAckAttribute
+	var dtlsInStunAck3 DTLSInSTUNAckAttribute
 	require.ErrorIs(t, stun.ErrAttributeSizeInvalid, dtlsInStunAck3.GetFrom(m3))
 	require.Empty(t, dtlsInStunAck3)
 }
 
-func TestDtlsInStunAckAttribute_AddTo(t *testing.T) {
+func TestDTLSInSTUNAckAttribute_AddTo(t *testing.T) {
 	m := new(stun.Message)
-	dtlsInStunAck := DtlsInStunAckAttribute([]uint32{0x090a0b0c, 0x0d0e0f10})
+	dtlsInStunAck := DTLSInSTUNAckAttribute([]uint32{0x090a0b0c, 0x0d0e0f10})
 	require.NoError(t, dtlsInStunAck.AddTo(m))
 
 	v, err := m.Get(stun.AttrDtlsInStunAck)
@@ -88,7 +88,7 @@ func TestDtlsInStunAckAttribute_AddTo(t *testing.T) {
 
 	// Test with more than 4 elements (should not add to message)
 	m2 := new(stun.Message)
-	dtlsInStunAck2 := DtlsInStunAckAttribute([]uint32{1, 2, 3, 4, 5})
+	dtlsInStunAck2 := DTLSInSTUNAckAttribute([]uint32{1, 2, 3, 4, 5})
 	require.ErrorIs(t, stun.ErrAttributeSizeInvalid, dtlsInStunAck2.AddTo(m2))
 	_, err = m2.Get(stun.AttrDtlsInStunAck)
 	require.ErrorIs(t, err, stun.ErrAttributeNotFound)

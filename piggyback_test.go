@@ -34,7 +34,7 @@ func TestSped(t *testing.T) {
 
 		var toA []byte
 		fromA := fakeDtlsPacket("Hello from A")
-		aAgent.SetDtlsCallback(func(packet []byte, rAddr net.Addr) {
+		aAgent.SetDTLSCallback(func(packet []byte, rAddr net.Addr) {
 			toA = packet
 		})
 		require.True(t, aAgent.Piggyback([][]byte{fromA}, nil))
@@ -44,7 +44,7 @@ func TestSped(t *testing.T) {
 
 		var toB []byte
 		fromB := fakeDtlsPacket("Hello from B")
-		bAgent.SetDtlsCallback(func(packet []byte, rAddr net.Addr) {
+		bAgent.SetDTLSCallback(func(packet []byte, rAddr net.Addr) {
 			toB = packet
 		})
 		require.True(t, bAgent.Piggyback([][]byte{fromB}, nil))
@@ -62,7 +62,7 @@ func TestSped(t *testing.T) {
 		require.NoError(t, err)
 
 		fromA := fakeDtlsPacket("Hello from A")
-		aAgent.SetDtlsCallback(func([]byte, net.Addr) {})
+		aAgent.SetDTLSCallback(func([]byte, net.Addr) {})
 		require.True(t, aAgent.Piggyback([][]byte{fromA}, nil))
 
 		// bAgent does not support piggybacking.
@@ -75,7 +75,7 @@ func TestSped(t *testing.T) {
 		_, err = bConn.Read(toB)
 		require.NoError(t, err)
 		require.Equal(t, fromA, toB)
-		require.Equal(t, PiggybackingStateOff, aAgent.piggyback.state)
+		require.Equal(t, piggybackingStateOff, aAgent.piggyback.state)
 
 		require.NoError(t, aConn.Close())
 		require.NoError(t, bConn.Close())
@@ -86,7 +86,7 @@ func newPiggybackAgent(t *testing.T) *Agent {
 	t.Helper()
 
 	agent := &Agent{log: logging.NewDefaultLoggerFactory().NewLogger("ice")}
-	agent.SetDtlsCallback(func([]byte, net.Addr) {
+	agent.SetDTLSCallback(func([]byte, net.Addr) {
 		require.True(t, agent.piggyback.mu.TryLock(), "callback must run after unlocking")
 		agent.piggyback.mu.Unlock()
 	})
@@ -101,59 +101,59 @@ func TestPiggybackingStateMachine(t *testing.T) {
 
 	t.Run("Does not complete before the local handshake is done", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		require.Equal(t, []stun.Setter{DtlsInStunAckAttribute{}}, agent.appendPiggybackAttributes(nil))
-		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		require.Equal(t, PiggybackingStateConfirmed, agent.piggyback.state)
-		require.Equal(t, []stun.Setter{DtlsInStunAckAttribute{packetCrc}, DTLSInSTUNAttribute{}}, agent.appendPiggybackAttributes(nil))
+		require.Equal(t, []stun.Setter{DTLSInSTUNAckAttribute{}}, agent.appendPiggybackAttributes(nil))
+		agent.reportPiggybacking(packet, []uint32{}, rAddr)
+		require.Equal(t, piggybackingStateConfirmed, agent.piggyback.state)
+		require.Equal(t, []stun.Setter{DTLSInSTUNAckAttribute{packetCrc}, DTLSInSTUNAttribute{}}, agent.appendPiggybackAttributes(nil))
 
-		agent.ReportPiggybacking(nil, nil, rAddr)
-		require.Equal(t, PiggybackingStateConfirmed, agent.piggyback.state)
+		agent.reportPiggybacking(nil, nil, rAddr)
+		require.Equal(t, piggybackingStateConfirmed, agent.piggyback.state)
 	})
 
 	t.Run("Attributes own their buffers and rotate queued packets", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		agent.ReportDtlsPacket(packet)
+		agent.ReportDTLSPacket(packet)
 		other := fakeDtlsPacket("next flight")
 		require.True(t, agent.Piggyback([][]byte{packet, other}, nil))
 		attrs := agent.appendPiggybackAttributes(nil)
 		agent.piggyback.packets[0].data[0] ^= 1
 		agent.piggyback.acks[0] ^= 1
-		require.Equal(t, []stun.Setter{DtlsInStunAckAttribute{packetCrc}, DTLSInSTUNAttribute(packet)}, attrs)
+		require.Equal(t, []stun.Setter{DTLSInSTUNAckAttribute{packetCrc}, DTLSInSTUNAttribute(packet)}, attrs)
 		require.Equal(t, DTLSInSTUNAttribute(other), agent.appendPiggybackAttributes(nil)[1])
 	})
 
 	t.Run("Completes when the peer stops sending acks", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
-		agent.SetDtlsHandshakeComplete(true, protocol.Version1_2)
-		require.Equal(t, PiggybackingStatePending, agent.piggyback.state)
+		agent.reportPiggybacking(packet, []uint32{}, rAddr)
+		agent.SetDTLSHandshakeComplete(true, protocol.Version1_2)
+		require.Equal(t, piggybackingStatePending, agent.piggyback.state)
 
-		agent.ReportPiggybacking(nil, nil, rAddr)
-		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
+		agent.reportPiggybacking(nil, nil, rAddr)
+		require.Equal(t, piggybackingStateComplete, agent.piggyback.state)
 
 		require.Empty(t, agent.appendPiggybackAttributes(nil))
 
-		agent.SetDtlsHandshakeComplete(true, protocol.Version1_2)
-		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
+		agent.SetDTLSHandshakeComplete(true, protocol.Version1_2)
+		require.Equal(t, piggybackingStateComplete, agent.piggyback.state)
 	})
 
 	t.Run("Completes on the ack of the final flight", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		require.True(t, agent.Piggyback([][]byte{packet}, nil))
-		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
+		agent.reportPiggybacking(packet, []uint32{}, rAddr)
 		// DTLS 1.2 server keeps the last flight until it is acknowledged.
-		agent.SetDtlsHandshakeComplete(false, protocol.Version1_2)
+		agent.SetDTLSHandshakeComplete(false, protocol.Version1_2)
 
-		agent.ReportPiggybacking(nil, []uint32{packetCrc}, rAddr)
-		require.Equal(t, PiggybackingStateComplete, agent.piggyback.state)
+		agent.reportPiggybacking(nil, []uint32{packetCrc}, rAddr)
+		require.Equal(t, piggybackingStateComplete, agent.piggyback.state)
 	})
 
 	t.Run("Acks are kept when the peer sends no data", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		agent.ReportPiggybacking(packet, []uint32{}, rAddr)
+		agent.reportPiggybacking(packet, []uint32{}, rAddr)
 		require.Equal(t, []uint32{packetCrc}, agent.piggyback.acks)
 
-		agent.ReportPiggybacking(nil, []uint32{}, rAddr)
+		agent.reportPiggybacking(nil, []uint32{}, rAddr)
 		require.Equal(t, []uint32{packetCrc}, agent.piggyback.acks)
 	})
 
@@ -166,9 +166,9 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("Non-DTLS data is dropped", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		received := false
-		agent.SetDtlsCallback(func([]byte, net.Addr) { received = true })
+		agent.SetDTLSCallback(func([]byte, net.Addr) { received = true })
 
-		agent.ReportPiggybacking([]byte("not a dtls packet"), []uint32{}, rAddr)
+		agent.reportPiggybacking([]byte("not a dtls packet"), []uint32{}, rAddr)
 		require.False(t, received)
 		require.Empty(t, agent.piggyback.acks)
 	})
@@ -190,7 +190,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				agent := newPiggybackAgent(t)
 				require.True(t, agent.Piggyback([][]byte{packet}, nil))
-				agent.SetDtlsHandshakeComplete(tc.isClient, tc.version)
+				agent.SetDTLSHandshakeComplete(tc.isClient, tc.version)
 
 				require.Len(t, agent.piggyback.packets, tc.wantPackets)
 			})
@@ -199,8 +199,8 @@ func TestPiggybackingStateMachine(t *testing.T) {
 
 	t.Run("A failed DTLS handshake disables piggybacking", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
-		agent.SetDtlsFailed()
-		require.Equal(t, PiggybackingStateOff, agent.piggyback.state)
+		agent.SetDTLSFailed()
+		require.Equal(t, piggybackingStateOff, agent.piggyback.state)
 
 		require.Empty(t, agent.appendPiggybackAttributes(nil))
 	})
@@ -208,13 +208,13 @@ func TestPiggybackingStateMachine(t *testing.T) {
 	t.Run("At most four packets are acked", func(t *testing.T) {
 		agent := newPiggybackAgent(t)
 		for i := range 6 {
-			agent.ReportPiggybacking(fakeDtlsPacket("in stun "+strconv.Itoa(i)), nil, rAddr)
-			agent.ReportDtlsPacket(fakeDtlsPacket("plain " + strconv.Itoa(i)))
+			agent.reportPiggybacking(fakeDtlsPacket("in stun "+strconv.Itoa(i)), nil, rAddr)
+			agent.ReportDTLSPacket(fakeDtlsPacket("plain " + strconv.Itoa(i)))
 		}
 		require.Len(t, agent.piggyback.acks, 4)
 
-		agent.SetDtlsFailed()
-		agent.ReportDtlsPacket(packet)
+		agent.SetDTLSFailed()
+		agent.ReportDTLSPacket(packet)
 		require.Len(t, agent.piggyback.acks, 4)
 	})
 
@@ -241,6 +241,6 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		message.Add(stun.AttrDtlsInStunAck, []byte{0x01, 0x02, 0x03})
 
 		agent.reportPiggybackingFromMessage(message, remote)
-		require.Equal(t, PiggybackingStateTentative, agent.piggyback.state)
+		require.Equal(t, piggybackingStateTentative, agent.piggyback.state)
 	})
 }
