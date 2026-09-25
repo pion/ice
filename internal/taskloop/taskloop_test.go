@@ -5,6 +5,7 @@ package taskloop
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,4 +103,97 @@ func TestCloseWithPreStopConcurrentWaits(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, int32(1), preStopCalls.Load())
+}
+func TestLoopErr(t *testing.T) {
+	loop := New(func() {})
+
+	if err := loop.Err(); err != nil {
+		t.Fatalf("Err() on a running loop: got %v, want nil", err)
+	}
+
+	loop.Close()
+
+	if err := loop.Err(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Err() on a closed loop: got %v, want %v", err, ErrClosed)
+	}
+
+	// Err() must agree with the Done channel, which callers select on.
+	select {
+	case <-loop.Done():
+	default:
+		t.Fatal("Done() not closed after Close()")
+	}
+
+	if err := loop.Run(context.Background(), func(context.Context) {}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Run() on a closed loop: got %v, want %v", err, ErrClosed)
+	}
+}
+
+func TestLoopConcurrentClose(t *testing.T) {
+	loop := New(func() {})
+
+	var wait sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			loop.Close()
+		}()
+	}
+	wait.Wait()
+
+	if err := loop.Err(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Err() after concurrent Close(): got %v, want %v", err, ErrClosed)
+	}
+}
+
+// Err() is called once per Conn.Read and Conn.Write, so it shows up in CPU
+// profiles of write-heavy workloads. Keep it cheap enough to inline.
+//
+// BenchmarkLoopErrSelect is the previous implementation, kept as a baseline:
+//
+//	BenchmarkLoopErr-10          1000000000    0.64 ns/op    0 B/op
+//	BenchmarkLoopErrSelect-10     557208962    4.24 ns/op    0 B/op
+func BenchmarkLoopErr(b *testing.B) {
+	loop := New(func() {})
+	defer loop.Close()
+
+	for i := 0; i < b.N; i++ {
+		if err := loop.Err(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkLoopErrSelect(b *testing.B) {
+	loop := New(func() {})
+	defer loop.Close()
+
+	errSelect := func() error {
+		select {
+		case <-loop.done:
+			return ErrClosed
+		default:
+			return nil
+		}
+	}
+
+	for i := 0; i < b.N; i++ {
+		if err := errSelect(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkLoopErrParallel(b *testing.B) {
+	loop := New(func() {})
+	defer loop.Close()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if err := loop.Err(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
