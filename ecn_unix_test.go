@@ -6,7 +6,6 @@
 package ice
 
 import (
-	"net"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ func TestECN(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, reader, "embedded UDP methods must not bypass wrappers")
 
-	sender, receiver := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+	sender, receiver := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(func(params IPFilterInfo) bool { return params.IP.IsLoopback() }), WithMulticastDNSMode(MulticastDNSModeDisabled)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	defer closePipe(t, sender, receiver)
 	require.NoError(t, receiver.SetReadDeadline(time.Now().Add(5*time.Second)))
 	local, ok := sender.agent.getSelectedPair().Local.(*CandidateHost)

@@ -92,7 +92,7 @@ func TestListenUDP(t *testing.T) {
 		require.NoError(t, agent.Close())
 	}()
 
-	_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+	_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 	require.NotEqual(t, len(localAddrs), 0, "localInterfaces found no interfaces, unable to test")
 	require.NoError(t, err)
 
@@ -2696,7 +2696,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 			require.NoError(t, a.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(a.net, a.interfaceFilter, a.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.Len(t, localIPs, 0)
 		require.NoError(t, err)
 	})
@@ -2720,7 +2720,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 			require.NoError(t, a.Close())
 		}()
 
-		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localAddrs, err := localInterfaces(a.net, a.interfaceFilter, a.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.Len(t, localAddrs, 1)
 		require.NoError(t, err)
 
@@ -2745,7 +2745,7 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localAddrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.NotEqual(t, 0, len(localAddrs))
 		require.NoError(t, err)
 
@@ -2917,13 +2917,14 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 0)
 	})
 
 	t.Run("IPFilter should exclude the IP", func(t *testing.T) {
-		agent, err := NewAgent(WithNet(nw), WithIPFilter(func(ip net.IP) (keep bool) {
+		agent, err := NewAgent(WithNet(nw), WithIPFilter(func(params IPFilterInfo) (keep bool) {
+			ip := params.IP
 			require.Equal(t, net.IP{1, 2, 3, 1}, ip)
 
 			return false
@@ -2933,7 +2934,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 0)
 	})
@@ -2949,7 +2950,7 @@ func TestVNetGatherWithInterfaceFilter(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, []NetworkType{NetworkTypeUDP4}, false)
+		_, localIPs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.hostIPFilter(), []NetworkType{NetworkTypeUDP4}, false)
 		require.NoError(t, err)
 		require.Len(t, localIPs, 1)
 	})
@@ -3588,6 +3589,7 @@ func TestTransportFilteringRelayTCPOnlyFirewallUDPRelayConfigTURNTCP(t *testing.
 		WithProxyDialer(proxy.Dialer(proxyDialer)),
 		WithMulticastDNSMode(MulticastDNSModeDisabled),
 		WithIncludeLoopback(),
+		WithIPFilter(func(params IPFilterInfo) bool { return params.CandidateType == CandidateTypeRelay }),
 	)
 	require.NoError(t, err)
 
@@ -3622,7 +3624,7 @@ func mustGatherConfigForAgent(tb testing.TB, agent *Agent, options ...GatherOpti
 	tb.Helper()
 	config := mustGatherConfig(tb, options...)
 	config.localUfrag, config.mDNSMode = agent.localUfrag, agent.mDNSMode
-	_, addrs, err := localInterfaces(agent.net, agent.interfaceFilter, agent.ipFilter, config.networkTypes, agent.includeLoopback)
+	_, addrs, err := localInterfaces(agent.net, agent.interfaceFilter, nil, config.networkTypes, agent.includeLoopback)
 	require.NoError(tb, err)
 	config.localAddrs = addrs
 
@@ -3671,4 +3673,27 @@ func TestFirstGatherSet0generation(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, remoteUfrag)
 	require.Empty(t, remotePwd)
+}
+
+func TestIPFilterCandidateType(t *testing.T) {
+	for _, allowed := range []CandidateType{CandidateTypeHost, CandidateTypeServerReflexive} {
+		t.Run(allowed.String(), func(t *testing.T) {
+			agent, err := NewAgent(
+				WithNet(newHostGatherNet(nil)), WithIncludeLoopback(),
+				WithMulticastDNSMode(MulticastDNSModeDisabled),
+				WithIPFilter(func(params IPFilterInfo) bool { return params.IP.IsLoopback() && params.CandidateType == allowed }),
+				WithAddressRewriteRules(AddressRewriteRule{External: []string{"198.51.100.1"}, AsCandidateType: CandidateTypeServerReflexive, Mode: AddressRewriteReplace}),
+			)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, agent.Close()) })
+			candidates := gatherAndCollectCandidates(t, agent,
+				WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+				WithCandidateTypes([]CandidateType{CandidateTypeHost, CandidateTypeServerReflexive}),
+			)
+			require.NotEmpty(t, candidates)
+			for _, candidate := range candidates {
+				require.Equal(t, allowed, candidate.Type())
+			}
+		})
+	}
 }

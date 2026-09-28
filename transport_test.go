@@ -676,7 +676,7 @@ func TestUDPConnReadWriteDoesNotAllocate(t *testing.T) {
 	// one candidate each and no extra keepalives. Measure between periodic
 	// consent checks, which still run every two seconds.
 	noKeepalive := time.Duration(0)
-	ca, cb := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(net.IP.IsLoopback), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
+	ca, cb := pipe(t, []AgentOption{WithIncludeLoopback(), WithIPFilter(func(params IPFilterInfo) bool { return params.IP.IsLoopback() }), WithMulticastDNSMode(MulticastDNSModeDisabled), WithKeepaliveInterval(noKeepalive)}, WithNetworkTypes([]NetworkType{NetworkTypeUDP4}))
 	defer closePipe(t, ca, cb)
 
 	packet := make([]byte, 1200)

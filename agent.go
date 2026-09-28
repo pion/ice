@@ -157,7 +157,7 @@ type Agent struct {
 	udpMuxSrflx UniversalUDPMux
 
 	interfaceFilter func(string) (keep bool)
-	ipFilter        func(net.IP) (keep bool)
+	ipFilter        func(IPFilterInfo) (keep bool)
 	remoteIPFilter  func(net.IP) (keep bool)
 	includeLoopback bool
 
@@ -278,7 +278,7 @@ func NewAgent(opts ...AgentOption) (*Agent, error) {
 	if agent.mDNSMode != MulticastDNSModeDisabled {
 		networkTypes := configuredNetworkTypes(nil)
 		interfaces, localAddrs, interfaceErr := localInterfaces(
-			agent.net, agent.interfaceFilter, agent.ipFilter, networkTypes, agent.includeLoopback,
+			agent.net, agent.interfaceFilter, agent.hostIPFilter(), networkTypes, agent.includeLoopback,
 		)
 		if interfaceErr != nil {
 			return nil, fmt.Errorf("error getting local interfaces: %w", interfaceErr)
@@ -998,7 +998,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 	_, localIPs, err := localInterfaces(
 		a.net,
 		a.interfaceFilter,
-		a.ipFilter,
+		a.hostIPFilter(),
 		[]NetworkType{remoteCandidate.NetworkType()},
 		a.includeLoopback,
 	)
@@ -2369,4 +2369,25 @@ func (a *Agent) findBestCandidatePair() *CandidatePair {
 	}
 
 	return best
+}
+
+func (a *Agent) hostIPFilter() func(net.IP) bool {
+	return func(ip net.IP) bool {
+		return a.ipFilter == nil || a.ipFilter(IPFilterInfo{IP: ip, CandidateType: CandidateTypeHost})
+	}
+}
+
+func (a *Agent) filteredLocalAddrs(addrs []ifaceAddr, candidateType CandidateType) []ifaceAddr {
+	if a.ipFilter == nil {
+		return addrs
+	}
+
+	filtered := make([]ifaceAddr, 0, len(addrs))
+	for _, addr := range addrs {
+		if a.ipFilter(IPFilterInfo{IP: addr.addr.AsSlice(), CandidateType: candidateType}) {
+			filtered = append(filtered, addr)
+		}
+	}
+
+	return filtered
 }

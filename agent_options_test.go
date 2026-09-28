@@ -271,8 +271,8 @@ func TestWithSTUNGatherTimeout(t *testing.T) {
 }
 
 func TestWithIPFilterOption(t *testing.T) {
-	filter := func(ip net.IP) bool {
-		return ip.IsLoopback()
+	filter := func(params IPFilterInfo) bool {
+		return params.IP.IsLoopback()
 	}
 
 	agent, err := NewAgent(WithIPFilter(filter))
@@ -280,8 +280,8 @@ func TestWithIPFilterOption(t *testing.T) {
 	defer agent.Close() //nolint:errcheck
 
 	require.NotNil(t, agent.ipFilter)
-	assert.True(t, agent.ipFilter(net.IPv4(127, 0, 0, 1)))
-	assert.False(t, agent.ipFilter(net.IPv4(192, 0, 2, 1)))
+	assert.True(t, agent.ipFilter(IPFilterInfo{IP: net.IPv4(127, 0, 0, 1), CandidateType: CandidateTypeHost}))
+	assert.False(t, agent.ipFilter(IPFilterInfo{IP: net.IPv4(192, 0, 2, 1), CandidateType: CandidateTypeHost}))
 }
 
 func TestWithRemoteIPFilterOption(t *testing.T) {

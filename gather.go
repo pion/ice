@@ -318,7 +318,7 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 			return
 		}
 
-		interfaces, localAddrs, interfaceErr := localInterfaces(a.net, a.interfaceFilter, a.ipFilter, config.networkTypes, a.includeLoopback)
+		interfaces, localAddrs, interfaceErr := localInterfaces(a.net, a.interfaceFilter, nil, config.networkTypes, a.includeLoopback)
 		if interfaceErr != nil {
 			gatherErr = fmt.Errorf("error getting local interfaces: %w", interfaceErr)
 
@@ -333,7 +333,14 @@ func (a *Agent) Gather(opts ...GatherOption) error {
 		} else if a.localUfrag != config.localUfrag || a.localPwd != config.localPwd {
 			a.startGatherGeneration(config)
 		}
-		config.mDNSMode = a.updateMulticastDNS(config.networkTypes, interfaces, localAddrs)
+		hostAddrs := a.filteredLocalAddrs(localAddrs, CandidateTypeHost)
+		hostInterfaces := interfaces[:0]
+		for _, iface := range interfaces {
+			if slices.ContainsFunc(hostAddrs, func(addr ifaceAddr) bool { return addr.iface == iface.Name }) {
+				hostInterfaces = append(hostInterfaces, iface)
+			}
+		}
+		config.mDNSMode = a.updateMulticastDNS(config.networkTypes, hostInterfaces, hostAddrs)
 
 		a.networkTypes = config.networkTypes
 		if !a.relayAcceptanceMinWaitExplicit {
@@ -536,7 +543,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig,
 		delete(networks, udp)
 	}
 
-	for _, info := range config.localAddrs {
+	for _, info := range a.filteredLocalAddrs(config.localAddrs, CandidateTypeHost) {
 		addr := info.addr
 		ifaceName := info.iface
 		mappedAddrs, ok := a.rewriteCandidateAddresses(CandidateTypeHost, addr.String(), addr.String(), ifaceName)
@@ -746,6 +753,10 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 			continue
 		}
 
+		if a.ipFilter != nil && !a.ipFilter(IPFilterInfo{IP: udpAddr.IP, CandidateType: CandidateTypeHost}) {
+			continue
+		}
+
 		candidateIPs, ok := a.rewriteCandidateAddresses(CandidateTypeHost, udpAddr.IP.String(), udpAddr.IP.String(), "")
 		if !ok {
 			continue
@@ -824,8 +835,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 		}
 
 		network := networkType.String()
-		wg.Add(1)
-		go func() {
+		gatherForAddr := func(bindAddr *net.UDPAddr) {
 			defer wg.Done()
 
 			conn, err := listenUDPInPortRange(
@@ -834,7 +844,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 				int(a.portMax),
 				int(a.portMin),
 				network,
-				&net.UDPAddr{IP: nil, Port: 0},
+				bindAddr,
 			)
 			if err != nil {
 				a.log.Warnf("Failed to listen %s: %v", network, err)
@@ -918,7 +928,21 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 					a.cleanupCandidate(candidate, currentConn, "failed")
 				}
 			}
-		}()
+		}
+
+		if a.ipFilter == nil && a.interfaceFilter == nil {
+			wg.Add(1)
+			go gatherForAddr(&net.UDPAddr{})
+
+			continue
+		}
+		for _, info := range a.filteredLocalAddrs(config.localAddrs, CandidateTypeServerReflexive) {
+			if networkType.IsIPv4() != info.addr.Is4() {
+				continue
+			}
+			wg.Add(1)
+			go gatherForAddr(&net.UDPAddr{IP: info.addr.AsSlice(), Zone: info.addr.Zone()})
+		}
 	}
 }
 
@@ -948,6 +972,9 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 				if !ok {
 					a.log.Warn("Failed to cast udpMuxSrflx listen address to UDPAddr")
 
+					continue
+				}
+				if a.ipFilter != nil && !a.ipFilter(IPFilterInfo{IP: udpAddr.IP, CandidateType: CandidateTypeServerReflexive}) {
 					continue
 				}
 				wg.Add(1)
@@ -1034,7 +1061,7 @@ func getXORMappedAddr(
 
 //nolint:cyclop,gocognit
 func (a *Agent) gatherCandidatesSrflx(ctx context.Context, config *gatherConfig, generation uint64) {
-	urls, localAddrs := config.urls, config.localAddrs
+	urls, localAddrs := config.urls, a.filteredLocalAddrs(config.localAddrs, CandidateTypeServerReflexive)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -1166,7 +1193,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig,
 	defer wg.Wait()
 
 	useFilteredLocalAddrs := a.interfaceFilter != nil || a.ipFilter != nil
-	localAddrs := config.localAddrs
+	localAddrs := a.filteredLocalAddrs(config.localAddrs, CandidateTypeRelay)
 	if useFilteredLocalAddrs && len(localAddrs) == 0 {
 		return
 	}
