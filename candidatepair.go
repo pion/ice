@@ -33,6 +33,12 @@ type CandidatePair struct {
 	nominated                bool
 	nominateOnBindingSuccess bool
 
+	// nominationAbandonedSeq is the seq at which Agent.failAsymmetricNominationResponse
+	// failed this pair over, 0 if never abandoned. Responses to requests at or
+	// before this seq are discarded as stale; requests sent afterward, however the
+	// pair is later revived, are unaffected.
+	nominationAbandonedSeq uint64
+
 	// stats
 	currentRoundTripTime int64 // in ns
 	totalRoundTripTime   int64 // in ns

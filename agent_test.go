@@ -4505,8 +4505,8 @@ func TestConsentRevocationIsPairScoped(t *testing.T) {
 		agent.setSelectedPair(selected)
 		agent.setRole(true)
 
-		agent.sendBindingRequest(stun.MustBuild(stun.BindingRequest, stun.TransactionID), local, remote)
-		agent.sendBindingRequest(request, other, remote)
+		agent.sendBindingRequest(stun.MustBuild(stun.BindingRequest, stun.TransactionID), local, remote, false)
+		agent.sendBindingRequest(request, other, remote, false)
 
 		// Even a matching transaction from the right remote must arrive on the right local socket.
 		agent.handleInbound(response, local, remote.addrPort()) //nolint:contextcheck
@@ -4534,7 +4534,7 @@ func TestConsentRevocationIsPairScoped(t *testing.T) {
 		require.Equal(t, stun.CodeForbidden, code.Code)
 		require.Equal(t, incoming.TransactionID, forbidden.TransactionID)
 		require.NoError(t, stun.NewShortTermIntegrity(agent.localPwd).Check(forbidden))
-		agent.sendBindingRequest(request, other, remote)
+		agent.sendBindingRequest(request, other, remote, false)
 		agent.setSelectedPair(backup)
 		require.Equal(t, CandidatePairStateFailed, backup.state)
 		require.Len(t, agent.pendingBindingRequests, 1)
@@ -4563,7 +4563,7 @@ func TestConsentExpirySurvivesStateChanges(t *testing.T) {
 				pair.state = CandidatePairStateSucceeded
 				pair.lastResponseReceivedAt.Store(time.Now().Add(-31 * time.Second))
 				request := stun.MustBuild(stun.BindingRequest, stun.TransactionID, AttrControlling(agent.tieBreaker))
-				agent.sendBindingRequest(request, local, remote)
+				agent.sendBindingRequest(request, local, remote, false)
 				conflict := stun.MustBuild(request, stun.BindingError, stun.ErrorCodeAttribute{Code: stun.CodeRoleConflict},
 					stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 				require.True(t, agent.handleInboundErrorResponse(remote, local, remote.addrPort(), conflict))
@@ -4574,7 +4574,7 @@ func TestConsentExpirySurvivesStateChanges(t *testing.T) {
 			}
 			require.Equal(t, CandidatePairStateWaiting, pair.state)
 			request := stun.MustBuild(stun.BindingRequest, stun.TransactionID)
-			agent.sendBindingRequest(request, local, remote)
+			agent.sendBindingRequest(request, local, remote, false)
 			success := stun.MustBuild(request, stun.BindingSuccess,
 				stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 			require.False(t, agent.handleInboundResponse(remote, local, remote.addrPort(), success))

@@ -32,14 +32,22 @@ import (
 )
 
 type bindingRequest struct {
-	timestamp       time.Time
-	transactionID   [stun.TransactionIDSize]byte
-	destination     netip.AddrPort
-	source          netip.AddrPort
-	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
-	isControlling   bool        // Role advertised in this request.
-	isUseCandidate  bool
-	nominationValue *uint32 // Tracks nomination value for renomination requests
+	timestamp     time.Time
+	transactionID [stun.TransactionIDSize]byte
+	destination   netip.AddrPort
+	source        netip.AddrPort
+	networkType   NetworkType // Transport the request was sent over; destination alone omits it.
+	isControlling bool        // Role advertised in this request.
+	// seq orders requests for the asymmetric-nomination fallback. timestamp, used
+	// for RTT and expiry, can tie between requests; seq never does. 0 means unset.
+	seq            uint64
+	isUseCandidate bool
+	// isPrimaryNomination marks a request sent by nominatePair, as opposed to a
+	// renomination sent via sendNominationRequest. pendingRequestMatchesPair's
+	// address match alone can't rule out a renomination, since distinct Candidate
+	// objects (a host and a server-reflexive candidate, say) can share an IP:port.
+	isPrimaryNomination bool
+	nominationValue     *uint32 // Tracks nomination value for renomination requests
 }
 
 // Agent represents the ICE agent.
@@ -133,6 +141,10 @@ type Agent struct {
 
 	// LRU of outbound Binding request Transaction IDs
 	pendingBindingRequests []bindingRequest
+
+	// bindingRequestSeq is the seq assigned to the most recently sent binding
+	// request, 0 if none yet. Only ever accessed on the agent's task loop.
+	bindingRequestSeq uint64
 
 	// Address rewrite (1:1) IP mapping
 	addressRewriteMapper *addressRewriteMapper
@@ -671,9 +683,16 @@ func (a *Agent) getBestAvailableCandidatePair() *CandidatePair {
 }
 
 func (a *Agent) getBestValidCandidatePair() *CandidatePair {
+	return a.bestValidCandidatePairExcluding(nil)
+}
+
+// bestValidCandidatePairExcluding returns the highest-priority Succeeded pair other
+// than excluded, using the same ordering and consent-expiry handling as
+// getBestValidCandidatePair. excluded may be nil.
+func (a *Agent) bestValidCandidatePairExcluding(excluded *CandidatePair) *CandidatePair {
 	var best *CandidatePair
 	for _, pair := range a.checklist {
-		if pair.state != CandidatePairStateSucceeded {
+		if pair == excluded || pair.state != CandidatePairStateSucceeded {
 			continue
 		}
 		if a.consentExpired(pair) {
@@ -1099,6 +1118,7 @@ func replacePairRemote(pair *CandidatePair, remote Candidate) *CandidatePair {
 	replacement.state = pair.state
 	replacement.nominated = pair.nominated
 	replacement.nominateOnBindingSuccess = pair.nominateOnBindingSuccess
+	replacement.nominationAbandonedSeq = pair.nominationAbandonedSeq
 	replacement.consentRevoked = pair.consentRevoked
 	replacement.consentStartedAt = pair.consentStartedAt
 
@@ -1619,7 +1639,11 @@ func (a *Agent) findRemoteCandidateByIP(networkType NetworkType, addr netip.Addr
 	return nil
 }
 
-func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
+// sendBindingRequest records and sends msg, returning the assigned seq, or 0 if
+// nothing was recorded (a consent-revoked pair). primaryNomination should be true
+// only when called from controllingSelector.nominatePair; see
+// bindingRequest.isPrimaryNomination.
+func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate, primaryNomination bool) uint64 {
 	a.log.Tracef("Ping STUN from %s to %s", local, remote)
 
 	// Extract nomination value if present
@@ -1631,18 +1655,22 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 
 	pair := a.findPair(local, remote)
 	if pair != nil && pair.consentRevoked {
-		return
+		return 0
 	}
 	a.invalidatePendingBindingRequests(time.Now())
+	a.bindingRequestSeq++
+	seq := a.bindingRequestSeq
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
-		timestamp:       time.Now(),
-		transactionID:   msg.TransactionID,
-		destination:     remote.addrPort(),
-		source:          local.addrPort(),
-		networkType:     remote.NetworkType(),
-		isControlling:   msg.Contains(stun.AttrICEControlling),
-		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
-		nominationValue: nominationValue,
+		timestamp:           time.Now(),
+		seq:                 seq,
+		transactionID:       msg.TransactionID,
+		destination:         remote.addrPort(),
+		source:              local.addrPort(),
+		networkType:         remote.NetworkType(),
+		isControlling:       msg.Contains(stun.AttrICEControlling),
+		isUseCandidate:      msg.Contains(stun.AttrUseCandidate),
+		isPrimaryNomination: primaryNomination,
+		nominationValue:     nominationValue,
 	})
 
 	if pair != nil {
@@ -1651,6 +1679,8 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 		a.log.Warnf("Failed to find pair for add binding request from %s to %s", local, remote)
 	}
 	a.sendSTUN(msg, local, remote)
+
+	return seq
 }
 
 func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
@@ -1721,6 +1751,12 @@ func (a *Agent) handleInboundBindingResponse(
 				a.log.Debugf("Discard response: expected (%s -> %s), actual (%s -> %s)",
 					validBindingRequest.source, validBindingRequest.destination, local.addrPort(), remote)
 
+				// RFC 8445 Section 7.2.5.2.1: an asymmetric response fails the check
+				// it answers. The pending entry is left in place, in case a correct
+				// response for it is still in flight; see
+				// failAsymmetricNominationResponse for the nomination case.
+				a.failAsymmetricNominationResponse(&validBindingRequest)
+
 				return false, nil, 0
 			}
 			a.pendingBindingRequests = append(a.pendingBindingRequests[:i], a.pendingBindingRequests[i+1:]...)
@@ -1730,6 +1766,76 @@ func (a *Agent) handleInboundBindingResponse(
 	}
 
 	return false, nil, 0
+}
+
+// failAsymmetricNominationResponse implements RFC 8445 Section 7.2.5.2.1 for the
+// nomination case: an asymmetric response to the current nomination fails that pair
+// over, but only when another nominatable pair exists (hasNominatableAlternative),
+// so a lone pair (e.g. against an ICE-lite peer) is never stranded.
+// pendingRequestIsCurrentNomination decides whether the response actually answers
+// the current nomination.
+
+// pendingRequestMatchesPair reports whether pendingRequest was sent for pair, by its
+// own recorded source, destination and network type, not by the local candidate a
+// response to it happened to arrive on.
+func pendingRequestMatchesPair(pendingRequest *bindingRequest, pair *CandidatePair) bool {
+	return pendingRequest.networkType == pair.Remote.NetworkType() &&
+		addrPortEqual(pendingRequest.source, pair.Local.addrPort()) &&
+		addrPortEqual(pendingRequest.destination, pair.Remote.addrPort())
+}
+
+// pendingRequestIsCurrentNomination reports whether pendingRequest answers cs's own,
+// current primary nomination, returning the pair it nominates if so, or nil if not.
+// It requires a primary nomination (see bindingRequest.isPrimaryNomination) with a
+// seq at or after nominatedSeq, matching cs.nominatedPair by address. A zero
+// nominatedSeq means the current episode has no request to compare against yet.
+func pendingRequestIsCurrentNomination(pendingRequest *bindingRequest, cs *controllingSelector) *CandidatePair {
+	if !pendingRequest.isPrimaryNomination || cs.nominatedSeq == 0 || pendingRequest.seq < cs.nominatedSeq {
+		return nil
+	}
+
+	abandoned := cs.nominatedPair
+	if abandoned == nil || !pendingRequestMatchesPair(pendingRequest, abandoned) {
+		return nil
+	}
+
+	return abandoned
+}
+
+func (a *Agent) failAsymmetricNominationResponse(pendingRequest *bindingRequest) {
+	if !pendingRequest.isUseCandidate || a.getSelectedPair() != nil {
+		return
+	}
+
+	var cs *controllingSelector
+	switch s := a.getSelector().(type) {
+	case *controllingSelector:
+		cs = s
+	case *liteSelector:
+		cs, _ = s.pairCandidateSelector.(*controllingSelector)
+	}
+
+	if cs == nil {
+		return
+	}
+
+	abandoned := pendingRequestIsCurrentNomination(pendingRequest, cs)
+	if abandoned == nil {
+		return
+	}
+
+	if !cs.hasNominatableAlternative(abandoned) {
+		a.log.Debugf("Nomination of %s got an asymmetric response but no other valid pair exists, retrying", abandoned)
+
+		return
+	}
+
+	a.log.Debugf("Nomination of %s got an asymmetric response, marking it failed", abandoned)
+	abandoned.state = CandidatePairStateFailed
+	abandoned.nominated = false
+	abandoned.nominationAbandonedSeq = a.bindingRequestSeq
+	cs.nominatedPair = nil
+	cs.nominatedSeq = 0
 }
 
 func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, remoteTieBreaker *AttrControl) {
@@ -2239,7 +2345,7 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 		return fmt.Errorf("failed to build nomination request: %w", err)
 	}
 
-	a.sendBindingRequest(msg, pair.Local, pair.Remote)
+	a.sendBindingRequest(msg, pair.Local, pair.Remote, false)
 
 	return nil
 }

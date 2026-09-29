@@ -36,7 +36,12 @@ type controllingSelector struct {
 	startTime     time.Time
 	agent         *Agent
 	nominatedPair *CandidatePair
-	log           logging.LeveledLogger
+	// nominatedSeq is the seq of the first binding request sent for the current
+	// nomination episode of nominatedPair, 0 if none has been sent yet. It resets
+	// to 0 whenever nominatedPair changes or clears; see
+	// Agent.failAsymmetricNominationResponse.
+	nominatedSeq uint64
+	log          logging.LeveledLogger
 
 	pendingNomination atomic.Pointer[pendingNomination]
 	lastNomination    *uint32 // Highest nomination value applied from a success response.
@@ -45,6 +50,7 @@ type controllingSelector struct {
 func (s *controllingSelector) Start() {
 	s.startTime = time.Now()
 	s.nominatedPair = nil
+	s.nominatedSeq = 0
 	s.lastNomination = nil
 }
 
@@ -69,6 +75,16 @@ func (s *controllingSelector) isNominatable(c Candidate) bool {
 	return false
 }
 
+// hasNominatableAlternative reports whether ContactCandidates would nominate some
+// pair other than excluded right now. It mirrors ContactCandidates' own logic:
+// only the single best valid pair is ever a candidate, so a lower-priority pair
+// being nominatable does not count while a higher-priority one is still gated.
+func (s *controllingSelector) hasNominatableAlternative(excluded *CandidatePair) bool {
+	best := s.agent.bestValidCandidatePairExcluding(excluded)
+
+	return best != nil && s.isNominatable(best.Local) && s.isNominatable(best.Remote)
+}
+
 func (s *controllingSelector) ContactCandidates() {
 	switch {
 	case s.agent.getSelectedPair() != nil:
@@ -91,13 +107,19 @@ func (s *controllingSelector) ContactCandidates() {
 		if p != nil && s.isNominatable(p.Local) && s.isNominatable(p.Remote) {
 			s.log.Tracef("Nominatable pair found, nominating (%s, %s)", p.Local, p.Remote)
 			p.nominated = true
-			s.nominatedPair = p
-			s.nominatePair(p)
+			s.nominate(p)
 
 			return
 		}
 		s.agent.pingAllCandidates()
 	}
+}
+
+// nominate starts a new nomination episode for pair.
+func (s *controllingSelector) nominate(pair *CandidatePair) {
+	s.nominatedPair = pair
+	s.nominatedSeq = 0
+	s.nominatePair(pair)
 }
 
 func (s *controllingSelector) nominatePair(pair *CandidatePair) {
@@ -125,7 +147,12 @@ func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 	}
 
 	s.log.Tracef("Ping STUN (nominate candidate pair) from %s to %s", pair.Local, pair.Remote)
-	s.agent.sendBindingRequest(msg, pair.Local, pair.Remote)
+	seq := s.agent.sendBindingRequest(msg, pair.Local, pair.Remote, true)
+	// Pin nominatedSeq to this episode's first successful send; later retries
+	// don't move it.
+	if s.nominatedSeq == 0 && seq != 0 {
+		s.nominatedSeq = seq
+	}
 }
 
 func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local, remote Candidate) { //nolint:cyclop
@@ -141,6 +168,15 @@ func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local,
 	}
 	pair.UpdateRequestReceived()
 
+	// RFC 8445 Section 7.3.1.4: a request for a Failed pair re-arms it and
+	// triggers a new check, instead of leaving it Failed forever. Only while no
+	// pair is selected yet, so a stale pair is never resurrected once connected.
+	if pair.state == CandidatePairStateFailed && s.agent.getSelectedPair() == nil {
+		pair.state = CandidatePairStateWaiting
+		pair.bindingRequestCount = 0
+		s.PingCandidate(local, remote)
+	}
+
 	if pair.state == CandidatePairStateSucceeded && s.nominatedPair == nil && s.agent.getSelectedPair() == nil {
 		bestPair := s.agent.getBestAvailableCandidatePair()
 		if bestPair == nil {
@@ -151,8 +187,7 @@ func (s *controllingSelector) HandleBindingRequest(message *stun.Message, local,
 				pair.Local,
 				pair.Remote,
 			)
-			s.nominatedPair = pair
-			s.nominatePair(pair)
+			s.nominate(pair)
 		}
 	}
 
@@ -196,6 +231,23 @@ func (s *controllingSelector) HandleSuccessResponse(
 	if pair == nil {
 		// This shouldn't happen
 		s.log.Error("Success response from invalid candidate pair")
+
+		return
+	}
+
+	// A response at or before the pair's abandonment seq is stale and discarded;
+	// anything sent later always has a strictly greater seq and is accepted.
+	//
+	// Renomination requests are excluded. On v4/v4.4.2, where RenominateCandidate
+	// can claim a seq off the agent's task loop, this closes a real race: a
+	// renomination can claim a seq and be paused before recording its own pending
+	// entry, landing at or below a cutoff set in that window even though it isn't
+	// actually stale. main's renomination path is always sent from this same task
+	// loop, so that race can't happen here; excluding it anyway keeps the branches
+	// consistent.
+	isRenomination := pendingRequest.isUseCandidate && !pendingRequest.isPrimaryNomination
+	if !isRenomination && pair.nominationAbandonedSeq != 0 && pendingRequest.seq <= pair.nominationAbandonedSeq {
+		s.log.Debugf("Discarding stale success response for abandoned pair %s", pair)
 
 		return
 	}
@@ -244,7 +296,7 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 		return
 	}
 
-	s.agent.sendBindingRequest(msg, local, remote)
+	s.agent.sendBindingRequest(msg, local, remote, false)
 }
 
 // checkForAutomaticRenomination evaluates if automatic renomination should occur.
@@ -401,7 +453,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 		return
 	}
 
-	s.agent.sendBindingRequest(msg, local, remote)
+	s.agent.sendBindingRequest(msg, local, remote, false)
 }
 
 func (s *controlledSelector) HandleSuccessResponse(
