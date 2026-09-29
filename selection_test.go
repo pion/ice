@@ -445,7 +445,7 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		t.Helper()
 		req, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag), AttrControlling(agent.tieBreaker), PriorityAttr(local.Priority()), stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
-		agent.sendBindingRequest(req, local, remote)
+		agent.sendBindingRequest(req, local, remote, false)
 
 		resp, err := stun.Build(req, stun.BindingSuccess, stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
@@ -1349,7 +1349,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.NoError(t, err)
 
 		// Simulate sending the binding request (adds to pendingBindingRequests)
-		agent.sendBindingRequest(msg, local2, remote)
+		agent.sendBindingRequest(msg, local2, remote, false)
 
 		// Verify the nomination value was stored in the pending request
 		require.Len(t, agent.pendingBindingRequests, 1)
@@ -1413,7 +1413,7 @@ func TestControllingSideRenomination(t *testing.T) {
 		require.NoError(t, err)
 
 		// Simulate sending the binding request
-		agent.sendBindingRequest(msg, local2, remote)
+		agent.sendBindingRequest(msg, local2, remote, false)
 
 		// Verify no nomination value was stored
 		require.Len(t, agent.pendingBindingRequests, 1)
