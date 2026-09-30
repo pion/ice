@@ -485,7 +485,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			pair.consentStartedAt = time.Now()
 			agent.revokeConsent(pair)
 
-			srflx, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{Network: "udp", Address: "172.17.0.3", Port: 999, Component: 1, RelAddr: "0.0.0.0", RelPort: 0})
+			srflx, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{Network: "udp", Address: "172.17.0.3", Port: 999, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "0.0.0.0"}, {Key: "rport", Value: "0"}}})
 			require.NoError(t, err)
 			agent.addRemoteCandidate(srflx) // nolint:contextcheck
 
@@ -541,7 +541,7 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 			local.addRemoteCandidateCache(prflx, remote)
 			oldPriority := pair.priority()
 
-			relay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "172.17.0.3", Port: 999, Component: 1, RelAddr: "0.0.0.0", RelPort: 0})
+			relay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "172.17.0.3", Port: 999, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "0.0.0.0"}, {Key: "rport", Value: "0"}}})
 			require.NoError(t, err)
 			agent.addRemoteCandidate(relay) // nolint:contextcheck
 
@@ -1371,15 +1371,15 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 	hostLocal, err := NewCandidateHost(hostConfig)
 	require.NoError(t, err)
 
-	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 2340, Component: 1, RelAddr: "4.3.2.1", RelPort: 43210}
+	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 2340, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43210"}}}
 	relayRemote, err := NewCandidateRelay(relayConfig)
 	require.NoError(t, err)
 
-	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43212"}}}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
-	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, RelAddr: "4.3.2.1", RelPort: 43211}
+	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43211"}}}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	require.NoError(t, err)
 
@@ -1471,7 +1471,7 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 	hostLocal, err := NewCandidateHost(hostConfig)
 	require.NoError(t, err)
 
-	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43212"}}}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
@@ -1528,7 +1528,7 @@ func TestLocalCandidateStats(t *testing.T) { //nolint:cyclop
 	hostLocal, err := NewCandidateHost(hostConfig)
 	require.NoError(t, err)
 
-	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "192.168.1.1", Port: 19217, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "192.168.1.1", Port: 19217, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43212"}}}
 	srflxLocal, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
@@ -1572,15 +1572,15 @@ func TestRemoteCandidateStats(t *testing.T) { //nolint:cyclop
 		require.NoError(t, agent.Close())
 	}()
 
-	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 12340, Component: 1, RelAddr: "4.3.2.1", RelPort: 43210}
+	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 12340, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43210"}}}
 	relayRemote, err := NewCandidateRelay(relayConfig)
 	require.NoError(t, err)
 
-	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43212"}}}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
-	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, RelAddr: "4.3.2.1", RelPort: 43211}
+	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43211"}}}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	require.NoError(t, err)
 
@@ -3131,10 +3131,10 @@ func TestAutomaticRenominationRelayToDirect(t *testing.T) {
 	defer agent.Close() //nolint:errcheck
 
 	// Create relay pair
-	localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
+	localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.1"}, {Key: "rport", Value: "10000"}}})
 	require.NoError(t, err)
 
-	remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
+	remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.2"}, {Key: "rport", Value: "20000"}}})
 	require.NoError(t, err)
 
 	relayPair := newCandidatePair(localRelay, remoteRelay, true)
@@ -3213,7 +3213,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		cand, err := NewCandidateRelay(&CandidateRelayConfig{Network: udp, Address: "198.51.100.2", Port: 5000, Component: ComponentRTP, RelAddr: "192.0.2.10", RelPort: 4000})
+		cand, err := NewCandidateRelay(&CandidateRelayConfig{Network: udp, Address: "198.51.100.2", Port: 5000, Component: ComponentRTP, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.0.2.10"}, {Key: "rport", Value: "4000"}}})
 		require.NoError(t, err)
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
@@ -3272,7 +3272,7 @@ func TestAddRemoteCandidateIndependentFromTURNTransportSelection(t *testing.T) {
 			require.NoError(t, agent.Close())
 		}()
 
-		cand, err := NewCandidateRelay(&CandidateRelayConfig{Network: udp, Address: "198.51.100.3", Port: 5001, Component: ComponentRTP, RelAddr: "192.0.2.11", RelPort: 4001})
+		cand, err := NewCandidateRelay(&CandidateRelayConfig{Network: udp, Address: "198.51.100.3", Port: 5001, Component: ComponentRTP, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.0.2.11"}, {Key: "rport", Value: "4001"}}})
 		require.NoError(t, err)
 
 		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
@@ -4020,11 +4020,13 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 				require.ElementsMatch(t, testCase.expected, addresses(candidates, CandidateTypeServerReflexive))
 				for _, candidate := range candidates {
 					require.Equal(t, CandidateTypeServerReflexive, candidate.Type())
-					related := candidate.RelatedAddress()
-					require.NotNil(t, related)
-					require.NotEmpty(t, related.Address)
+					related, ok := candidate.GetExtension("raddr")
+					require.True(t, ok)
+					require.NotEmpty(t, related.Value)
 					require.Positive(t, candidate.Port())
-					require.Equal(t, candidate.Port(), related.Port)
+					port, ok := candidate.GetExtension("rport")
+					require.True(t, ok)
+					require.Equal(t, strconv.Itoa(candidate.Port()), port.Value)
 				}
 			})
 		}
@@ -4383,7 +4385,7 @@ func newHostRemote(t *testing.T) *CandidateHost {
 func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
 	t.Helper()
 
-	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, RelAddr: "4.3.2.1", RelPort: 43211}
+	prflxConfig := &CandidatePeerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19217, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43211"}}}
 	prflxRemote, err := NewCandidatePeerReflexive(prflxConfig)
 	require.NoError(t, err)
 
@@ -4393,7 +4395,7 @@ func newPrflxRemote(t *testing.T) *CandidatePeerReflexive {
 func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
 	t.Helper()
 
-	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, RelAddr: "4.3.2.1", RelPort: 43212}
+	srflxConfig := &CandidateServerReflexiveConfig{Network: "udp", Address: "10.10.10.2", Port: 19218, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43212"}}}
 	srflxRemote, err := NewCandidateServerReflexive(srflxConfig)
 	require.NoError(t, err)
 
@@ -4403,7 +4405,7 @@ func newSrflxRemote(t *testing.T) *CandidateServerReflexive {
 func newRelayRemote(t *testing.T) *CandidateRelay {
 	t.Helper()
 
-	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 12340, Component: 1, RelAddr: "4.3.2.1", RelPort: 43210}
+	relayConfig := &CandidateRelayConfig{Network: "udp", Address: "1.2.3.4", Port: 12340, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "4.3.2.1"}, {Key: "rport", Value: "43210"}}}
 	relayRemote, err := NewCandidateRelay(relayConfig)
 	require.NoError(t, err)
 

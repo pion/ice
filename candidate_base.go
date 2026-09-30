@@ -30,11 +30,9 @@ type candidateBase struct {
 	networkType   NetworkType
 	candidateType CandidateType
 
-	component      uint16
-	address        string
-	port           int
-	relatedAddress *CandidateRelatedAddress
-	tcpType        TCPType
+	component uint16
+	address   string
+	port      int
 
 	resolvedAddr     net.Addr
 	resolvedAddrPort netip.AddrPort
@@ -204,7 +202,7 @@ func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
 		directionPref := func() uint16 {
 			switch c.Type() {
 			case CandidateTypeHost, CandidateTypeRelay:
-				switch c.tcpType {
+				switch c.TCPType() {
 				case TCPTypeActive:
 					return 6
 				case TCPTypePassive:
@@ -215,7 +213,7 @@ func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
 					return 0
 				}
 			case CandidateTypePeerReflexive, CandidateTypeServerReflexive:
-				switch c.tcpType {
+				switch c.TCPType() {
 				case TCPTypeSimultaneousOpen:
 					return 6
 				case TCPTypeActive:
@@ -238,13 +236,10 @@ func (c *candidateBase) LocalPreference() uint16 { //nolint:cyclop
 	return defaultLocalPreference
 }
 
-// RelatedAddress returns *CandidateRelatedAddress.
-func (c *candidateBase) RelatedAddress() *CandidateRelatedAddress {
-	return c.relatedAddress
-}
-
 func (c *candidateBase) TCPType() TCPType {
-	return c.tcpType
+	extension, _ := c.GetExtension("tcptype")
+
+	return NewTCPType(extension.Value)
 }
 
 // start runs the candidate using the provided connection.
@@ -555,8 +550,7 @@ func (c *candidateBase) transportAddressEqual(other Candidate) bool {
 // Equal is used to compare two candidateBases.
 func (c *candidateBase) Equal(other Candidate) bool {
 	return c.transportAddressEqual(other) &&
-		c.Type() == other.Type() &&
-		c.RelatedAddress().Equal(other.RelatedAddress())
+		c.Type() == other.Type()
 }
 
 // DeepEqual is same as Equal but also compares the extensions.
@@ -567,11 +561,11 @@ func (c *candidateBase) DeepEqual(other Candidate) bool {
 // String makes the candidateBase printable.
 func (c *candidateBase) String() string {
 	return fmt.Sprintf(
-		"%s %s %s%s (resolved: %v)",
+		"%s %s %s [%s] (resolved: %v)",
 		c.NetworkType(),
 		c.Type(),
 		net.JoinHostPort(c.Address(), strconv.Itoa(c.Port())),
-		c.relatedAddress,
+		c.marshalExtensions(),
 		c.resolvedAddr,
 	)
 }
@@ -704,13 +698,6 @@ func (c *candidateBase) marshalAddress(address string) string {
 		c.Port(),
 		c.Type())
 
-	if r := c.RelatedAddress(); r != nil && r.Address != "" && r.Port != 0 {
-		val = fmt.Sprintf("%s raddr %s rport %d",
-			val,
-			r.Address,
-			r.Port)
-	}
-
 	extensions := c.marshalExtensions()
 
 	if extensions != "" {
@@ -741,66 +728,31 @@ type CandidateExtension struct {
 }
 
 func (c *candidateBase) Extensions() []CandidateExtension {
-	tcpType := c.TCPType()
-	hasTCPType := 0
-	if tcpType != TCPTypeUnspecified {
-		hasTCPType = 1
-	}
-
-	extensions := make([]CandidateExtension, len(c.extensions)+hasTCPType)
-	// We store the TCPType in c.tcpType, but we need to return it as an extension.
-	if hasTCPType == 1 {
-		extensions[0] = CandidateExtension{
-			Key:   "tcptype",
-			Value: tcpType.String(),
-		}
-	}
-
-	copy(extensions[hasTCPType:], c.extensions)
-
-	return extensions
+	return append([]CandidateExtension{}, c.extensions...)
 }
 
-// Get returns the value of the given key if it exists.
 func (c *candidateBase) GetExtension(key string) (CandidateExtension, bool) {
-	extension := CandidateExtension{Key: key}
-
-	for i := range c.extensions {
-		if c.extensions[i].Key == key {
-			extension.Value = c.extensions[i].Value
-
+	for _, extension := range c.extensions {
+		if extension.Key == key {
 			return extension, true
 		}
 	}
 
-	// TCPType was manually set.
-	if key == "tcptype" && c.TCPType() != TCPTypeUnspecified { //nolint:goconst
-		extension.Value = c.TCPType().String()
+	return CandidateExtension{Key: key}, false
+}
 
-		return extension, true
+func validateCandidateExtension(ext CandidateExtension) error {
+	if ext.Key == "" || strings.ContainsAny(ext.Key+ext.Value, " \r\n\x00") {
+		return fmt.Errorf("%w: invalid extension %q", errParseExtension, ext.Key)
 	}
 
-	return extension, false
+	return nil
 }
 
 func (c *candidateBase) AddExtension(ext CandidateExtension) error {
-	if ext.Key == "tcptype" {
-		tcpType := NewTCPType(ext.Value)
-		if tcpType == TCPTypeUnspecified {
-			return fmt.Errorf("%w: invalid or unsupported TCPtype %s", errParseTCPType, ext.Value)
-		}
-
-		c.tcpType = tcpType
-
-		return nil
+	if err := validateCandidateExtension(ext); err != nil {
+		return err
 	}
-
-	if ext.Key == "" {
-		return fmt.Errorf("%w: key is empty", errParseExtension)
-	}
-
-	// per spec, Extensions aren't explicitly unique, we only set the first one.
-	// If the exteion is set multiple times.
 	for i := range c.extensions {
 		if c.extensions[i].Key == ext.Key {
 			c.extensions[i] = ext
@@ -808,28 +760,34 @@ func (c *candidateBase) AddExtension(ext CandidateExtension) error {
 			return nil
 		}
 	}
-
 	c.extensions = append(c.extensions, ext)
 
 	return nil
 }
 
-func (c *candidateBase) RemoveExtension(key string) (ok bool) {
-	if key == "tcptype" {
-		c.tcpType = TCPTypeUnspecified
-		ok = true
+// SetExtensions replaces all extensions, preserving order and duplicates.
+// It copies the input and leaves the candidate unchanged if validation fails.
+func (c *candidateBase) SetExtensions(extensions []CandidateExtension) error {
+	for _, ext := range extensions {
+		if err := validateCandidateExtension(ext); err != nil {
+			return err
+		}
 	}
+	c.extensions = append([]CandidateExtension{}, extensions...)
 
+	return nil
+}
+
+func (c *candidateBase) RemoveExtension(key string) bool {
 	for i := range c.extensions {
 		if c.extensions[i].Key == key {
 			c.extensions = append(c.extensions[:i], c.extensions[i+1:]...)
-			ok = true
 
-			break
+			return true
 		}
 	}
 
-	return ok
+	return false
 }
 
 // marshalExtensions returns the string representation of the candidate extensions.
@@ -877,10 +835,6 @@ func (c *candidateBase) extensionsEqual(other []CandidateExtension) bool {
 	}
 
 	return true
-}
-
-func (c *candidateBase) setExtensions(extensions []CandidateExtension) {
-	c.extensions = extensions
 }
 
 // UnmarshalCandidate Parses a candidate from a string
@@ -961,113 +915,43 @@ func UnmarshalCandidate(raw string) (Candidate, error) { //nolint:cyclop
 	// SP cand-type ("host" / "srflx" / "prflx" / "relay")
 	typ, pos := readCandidateStringToken(raw, pos)
 
-	raddr, rport, pos, err := tryReadRelativeAddrs(raw, pos)
+	extensions, err := unmarshalCandidateExtensions(raw[pos:])
 	if err != nil {
 		return nil, err
 	}
-
-	tcpType := TCPTypeUnspecified
-	var extensions []CandidateExtension
-	var tcpTypeRaw string
-
-	if pos < len(raw) {
-		extensions, tcpTypeRaw, err = unmarshalCandidateExtensions(raw[pos:])
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", errParseExtension, err) //nolint:errorlint // we wrap the error
-		}
-
-		if tcpTypeRaw != "" {
-			tcpType = NewTCPType(tcpTypeRaw)
-			if tcpType == TCPTypeUnspecified {
-				return nil, fmt.Errorf("%w: invalid or unsupported TCPtype %s", errParseTCPType, tcpTypeRaw)
-			}
-		}
-	}
-
-	// this code is ugly because we can't break backwards compatibility
-	// with the old way of parsing candidates
+	var candidate Candidate
 	switch typ {
 	case "host":
-		candidate, err := NewCandidateHost(&CandidateHostConfig{
-			"",
-			protocol,
-			address,
-			port,
-			component,
-			priority,
-			foundation,
-			tcpType,
-			false,
+		candidate, err = NewCandidateHost(&CandidateHostConfig{
+			Network: protocol, Address: address, Port: port, Component: component,
+			Priority: priority, Foundation: foundation,
 		})
-		if err != nil {
-			return nil, err
-		}
-
-		candidate.setExtensions(extensions)
-
-		return candidate, nil
 	case "srflx":
-		candidate, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
-			"",
-			protocol,
-			address,
-			port,
-			component,
-			priority,
-			foundation,
-			raddr,
-			rport,
+		candidate, err = NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
+			Network: protocol, Address: address, Port: port, Component: component,
+			Priority: priority, Foundation: foundation,
 		})
-		if err != nil {
-			return nil, err
-		}
-
-		candidate.setExtensions(extensions)
-
-		return candidate, nil
 	case "prflx":
-		candidate, err := NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
-			"",
-			protocol,
-			address,
-			port,
-			component,
-			priority,
-			foundation,
-			raddr,
-			rport,
+		candidate, err = NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
+			Network: protocol, Address: address, Port: port, Component: component,
+			Priority: priority, Foundation: foundation,
 		})
-		if err != nil {
-			return nil, err
-		}
-
-		candidate.setExtensions(extensions)
-
-		return candidate, nil
 	case "relay":
-		candidate, err := NewCandidateRelay(&CandidateRelayConfig{
-			"",
-			protocol,
-			address,
-			port,
-			component,
-			priority,
-			foundation,
-			raddr,
-			rport,
-			"",
-			nil,
+		candidate, err = NewCandidateRelay(&CandidateRelayConfig{
+			Network: protocol, Address: address, Port: port, Component: component,
+			Priority: priority, Foundation: foundation,
 		})
-		if err != nil {
-			return nil, err
-		}
-
-		candidate.setExtensions(extensions)
-
-		return candidate, nil
 	default:
 		return nil, fmt.Errorf("%w (%s)", ErrUnknownCandidateTyp, typ)
 	}
+	if err != nil {
+		return nil, err
+	}
+	if err = candidate.SetExtensions(extensions); err != nil {
+		return nil, err
+	}
+
+	return candidate, nil
 }
 
 // Read an ice-char token from the raw string
@@ -1197,63 +1081,25 @@ func readCandidateByteString(raw string, start int) (string, int, error) {
 	return raw[start:], len(raw), nil
 }
 
-// Read and validate raddr and rport from the raw string
-// [SP rel-addr] [SP rel-port]
-// defined in https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
-// .
-func tryReadRelativeAddrs(raw string, start int) (raddr string, rport, pos int, err error) {
-	key, pos := readCandidateStringToken(raw, start)
-
-	if key != "raddr" {
-		return "", 0, start, nil
-	}
-
-	if pos >= len(raw) {
-		return "", 0, 0, fmt.Errorf("%w: expected raddr value in %s", errParseRelatedAddr, raw)
-	}
-
-	raddr, pos = readCandidateStringToken(raw, pos)
-
-	if pos >= len(raw) {
-		return "", 0, 0, fmt.Errorf("%w: expected rport in %s", errParseRelatedAddr, raw)
-	}
-
-	key, pos = readCandidateStringToken(raw, pos)
-	if key != "rport" {
-		return "", 0, 0, fmt.Errorf("%w: expected rport in %s", errParseRelatedAddr, raw)
-	}
-
-	if pos >= len(raw) {
-		return "", 0, 0, fmt.Errorf("%w: expected rport value in %s", errParseRelatedAddr, raw)
-	}
-
-	rport, pos, err = readCandidatePort(raw, pos)
-	if err != nil {
-		return "", 0, 0, fmt.Errorf("%w: %v", errParseRelatedAddr, err) //nolint:errorlint // we wrap the error
-	}
-
-	return raddr, rport, pos, nil
-}
-
 // UnmarshalCandidateExtensions parses the candidate extensions from the raw string.
 // *(SP extension-att-name SP extension-att-value)
 // Where extension-att-name, and extension-att-value are byte-strings
 // as defined in https://tools.ietf.org/html/rfc5245#section-15.1
-func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, rawTCPTypeRaw string, err error) {
+func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, err error) {
 	extensions = make([]CandidateExtension, 0)
 
 	if raw == "" {
-		return extensions, "", nil
+		return extensions, nil
 	}
 
 	if raw[0] == 0x20 { // SP
-		return extensions, "", fmt.Errorf("%w: unexpected space %s", errParseExtension, raw)
+		return extensions, fmt.Errorf("%w: unexpected space %s", errParseExtension, raw)
 	}
 
 	for i := 0; i < len(raw); {
 		key, next, err := readCandidateByteString(raw, i)
 		if err != nil {
-			return extensions, "", fmt.Errorf(
+			return extensions, fmt.Errorf(
 				"%w: failed to read key %v", errParseExtension, err, //nolint: errorlint // we wrap the error
 			)
 		}
@@ -1264,21 +1110,15 @@ func unmarshalCandidateExtensions(raw string) (extensions []CandidateExtension, 
 		if i < len(raw) {
 			value, next, err = readCandidateByteString(raw, i)
 			if err != nil {
-				return extensions, "", fmt.Errorf(
+				return extensions, fmt.Errorf(
 					"%w: failed to read value %v", errParseExtension, err, //nolint: errorlint // we are wrapping the error
 				)
 			}
 			i = next
 		}
 
-		if key == "tcptype" {
-			rawTCPTypeRaw = value
-
-			continue
-		}
-
 		extensions = append(extensions, CandidateExtension{key, value})
 	}
 
-	return extensions, rawTCPTypeRaw, nil
+	return extensions, nil
 }

@@ -1039,7 +1039,7 @@ func (a *Agent) addRemotePassiveTCPCandidate(remoteCandidate Candidate) {
 			Address:           localIPs[i].addr.String(),
 			Port:              tcpAddr.Port,
 			Component:         ComponentRTP,
-			TCPType:           TCPTypeActive,
+			Extensions:        []CandidateExtension{{"tcptype", TCPTypeActive.String()}},
 			IsLocationTracked: shouldFilterLocationTrackedIP(localIPs[i].addr),
 		})
 		if err != nil {
@@ -1874,8 +1874,6 @@ func (a *Agent) handleInboundRequest(
 			Address:   canonicalAddr(remote.Addr()).String(),
 			Port:      int(remote.Port()),
 			Component: local.Component(),
-			RelAddr:   "",
-			RelPort:   0,
 		}
 
 		// A peer-reflexive candidate SHOULD take its priority from the PRIORITY

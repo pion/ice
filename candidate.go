@@ -49,33 +49,36 @@ type Candidate interface {
 
 	Priority() uint32
 
-	// A transport address related to a
-	//  candidate, which is useful for diagnostics and other purposes
-	RelatedAddress() *CandidateRelatedAddress
-
 	// Extensions returns a copy of all extension attributes associated with the ICECandidate.
 	// In the order of insertion, *(key value).
 	// Extension attributes are defined in RFC 5245, Section 15.1:
 	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
 	//.
 	Extensions() []CandidateExtension
+	// SetExtensions replaces all extensions with a validated copy.
+	// It preserves order and duplicates and leaves the candidate unchanged on error.
+	SetExtensions([]CandidateExtension) error
 	// GetExtension returns the value of the extension attribute associated with the ICECandidate.
 	// Extension attributes are defined in RFC 5245, Section 15.1:
 	// https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
 	//.
 	GetExtension(key string) (value CandidateExtension, ok bool)
 	// AddExtension adds an extension attribute to the ICECandidate.
-	// If an extension with the same key already exists, it will be overwritten.
+	// If an extension with the same key already exists, the first is overwritten.
 	// Extension attributes are defined in RFC 5245, Section 15.1:
 	AddExtension(extension CandidateExtension) error
-	// RemoveExtension removes an extension attribute from the ICECandidate.
+	// RemoveExtension removes the first extension attribute with the given key.
 	// Extension attributes are defined in RFC 5245, Section 15.1:
 	RemoveExtension(key string) (ok bool)
 
 	String() string
 	Type() CandidateType
+
+	// TCPType returns the TCP mode extension, or TCPTypeUnspecified if absent or unrecognized.
 	TCPType() TCPType
 
+	// Equal compares the transport address (including TCP type) and candidate type.
+	// Use DeepEqual to also compare extensions.
 	Equal(other Candidate) bool
 
 	// DeepEqual same as Equal, But it also compares the candidate extensions.

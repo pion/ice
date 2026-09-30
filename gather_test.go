@@ -1418,7 +1418,9 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 					if len(candidateNetworks) == 0 || candidateNetworks[0] == relayType {
 						require.Len(t, candidates, 1)
 						require.Equal(t, relayType, candidates[0].NetworkType())
-						require.Equal(t, transportIP.String(), candidates[0].RelatedAddress().Address)
+						extension, ok := candidates[0].GetExtension("raddr")
+						require.True(t, ok)
+						require.Equal(t, transportIP.String(), extension.Value)
 						require.False(t, client.closeCalled)
 					} else {
 						require.Empty(t, candidates)
@@ -1768,9 +1770,12 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 	require.True(t, ok, "expected server reflexive candidate")
 	require.Equal(t, srflxAddr.IP.String(), srflx.Address())
 	require.Equal(t, srflxAddr.Port, srflx.Port())
-	require.NotNil(t, srflx.RelatedAddress())
-	require.Equal(t, relatedAddr.IP.String(), srflx.RelatedAddress().Address)
-	require.Equal(t, relatedAddr.Port, srflx.RelatedAddress().Port)
+	address, ok := srflx.GetExtension("raddr")
+	require.True(t, ok)
+	require.Equal(t, relatedAddr.IP.String(), address.Value)
+	port, ok := srflx.GetExtension("rport")
+	require.True(t, ok)
+	require.Equal(t, strconv.Itoa(relatedAddr.Port), port.Value)
 	require.Equal(t, 1, udpMuxSrflx.connCount(), "expected mux to be asked for one connection")
 }
 

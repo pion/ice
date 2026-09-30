@@ -462,7 +462,7 @@ func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) {
 		_, port, _, err := parseAddr(listener.Addr())
 		require.NoError(t, err)
 		passives = append(passives, mustCandidateHost(t, &CandidateHostConfig{
-			Network: "tcp4", Address: "127.0.0.1", Port: port, Component: ComponentRTP, TCPType: TCPTypePassive,
+			Network: "tcp4", Address: "127.0.0.1", Port: port, Component: ComponentRTP, Extensions: []CandidateExtension{{"tcptype", TCPTypePassive.String()}},
 		}))
 	}
 	peerReflexive, err := NewCandidatePeerReflexive(&CandidatePeerReflexiveConfig{
@@ -472,10 +472,10 @@ func TestActiveTCPCandidateDoesNotPairWithUnrelatedRemote(t *testing.T) {
 	unrelated := []Candidate{
 		peerReflexive,
 		mustCandidateHost(t, &CandidateHostConfig{
-			Network: "tcp4", Address: "127.0.0.1", Port: 9, Component: ComponentRTP, TCPType: TCPTypeSimultaneousOpen,
+			Network: "tcp4", Address: "127.0.0.1", Port: 9, Component: ComponentRTP, Extensions: []CandidateExtension{{"tcptype", TCPTypeSimultaneousOpen.String()}},
 		}),
 		mustCandidateHost(t, &CandidateHostConfig{
-			Network: "tcp4", Address: "127.0.0.2", Port: passives[0].Port(), Component: ComponentRTP, TCPType: TCPTypeSimultaneousOpen,
+			Network: "tcp4", Address: "127.0.0.2", Port: passives[0].Port(), Component: ComponentRTP, Extensions: []CandidateExtension{{"tcptype", TCPTypeSimultaneousOpen.String()}},
 		}),
 	}
 
@@ -513,7 +513,7 @@ func TestActiveTCPCandidateMarksLinkLocalAsLocationTracked(t *testing.T) {
 
 	remote, err := NewCandidateHost(&CandidateHostConfig{
 		Network: NetworkTypeTCP6.String(), Address: "2001:db8::1", Port: 9000,
-		Component: ComponentRTP, TCPType: TCPTypePassive,
+		Component: ComponentRTP, Extensions: []CandidateExtension{{"tcptype", TCPTypePassive.String()}},
 	})
 	require.NoError(t, err)
 

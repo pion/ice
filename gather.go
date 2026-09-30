@@ -573,8 +573,8 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig,
 					port int
 				}
 				var (
-					conns   []connAndPort
-					tcpType TCPType
+					conns      []connAndPort
+					extensions []CandidateExtension
 				)
 
 				switch network {
@@ -636,7 +636,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig,
 						// Didn't succeed with any, try the next network.
 						continue
 					}
-					tcpType = TCPTypePassive
+					extensions = []CandidateExtension{{"tcptype", TCPTypePassive.String()}}
 					// Is there a way to verify that the listen address is even
 					// accessible from the current interface.
 				case udp:
@@ -662,11 +662,11 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig,
 
 				for _, connAndPort := range conns {
 					hostConfig := CandidateHostConfig{
-						Network:   network,
-						Address:   mappedIP.String(),
-						Port:      connAndPort.port,
-						Component: ComponentRTP,
-						TCPType:   tcpType,
+						Network:    network,
+						Address:    mappedIP.String(),
+						Port:       connAndPort.port,
+						Component:  ComponentRTP,
+						Extensions: extensions,
 						// we will still process this candidate so that we start up the right
 						// listeners.
 						IsLocationTracked: isLocationTracked,
@@ -740,7 +740,12 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 	}
 
 	localAddresses := a.udpMux.GetListenAddresses()
-	existingConfigs := make(map[CandidateHostConfig]struct{})
+	type hostKey struct {
+		address         string
+		port            int
+		locationTracked bool
+	}
+	existingConfigs := make(map[hostKey]struct{})
 
 	for _, addr := range localAddresses {
 		udpAddr, ok := addr.(*net.UDPAddr)
@@ -787,7 +792,8 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 			// otherwise, addCandidate() detects the duplicate candidate
 			// and close its connection, invalidating all candidates
 			// that share the same connection.
-			if _, ok := existingConfigs[hostConfig]; ok {
+			key := hostKey{hostConfig.Address, hostConfig.Port, hostConfig.IsLocationTracked}
+			if _, ok := existingConfigs[key]; ok {
 				continue
 			}
 
@@ -817,7 +823,7 @@ func (a *Agent) gatherCandidatesLocalUDPMux(
 				continue
 			}
 
-			existingConfigs[hostConfig] = struct{}{}
+			existingConfigs[key] = struct{}{}
 		}
 	}
 
@@ -907,8 +913,10 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 					Address:   rewrittenCandidateIP(mappedIP, currentAddr.IP).String(),
 					Port:      currentAddr.Port,
 					Component: ComponentRTP,
-					RelAddr:   currentAddr.IP.String(),
-					RelPort:   currentAddr.Port,
+					Extensions: []CandidateExtension{
+						{Key: "raddr", Value: currentAddr.IP.String()},
+						{Key: "rport", Value: strconv.Itoa(currentAddr.Port)},
+					},
 				}
 				candidate, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
@@ -1017,8 +1025,10 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 						Address:   ip.String(),
 						Port:      port,
 						Component: ComponentRTP,
-						RelAddr:   localAddr.IP.String(),
-						RelPort:   localAddr.Port,
+						Extensions: []CandidateExtension{
+							{Key: "raddr", Value: localAddr.IP.String()},
+							{Key: "rport", Value: strconv.Itoa(localAddr.Port)},
+						},
 					}
 					cand, err := NewCandidateServerReflexive(&srflxConfig)
 					if err != nil {
@@ -1133,8 +1143,10 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, config *gatherConfig,
 			Address:   ip.String(),
 			Port:      port,
 			Component: ComponentRTP,
-			RelAddr:   lAddr.IP.String(),
-			RelPort:   lAddr.Port,
+			Extensions: []CandidateExtension{
+				{Key: "raddr", Value: lAddr.IP.String()},
+				{Key: "rport", Value: strconv.Itoa(lAddr.Port)},
+			},
 		}
 		candidate, err := NewCandidateServerReflexive(&srflxConfig)
 		if err != nil {
@@ -1508,12 +1520,14 @@ func (a *Agent) createRelayCandidate(
 	ctx context.Context, ep relayEndpoint, ip string, generation uint64, onClose func() error,
 ) error {
 	relayConfig := CandidateRelayConfig{
-		Network:       ep.network,
-		Component:     ComponentRTP,
-		Address:       rewrittenCandidateIP(ip, ep.address).String(),
-		Port:          ep.port,
-		RelAddr:       ep.relAddr,
-		RelPort:       ep.relPort,
+		Network:   ep.network,
+		Component: ComponentRTP,
+		Address:   rewrittenCandidateIP(ip, ep.address).String(),
+		Port:      ep.port,
+		Extensions: []CandidateExtension{
+			{Key: "raddr", Value: ep.relAddr},
+			{Key: "rport", Value: strconv.Itoa(ep.relPort)},
+		},
 		RelayProtocol: ep.protocol,
 		OnClose:       onClose,
 	}

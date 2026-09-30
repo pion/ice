@@ -393,19 +393,20 @@ func runScenario(ctx context.Context, sc scenario) error { //nolint:cyclop
 	return nil
 }
 
-func formatCandidate(c ice.Candidate) string {
-	network := c.NetworkType().String()
-	if c.NetworkType().IsTCP() && c.TCPType() != ice.TCPTypeUnspecified {
-		network = fmt.Sprintf("%s/%s", network, c.TCPType())
+func formatCandidate(candidate ice.Candidate) string {
+	network := candidate.NetworkType().String()
+	if tcpType, ok := candidate.GetExtension("tcptype"); candidate.NetworkType().IsTCP() && ok {
+		network = fmt.Sprintf("%s/%s", network, tcpType.Value)
 	}
 
 	rel := "none"
-	if relAddr := c.RelatedAddress(); relAddr != nil {
-		rel = fmt.Sprintf("%s:%d", relAddr.Address, relAddr.Port)
+	if address, ok := candidate.GetExtension("raddr"); ok {
+		port, _ := candidate.GetExtension("rport")
+		rel = fmt.Sprintf("%s:%s", address.Value, port.Value)
 	}
 
 	return fmt.Sprintf("%s via %s -> %s:%d (rel=%s priority=%d)",
-		c.Type(), network, c.Address(), c.Port(), rel, c.Priority())
+		candidate.Type(), network, candidate.Address(), candidate.Port(), rel, candidate.Priority())
 }
 
 func printRules(rules []ice.AddressRewriteRule) {
