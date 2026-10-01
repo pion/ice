@@ -22,7 +22,7 @@ type CandidateHostConfig struct {
 	Component         uint16
 	Priority          uint32
 	Foundation        string
-	TCPType           TCPType
+	Extensions        []CandidateExtension
 	IsLocationTracked bool
 }
 
@@ -47,11 +47,14 @@ func NewCandidateHost(config *CandidateHostConfig) (*CandidateHost, error) {
 			candidateType:      CandidateTypeHost,
 			component:          config.Component,
 			port:               config.Port,
-			tcpType:            config.TCPType,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,
 			isLocationTracked:  config.IsLocationTracked,
 		},
+	}
+
+	if err := candidateHost.SetExtensions(config.Extensions); err != nil {
+		return nil, err
 	}
 
 	if !strings.HasSuffix(config.Address, ".local") && !strings.HasSuffix(config.Address, ".invalid") {

@@ -22,8 +22,8 @@ type CandidateServerReflexiveConfig struct {
 	Component   uint16
 	Priority    uint32
 	Foundation  string
-	RelAddr     string
-	RelPort     int
+	// Extensions contains candidate attributes.
+	Extensions []CandidateExtension
 }
 
 // NewCandidateServerReflexive creates a new server reflective candidate.
@@ -53,11 +53,10 @@ func NewCandidateServerReflexive(config *CandidateServerReflexiveConfig) (*Candi
 			component:          config.Component,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,
-			relatedAddress: &CandidateRelatedAddress{
-				Address: config.RelAddr,
-				Port:    config.RelPort,
-			},
 		},
+	}
+	if err := candidate.SetExtensions(config.Extensions); err != nil {
+		return nil, err
 	}
 	candidate.setResolvedAddr(&net.UDPAddr{
 		IP:   ipAddr.AsSlice(),

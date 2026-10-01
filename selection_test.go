@@ -618,10 +618,10 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.1"}, {Key: "rport", Value: "10000"}}})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.2"}, {Key: "rport", Value: "20000"}}})
 		require.NoError(t, err)
 
 		t.Run("Host pair scores higher than relay pair", func(t *testing.T) {
@@ -668,10 +668,10 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.1"}, {Key: "rport", Value: "10000"}}})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.2"}, {Key: "rport", Value: "20000"}}})
 		require.NoError(t, err)
 
 		t.Run("Should renominate relay to host", func(t *testing.T) {
@@ -755,10 +755,10 @@ func TestAutomaticRenomination(t *testing.T) { //nolint:maintidx
 		remoteHost, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.168.1.2", Port: 20000, Component: 1})
 		require.NoError(t, err)
 
-		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, RelAddr: "192.168.1.1", RelPort: 10000})
+		localRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.1", Port: 30000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.1"}, {Key: "rport", Value: "10000"}}})
 		require.NoError(t, err)
 
-		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, RelAddr: "192.168.1.2", RelPort: 20000})
+		remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "10.0.0.2", Port: 40000, Component: 1, Extensions: []CandidateExtension{{Key: "raddr", Value: "192.168.1.2"}, {Key: "rport", Value: "20000"}}})
 		require.NoError(t, err)
 
 		ctx := context.Background()

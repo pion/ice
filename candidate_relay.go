@@ -35,10 +35,10 @@ type CandidateRelayConfig struct {
 	Component     uint16
 	Priority      uint32
 	Foundation    string
-	RelAddr       string
-	RelPort       int
 	RelayProtocol string
 	OnClose       func() error
+	// Extensions contains candidate attributes.
+	Extensions []CandidateExtension
 }
 
 // NewCandidateRelay creates a new relay candidate.
@@ -69,14 +69,14 @@ func NewCandidateRelay(config *CandidateRelayConfig) (*CandidateRelay, error) {
 			component:          config.Component,
 			foundationOverride: config.Foundation,
 			priorityOverride:   config.Priority,
-			relatedAddress: &CandidateRelatedAddress{
-				Address: config.RelAddr,
-				Port:    config.RelPort,
-			},
+
 			relayLocalPreference: relayProtocolPreference(config.RelayProtocol),
 		},
 		relayProtocol: config.RelayProtocol,
 		onClose:       config.OnClose,
+	}
+	if err := candidate.SetExtensions(config.Extensions); err != nil {
+		return nil, err
 	}
 	candidate.setResolvedAddr(&net.UDPAddr{
 		IP:   ipAddr.AsSlice(),
