@@ -173,9 +173,10 @@ func TestPiggybackingStateMachine(t *testing.T) {
 		require.Empty(t, agent.piggyback.acks)
 	})
 
-	t.Run("The last flight is kept by the party that sends it", func(t *testing.T) {
+	t.Run("Only the DTLS 1.2 client drops its packets", func(t *testing.T) {
 		// The party sending the last flight keeps it around until it gets
-		// acknowledged: the server in DTLS 1.2, the client in DTLS 1.3.
+		// acknowledged: the server in DTLS 1.2, the client in DTLS 1.3. The
+		// DTLS 1.3 server still has to deliver its ACK of that flight.
 		for _, tc := range []struct {
 			name        string
 			isClient    bool
@@ -185,7 +186,7 @@ func TestPiggybackingStateMachine(t *testing.T) {
 			{"DTLS 1.2 client", true, protocol.Version1_2, 0},
 			{"DTLS 1.2 server", false, protocol.Version1_2, 1},
 			{"DTLS 1.3 client", true, protocol.Version1_3, 1},
-			{"DTLS 1.3 server", false, protocol.Version1_3, 0},
+			{"DTLS 1.3 server", false, protocol.Version1_3, 1},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				agent := newPiggybackAgent(t)

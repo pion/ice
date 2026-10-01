@@ -94,10 +94,7 @@ func (a *Agent) SetDTLSFailed() {
 }
 
 // SetDTLSHandshakeComplete signals that the local DTLS handshake completed and
-// carries the negotiated DTLS role and version. The party that sends the last
-// flight has to keep it around until it gets acknowledged; that is the server
-// in DTLS 1.2 and the client in DTLS 1.3. The other party has nothing more to
-// send and drops its outgoing packets.
+// carries the negotiated DTLS role and version.
 func (a *Agent) SetDTLSHandshakeComplete(isClient bool, version protocol.Version) {
 	a.piggyback.mu.Lock()
 	defer a.piggyback.mu.Unlock()
@@ -105,7 +102,10 @@ func (a *Agent) SetDTLSHandshakeComplete(isClient bool, version protocol.Version
 	if a.piggyback.state == piggybackingStateOff || a.piggyback.state == piggybackingStateComplete {
 		return
 	}
-	if isClient != (version == protocol.Version1_3) {
+	// As DTLS 1.2 client we have nothing more to send at this point
+	// but will continue to send ACK attributes until receiving
+	// the last flight from the server.
+	if isClient && version != protocol.Version1_3 {
 		a.piggyback.packets = []packetWithCrc{}
 		a.piggyback.packetsIndex = 0
 	}
