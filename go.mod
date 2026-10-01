@@ -1,6 +1,6 @@
 module github.com/pion/ice/v5
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
@@ -13,7 +13,7 @@ require (
 	github.com/pion/turn/v5 v5.1.2
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/net v0.49.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
