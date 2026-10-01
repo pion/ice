@@ -1720,6 +1720,7 @@ func (a *Agent) handleInboundBindingResponse(
 			if !responseSymmetric(&validBindingRequest, local, remote) {
 				a.log.Debugf("Discard response: expected (%s -> %s), actual (%s -> %s)",
 					validBindingRequest.source, validBindingRequest.destination, local.addrPort(), remote)
+				a.failAsymmetricNomination(&validBindingRequest, local, remote)
 
 				return false, nil, 0
 			}
