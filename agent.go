@@ -2213,7 +2213,7 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 		stun.NewUsername(a.remoteUfrag + ":" + a.localUfrag),
 		UseCandidate(),
 		AttrControlling(a.tieBreaker),
-		PriorityAttr(pair.Local.Priority()),
+		PriorityAttr(pair.Local.prflxPriority()),
 	}
 
 	// Add nomination attribute if renomination is enabled and value > 0
