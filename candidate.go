@@ -99,6 +99,7 @@ type Candidate interface {
 	start(a *Agent, conn net.PacketConn, initializedCh <-chan struct{})
 	writeTo(raw []byte, dst Candidate) (int, error)
 	setPriority(uint32)
+	prflxPriority() uint32
 
 	replaceRemoteCandidateCacheValues(oldRemote, newRemote Candidate)
 }
