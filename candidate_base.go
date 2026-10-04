@@ -489,7 +489,14 @@ func (c *candidateBase) writeTo(raw []byte, dst Candidate) (int, error) {
 
 // TypePreference returns the type preference for this candidate.
 func (c *candidateBase) TypePreference() uint16 {
-	pref := c.Type().Preference()
+	return c.typePreference(c.Type())
+}
+
+// typePreference returns the type preference a candidate of candidateType has on
+// this candidate's transport: the RFC 8445 Section 5.1.2.2 value, lowered by the
+// agent's TCP priority offset for TCP candidates.
+func (c *candidateBase) typePreference(candidateType CandidateType) uint16 {
+	pref := candidateType.Preference()
 	if pref == 0 {
 		return 0
 	}
@@ -527,6 +534,20 @@ func (c *candidateBase) Priority() uint32 {
 
 func (c *candidateBase) setPriority(priority uint32) {
 	c.priorityOverride = priority
+}
+
+// prflxPriority returns the value a Binding request sent from this candidate
+// carries in its PRIORITY attribute: the candidate's priority recomputed with
+// the type preference of a peer-reflexive candidate.
+// See: https://www.rfc-editor.org/rfc/rfc8445#section-7.1.1
+//
+// The remote agent assigns this priority to a peer-reflexive candidate it
+// discovers from the request (Section 7.3.1.3). Sending the candidate's own
+// type preference instead would let that peer-reflexive candidate rank equal
+// to the host candidate it was discovered through.
+func (c *candidateBase) prflxPriority() uint32 {
+	return (1<<24)*uint32(c.typePreference(CandidateTypePeerReflexive)) +
+		c.Priority()%(1<<24)
 }
 
 // transportAddressEqual checks if the transport address (IP, Port, NetworkType, TCPType) is equal to another

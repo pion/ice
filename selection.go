@@ -111,7 +111,7 @@ func (s *controllingSelector) nominatePair(pair *CandidatePair) {
 		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		UseCandidate(),
 		AttrControlling(s.agent.tieBreaker),
-		PriorityAttr(pair.Local.Priority()),
+		PriorityAttr(pair.Local.prflxPriority()),
 	}
 	attributes = s.agent.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,
@@ -230,7 +230,7 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 		stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		AttrControlling(s.agent.tieBreaker),
-		PriorityAttr(local.Priority()),
+		PriorityAttr(local.prflxPriority()),
 	}
 	attributes = s.agent.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,
@@ -387,7 +387,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 		stun.TransactionID,
 		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		AttrControlled(s.agent.tieBreaker),
-		PriorityAttr(local.Priority()),
+		PriorityAttr(local.prflxPriority()),
 	}
 	attributes = s.agent.appendPiggybackAttributes(attributes)
 	attributes = append(attributes,

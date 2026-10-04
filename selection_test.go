@@ -1842,3 +1842,73 @@ func TestCandidatePairQualityTypeScores(t *testing.T) {
 		}
 	}
 }
+
+// Binding requests carry the local candidate's priority recomputed with the
+// peer-reflexive type preference (RFC 8445 Section 7.1.1), so a remote agent that
+// discovers a peer-reflexive candidate from the request (Section 7.3.1.3) ranks
+// it below the host candidate it was discovered through.
+func TestBindingRequestPriorityAttr(t *testing.T) {
+	defer test.CheckRoutines(t)()
+	defer test.TimeOut(time.Second * 5).Stop()
+
+	priorityOf := func(t *testing.T, raw []byte) uint32 {
+		t.Helper()
+		msg := &stun.Message{Raw: raw}
+		require.NoError(t, msg.Decode())
+		var priority PriorityAttr
+		require.NoError(t, priority.GetFrom(msg))
+
+		return uint32(priority)
+	}
+
+	setup := func(t *testing.T) (*Agent, *CandidateHost, *CandidateHost, *mockPacketConnWithCapture, uint32) {
+		t.Helper()
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, agent.Close()) })
+
+		local := newHostLocal(t)
+		packets := &mockPacketConnWithCapture{}
+		local.conn = packets
+
+		expected := (1<<24)*uint32(CandidateTypePeerReflexive.Preference()) + local.Priority()%(1<<24)
+		require.NotEqual(t, local.Priority(), expected, "a host candidate's own priority must not be sent")
+
+		return agent, local, newHostRemote(t), packets, expected
+	}
+
+	t.Run("controlling ping", func(t *testing.T) {
+		agent, local, remote, packets, expected := setup(t)
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			sel.PingCandidate(local, remote)
+		}))
+		require.Len(t, packets.sentPackets, 1)
+		assert.Equal(t, expected, priorityOf(t, packets.sentPackets[0]))
+	})
+
+	t.Run("controlled ping", func(t *testing.T) {
+		agent, local, remote, packets, expected := setup(t)
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			sel := &controlledSelector{agent: agent, log: agent.log}
+			sel.PingCandidate(local, remote)
+		}))
+		require.Len(t, packets.sentPackets, 1)
+		assert.Equal(t, expected, priorityOf(t, packets.sentPackets[0]))
+	})
+
+	t.Run("nomination", func(t *testing.T) {
+		agent, local, remote, packets, expected := setup(t)
+		require.NoError(t, agent.loop.Run(agent.loop, func(_ context.Context) {
+			sel := &controllingSelector{agent: agent, log: agent.log}
+			agent.selector = sel
+			pair := agent.addPair(local, remote)
+			sel.nominatePair(pair)
+			require.NoError(t, agent.sendNominationRequest(pair, 1))
+		}))
+		require.Len(t, packets.sentPackets, 2)
+		for _, raw := range packets.sentPackets {
+			assert.Equal(t, expected, priorityOf(t, raw))
+		}
+	})
+}
