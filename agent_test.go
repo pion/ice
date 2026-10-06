@@ -1436,8 +1436,8 @@ func TestCandidatePairsStats(t *testing.T) { //nolint:cyclop,gocyclo
 		require.False(t, cps.FirstRequestReceivedTimestamp.IsZero())
 		require.False(t, cps.LastRequestReceivedTimestamp.IsZero())
 
-		require.Equal(t, uint32(1), cps.PacketsSent)
-		require.Equal(t, uint32(1), cps.PacketsReceived)
+		require.Equal(t, uint64(1), cps.PacketsSent)
+		require.Equal(t, uint64(1), cps.PacketsReceived)
 		require.Equal(t, uint64(100), cps.BytesSent)
 		require.Equal(t, uint64(200), cps.BytesReceived)
 		require.False(t, cps.LastPacketSentTimestamp.IsZero())
@@ -1504,8 +1504,8 @@ func TestSelectedCandidatePairStats(t *testing.T) { //nolint:cyclop
 	require.Equal(t, float64(55), stats.TotalRoundTripTime)
 	require.Equal(t, uint64(10), stats.ResponsesReceived)
 
-	require.Equal(t, uint32(1), stats.PacketsSent)
-	require.Equal(t, uint32(1), stats.PacketsReceived)
+	require.Equal(t, uint64(1), stats.PacketsSent)
+	require.Equal(t, uint64(1), stats.PacketsReceived)
 	require.Equal(t, uint64(150), stats.BytesSent)
 	require.Equal(t, uint64(250), stats.BytesReceived)
 	require.False(t, stats.LastPacketSentTimestamp.IsZero())

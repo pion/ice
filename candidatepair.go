@@ -37,8 +37,8 @@ type CandidatePair struct {
 	currentRoundTripTime int64 // in ns
 	totalRoundTripTime   int64 // in ns
 
-	packetsSent          uint32
-	packetsReceived      uint32
+	packetsSent          uint64
+	packetsReceived      uint64
 	bytesSent            uint64
 	bytesReceived        uint64
 	lastPacketSentAt     atomic.Int64 // monotonic nanos since timeRef, see getMonoNanos
@@ -196,13 +196,13 @@ func (p *CandidatePair) ResponsesSent() uint64 {
 }
 
 // PacketsSent returns total application (non-STUN) packets sent on this pair.
-func (p *CandidatePair) PacketsSent() uint32 {
-	return atomic.LoadUint32(&p.packetsSent)
+func (p *CandidatePair) PacketsSent() uint64 {
+	return atomic.LoadUint64(&p.packetsSent)
 }
 
 // PacketsReceived returns total application (non-STUN) packets received on this pair.
-func (p *CandidatePair) PacketsReceived() uint32 {
-	return atomic.LoadUint32(&p.packetsReceived)
+func (p *CandidatePair) PacketsReceived() uint64 {
+	return atomic.LoadUint64(&p.packetsReceived)
 }
 
 // BytesSent returns total application bytes sent on this pair.
@@ -239,7 +239,7 @@ func (p *CandidatePair) UpdatePacketSent(n int) {
 		return
 	}
 
-	atomic.AddUint32(&p.packetsSent, 1)
+	atomic.AddUint64(&p.packetsSent, 1)
 	atomic.AddUint64(&p.bytesSent, uint64(n)) // #nosec G115 -- n > 0 validated above
 	p.lastPacketSentAt.Store(getMonoNanos(time.Now()))
 }
@@ -250,7 +250,7 @@ func (p *CandidatePair) UpdatePacketReceived(n int) {
 		return
 	}
 
-	atomic.AddUint32(&p.packetsReceived, 1)
+	atomic.AddUint64(&p.packetsReceived, 1)
 	atomic.AddUint64(&p.bytesReceived, uint64(n)) // #nosec G115 -- n > 0 validated above
 	p.lastPacketReceivedAt.Store(getMonoNanos(time.Now()))
 }
