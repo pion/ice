@@ -2159,8 +2159,11 @@ func (a *Agent) Restart(ufrag, pwd string) error { //nolint:cyclop
 		}
 		a.gatheringState = GatheringStateNew
 
-		// Clear all agent needed to take back to fresh state
-		a.removeUfragFromMux()
+		// Initial construction must preserve a mux connection pre-created by
+		// the listener from the incoming STUN request.
+		if a.constructed {
+			a.removeUfragFromMux()
+		}
 		a.localUfrag = ufrag
 		a.localPwd = pwd
 		a.remoteUfrag = ""

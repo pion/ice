@@ -43,6 +43,50 @@ func newMuxForAddr(t *testing.T, addr *net.UDPAddr, loggerFactory logging.Logger
 	return NewUDPMuxDefault(UDPMuxParams{Logger: loggerFactory.NewLogger("ice"), UDPConn: pc})
 }
 
+func TestMuxAgentPreservesPrecreatedConn(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: udpConn})
+	defer func() { require.NoError(t, mux.Close()) }()
+
+	const ufrag = "precreated-ufrag"
+	conn, err := mux.GetConn(ufrag, mux.LocalAddr())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, conn.Close()) }()
+
+	wrapper, ok := conn.(*sharedAddrPortConn)
+	require.True(t, ok)
+	underlying, ok := wrapper.underlying.(*udpMuxedConn)
+	require.True(t, ok)
+
+	agent, err := NewAgent(&AgentConfig{
+		LocalUfrag:       ufrag,
+		UDPMux:           mux,
+		NetworkTypes:     []NetworkType{NetworkTypeUDP4},
+		CandidateTypes:   []CandidateType{CandidateTypeHost},
+		MulticastDNSMode: MulticastDNSModeDisabled,
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	require.False(t, underlying.isClosed(), "initialization must preserve the listener's connection")
+	connection, err := mux.GetConn(ufrag, mux.LocalAddr())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, connection.Close()) }()
+	current, ok := connection.(*sharedAddrPortConn)
+	require.True(t, ok)
+	require.Same(t, underlying, current.underlying, "the ufrag must still route to the original connection")
+
+	require.NoError(t, agent.Restart("restarted-ufrag", ""))
+	mux.mu.Lock()
+	_, exists := mux.getConn(ufrag, false)
+	mux.mu.Unlock()
+	require.False(t, exists, "an explicit restart must remove the old ufrag's routing")
+}
+
 // TestMuxAgent is an end to end test over UDP mux, ensuring two agents could connect over mux.
 func TestMuxAgent(t *testing.T) {
 	defer test.CheckRoutines(t)()

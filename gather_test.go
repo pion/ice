@@ -2261,8 +2261,8 @@ func TestUniversalUDPMuxUsage(t *testing.T) {
 
 	// Twice because of 2 STUN servers configured
 	require.Equal(t, numSTUNS, udpMuxSrflx.getXORMappedAddrUsedTimes, "expected times that GetXORMappedAddr should be called")
-	// One for Restart() when agent has been initialized and one time when Close() the agent
-	require.Equal(t, 2, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
+	// Only Close() removes the ufrag; initialization preserves pre-created mux connections.
+	require.Equal(t, 1, udpMuxSrflx.removeConnByUfragTimes, "expected times that RemoveConnByUfrag should be called")
 	// Twice because of 2 STUN servers configured
 	require.Equal(t, numSTUNS, udpMuxSrflx.getConnForURLTimes, "expected times that GetConnForURL should be called")
 }
