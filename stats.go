@@ -27,10 +27,10 @@ type CandidatePairStats struct {
 	Nominated bool
 
 	// PacketsSent represents the total number of packets sent on this candidate pair.
-	PacketsSent uint32
+	PacketsSent uint64
 
 	// PacketsReceived represents the total number of packets received on this candidate pair.
-	PacketsReceived uint32
+	PacketsReceived uint64
 
 	// BytesSent represents the total number of payload bytes sent on this candidate pair
 	// not including headers or padding.

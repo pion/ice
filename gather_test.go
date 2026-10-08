@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1406,6 +1407,15 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 					agent.turnClientFactory = func(cfg *turn.ClientConfig) (turnClient, error) {
 						assert.Equal(t, serverAddr, cfg.TURNServerAddr)
 						assert.Same(t, turnNet, cfg.Net)
+						// Only a single candidate family pins the family of the allocation.
+						var wantFamily turn.RequestedAddressFamily
+						switch {
+						case slices.Equal(candidateNetworks, []NetworkType{NetworkTypeUDP4}):
+							wantFamily = turn.RequestedAddressFamilyIPv4
+						case slices.Equal(candidateNetworks, []NetworkType{NetworkTypeUDP6}):
+							wantFamily = turn.RequestedAddressFamilyIPv6
+						}
+						assert.Equal(t, wantFamily, cfg.RequestedAddressFamily)
 						client.cfgConn = cfg.Conn
 
 						return client, nil

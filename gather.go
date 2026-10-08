@@ -255,6 +255,21 @@ func relayNetworkTypesForConfiguredCandidates(networkTypes []NetworkType) []Netw
 	return res
 }
 
+// requestedRelayAddressFamily picks the family of the relayed address to allocate. When only
+// one family can be announced as a relay candidate, the allocation has to be in that family,
+// whichever family is used to reach the TURN server. Otherwise the TURN client allocates in the
+// family of its transport.
+func requestedRelayAddressFamily(relayNetworks []NetworkType) turn.RequestedAddressFamily {
+	if len(relayNetworks) != 1 {
+		return 0
+	}
+	if relayNetworks[0].IsIPv6() {
+		return turn.RequestedAddressFamilyIPv6
+	}
+
+	return turn.RequestedAddressFamilyIPv4
+}
+
 func turnNetworkTypesForURL(url stun.URI, networkTypes []NetworkType) []NetworkType {
 	proto := effectiveURLProtoType(url)
 	res := []NetworkType{}
@@ -1210,9 +1225,11 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig,
 		return
 	}
 
-	if len(relayNetworkTypesForConfiguredCandidates(config.networkTypes)) == 0 {
+	relayNetworks := relayNetworkTypesForConfiguredCandidates(config.networkTypes)
+	if len(relayNetworks) == 0 {
 		return
 	}
+	requestedFamily := requestedRelayAddressFamily(relayNetworks)
 
 	for _, url := range config.urls {
 		switch {
@@ -1418,11 +1435,12 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig,
 					}
 
 					clientConfig := &turn.ClientConfig{
-						Conn:          locConn,
-						Username:      url.Username,
-						Password:      url.Password,
-						LoggerFactory: a.loggerFactory,
-						Net:           a.net,
+						Conn:                   locConn,
+						Username:               url.Username,
+						Password:               url.Password,
+						LoggerFactory:          a.loggerFactory,
+						Net:                    a.net,
+						RequestedAddressFamily: requestedFamily,
 					}
 					if needsTURNServerAddr {
 						clientConfig.TURNServerAddr = turnServerAddr
