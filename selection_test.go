@@ -1823,6 +1823,48 @@ func TestLiteMode_LiteControlling_Integration(t *testing.T) {
 	require.True(t, sendUntilDone(t, controlledConn, controllingConn, 120))
 }
 
+func TestDirectPairBeatsPairWithRelayOnOneSide(t *testing.T) {
+	agent, err := NewAgent()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, agent.Close()) }()
+
+	localHost, err := NewCandidateHost(&CandidateHostConfig{
+		Network: "udp", Address: "192.168.1.10", Port: 41531, Component: 1,
+	})
+	require.NoError(t, err)
+	localSrflx, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
+		Network: "udp", Address: "203.0.113.10", Port: 48408, Component: 1,
+	})
+	require.NoError(t, err)
+	remoteSrflx, err := NewCandidateServerReflexive(&CandidateServerReflexiveConfig{
+		Network: "udp", Address: "198.51.100.20", Port: 26900, Component: 1,
+	})
+	require.NoError(t, err)
+	remoteRelay, err := NewCandidateRelay(&CandidateRelayConfig{
+		Network: "udp", Address: "192.0.2.30", Port: 49258, Component: 1,
+		Extensions: []CandidateExtension{
+			{Key: "raddr", Value: "198.51.100.20"},
+			{Key: "rport", Value: "26900"},
+		},
+	})
+	require.NoError(t, err)
+
+	err = agent.loop.Run(context.Background(), func(context.Context) {
+		relayed := agent.addPair(localHost, remoteRelay)
+		relayed.state = CandidatePairStateSucceeded
+		relayed.UpdateRoundTripTime(56 * time.Millisecond)
+
+		direct := agent.addPair(localSrflx, remoteSrflx)
+		direct.state = CandidatePairStateSucceeded
+		direct.UpdateRoundTripTime(40 * time.Millisecond)
+
+		assert.Greater(t, agent.evaluateCandidatePairQuality(direct), agent.evaluateCandidatePairQuality(relayed))
+		assert.Equal(t, direct, agent.findBestCandidatePair())
+		assert.True(t, agent.shouldRenominate(relayed, direct))
+	})
+	require.NoError(t, err)
+}
+
 func TestCandidatePairQualityTypeScores(t *testing.T) {
 	scores := map[CandidateType]float64{
 		CandidateTypeUnspecified: 0, CandidateTypeHost: 100,
@@ -1838,7 +1880,13 @@ func TestCandidatePairQualityTypeScores(t *testing.T) {
 			)
 			pair.state = CandidatePairStateSucceeded
 			// No RTT samples incur a fixed penalty of 30.
-			require.Equal(t, (localScore+remoteScore)/2-30, agent.evaluateCandidatePairQuality(pair))
+			// A relay on either side scores as relay. The other side's type
+			// does not describe a path that goes through TURN.
+			want := (localScore + remoteScore) / 2
+			if localType == CandidateTypeRelay || remoteType == CandidateTypeRelay {
+				want = 10
+			}
+			require.Equal(t, want-30, agent.evaluateCandidatePairQuality(pair))
 		}
 	}
 }
