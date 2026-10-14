@@ -132,7 +132,8 @@ type Agent struct {
 	buf *packetio.Buffer
 
 	// LRU of outbound Binding request Transaction IDs
-	pendingBindingRequests []bindingRequest
+	pendingBindingRequestsMu sync.Mutex
+	pendingBindingRequests   []bindingRequest
 
 	// Address rewrite (1:1) IP mapping
 	addressRewriteMapper *addressRewriteMapper
@@ -537,7 +538,9 @@ func (a *Agent) updateConnectionState(newState ConnectionState) {
 		a.removeUfragFromMux()
 		a.checklist = make([]*CandidatePair, 0)
 		a.pairsByID = make(map[uint64]*CandidatePair)
+		a.pendingBindingRequestsMu.Lock()
 		a.pendingBindingRequests = make([]bindingRequest, 0)
+		a.pendingBindingRequestsMu.Unlock()
 		a.setSelectedPair(nil)
 		a.deleteAllCandidates()
 	case ConnectionStateConnected:
@@ -777,9 +780,11 @@ func (a *Agent) consentExpired(pair *CandidatePair) bool {
 func (a *Agent) revokeConsent(pair *CandidatePair) {
 	pair.consentRevoked = true
 	pair.state = CandidatePairStateFailed
+	a.pendingBindingRequestsMu.Lock()
 	a.pendingBindingRequests = slices.DeleteFunc(a.pendingBindingRequests, func(request bindingRequest) bool {
 		return responseSymmetric(&request, pair.Local, pair.Remote.addrPort())
 	})
+	a.pendingBindingRequestsMu.Unlock()
 	if pair == a.getSelectedPair() {
 		a.updateConnectionState(ConnectionStateFailed)
 	}
@@ -1633,6 +1638,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 	if pair != nil && pair.consentRevoked {
 		return
 	}
+	a.pendingBindingRequestsMu.Lock()
 	a.invalidatePendingBindingRequests(time.Now())
 	a.pendingBindingRequests = append(a.pendingBindingRequests, bindingRequest{
 		timestamp:       time.Now(),
@@ -1644,6 +1650,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
 		nominationValue: nominationValue,
 	})
+	a.pendingBindingRequestsMu.Unlock()
 
 	if pair != nil {
 		pair.UpdateRequestSent()
@@ -1713,6 +1720,8 @@ func (a *Agent) invalidatePendingBindingRequests(filterTime time.Time) {
 func (a *Agent) handleInboundBindingResponse(
 	id [stun.TransactionIDSize]byte, local Candidate, remote netip.AddrPort,
 ) (bool, *bindingRequest, time.Duration) {
+	a.pendingBindingRequestsMu.Lock()
+	defer a.pendingBindingRequestsMu.Unlock()
 	a.invalidatePendingBindingRequests(time.Now())
 	for i := range a.pendingBindingRequests {
 		if a.pendingBindingRequests[i].transactionID == id {
