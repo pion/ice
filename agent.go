@@ -916,6 +916,15 @@ func isMulticastDNSCandidate(cand Candidate) bool {
 	return cand.Type() == CandidateTypeHost && strings.HasSuffix(cand.Address(), ".local")
 }
 
+// https://datatracker.ietf.org/doc/html/draft-ietf-mmusic-mdns-ice-candidates#section-3.3.2
+func canPair(local, remote Candidate) bool {
+	if local.Type() == CandidateTypeRelay && isMulticastDNSCandidate(remote) {
+		return false
+	}
+
+	return local.canWriteTo(remote)
+}
+
 func (a *Agent) addResolvedCandidate(cand Candidate, resolved netip.Addr, generation uint64) {
 	err := cand.setIPAddr(resolved)
 	if err != nil {
@@ -1241,7 +1250,7 @@ func (a *Agent) addRemoteCandidate(cand Candidate) bool { //nolint:cyclop
 	if cand.TCPType() != TCPTypePassive {
 		if localCandidates, ok := a.localCandidates[cand.NetworkType()]; ok {
 			for _, localCandidate := range localCandidates {
-				if localCandidate.canWriteTo(cand) && a.findPair(localCandidate, cand) == nil {
+				if canPair(localCandidate, cand) && a.findPair(localCandidate, cand) == nil {
 					a.addPair(localCandidate, cand)
 				}
 			}
@@ -1361,7 +1370,7 @@ func (a *Agent) addCandidateOnLoop(
 	a.localCandidates[cand.NetworkType()] = append(set, cand)
 
 	for _, remote := range a.remoteCandidates[cand.NetworkType()] {
-		if cand.canWriteTo(remote) {
+		if canPair(cand, remote) {
 			a.addPair(cand, remote)
 		}
 	}

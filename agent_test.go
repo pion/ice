@@ -699,6 +699,53 @@ func TestHandlePeerReflexive(t *testing.T) { //nolint:cyclop,maintidx
 	})
 }
 
+func TestRelayNotPairedWithMulticastDNSCandidate(t *testing.T) {
+	for _, remoteFirst := range []bool{false, true} {
+		agent, err := NewAgent(WithMulticastDNSMode(MulticastDNSModeDisabled))
+		require.NoError(t, err)
+
+		host, err := NewCandidateHost(&CandidateHostConfig{Network: "udp", Address: "192.0.2.1", Port: 5000, Component: 1})
+		require.NoError(t, err)
+		relay, err := NewCandidateRelay(&CandidateRelayConfig{Network: "udp", Address: "192.0.2.2", Port: 5000, Component: 1})
+		require.NoError(t, err)
+
+		mDNSRemote, err := UnmarshalCandidate("1 1 udp 2130706431 remote.local 5000 typ host")
+		require.NoError(t, err)
+		require.NoError(t, mDNSRemote.setIPAddr(netip.MustParseAddr("192.0.2.3")))
+		remote, err := UnmarshalCandidate("2 1 udp 2130706431 192.0.2.4 5000 typ host")
+		require.NoError(t, err)
+
+		addRemotes := func() {
+			require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) {
+				agent.addRemoteCandidate(mDNSRemote) //nolint:contextcheck
+				agent.addRemoteCandidate(remote)     //nolint:contextcheck
+			}))
+		}
+		if remoteFirst {
+			addRemotes()
+		}
+		require.NoError(t, agent.AddVirtualCandidate(host, &localCandidatePacketConn{addr: host.addr()}))
+		require.NoError(t, agent.AddVirtualCandidate(relay, &localCandidatePacketConn{addr: relay.addr()}))
+		if !remoteFirst {
+			addRemotes()
+		}
+
+		var pairs []string
+		require.NoError(t, agent.loop.Run(agent.loop, func(context.Context) {
+			for _, p := range agent.checklist {
+				pairs = append(pairs, p.Local.Address()+"-"+p.Remote.Address())
+			}
+		}))
+		require.ElementsMatch(t, []string{
+			"192.0.2.1-remote.local",
+			"192.0.2.1-192.0.2.4",
+			"192.0.2.2-192.0.2.4",
+		}, pairs)
+
+		require.NoError(t, agent.Close())
+	}
+}
+
 func TestAddRemoteCandidateStoresCandidatesIndependentlyOfNetworkTypes(t *testing.T) {
 	defer test.CheckRoutines(t)()
 	agentGatherOptions := []GatherOption{WithNetworkTypes([]NetworkType{NetworkTypeUDP4})}
