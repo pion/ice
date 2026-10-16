@@ -404,7 +404,9 @@ func TestResponseSymmetric(t *testing.T) {
 // TestHandleSuccessResponse_AsymmetricDiscarded verifies that HandleSuccessResponse
 // honors the symmetry check: a success response with a known TransactionID but a
 // mismatched transport (different network type or source address) is discarded and
-// does not mark the pair succeeded.
+// does not mark the pair succeeded. RFC 8445 §7.2.5.2.1 also requires that an
+// asymmetric response fail the pair it answers; the source-address-mismatch case
+// below covers that.
 func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 	newAgent := func(t *testing.T) (*Agent, *controllingSelector) {
 		t.Helper()
@@ -430,11 +432,11 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 
 		return c
 	}
-	// sendRequest registers a pending binding request for (local, remote) and
-	// returns the matching success response.
+	// sendRequest registers a pending nomination (USE-CANDIDATE) request for
+	// (local, remote) and returns the matching success response.
 	sendRequest := func(t *testing.T, agent *Agent, local, remote Candidate) *stun.Message {
 		t.Helper()
-		req, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag), AttrControlling(agent.tieBreaker), PriorityAttr(local.Priority()), stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+		req, err := stun.Build(stun.BindingRequest, stun.TransactionID, stun.NewUsername(agent.remoteUfrag+":"+agent.localUfrag), UseCandidate(), AttrControlling(agent.tieBreaker), PriorityAttr(local.Priority()), stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
 		require.NoError(t, err)
 		agent.sendBindingRequest(req, local, remote)
 
@@ -458,19 +460,21 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		require.Nil(t, agent.getSelectedPair())
 	})
 
-	t.Run("source address mismatch is discarded", func(t *testing.T) {
+	t.Run("source address mismatch fails the pair over", func(t *testing.T) {
 		agent, selector := newAgent(t)
 		local := newCand(NetworkTypeUDP4, "192.168.1.1", 10000)
 		remote := newCand(NetworkTypeUDP4, "192.168.1.2", 20000)
 		pair := agent.addPair(local, remote)
 		pair.state = CandidatePairStateInProgress
+		selector.nominatedPair = pair
 
 		resp := sendRequest(t, agent, local, remote)
 		wrongSrc := netip.AddrPortFrom(netip.MustParseAddr("192.168.1.9"), 20000)
 		selector.HandleSuccessResponse(resp, local, remote, wrongSrc)
 
-		require.Equal(t, CandidatePairStateInProgress, pair.state, "pair must not be marked succeeded when the response source does not match")
+		require.Equal(t, CandidatePairStateFailed, pair.state, "RFC 8445 §7.2.5.2.1: an asymmetric response fails the pair it answers")
 		require.Nil(t, agent.getSelectedPair())
+		require.Nil(t, selector.nominatedPair, "must stop re-nominating a pair that was just failed over")
 	})
 
 	t.Run("matching transport is accepted", func(t *testing.T) {
@@ -483,12 +487,67 @@ func TestHandleSuccessResponse_AsymmetricDiscarded(t *testing.T) {
 		resp := sendRequest(t, agent, local, remote)
 		other := newCand(NetworkTypeUDP4, "192.168.1.1", 10001)
 		selector.HandleSuccessResponse(resp, other, remote, remote.addrPort())
+		require.Equal(t, CandidatePairStateInProgress, pair.state, "another local candidate must not fail the pair")
 		require.Len(t, agent.pendingBindingRequests, 1, "a response on another local socket must not consume the request")
 		selector.HandleSuccessResponse(resp, local, remote, remote.addrPort())
 
 		require.Equal(t, CandidatePairStateSucceeded, pair.state, "pair must be marked succeeded when the response transport matches")
 		require.Empty(t, agent.pendingBindingRequests)
 	})
+}
+
+// TestControllingSelector_AsymmetricNominationFailsOverToNextPair verifies that
+// failing the nominated pair over on an asymmetric response (RFC 8445 §7.2.5.2.1)
+// lets the next ContactCandidates tick nominate a different valid pair, instead of
+// retrying the failed pair forever.
+func TestControllingSelector_AsymmetricNominationFailsOverToNextPair(t *testing.T) {
+	agent := bareAgentForPing()
+	agent.log = logging.NewDefaultLoggerFactory().NewLogger("test")
+	agent.remoteUfrag = selectionTestRemoteUfrag
+	agent.localUfrag = selectionTestLocalUfrag
+	agent.remotePwd = selectionTestPassword
+	agent.tieBreaker = 1
+	agent.hostAcceptanceMinWait = 0
+	agent.isControlling.Store(true)
+	agent.onConnected = make(chan struct{})
+	agent.setSelector()
+
+	selector, ok := agent.getSelector().(*controllingSelector)
+	require.True(t, ok, "expected controllingSelector")
+
+	newCand := func(ip string, port int) *pingNoIOCand {
+		c := newPingNoIOCand()
+		c.candidateBase.networkType = NetworkTypeUDP4
+		c.candidateBase.setResolvedAddr(&net.UDPAddr{IP: net.ParseIP(ip), Port: port})
+
+		return c
+	}
+
+	local := newCand("192.168.1.1", 10000)
+	remoteA := newCand("192.168.1.2", 20000)
+	remoteB := newCand("192.168.1.3", 20000)
+	pairA := agent.addPair(local, remoteA)
+	pairA.state = CandidatePairStateSucceeded
+	pairB := agent.addPair(local, remoteB)
+	pairB.state = CandidatePairStateSucceeded
+
+	selector.ContactCandidates()
+	require.Equal(t, pairA, selector.nominatedPair, "nominates the first valid pair")
+	require.Len(t, agent.pendingBindingRequests, 1)
+	req := agent.pendingBindingRequests[0]
+
+	resp, err := stun.Build(stun.NewTransactionIDSetter(req.transactionID), stun.BindingSuccess,
+		stun.NewShortTermIntegrity(agent.remotePwd), stun.Fingerprint)
+	require.NoError(t, err)
+
+	wrongRemote := netip.AddrPortFrom(netip.MustParseAddr("192.168.1.99"), 20000)
+	selector.HandleSuccessResponse(resp, local, remoteA, wrongRemote)
+
+	require.Equal(t, CandidatePairStateFailed, pairA.state)
+	require.Nil(t, selector.nominatedPair)
+
+	selector.ContactCandidates()
+	require.Equal(t, pairB, selector.nominatedPair, "nominates the remaining valid pair instead of retrying the failed one")
 }
 
 // TestControlledSelector_NoTriggeredCheckAfterConnected verifies that once a pair
