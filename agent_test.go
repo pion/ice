@@ -2511,6 +2511,10 @@ func TestGetSelectedCandidatePair(t *testing.T) {
 	require.True(t, bAgentPair.Local.Equal(aAgentPair.Remote))
 	require.True(t, bAgentPair.Remote.Equal(aAgentPair.Local))
 
+	aSelected := aAgent.getSelectedPair()
+	require.Equal(t, aSelected.Local.ID(), aAgentPair.Local.ID())
+	require.Equal(t, aSelected.Remote.ID(), aAgentPair.Remote.ID())
+
 	require.NoError(t, wan.Stop())
 }
 

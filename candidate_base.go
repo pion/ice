@@ -675,18 +675,22 @@ func (c *candidateBase) copy() (Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	if address == c.Address() {
-		return copied, nil
-	}
 
+	var base *candidateBase
 	switch candidate := copied.(type) {
 	case *CandidateHost:
-		candidate.address = c.Address()
+		base = &candidate.candidateBase
 	case *CandidateServerReflexive:
-		candidate.address = c.Address()
+		base = &candidate.candidateBase
+	case *CandidatePeerReflexive:
+		base = &candidate.candidateBase
 	case *CandidateRelay:
-		candidate.address = c.Address()
+		base = &candidate.candidateBase
+	default:
+		return copied, nil
 	}
+	base.id = c.id
+	base.address = c.Address()
 
 	return copied, nil
 }
