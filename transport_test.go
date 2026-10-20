@@ -390,6 +390,8 @@ func TestConnStats(t *testing.T) {
 
 	require.Equal(t, uint64(10), ca.BytesSent())
 	require.Equal(t, uint64(10), cb.BytesReceived())
+	require.Equal(t, uint64(1), ca.PacketsSent())
+	require.Equal(t, uint64(1), cb.PacketsReceived())
 }
 
 func TestAgent_connect_ErrEarly(t *testing.T) {
@@ -461,6 +463,7 @@ func TestStartDialConnWriteBeforeConnectReturnsError(t *testing.T) {
 	require.Zero(t, n)
 	require.ErrorIs(t, werr, ErrNoCandidatePairs)
 	require.Zero(t, conn.BytesSent())
+	require.Zero(t, conn.PacketsSent())
 }
 
 func TestConn_GetCandidatePairsInfo(t *testing.T) {
