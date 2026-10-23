@@ -6,6 +6,7 @@
 package ice
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -1025,6 +1026,46 @@ func TestUDPMux_GetConn_SharedRefcount(t *testing.T) {
 	case <-underlying.CloseChannel():
 	case <-time.After(time.Second):
 		require.FailNow(t, "underlying must close when the last wrapper is released")
+	}
+}
+
+func TestUDPMuxedConnWriteDeadlineAbortsBlockedWrite(t *testing.T) {
+	defer test.CheckRoutines(t)()
+
+	pc := newBlockingDeadlinePacketConn()
+	mux := NewUDPMuxDefault(UDPMuxParams{UDPConn: pc})
+	defer func() {
+		_ = mux.Close()
+	}()
+
+	conn, err := mux.GetConn("ufrag", pc.LocalAddr())
+	require.NoError(t, err)
+	require.NoError(t, conn.SetWriteDeadline(time.Now().Add(10*time.Millisecond)))
+
+	result := make(chan error, 1)
+	go func() {
+		_, writeErr := conn.WriteTo([]byte("packet"), pc.LocalAddr())
+		result <- writeErr
+	}()
+
+	select {
+	case <-pc.firstWriteStarted:
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for write to start")
+	}
+
+	select {
+	case <-pc.deadlineSet:
+		close(pc.allowFirstReturn)
+	case <-time.After(6 * time.Second):
+		require.FailNow(t, "write deadline did not reach UDP mux socket")
+	}
+
+	select {
+	case err = <-result:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		require.FailNow(t, "blocked UDP mux write did not return after deadline")
 	}
 }
 

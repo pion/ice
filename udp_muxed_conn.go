@@ -43,6 +43,8 @@ type udpMuxedConn struct {
 	refs atomic.Int32
 
 	activeWrites atomic.Int32
+
+	writeDeadline time.Time
 }
 
 func newUDPMuxedConn(params *udpMuxedConnParams) *udpMuxedConn {
@@ -158,7 +160,10 @@ func (c *udpMuxedConn) WriteTo(buf []byte, rAddr net.Addr) (n int, err error) {
 	}
 	c.registerAddress(canonicalAddrPort(addrPort))
 
-	return c.params.Mux.writeTo(buf, rAddr)
+	ctx, cancel := c.writeContext()
+	defer cancel()
+
+	return c.params.Mux.writeToContext(ctx, buf, rAddr)
 }
 
 func (c *udpMuxedConn) WriteToAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
@@ -173,7 +178,10 @@ func (c *udpMuxedConn) WriteToAddrPort(buf []byte, rAddr netip.AddrPort) (n int,
 	}
 	c.registerAddress(canonicalAddrPort(rAddr))
 
-	return c.params.Mux.writeToUDPAddrPort(buf, rAddr)
+	ctx, cancel := c.writeContext()
+	defer cancel()
+
+	return c.params.Mux.writeToUDPAddrPortContext(ctx, buf, rAddr)
 }
 
 // registerAddress registers addr with the mux the first time this conn
@@ -188,16 +196,36 @@ func (c *udpMuxedConn) LocalAddr() net.Addr {
 	return c.params.LocalAddr
 }
 
-func (c *udpMuxedConn) SetDeadline(time.Time) error {
-	return nil
+func (c *udpMuxedConn) SetDeadline(t time.Time) error {
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+
+	return c.SetWriteDeadline(t)
 }
 
 func (c *udpMuxedConn) SetReadDeadline(time.Time) error {
 	return nil
 }
 
-func (c *udpMuxedConn) SetWriteDeadline(time.Time) error {
+func (c *udpMuxedConn) SetWriteDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.writeDeadline = t
 	return nil
+}
+
+func (c *udpMuxedConn) writeContext() (context.Context, context.CancelFunc) {
+	c.mu.Lock()
+	deadline := c.writeDeadline
+	c.mu.Unlock()
+
+	if deadline.IsZero() {
+		return context.Background(), func() {}
+	}
+
+	return context.WithDeadline(context.Background(), deadline)
 }
 
 func (c *udpMuxedConn) abortWrite() error { //nolint:unparam // Required by writeAborter; the watchdog logs errors.
