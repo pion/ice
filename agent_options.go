@@ -1052,3 +1052,17 @@ func WithLoggerFactory(loggerFactory logging.LoggerFactory) AgentOption {
 		return nil
 	}
 }
+
+// WithInsecureSkipVerify controls whether TURN TLS and DTLS connections skip certificate verification.
+// By default, certificates are verified.
+func WithInsecureSkipVerify(insecureSkipVerify bool) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.insecureSkipVerify = insecureSkipVerify
+
+		return nil
+	}
+}
