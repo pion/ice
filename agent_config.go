@@ -251,6 +251,14 @@ type AgentConfig struct {
 	// switched to that irrespective of relative priority between current selected pair
 	// and priority of the pair being switched to.
 	EnableUseCandidateCheckPriority bool
+
+	// PaddedCheckSize, when non-zero, is the size of the datagrams this agent sends. Once a pair
+	// answers a check, further checks carry a PADDING attribute (RFC 5780) that makes them this
+	// large, and the pair only succeeds once one of them is answered. When the remote sends a
+	// padded check, this agent pads its response to this size, whatever the size of the check, so
+	// a pair only succeeds if it carries each agent's size in its direction. Keep the checks
+	// unfragmented, for example with IPV6_DONTFRAG.
+	PaddedCheckSize int
 }
 
 // initWithDefaults populates an agent and falls back to defaults if fields are unset.
