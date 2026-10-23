@@ -32,7 +32,7 @@ type CandidatePair struct {
 	state                    CandidatePairState
 	nominated                bool
 	nominateOnBindingSuccess bool
-	// reachable is set when the pair answered an unpadded check, see AgentConfig.PaddedCheckSize.
+	// reachable is set when the pair answered an unpadded check, see WithPaddedCheckSize.
 	reachable bool
 
 	// stats

@@ -30,13 +30,13 @@ func TestPaddedCheckSize(t *testing.T) {
 	newAgent := func(t *testing.T, n *vnet.Net, paddedCheckSize int) *Agent {
 		t.Helper()
 
-		agent, err := NewAgent(&AgentConfig{
-			Urls:             []*stun.URI{stunServerURL},
-			NetworkTypes:     []NetworkType{NetworkTypeUDP4},
-			MulticastDNSMode: MulticastDNSModeDisabled,
-			Net:              n,
-			PaddedCheckSize:  paddedCheckSize,
-		})
+		agent, err := NewAgentWithOptions(
+			WithUrls([]*stun.URI{stunServerURL}),
+			WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+			WithMulticastDNSMode(MulticastDNSModeDisabled),
+			WithNet(n),
+			WithPaddedCheckSize(paddedCheckSize),
+		)
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, agent.Close()) })
 

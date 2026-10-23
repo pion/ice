@@ -373,7 +373,6 @@ func createAgentBase(config *AgentConfig) (*Agent, error) {
 		disableActiveTCP:                config.DisableActiveTCP,
 		userBindingRequestHandler:       config.BindingRequestHandler,
 		enableUseCandidateCheckPriority: config.EnableUseCandidateCheckPriority,
-		paddedCheckSize:                 config.PaddedCheckSize,
 		enableRenomination:              false,
 		nominationValueGenerator:        nil,
 		nominationAttribute:             DefaultNominationAttribute,
@@ -1804,8 +1803,8 @@ func (a *Agent) padsChecks(local, remote Candidate) bool {
 	return pair != nil && pair.reachable && pair.state != CandidatePairStateSucceeded
 }
 
-// validatesPair reports whether a success response makes the pair valid. If PaddedCheckSize is
-// set, only the response to a padded check does, however large: the remote pads it to the size it
+// validatesPair reports whether a success response makes the pair valid. With WithPaddedCheckSize,
+// only the response to a padded check does, however large: the remote pads it to the size it
 // sends, if any. The response to an unpadded check marks the pair reachable instead, and starts
 // its padded checks.
 func (a *Agent) validatesPair(pair *CandidatePair, request *bindingRequest) bool {
