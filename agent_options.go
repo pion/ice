@@ -659,6 +659,24 @@ func WithCheckInterval(interval time.Duration) AgentOption {
 	}
 }
 
+// WithPaddedCheckSize sets the size of the datagrams this agent sends. Once a pair answers a
+// check, further checks carry a PADDING attribute (RFC 5780) that makes them this large, and the
+// pair only succeeds once one of them is answered. When the remote sends a padded check, this
+// agent pads its response to this size, whatever the size of the check, so a pair only succeeds
+// if it carries each agent's size in its direction. Keep the checks unfragmented, for example
+// with IPV6_DONTFRAG.
+func WithPaddedCheckSize(size int) AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.paddedCheckSize = size
+
+		return nil
+	}
+}
+
 // WithRenomination enables ICE renomination as described in draft-thatcher-ice-renomination-01.
 // When enabled, the controlling agent can renominate candidate pairs multiple times
 // and the controlled agent follows "last nomination wins" rule.

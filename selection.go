@@ -194,6 +194,10 @@ func (s *controllingSelector) HandleSuccessResponse(
 		return
 	}
 
+	if !s.agent.validatesPair(pair, pendingRequest) {
+		return
+	}
+
 	pair.state = CandidatePairStateSucceeded
 	s.log.Tracef("Found valid candidate pair: %s", pair)
 
@@ -222,6 +226,9 @@ func (s *controllingSelector) PingCandidate(local, remote Candidate) {
 		stun.NewUsername(s.agent.remoteUfrag + ":" + s.agent.localUfrag),
 		AttrControlling(s.agent.tieBreaker),
 		PriorityAttr(local.prflxPriority()),
+	}
+	if s.agent.padsChecks(local, remote) {
+		attributes = append(attributes, paddingAttr(s.agent.paddedCheckSize))
 	}
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
@@ -375,6 +382,9 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 		AttrControlled(s.agent.tieBreaker),
 		PriorityAttr(local.prflxPriority()),
 	}
+	if s.agent.padsChecks(local, remote) {
+		attributes = append(attributes, paddingAttr(s.agent.paddedCheckSize))
+	}
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(s.agent.remotePwd),
 		stun.Fingerprint)
@@ -389,7 +399,7 @@ func (s *controlledSelector) PingCandidate(local, remote Candidate) {
 	s.agent.sendBindingRequest(msg, local, remote)
 }
 
-func (s *controlledSelector) HandleSuccessResponse(
+func (s *controlledSelector) HandleSuccessResponse( //nolint:cyclop
 	m *stun.Message, local, remote Candidate, remoteAddr netip.AddrPort,
 ) {
 	//nolint:godox
@@ -426,6 +436,10 @@ func (s *controlledSelector) HandleSuccessResponse(
 		// This shouldn't happen
 		s.log.Error("Success response from invalid candidate pair")
 
+		return
+	}
+
+	if !s.agent.validatesPair(pair, pendingRequest) {
 		return
 	}
 

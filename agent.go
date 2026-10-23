@@ -38,6 +38,7 @@ type bindingRequest struct {
 	networkType     NetworkType // Transport the request was sent over; destination alone omits it.
 	isControlling   bool        // Role advertised in this request.
 	isUseCandidate  bool
+	isPadded        bool
 	nominationValue *uint32 // Tracks nomination value for renomination requests
 }
 
@@ -79,6 +80,7 @@ type Agent struct {
 	isControlling atomic.Bool
 
 	maxBindingRequests uint16
+	paddedCheckSize    int
 
 	hostAcceptanceMinWait  time.Duration
 	srflxAcceptanceMinWait time.Duration
@@ -800,19 +802,23 @@ func (a *Agent) pingAllCandidates() {
 		a.log.Warn("Failed to ping without candidate pairs. Connection is not possible yet.")
 	}
 
-	for _, p := range a.checklist {
-		if p.state == CandidatePairStateWaiting {
-			p.state = CandidatePairStateInProgress
-		} else if p.state != CandidatePairStateInProgress {
+	for _, pair := range a.checklist {
+		if pair.state == CandidatePairStateWaiting {
+			pair.state = CandidatePairStateInProgress
+		} else if pair.state != CandidatePairStateInProgress {
 			continue
 		}
 
-		if p.bindingRequestCount > a.maxBindingRequests {
-			a.log.Tracef("Maximum requests reached for pair %s, marking it as failed", p)
-			p.state = CandidatePairStateFailed
+		if pair.bindingRequestCount > a.maxBindingRequests {
+			if pair.reachable {
+				a.log.Warnf("Pair %s answers checks, but not padded ones, marking it as failed", pair)
+			} else {
+				a.log.Tracef("Maximum requests reached for pair %s, marking it as failed", pair)
+			}
+			pair.state = CandidatePairStateFailed
 		} else {
-			a.getSelector().PingCandidate(p.Local, p.Remote)
-			p.bindingRequestCount++
+			a.getSelector().PingCandidate(pair.Local, pair.Remote)
+			pair.bindingRequestCount++
 		}
 	}
 }
@@ -1190,6 +1196,7 @@ func replacePairRemote(pair *CandidatePair, remote Candidate) *CandidatePair {
 	replacement.state = pair.state
 	replacement.nominated = pair.nominated
 	replacement.nominateOnBindingSuccess = pair.nominateOnBindingSuccess
+	replacement.reachable = pair.reachable
 
 	atomic.StoreInt64(&replacement.currentRoundTripTime, atomic.LoadInt64(&pair.currentRoundTripTime))
 	atomic.StoreInt64(&replacement.totalRoundTripTime, atomic.LoadInt64(&pair.totalRoundTripTime))
@@ -1698,6 +1705,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 		networkType:     remote.NetworkType(),
 		isControlling:   msg.Contains(stun.AttrICEControlling),
 		isUseCandidate:  msg.Contains(stun.AttrUseCandidate),
+		isPadded:        msg.Contains(stun.AttrPadding),
 		nominationValue: nominationValue,
 	})
 
@@ -1709,7 +1717,7 @@ func (a *Agent) sendBindingRequest(msg *stun.Message, local, remote Candidate) {
 	a.sendSTUN(msg, local, remote)
 }
 
-func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
+func (a *Agent) sendBindingSuccess(req *stun.Message, local, remote Candidate) {
 	base := remote
 
 	ip, port, _, err := parseAddr(base.addr())
@@ -1720,12 +1728,16 @@ func (a *Agent) sendBindingSuccess(m *stun.Message, local, remote Candidate) {
 	}
 
 	attributes := []stun.Setter{
-		m,
+		req,
 		stun.BindingSuccess,
 		&stun.XORMappedAddress{
 			IP:   ip.AsSlice(),
 			Port: port,
 		},
+	}
+	if req.Contains(stun.AttrPadding) && a.paddedCheckSize > 0 {
+		// The remote's padded check then also tests our direction, at the size we send.
+		attributes = append(attributes, paddingAttr(a.paddedCheckSize))
 	}
 	attributes = append(attributes,
 		stun.NewShortTermIntegrity(a.localPwd),
@@ -1778,6 +1790,36 @@ func (a *Agent) handleInboundBindingSuccess(id [stun.TransactionIDSize]byte) (bo
 	}
 
 	return false, nil, 0
+}
+
+// padsChecks reports whether the next check for this pair carries PADDING. Checks stay unpadded
+// until the pair answers one, then stay padded until the pair succeeds.
+func (a *Agent) padsChecks(local, remote Candidate) bool {
+	if a.paddedCheckSize == 0 {
+		return false
+	}
+	pair := a.findPair(local, remote)
+
+	return pair != nil && pair.reachable && pair.state != CandidatePairStateSucceeded
+}
+
+// validatesPair reports whether a success response makes the pair valid. With WithPaddedCheckSize,
+// only the response to a padded check does, however large: the remote pads it to the size it
+// sends, if any. The response to an unpadded check marks the pair reachable instead, and starts
+// its padded checks.
+func (a *Agent) validatesPair(pair *CandidatePair, request *bindingRequest) bool {
+	if a.paddedCheckSize == 0 || pair.state == CandidatePairStateSucceeded || request.isPadded {
+		return true
+	}
+	if !pair.reachable {
+		pair.reachable = true
+		// Give the padded checks a full budget of their own, and send the first one now rather
+		// than on the next tick of the check timer.
+		pair.bindingRequestCount = 0
+		a.getSelector().PingCandidate(pair.Local, pair.Remote)
+	}
+
+	return false
 }
 
 func (a *Agent) handleRoleConflict(msg *stun.Message, local, remote Candidate, remoteTieBreaker *AttrControl) {
