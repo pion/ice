@@ -756,6 +756,22 @@ func TestWithLoggerFactory(t *testing.T) {
 	})
 }
 
+func TestWithInsecureSkipVerify(t *testing.T) {
+	agent, err := NewAgentWithOptions(WithNet(newStubNet(t)), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, agent.Close()) })
+	require.False(t, agent.insecureSkipVerify)
+
+	insecureAgent, err := NewAgentWithOptions(
+		WithNet(newStubNet(t)),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+		WithInsecureSkipVerify(true),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, insecureAgent.Close()) })
+	require.True(t, insecureAgent.insecureSkipVerify)
+}
+
 func TestWithNetworkTypesAppliedBeforeRestart(t *testing.T) {
 	t.Run("ipv6 listen skipped when network types option restricts to ipv4", func(t *testing.T) {
 		stub := newStubNet(t)
