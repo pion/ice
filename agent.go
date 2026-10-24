@@ -2251,6 +2251,12 @@ func (a *Agent) sendNominationRequest(pair *CandidatePair, nominationValue uint3
 	return nil
 }
 
+// pairUsesRelay reports whether the pair goes through a TURN server.
+// A host candidate paired with a remote relay is still a relayed path.
+func pairUsesRelay(pair *CandidatePair) bool {
+	return pair.Local.Type() == CandidateTypeRelay || pair.Remote.Type() == CandidateTypeRelay
+}
+
 // evaluateCandidatePairQuality calculates a quality score for a candidate pair.
 // Higher scores indicate better quality. The score considers:
 // - Candidate types (host > srflx > relay)
@@ -2263,21 +2269,25 @@ func (a *Agent) evaluateCandidatePairQuality(pair *CandidatePair) float64 { //no
 
 	score := float64(0)
 
-	// Average the local and remote type preferences (host=100, srflx=50, prflx=30, relay=10).
-	for _, candidateType := range []CandidateType{pair.Local.Type(), pair.Remote.Type()} {
-		switch candidateType {
-		case CandidateTypeHost:
-			score += 100
-		case CandidateTypeServerReflexive:
-			score += 50
-		case CandidateTypePeerReflexive:
-			score += 30
-		case CandidateTypeRelay:
-			score += 10
-		case CandidateTypeUnspecified:
+	// A relayed path scores as relay. Averaging a host with a relay
+	// would outrank a direct srflx pair that never touches TURN.
+	if pairUsesRelay(pair) {
+		score += 10
+	} else {
+		// Average the local and remote type preferences (host=100, srflx=50, prflx=30).
+		for _, candidateType := range []CandidateType{pair.Local.Type(), pair.Remote.Type()} {
+			switch candidateType {
+			case CandidateTypeHost:
+				score += 100
+			case CandidateTypeServerReflexive:
+				score += 50
+			case CandidateTypePeerReflexive:
+				score += 30
+			case CandidateTypeRelay, CandidateTypeUnspecified:
+			}
 		}
+		score /= 2
 	}
-	score /= 2
 
 	// RTT scoring (convert to penalty, lower RTT = higher score)
 	// Use current RTT if available, otherwise assume high latency
@@ -2315,16 +2325,17 @@ func (a *Agent) shouldRenominate(current, candidate *CandidatePair) bool { //nol
 		return false
 	}
 
-	// Type-based switching (always prefer direct over relay)
-	currentIsRelay := current.Local.Type() == CandidateTypeRelay ||
-		current.Remote.Type() == CandidateTypeRelay
-	candidateIsDirect := candidate.Local.Type() == CandidateTypeHost &&
-		candidate.Remote.Type() == CandidateTypeHost
+	// Type-based switching (always prefer a path that does not use TURN).
+	currentIsRelay := pairUsesRelay(current)
+	candidateIsRelay := pairUsesRelay(candidate)
 
-	if currentIsRelay && candidateIsDirect {
+	if currentIsRelay && !candidateIsRelay {
 		a.log.Debugf("Should renominate: relay -> direct connection available")
 
 		return true
+	}
+	if !currentIsRelay && candidateIsRelay {
+		return false
 	}
 
 	// RTT-based switching (must improve by at least 10ms)
@@ -2368,8 +2379,13 @@ func (a *Agent) findBestCandidatePair() *CandidatePair {
 			continue
 		}
 
+		// A succeeded path that does not use TURN outranks every relayed pair.
+		if best != nil && pairUsesRelay(pair) && !pairUsesRelay(best) {
+			continue
+		}
+
 		score := a.evaluateCandidatePairQuality(pair)
-		if score > bestScore {
+		if score > bestScore || (best != nil && pairUsesRelay(best) && !pairUsesRelay(pair)) {
 			bestScore = score
 			best = pair
 		}
