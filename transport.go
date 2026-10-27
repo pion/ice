@@ -133,8 +133,8 @@ func (c *Conn) Read(p []byte) (int, error) {
 
 // ReadWithAttributes reads a packet and replaces attrs with its metadata.
 func (c *Conn) ReadWithAttributes(p []byte, attrs packetio.Attributes) (int, packetio.Attributes, error) {
-	if err := c.agent.loop.Err(); err != nil {
-		return 0, nil, err
+	if c.agent.loop.Closed() {
+		return 0, nil, c.agent.loop.Err()
 	}
 
 	n, attrs, err := c.agent.buf.Read(p, attrs)
@@ -145,9 +145,8 @@ func (c *Conn) ReadWithAttributes(p []byte, attrs packetio.Attributes) (int, pac
 
 // Write implements the Conn Write method.
 func (c *Conn) Write(packet []byte) (int, error) {
-	err := c.agent.loop.Err()
-	if err != nil {
-		return 0, err
+	if c.agent.loop.Closed() {
+		return 0, c.agent.loop.Err()
 	}
 
 	if stun.IsMessage(packet) {
@@ -165,7 +164,7 @@ func (c *Conn) Write(packet []byte) (int, error) {
 		// we avoid allocating on most writes and only allocate when no pair
 		// is currently selected.
 		var p *CandidatePair
-		if err = c.agent.loop.Run(c.agent.loop, func(_ context.Context) {
+		if err := c.agent.loop.Run(c.agent.loop, func(_ context.Context) {
 			p = c.agent.getBestValidCandidatePair()
 		}); err != nil {
 			return 0, err
@@ -219,8 +218,8 @@ func (c *Conn) GetCandidatePairsInfo() []CandidatePairInfo {
 // This is useful for sending packets over alternate paths
 // even if they are not nominated.
 func (c *Conn) WriteToPair(pairID uint64, packet []byte) (int, error) {
-	if err := c.agent.loop.Err(); err != nil {
-		return 0, err
+	if c.agent.loop.Closed() {
+		return 0, c.agent.loop.Err()
 	}
 
 	if stun.IsMessage(packet) {
