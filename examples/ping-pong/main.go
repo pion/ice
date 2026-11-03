@@ -52,7 +52,6 @@ func remoteCandidate(_ http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 	}
-
 }
 
 func main() { //nolint
