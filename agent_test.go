@@ -2202,8 +2202,53 @@ func TestLiteLocalCandidatePrioritiesAreUnique(t *testing.T) {
 			continue
 		}
 
-		require.Equal(t, previousPriority-(1<<8), candidate.Priority())
+		require.Equal(t, previousPriority-(2<<8), candidate.Priority())
 		previousPriority = candidate.Priority()
+	}
+}
+
+func TestLiteLocalCandidatePrioritiesDoNotDependOnAddressFamilyOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		network string
+		tcpType TCPType
+	}{
+		{name: "udp", network: "udp"},
+		{name: "passive tcp", network: "tcp", tcpType: TCPTypePassive},
+		{name: "active tcp", network: "tcp", tcpType: TCPTypeActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			priorities := func(addresses []string) map[string]uint32 {
+				t.Helper()
+
+				agent := &Agent{lite: true, localCandidates: make(map[NetworkType][]Candidate)}
+				result := make(map[string]uint32)
+				for _, address := range addresses {
+					candidate, err := NewCandidateHost(&CandidateHostConfig{
+						Network: tc.network, Address: address, Port: 5000, Component: ComponentRTP, TCPType: tc.tcpType,
+					})
+					require.NoError(t, err)
+
+					agent.setUniqueLiteCandidatePriority(candidate)
+					agent.localCandidates[candidate.NetworkType()] = append(agent.localCandidates[candidate.NetworkType()], candidate)
+					result[address] = candidate.Priority()
+				}
+
+				return result
+			}
+
+			ipv4First := priorities([]string{"192.0.2.1", "2001:db8::1", "192.0.2.2", "2001:db8::2"})
+			ipv6First := priorities([]string{"2001:db8::1", "192.0.2.1", "2001:db8::2", "192.0.2.2"})
+			require.Equal(t, ipv4First, ipv6First, "a migration must not lower candidate priorities when the address families gather in a different order")
+			require.Equal(t, ipv4First["192.0.2.1"], priorities([]string{"192.0.2.1"})["192.0.2.1"], "IPv4 priority must not depend on IPv6 being available")
+			require.Equal(t, ipv4First["2001:db8::1"], priorities([]string{"2001:db8::1"})["2001:db8::1"], "IPv6 priority must not depend on IPv4 being available")
+
+			seen := make(map[uint32]bool)
+			for _, priority := range ipv4First {
+				require.False(t, seen[priority], "ICE-lite candidate priorities must remain unique")
+				seen[priority] = true
+			}
+		})
 	}
 }
 

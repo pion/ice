@@ -1278,6 +1278,11 @@ func (a *Agent) setUniqueLiteCandidatePriority(cand Candidate) {
 	}
 
 	priority := cand.Priority()
+	// Reserve odd local preferences for IPv6 and even ones for IPv4 to
+	// stabilize ICE-lite priorities across address families
+	if cand.NetworkType().IsIPv4() {
+		priority -= 1 << 8
+	}
 	for {
 		if _, ok := used[priority]; !ok {
 			cand.setPriority(priority)
@@ -1285,7 +1290,7 @@ func (a *Agent) setUniqueLiteCandidatePriority(cand Candidate) {
 			return
 		}
 
-		priority -= 1 << 8
+		priority -= 2 << 8
 	}
 }
 
