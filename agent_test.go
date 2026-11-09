@@ -2174,8 +2174,86 @@ func TestLiteLocalCandidatePrioritiesAreUnique(t *testing.T) {
 			continue
 		}
 
-		require.Equal(t, previousPriority-(1<<8), candidate.Priority())
+		require.Equal(t, previousPriority-(1<<16), candidate.Priority())
 		previousPriority = candidate.Priority()
+	}
+}
+
+func TestLiteLocalCandidatePrioritiesDoNotDependOnGatherOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		network string
+		tcpType TCPType
+	}{
+		{name: "UDP", network: "udp"},
+		{name: "PassiveTCP", network: "tcp", tcpType: TCPTypePassive},
+		{name: "ActiveTCP", network: "tcp", tcpType: TCPTypeActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			newCandidate := func(address string) Candidate {
+				candidate, err := NewCandidateHost(&CandidateHostConfig{
+					Network:   tc.network,
+					Address:   address,
+					Port:      10000,
+					Component: ComponentRTP,
+					TCPType:   tc.tcpType,
+				})
+				require.NoError(t, err)
+
+				return candidate
+			}
+
+			gather := func(addresses ...string) map[string]uint32 {
+				agent := &Agent{lite: true, localCandidates: make(map[NetworkType][]Candidate)}
+				priorities := make(map[string]uint32)
+				for _, address := range addresses {
+					candidate := newCandidate(address)
+					agent.setUniqueLiteCandidatePriority(candidate)
+					agent.localCandidates[candidate.NetworkType()] = append(
+						agent.localCandidates[candidate.NetworkType()], candidate,
+					)
+					priorities[address] = candidate.Priority()
+				}
+
+				return priorities
+			}
+
+			ipv4First := gather("192.0.2.1", "192.0.2.2", "2001:db8::1", "2001:db8::2")
+			ipv6First := gather("2001:db8::1", "2001:db8::2", "192.0.2.1", "192.0.2.2")
+			interleaved := gather("2001:db8::1", "192.0.2.1", "2001:db8::2", "192.0.2.2")
+			require.Equal(t, ipv4First, ipv6First)
+			require.Equal(t, ipv4First, interleaved)
+
+			require.Equal(t, ipv4First["192.0.2.1"], gather("192.0.2.1")["192.0.2.1"])
+			require.Equal(t, ipv4First["2001:db8::1"], gather("2001:db8::1")["2001:db8::1"])
+
+			unique := make(map[uint32]struct{})
+			for _, priority := range ipv4First {
+				unique[priority] = struct{}{}
+			}
+			require.Len(t, unique, len(ipv4First))
+
+			require.Greater(t, ipv4First["2001:db8::1"], ipv4First["192.0.2.1"])
+		})
+	}
+}
+
+func TestLiteLocalCandidatePriorityKeepsOverride(t *testing.T) {
+	agent := &Agent{lite: true, localCandidates: make(map[NetworkType][]Candidate)}
+
+	for i := range 2 {
+		candidate, err := NewCandidateHost(&CandidateHostConfig{
+			Network:   "udp",
+			Address:   "192.0.2." + strconv.Itoa(i+1),
+			Port:      10000,
+			Component: ComponentRTP,
+			Priority:  200,
+		})
+		require.NoError(t, err)
+
+		agent.setUniqueLiteCandidatePriority(candidate)
+		agent.localCandidates[candidate.NetworkType()] = append(agent.localCandidates[candidate.NetworkType()], candidate)
+		require.Equal(t, uint32(200), candidate.Priority())
 	}
 }
 

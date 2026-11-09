@@ -543,6 +543,10 @@ func (c *candidateBase) setPriority(priority uint32) {
 	c.priorityOverride = priority
 }
 
+func (c *candidateBase) hasPriorityOverride() bool {
+	return c.priorityOverride != 0
+}
+
 // prflxPriority returns the value a Binding request sent from this candidate
 // carries in its PRIORITY attribute: the candidate's priority recomputed with
 // the type preference of a peer-reflexive candidate.
