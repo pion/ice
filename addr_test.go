@@ -180,3 +180,28 @@ func TestAsAddrPortReaderWriter(t *testing.T) {
 	wrapper := &embeddingUDPConnWrapper{UDPConn: udpConn}
 	require.Nil(t, asAddrPortReaderWriter(wrapper))
 }
+
+func TestIPAddressPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		addr       string
+		precedence uint8
+	}{
+		{"192.0.2.1", addrPrecedenceIPv4},
+		{"::ffff:192.0.2.1", addrPrecedenceIPv4},
+		{"::1", addrPrecedenceIPv6Loopback},
+		{"fd00::1", addrPrecedenceIPv6ULA},
+		{"fd00::1%eth0", addrPrecedenceIPv6ULA},
+		{"2001:db8::1", addrPrecedenceIPv6},
+		{"fe80::1", addrPrecedenceIPv6},
+		{"2002:c000:201::1", addrPrecedenceIPv6To4},
+		{"2001:0:4136:e378::1", addrPrecedenceIPv6Teredo},
+		{"::192.0.2.1", addrPrecedenceIPv6Legacy},
+		{"fec0::1", addrPrecedenceIPv6Legacy},
+		{"3ffe::1", addrPrecedenceIPv6Legacy},
+	} {
+		require.Equal(t, tc.precedence, ipAddressPrecedence(netip.MustParseAddr(tc.addr), NetworkTypeUDP4), tc.addr)
+	}
+
+	require.Equal(t, uint8(addrPrecedenceIPv4), ipAddressPrecedence(netip.Addr{}, NetworkTypeUDP4))
+	require.Equal(t, uint8(addrPrecedenceIPv6), ipAddressPrecedence(netip.Addr{}, NetworkTypeTCP6))
+}

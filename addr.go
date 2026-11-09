@@ -229,3 +229,57 @@ func canonicalAddr(addr netip.Addr) netip.Addr {
 func canonicalAddrPort(ap netip.AddrPort) netip.AddrPort {
 	return netip.AddrPortFrom(canonicalAddr(ap.Addr()), ap.Port())
 }
+
+// Address precedence values used in the low byte of an ICE-lite candidate's
+// local preference. They mirror libwebrtc's IPAddressPrecedence, which follows
+// the RFC 6724 policy table.
+const (
+	addrPrecedenceIPv6Loopback = 60
+	addrPrecedenceIPv6ULA      = 50
+	addrPrecedenceIPv6         = 40
+	addrPrecedenceIPv4         = 30
+	addrPrecedenceIPv6To4      = 20
+	addrPrecedenceIPv6Teredo   = 10
+	addrPrecedenceIPv6Legacy   = 1
+)
+
+var (
+	ipv6ULAPrefix       = netip.MustParsePrefix("fc00::/7")  //nolint:gochecknoglobals
+	ipv66To4Prefix      = netip.MustParsePrefix("2002::/16") //nolint:gochecknoglobals
+	ipv6TeredoPrefix    = netip.MustParsePrefix("2001::/32") //nolint:gochecknoglobals
+	ipv6V4CompatPrefix  = netip.MustParsePrefix("::/96")     //nolint:gochecknoglobals
+	ipv6SiteLocalPrefix = netip.MustParsePrefix("fec0::/10") //nolint:gochecknoglobals
+	ipv66BonePrefix     = netip.MustParsePrefix("3ffe::/16") //nolint:gochecknoglobals
+)
+
+// ipAddressPrecedence returns the precedence of addr. If addr is not valid (for
+// example an unresolved mDNS candidate) it falls back to the precedence of a
+// native address of the candidate's family.
+func ipAddressPrecedence(addr netip.Addr, networkType NetworkType) uint8 {
+	addr = addr.WithZone("")
+
+	switch {
+	case !addr.IsValid():
+		if networkType.IsIPv6() {
+			return addrPrecedenceIPv6
+		}
+
+		return addrPrecedenceIPv4
+	case addr.Is4(), addr.Is4In6():
+		return addrPrecedenceIPv4
+	case addr.IsLoopback():
+		return addrPrecedenceIPv6Loopback
+	case ipv6ULAPrefix.Contains(addr):
+		return addrPrecedenceIPv6ULA
+	case ipv66To4Prefix.Contains(addr):
+		return addrPrecedenceIPv6To4
+	case ipv6TeredoPrefix.Contains(addr):
+		return addrPrecedenceIPv6Teredo
+	case ipv6V4CompatPrefix.Contains(addr),
+		ipv6SiteLocalPrefix.Contains(addr),
+		ipv66BonePrefix.Contains(addr):
+		return addrPrecedenceIPv6Legacy
+	default:
+		return addrPrecedenceIPv6
+	}
+}
