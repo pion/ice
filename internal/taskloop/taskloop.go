@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	atomicx "github.com/pion/ice/v4/internal/atomic"
@@ -31,6 +32,10 @@ type Loop struct {
 	taskLoopDone chan struct{}
 	closeOnce    sync.Once
 	err          atomicx.Error
+
+	// closed mirrors done and backs Closed(). It is set after done is closed,
+	// so Closed() always implies Err() != nil.
+	closed atomic.Bool
 }
 
 // New creates and starts a new task loop.
@@ -78,6 +83,8 @@ func (l *Loop) CloseWithPreStop(preStop func()) {
 		l.err.Store(ErrClosed)
 
 		close(l.done)
+		l.closed.Store(true)
+
 		if preStop != nil {
 			preStop()
 		}
@@ -85,11 +92,17 @@ func (l *Loop) CloseWithPreStop(preStop func()) {
 	<-l.taskLoopDone
 }
 
+// Closed reports whether the loop has been closed/stopped.
+// It is an atomic load for hot paths, where Err costs a runtime call.
+func (l *Loop) Closed() bool {
+	return l.closed.Load()
+}
+
 // Run serially executes the submitted callback.
 // Blocking tasks must be cancelable by context.
 func (l *Loop) Run(ctx context.Context, t func(context.Context)) error {
-	if err := l.Err(); err != nil {
-		return err
+	if l.Closed() {
+		return ErrClosed
 	}
 	done := make(chan struct{})
 	select {
