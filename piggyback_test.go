@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
+	"github.com/pion/dtls/v4/pkg/protocol"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 	"github.com/pion/transport/v5/test"
 	"github.com/stretchr/testify/require"
 )

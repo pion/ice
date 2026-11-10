@@ -22,12 +22,12 @@ import (
 	"github.com/pion/ice/v5/internal/taskloop"
 	"github.com/pion/logging"
 	"github.com/pion/mdns/v2"
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 	"github.com/pion/transport/v5"
 	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/transport/v5/stdnet"
 	"github.com/pion/transport/v5/vnet"
-	"github.com/pion/turn/v5"
+	"github.com/pion/turn/v6"
 	"golang.org/x/net/proxy"
 )
 

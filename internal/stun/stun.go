@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 )
 
 // RFC 5389 Section 7.2.1 defines RTO, Rc, and Rm:

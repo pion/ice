@@ -6,7 +6,7 @@ package ice
 import (
 	"encoding/binary"
 
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 )
 
 // DTLSInSTUNAttribute is a STUN attribute for carrying DTLS embedded in STUN.

@@ -6,7 +6,7 @@ package ice
 import (
 	"fmt"
 
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 )
 
 // Default STUN Nomination attribute type for ICE renomination.

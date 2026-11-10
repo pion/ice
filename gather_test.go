@@ -25,14 +25,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/dtls/v3"
-	"github.com/pion/dtls/v3/pkg/crypto/selfsign"
+	"github.com/pion/dtls/v4"
+	"github.com/pion/dtls/v4/pkg/crypto/selfsign"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 	transport "github.com/pion/transport/v5"
 	"github.com/pion/transport/v5/test"
 	"github.com/pion/transport/v5/vnet"
-	"github.com/pion/turn/v5"
+	"github.com/pion/turn/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
@@ -494,7 +494,7 @@ func TestTURNConcurrency(t *testing.T) {
 		certificate, genErr := selfsign.GenerateSelfSigned()
 		require.NoError(t, genErr)
 
-		serverListener, err := dtls.ListenWithOptions("udp", &net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: 0}, dtls.WithCertificates(certificate))
+		serverListener, err := dtls.ListenAddr("udp", &net.UDPAddr{IP: net.ParseIP(localhostIPStr), Port: 0}, dtls.WithCertificates(certificate))
 		require.NoError(t, err)
 		serverPort := portFromAddr(t, serverListener.Addr())
 

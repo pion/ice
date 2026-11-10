@@ -13,8 +13,8 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/pion/dtls/v3/pkg/protocol"
-	"github.com/pion/stun/v4"
+	"github.com/pion/dtls/v4/pkg/protocol"
+	"github.com/pion/stun/v5"
 )
 
 type packetWithCrc struct {

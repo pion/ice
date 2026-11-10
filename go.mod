@@ -4,13 +4,13 @@ go 1.24.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/pion/dtls/v3 v3.1.15
+	github.com/pion/dtls/v4 v4.0.1
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.2.2
 	github.com/pion/randutil v0.1.0
-	github.com/pion/stun/v4 v4.0.1
+	github.com/pion/stun/v5 v5.0.0-rc.3
 	github.com/pion/transport/v5 v5.1.5
-	github.com/pion/turn/v5 v5.1.3
+	github.com/pion/turn/v6 v6.0.0-rc.1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/net v0.49.0
 	golang.org/x/sys v0.41.0

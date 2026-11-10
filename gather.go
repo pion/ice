@@ -16,12 +16,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/dtls/v3"
+	"github.com/pion/dtls/v4"
 	"github.com/pion/ice/v5/internal/fakenet"
 	stunx "github.com/pion/ice/v5/internal/stun"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v4"
-	"github.com/pion/turn/v5"
+	"github.com/pion/stun/v5"
+	"github.com/pion/turn/v6"
 )
 
 // GatherOption configures a gathering pass.
@@ -1363,7 +1363,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, config *gatherConfig,
 							return
 						}
 
-						conn, connectErr := dtls.ClientWithOptions(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(),
+						conn, connectErr := dtls.Client(&fakenet.PacketConn{Conn: udpConn}, udpConn.RemoteAddr(),
 							dtls.WithServerName(url.Host),
 							dtls.WithInsecureSkipVerify(a.insecureSkipVerify), //nolint:gosec
 							dtls.WithLoggerFactory(a.loggerFactory),

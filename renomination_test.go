@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/pion/ice/v5/internal/fakenet"
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

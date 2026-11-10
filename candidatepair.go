@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 )
 
 func newCandidatePair(local, remote Candidate, controlling bool) *CandidatePair {

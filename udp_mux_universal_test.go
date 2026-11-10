@@ -16,7 +16,7 @@ import (
 	"github.com/pion/ice/v5/internal/fakenet"
 	stunx "github.com/pion/ice/v5/internal/stun"
 	"github.com/pion/logging"
-	"github.com/pion/stun/v4"
+	"github.com/pion/stun/v5"
 	"github.com/stretchr/testify/require"
 )
 
