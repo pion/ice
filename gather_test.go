@@ -2023,6 +2023,28 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 	}
 }
 
+func TestCreateRelayCandidateUsesMappedAddr(t *testing.T) {
+	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithMulticastDNSMode(MulticastDNSModeDisabled))
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, agent.Close())
+	}()
+
+	agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
+		network: udp,
+		address: net.IPv4(203, 0, 113, 5),
+		port:    5000,
+		relAddr: "10.0.0.1",
+		relPort: 50000,
+		conn:    &stubPacketConn{addr: &net.UDPAddr{}, mappedAddr: &net.UDPAddr{IP: net.IPv4(198, 51, 100, 23), Port: 31892}},
+	})
+
+	candidates, err := agent.GetLocalCandidates()
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, &CandidateRelatedAddress{Address: "198.51.100.23", Port: 31892}, candidates[0].RelatedAddress())
+}
+
 func TestCreateRelayCandidateErrorPaths(t *testing.T) {
 	newAgent := func(t *testing.T) *Agent {
 		t.Helper()
@@ -2520,9 +2542,10 @@ func TestContinualGatheringPolicyString(t *testing.T) {
 }
 
 type stubPacketConn struct {
-	addr   net.Addr
-	closed bool
-	mu     sync.Mutex
+	addr       net.Addr
+	mappedAddr net.Addr
+	closed     bool
+	mu         sync.Mutex
 }
 
 func newStubPacketConn(addr net.Addr) *stubPacketConn {
@@ -2550,6 +2573,9 @@ func (s *stubPacketConn) Close() error {
 }
 
 func (s *stubPacketConn) LocalAddr() net.Addr { return s.addr }
+
+// MappedAddr is the mapped address that pion/turn's allocations report.
+func (s *stubPacketConn) MappedAddr() net.Addr { return s.mappedAddr }
 
 func (s *stubPacketConn) SetDeadline(time.Time) error      { return nil }
 func (s *stubPacketConn) SetReadDeadline(time.Time) error  { return nil }

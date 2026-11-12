@@ -1411,6 +1411,14 @@ func (a *Agent) createRelayCandidate(
 		RelayProtocol: ep.protocol,
 		OnClose:       onClose,
 	}
+	// The related address of a relayed candidate is the mapped address from the Allocate
+	// response (RFC 8839, Section 5.1), which pion/turn's allocations report.
+	if allocation, ok := ep.conn.(interface{ MappedAddr() net.Addr }); ok {
+		if mapped, isUDP := allocation.MappedAddr().(*net.UDPAddr); isUDP {
+			relayConfig.RelAddr = mapped.IP.String()
+			relayConfig.RelPort = mapped.Port
+		}
+	}
 	candidate, err := NewCandidateRelay(&relayConfig)
 	if err != nil {
 		a.log.Warnf("failed to create relay candidate: %s %d: %v", ip, ep.port, err)
