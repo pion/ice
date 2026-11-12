@@ -4,11 +4,11 @@ go 1.24.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/pion/dtls/v4 v4.0.1
+	github.com/pion/dtls/v4 v4.0.2
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.2.2
 	github.com/pion/randutil v0.1.0
-	github.com/pion/stun/v5 v5.0.0-rc.3
+	github.com/pion/stun/v5 v5.0.0-rc.4
 	github.com/pion/transport/v5 v5.1.5
 	github.com/pion/turn/v6 v6.0.0-rc.1
 	github.com/stretchr/testify v1.12.1
