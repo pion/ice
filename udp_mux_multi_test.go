@@ -288,6 +288,16 @@ func TestUDPMuxFromPortOptions_Apply(t *testing.T) {
 		require.Equal(t, 8192, p.writeBufferSize)
 	})
 
+	t.Run("TrafficClass", func(t *testing.T) {
+		var p multiUDPMuxFromPortParam
+
+		opt := UDPMuxFromPortWithTrafficClass(0xb8)
+		opt(&p)
+
+		require.NotNil(t, p.trafficClass)
+		require.Equal(t, 0xb8, *p.trafficClass)
+	})
+
 	t.Run("Logger", func(t *testing.T) {
 		var p multiUDPMuxFromPortParam
 
@@ -339,6 +349,18 @@ func TestNewMultiUDPMuxFromPort_Success_SetsBuffers(t *testing.T) {
 	require.NotEmpty(t, addrs)
 
 	require.NoError(t, multi.Close())
+}
+
+func TestNewMultiUDPMuxFromPort_InvalidTrafficClass(t *testing.T) {
+	multi, err := NewMultiUDPMuxFromPort(
+		0,
+		UDPMuxFromPortWithLoopback(),
+		UDPMuxFromPortWithNetworks(NetworkTypeUDP4),
+		UDPMuxFromPortWithTrafficClass(256),
+	)
+
+	require.Nil(t, multi)
+	require.ErrorIs(t, err, errInvalidTrafficClass)
 }
 
 func TestNewMultiUDPMuxFromPort_CleanupClosesAll(t *testing.T) {
