@@ -32,6 +32,47 @@ func responseSymmetric(pendingRequest *bindingRequest, local Candidate, remoteAd
 		addrPortEqual(pendingRequest.destination, remoteAddr)
 }
 
+// findPairBySource returns the checklist pair req was sent on, matched by its own
+// recorded source, destination, and network type.
+func (a *Agent) findPairBySource(req *bindingRequest) *CandidatePair {
+	for _, p := range a.checklist {
+		if p.Local.NetworkType() == req.networkType &&
+			addrPortEqual(p.Local.addrPort(), req.source) &&
+			addrPortEqual(p.Remote.addrPort(), req.destination) {
+			return p
+		}
+	}
+
+	return nil
+}
+
+// failAsymmetricNomination fails the pair req was sent on (RFC 8445 §7.2.5.2.1: an
+// asymmetric response fails the check it answers) and, if it was the controlling
+// agent's current nomination, clears it so the next tick nominates another valid
+// pair instead of retrying this one forever. Only a nomination (USE-CANDIDATE)
+// request applies: plain connectivity checks race pairs across interfaces as a
+// matter of course, and an occasional asymmetric response among those is expected
+// and already handled by ordinary retry, not a reason to fail the pair outright.
+func (a *Agent) failAsymmetricNomination(req *bindingRequest, local Candidate, remote netip.AddrPort) {
+	// Only a response from a different remote address fails the pair. A response
+	// read by another local candidate (e.g. over a shared UDP mux) is just discarded.
+	if !req.isUseCandidate || (req.networkType == local.NetworkType() &&
+		addrPortEqual(req.destination, remote)) {
+		return
+	}
+
+	pair := a.findPairBySource(req)
+	if pair == nil {
+		return
+	}
+	pair.state = CandidatePairStateFailed
+	pair.nominated = false
+
+	if selector, ok := a.getSelector().(*controllingSelector); ok && selector.nominatedPair == pair {
+		selector.nominatedPair = nil
+	}
+}
+
 type controllingSelector struct {
 	startTime     time.Time
 	agent         *Agent
