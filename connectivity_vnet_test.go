@@ -483,7 +483,7 @@ func TestAddressRewriteSystem(t *testing.T) { //nolint:cyclop,maintidx
 
 		for _, testCase := range tests {
 			t.Run(testCase.name, func(t *testing.T) {
-				candidates := gather(t, []CandidateType{CandidateTypeServerReflexive}, []AddressRewriteRule{testCase.rule}, nil)
+				candidates := gather(t, []CandidateType{CandidateTypeServerReflexive}, []AddressRewriteRule{testCase.rule}, nil, WithRevealRelatedAddresses())
 				require.ElementsMatch(t, testCase.expected, addresses(candidates, CandidateTypeServerReflexive))
 				for _, candidate := range candidates {
 					require.Equal(t, CandidateTypeServerReflexive, candidate.Type())

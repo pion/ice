@@ -746,6 +746,26 @@ func WithIncludeLoopback() AgentOption {
 	}
 }
 
+// WithRevealRelatedAddresses sends the actual related address of server-reflexive and relayed
+// candidates: the local address of a server-reflexive candidate, and the client's address as the
+// TURN server saw it for a relayed candidate. By default, the related address is 0.0.0.0 or ::
+// with port 9, as RFC 8839, Section 5.1 requires of agents that don't reveal it.
+//
+// Example:
+//
+//	agent, err := NewAgentWithOptions(WithRevealRelatedAddresses())
+func WithRevealRelatedAddresses() AgentOption {
+	return func(a *Agent) error {
+		if a.constructed {
+			return ErrAgentOptionNotUpdatable
+		}
+
+		a.revealRelatedAddresses = true
+
+		return nil
+	}
+}
+
 // WithTCPPriorityOffset sets a number which is subtracted from the default (UDP) candidate type preference
 // for host, srflx and prfx candidate types. It helps to configure relative preference of UDP candidates
 // against TCP ones. Relay candidates for TCP and UDP are always 0 and not affected by this setting.
