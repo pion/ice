@@ -1353,6 +1353,7 @@ func TestGatherCandidatesRelayRespectsNetworkTypeAndTransport(t *testing.T) { //
 						WithCandidateTypes([]CandidateType{CandidateTypeRelay}),
 						WithMulticastDNSMode(MulticastDNSModeDisabled),
 						WithUrls([]*stun.URI{{Scheme: stun.SchemeTypeTURN, Host: "turn.test", Port: 3478, Username: "username", Password: "password", Proto: stun.ProtoTypeUDP}}),
+						WithRevealRelatedAddresses(),
 					)
 					require.NoError(t, err)
 					defer func() { require.NoError(t, agent.Close()) }()
@@ -1696,7 +1697,12 @@ func TestGatherCandidatesSrflxUDPMux(t *testing.T) {
 
 	udpMuxSrflx := newMockUniversalUDPMux([]net.Addr{relatedAddr}, srflxAddr)
 
-	agent, err := NewAgent(&AgentConfig{NetworkTypes: []NetworkType{NetworkTypeUDP4}, CandidateTypes: []CandidateType{CandidateTypeServerReflexive}, UDPMuxSrflx: udpMuxSrflx})
+	agent, err := NewAgentWithOptions(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeServerReflexive}),
+		WithUDPMuxSrflx(udpMuxSrflx),
+		WithRevealRelatedAddresses(),
+	)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, agent.Close())
@@ -2023,26 +2029,44 @@ func TestGatherAddressRewriteAppendHostMux(t *testing.T) { //nolint:cyclop
 	}
 }
 
-func TestCreateRelayCandidateUsesMappedAddr(t *testing.T) {
-	agent, err := NewAgentWithOptions(WithNet(newHostGatherNet(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})), WithMulticastDNSMode(MulticastDNSModeDisabled))
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, agent.Close())
-	}()
+func TestCreateRelayCandidateRelatedAddress(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		address net.IP
+		options []AgentOption
+		related CandidateRelatedAddress
+	}{
+		{name: "hidden IPv4", address: net.IPv4(203, 0, 113, 5), related: CandidateRelatedAddress{Address: net.IPv4zero.String(), Port: 9}},
+		{name: "hidden IPv6", address: net.ParseIP("2001:db8::5"), related: CandidateRelatedAddress{Address: net.IPv6unspecified.String(), Port: 9}},
+		{
+			name:    "revealed",
+			address: net.IPv4(203, 0, 113, 5),
+			options: []AgentOption{WithRevealRelatedAddresses()},
+			related: CandidateRelatedAddress{Address: "198.51.100.23", Port: 31892},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			agent, err := NewAgentWithOptions(append(tt.options, WithMulticastDNSMode(MulticastDNSModeDisabled))...)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, agent.Close())
+			}()
 
-	agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
-		network: udp,
-		address: net.IPv4(203, 0, 113, 5),
-		port:    5000,
-		relAddr: "10.0.0.1",
-		relPort: 50000,
-		conn:    &stubPacketConn{addr: &net.UDPAddr{}, mappedAddr: &net.UDPAddr{IP: net.IPv4(198, 51, 100, 23), Port: 31892}},
-	})
+			agent.addRelayCandidates(context.Background(), agent.gatherGeneration, relayEndpoint{
+				network: udp,
+				address: tt.address,
+				port:    5000,
+				relAddr: "10.0.0.1",
+				relPort: 50000,
+				conn:    &stubPacketConn{addr: &net.UDPAddr{}, mappedAddr: &net.UDPAddr{IP: net.IPv4(198, 51, 100, 23), Port: 31892}},
+			})
 
-	candidates, err := agent.GetLocalCandidates()
-	require.NoError(t, err)
-	require.Len(t, candidates, 1)
-	require.Equal(t, &CandidateRelatedAddress{Address: "198.51.100.23", Port: 31892}, candidates[0].RelatedAddress())
+			candidates, err := agent.GetLocalCandidates()
+			require.NoError(t, err)
+			require.Len(t, candidates, 1)
+			require.Equal(t, &tt.related, candidates[0].RelatedAddress())
+		})
+	}
 }
 
 func TestCreateRelayCandidateErrorPaths(t *testing.T) {

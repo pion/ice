@@ -168,6 +168,8 @@ type Agent struct {
 	remoteIPFilter  func(net.IP) (keep bool)
 	includeLoopback bool
 
+	revealRelatedAddresses bool
+
 	insecureSkipVerify bool
 
 	proxyDialer proxy.Dialer

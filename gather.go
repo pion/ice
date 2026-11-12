@@ -218,6 +218,20 @@ func (a *Agent) rewriteCandidatePort(candidate *candidateBase, localIP, iface st
 	}
 }
 
+// relatedAddress returns the related address of a server-reflexive or relayed candidate at
+// candidateIP: address and port if the agent reveals related addresses, and otherwise 0.0.0.0 or
+// :: with port 9 (RFC 8839, Section 5.1).
+func (a *Agent) relatedAddress(candidateIP net.IP, address string, port int) (string, int) {
+	if a.revealRelatedAddresses {
+		return address, port
+	}
+	if candidateIP.To4() != nil {
+		return net.IPv4zero.String(), 9
+	}
+
+	return net.IPv6unspecified.String(), 9
+}
+
 func (a *Agent) applyHostAddressRewrite(addr netip.Addr, mappedAddrs []netip.Addr, iface string) ([]netip.Addr, bool) {
 	mappedIPs, matched, mode, innerErr := a.addressRewriteMapper.findExternalIPs(
 		CandidateTypeHost,
@@ -727,13 +741,14 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, networkTypes []
 					continue
 				}
 
+				relAddr, relPort := a.relatedAddress(mappedIP, currentAddr.IP.String(), currentAddr.Port)
 				srflxConfig := CandidateServerReflexiveConfig{
 					Network:   network,
 					Address:   mappedIP.String(),
 					Port:      currentAddr.Port,
 					Component: ComponentRTP,
-					RelAddr:   currentAddr.IP.String(),
-					RelPort:   currentAddr.Port,
+					RelAddr:   relAddr,
+					RelPort:   relPort,
 				}
 				candidate, err := NewCandidateServerReflexive(&srflxConfig)
 				if err != nil {
@@ -819,13 +834,14 @@ func (a *Agent) gatherCandidatesSrflxUDPMux(
 					ip := xorAddr.IP
 					port := xorAddr.Port
 
+					relAddr, relPort := a.relatedAddress(ip, localAddr.IP.String(), localAddr.Port)
 					srflxConfig := CandidateServerReflexiveConfig{
 						Network:   network,
 						Address:   ip.String(),
 						Port:      port,
 						Component: ComponentRTP,
-						RelAddr:   localAddr.IP.String(),
-						RelPort:   localAddr.Port,
+						RelAddr:   relAddr,
+						RelPort:   relPort,
 					}
 					cand, err := NewCandidateServerReflexive(&srflxConfig)
 					if err != nil {
@@ -946,13 +962,14 @@ func (a *Agent) gatherCandidatesSrflx(
 		port := xorAddr.Port
 
 		lAddr := conn.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+		relAddr, relPort := a.relatedAddress(ip, lAddr.IP.String(), lAddr.Port)
 		srflxConfig := CandidateServerReflexiveConfig{
 			Network:   network,
 			Address:   ip.String(),
 			Port:      port,
 			Component: ComponentRTP,
-			RelAddr:   lAddr.IP.String(),
-			RelPort:   lAddr.Port,
+			RelAddr:   relAddr,
+			RelPort:   relPort,
 		}
 		candidate, err := NewCandidateServerReflexive(&srflxConfig)
 		if err != nil {
@@ -1419,6 +1436,7 @@ func (a *Agent) createRelayCandidate(
 			relayConfig.RelPort = mapped.Port
 		}
 	}
+	relayConfig.RelAddr, relayConfig.RelPort = a.relatedAddress(ip, relayConfig.RelAddr, relayConfig.RelPort)
 	candidate, err := NewCandidateRelay(&relayConfig)
 	if err != nil {
 		a.log.Warnf("failed to create relay candidate: %s %d: %v", ip, ep.port, err)
