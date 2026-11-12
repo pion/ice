@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/pion/dtls/v4 v4.0.1
+	github.com/pion/dtls/v4 v4.0.2
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.2.2
 	github.com/pion/randutil v0.1.0
