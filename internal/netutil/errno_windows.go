@@ -10,16 +10,19 @@ import (
 	"syscall"
 )
 
-// Go's syscall.EADDRNOTAVAIL is an invented POSIX-compat constant that does not
-// match the raw Winsock errno returned by the kernel, so we check both.
-const wsaeaddrnotavail syscall.Errno = 10049
+// Go's POSIX-compatible constants differ from raw Winsock errors.
+const (
+	wsaeaddrnotavail syscall.Errno = 10049
+	wsaeinval        syscall.Errno = 10022
+)
 
-// IsAddrUnavailable reports whether err indicates that the address
-// is unavailable (as opposed to a specific port being busy).
+// IsAddrUnavailable reports whether the local address is unavailable or invalid
+// for the requested listen operation, regardless of the port.
 func IsAddrUnavailable(err error) bool {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
-		return errno == syscall.EADDRNOTAVAIL || errno == wsaeaddrnotavail
+		return errno == syscall.EADDRNOTAVAIL || errno == wsaeaddrnotavail ||
+			errno == syscall.EINVAL || errno == wsaeinval
 	}
 
 	return false

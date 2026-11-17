@@ -11,12 +11,12 @@ import (
 	"syscall"
 )
 
-// IsAddrUnavailable reports whether err indicates that the address
-// is unavailable (as opposed to a specific port being busy).
+// IsAddrUnavailable reports whether the local address is unavailable or invalid
+// for the requested listen operation, regardless of the port.
 func IsAddrUnavailable(err error) bool {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
-		return errno == syscall.EADDRNOTAVAIL
+		return errno == syscall.EADDRNOTAVAIL || errno == syscall.EINVAL
 	}
 
 	return false

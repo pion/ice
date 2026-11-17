@@ -655,7 +655,7 @@ func (a *Agent) gatherCandidatesLocal(ctx context.Context, config *gatherConfig,
 					// Is there a way to verify that the listen address is even
 					// accessible from the current interface.
 				case udp:
-					conn, err := listenUDPInPortRange(a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{
+					conn, err := listenUDPInPortRange(ctx, a.net, a.log, int(a.portMax), int(a.portMin), network, &net.UDPAddr{
 						IP:   addr.AsSlice(),
 						Port: 0,
 						Zone: addr.Zone(),
@@ -860,6 +860,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 			defer wg.Done()
 
 			conn, err := listenUDPInPortRange(
+				ctx,
 				a.net,
 				a.log,
 				int(a.portMax),
@@ -895,6 +896,7 @@ func (a *Agent) gatherCandidatesSrflxMapped(ctx context.Context, config *gatherC
 				currentAddr := lAddr
 				if idx > 0 {
 					newConn, listenErr := listenUDPInPortRange(
+						ctx,
 						a.net,
 						a.log,
 						int(a.portMax),
@@ -1110,6 +1112,7 @@ func (a *Agent) gatherCandidatesSrflx(ctx context.Context, config *gatherConfig,
 		}
 
 		conn, err := listenUDPInPortRange(
+			ctx,
 			a.net,
 			a.log,
 			int(a.portMax),
