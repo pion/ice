@@ -99,14 +99,14 @@ func TestListenUDP(t *testing.T) {
 
 	ip := localAddrs[0].addr.AsSlice()
 
-	conn, err := listenUDPInPortRange(agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err := listenUDPInPortRange(t.Context(), agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.NoError(t, err, "listenUDP error with no port restriction")
 	require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
-	_, err = listenUDPInPortRange(agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.Equal(t, err, ErrPort, "listenUDP with invalid port range did not return ErrPort")
 
-	conn, err = listenUDPInPortRange(agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+	conn, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.NoError(t, err, "listenUDP error with no port restriction")
 	require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
@@ -120,7 +120,7 @@ func TestListenUDP(t *testing.T) {
 	result := make([]int, 0, total)
 	portRange := make([]int, 0, total)
 	for i := range total {
-		conn, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err, "listenUDP error with no port restriction")
 		require.NotNil(t, conn, "listenUDP error with no port restriction return a nil conn")
 
@@ -135,7 +135,7 @@ func TestListenUDP(t *testing.T) {
 	require.False(t, sort.IntsAreSorted(result))
 	sort.Ints(result)
 	require.Equal(t, result, portRange)
-	_, err = listenUDPInPortRange(agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
+	_, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, portMax, portMin, udp, &net.UDPAddr{IP: ip, Port: 0})
 	require.Equal(t, err, ErrPort, "listenUDP with port restriction [%d, %d], did not return ErrPort", portMin, portMax)
 }
 
@@ -2766,15 +2766,15 @@ func TestVNetGather(t *testing.T) { //nolint:cyclop
 
 		ip := localAddrs[0].addr.AsSlice()
 
-		conn, err := listenUDPInPortRange(agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err := listenUDPInPortRange(t.Context(), agent.net, agent.log, 0, 0, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err)
 		require.NotNil(t, conn)
 		require.NoError(t, conn.Close())
 
-		_, err = listenUDPInPortRange(agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		_, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, 4999, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.ErrorIs(t, ErrPort, err)
 
-		conn, err = listenUDPInPortRange(agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
+		conn, err = listenUDPInPortRange(t.Context(), agent.net, agent.log, 5000, 5000, udp, &net.UDPAddr{IP: ip, Port: 0})
 		require.NoError(t, err)
 		require.NotNil(t, conn)
 		defer func() {

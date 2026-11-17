@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/netip"
@@ -11,8 +12,10 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/transport/v5"
@@ -191,6 +194,7 @@ func TestListenUDPInPortRange_DefaultsPortMinTo1024(t *testing.T) {
 
 	// portMin == 0 (should become 1024), portMax small to keep the loop short.
 	_, err = listenUDPInPortRange(
+		t.Context(),
 		captor,
 		logger,
 		1030, // portMax
@@ -209,10 +213,14 @@ type listenUDPErrorCaptor struct {
 	transport.Net
 	attempts int
 	err      error
+	onListen func()
 }
 
 func (c *listenUDPErrorCaptor) ListenUDP(_ string, _ *net.UDPAddr) (transport.UDPConn, error) {
 	c.attempts++
+	if c.onListen != nil {
+		c.onListen()
+	}
 
 	return nil, c.err
 }
@@ -228,6 +236,7 @@ func TestListenUDPInPortRange_BailsOnEADDRNOTAVAIL(t *testing.T) {
 	captor := &listenUDPErrorCaptor{Net: base, err: sysErr}
 
 	_, err = listenUDPInPortRange(
+		t.Context(),
 		captor,
 		logger,
 		1200, // portMax
@@ -251,6 +260,7 @@ func TestListenUDPInPortRange_ContinuesOnPortBusyError(t *testing.T) {
 	captor := &listenUDPErrorCaptor{Net: base, err: portBusyErr}
 
 	_, err = listenUDPInPortRange(
+		t.Context(),
 		captor,
 		logger,
 		1105, // portMax
@@ -261,6 +271,159 @@ func TestListenUDPInPortRange_ContinuesOnPortBusyError(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrPort)
 	require.Equal(t, 6, captor.attempts)
+}
+
+func TestListenUDPInPortRange_BailsOnEINVAL(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	logger := logging.NewDefaultLoggerFactory().NewLogger("ice-test")
+	bindErr := &net.OpError{
+		Op:  "listen",
+		Net: "udp6",
+		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EINVAL},
+	}
+	captor := &listenUDPErrorCaptor{Net: base, err: bindErr}
+
+	conn, err := listenUDPInPortRange(
+		t.Context(),
+		captor,
+		logger,
+		1200,
+		1100,
+		udp6,
+		&net.UDPAddr{IP: net.ParseIP("fe80::1"), Zone: "missing-interface"},
+	)
+
+	require.ErrorIs(t, err, syscall.EINVAL)
+	require.Nil(t, conn)
+	require.Equal(t, 1, captor.attempts)
+}
+
+func TestListenUDPInPortRange_CanceledBeforeListen(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	for _, testCase := range []struct {
+		name    string
+		port    int
+		portMin int
+		portMax int
+	}{
+		{name: "fixed port", port: 50000},
+		{name: "default allocation"},
+		{name: "port range", portMin: 50000, portMax: 60000},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			captor := &listenUDPErrorCaptor{Net: base, err: syscall.EADDRINUSE}
+
+			conn, listenErr := listenUDPInPortRange(
+				ctx,
+				captor,
+				logging.NewDefaultLoggerFactory().NewLogger("ice-test"),
+				testCase.portMax,
+				testCase.portMin,
+				udp4,
+				&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: testCase.port},
+			)
+
+			require.ErrorIs(t, listenErr, context.Canceled)
+			require.Nil(t, conn)
+			require.Zero(t, captor.attempts)
+		})
+	}
+}
+
+func TestListenUDPInPortRange_CancelsPortScan(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	captor := &listenUDPErrorCaptor{Net: base, err: syscall.EADDRINUSE, onListen: cancel}
+
+	conn, err := listenUDPInPortRange(
+		ctx,
+		captor,
+		logging.NewDefaultLoggerFactory().NewLogger("ice-test"),
+		60000,
+		50000,
+		udp4,
+		&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+	)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, conn)
+	require.Equal(t, 1, captor.attempts)
+}
+
+func TestAgentCloseCancelsUDPPortScan(t *testing.T) {
+	base, err := stdnet.NewNet()
+	require.NoError(t, err)
+
+	iface := transport.NewInterface(net.Interface{Index: 1, Name: "ice-test", Flags: net.FlagUp})
+	iface.AddAddress(&net.IPNet{IP: net.IPv4(192, 0, 2, 1), Mask: net.CIDRMask(24, 32)})
+	entered := make(chan struct{})
+	resume := make(chan struct{})
+	var firstListen sync.Once
+	var resumeOnce sync.Once
+	resumeListening := func() { resumeOnce.Do(func() { close(resume) }) }
+	captor := &listenUDPErrorCaptor{
+		Net: &fixedInterfacesNet{Net: base, list: []*transport.Interface{iface}},
+		err: syscall.EADDRINUSE,
+		onListen: func() {
+			firstListen.Do(func() {
+				close(entered)
+				<-resume
+			})
+		},
+	}
+	agent, err := NewAgent(
+		WithNet(captor),
+		WithPortRange(50000, 60000),
+		WithMulticastDNSMode(MulticastDNSModeDisabled),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		resumeListening()
+		require.NoError(t, agent.Close())
+	})
+	require.NoError(t, agent.OnCandidate(func(Candidate) {}))
+	require.NoError(t, agent.Gather(
+		WithNetworkTypes([]NetworkType{NetworkTypeUDP4}),
+		WithCandidateTypes([]CandidateType{CandidateTypeHost}),
+	))
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "UDP gathering did not start")
+	}
+
+	canceled := make(chan struct{})
+	cancelGathering := agent.gatherCandidateCancel
+	agent.gatherCandidateCancel = func() {
+		cancelGathering()
+		close(canceled)
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- agent.Close() }()
+	select {
+	case <-canceled:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "Close did not cancel gathering")
+	}
+	resumeListening()
+
+	select {
+	case closeErr := <-closed:
+		require.NoError(t, closeErr)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "Close did not cancel the UDP port scan")
+	}
+	require.Equal(t, 1, captor.attempts)
 }
 
 func TestListenUDPInPortRange_RealEADDRNOTAVAIL(t *testing.T) {
@@ -275,6 +438,7 @@ func TestListenUDPInPortRange_RealEADDRNOTAVAIL(t *testing.T) {
 
 	// 192.0.2.0/24 is TEST-NET-1 (RFC 5737), not assigned to any local interface.
 	_, err = listenUDPInPortRange(
+		t.Context(),
 		base,
 		logger,
 		5100, // portMax
@@ -296,6 +460,7 @@ func TestListenUDPInPortRange_DefaultsPortMaxToFFFF(t *testing.T) {
 
 	// portMax == 0 (should become 0xFFFF). Use portMin=65535 so the range is 1 port.
 	_, err = listenUDPInPortRange(
+		t.Context(),
 		captor,
 		logger,
 		0,     // portMax -> becomes 65535

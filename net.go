@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"context"
 	"net"
 	"net/netip"
 
@@ -128,12 +129,17 @@ func localInterfaces(
 
 //nolint:cyclop
 func listenUDPInPortRange(
+	ctx context.Context,
 	netTransport transport.Net,
 	log logging.LeveledLogger,
 	portMax, portMin int,
 	network string,
 	lAddr *net.UDPAddr,
 ) (transport.UDPConn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if (lAddr.Port != 0) || ((portMin == 0) && (portMax == 0)) {
 		return netTransport.ListenUDP(network, lAddr)
 	}
@@ -153,6 +159,10 @@ func listenUDPInPortRange(
 	portStart := globalMathRandomGenerator.Intn(portMax-portMin+1) + portMin
 	portCurrent := portStart
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		addr := &net.UDPAddr{
 			IP:   lAddr.IP,
 			Zone: lAddr.Zone,
