@@ -47,8 +47,10 @@ func remoteCandidate(_ http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	if err := iceAgent.AddRemoteCandidate(c); err != nil { //nolint:contextcheck
-		panic(err)
+	if c != nil {
+		if err := iceAgent.AddRemoteCandidate(c); err != nil { //nolint:contextcheck
+			panic(err)
+		}
 	}
 }
 
@@ -70,6 +72,11 @@ func main() { //nolint
 		remoteHTTPPort = 9000
 	}
 
+	iceAgent, err = ice.NewAgent()
+	if err != nil {
+		panic(err)
+	}
+
 	http.HandleFunc("/remoteAuth", remoteAuth)
 	http.HandleFunc("/remoteCandidate", remoteCandidate)
 	go func() {
@@ -85,11 +92,6 @@ func main() { //nolint
 	}
 	fmt.Print("Press 'Enter' when both processes have started")
 	if _, err = bufio.NewReader(os.Stdin).ReadBytes('\n'); err != nil {
-		panic(err)
-	}
-
-	iceAgent, err = ice.NewAgent()
-	if err != nil {
 		panic(err)
 	}
 
