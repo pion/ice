@@ -318,15 +318,19 @@ func (m *UDPMuxDefault) writeTo(buf []byte, rAddr net.Addr) (n int, err error) {
 // reads and writes, otherwise an extra allocation occurs in the writeTo
 // fallback.
 func (m *UDPMuxDefault) writeToUDPAddrPort(buf []byte, rAddr netip.AddrPort) (n int, err error) {
+	return m.writeToUDPAddrPortContext(context.Background(), buf, rAddr)
+}
+
+func (m *UDPMuxDefault) writeToUDPAddrPortContext(ctx context.Context, buf []byte, rAddr netip.AddrPort) (n int, err error) {
 	if m.addrPortConn == nil {
 		// GetConn does not expose netip.AddrPort writes in this case.
 		// This fallback only exists for defensive purposes and is not
 		// expected to be called, so the extra allocation here is not
 		// expected to occur.
-		return m.writeTo(buf, net.UDPAddrFromAddrPort(rAddr))
+		return m.writeToContext(ctx, buf, net.UDPAddrFromAddrPort(rAddr))
 	}
 
-	if err = m.startWriteContext(context.Background()); err != nil {
+	if err = m.startWriteContext(ctx); err != nil {
 		return 0, err
 	}
 
@@ -334,7 +338,35 @@ func (m *UDPMuxDefault) writeToUDPAddrPort(buf []byte, rAddr netip.AddrPort) (n 
 		err = m.finishWrite(err)
 	}()
 
-	return m.addrPortConn.WriteToAddrPort(buf, rAddr)
+	if err = ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	if done := ctx.Done(); done != nil {
+		stopAbort := make(chan struct{})
+		var active atomic.Int32
+		active.Store(1)
+		defer func() {
+			active.Store(0)
+			close(stopAbort)
+		}()
+		go func() {
+			select {
+			case <-done:
+				m.scheduleWriteAbort(&active)
+			case <-stopAbort:
+			}
+		}()
+	}
+
+	n, err = m.addrPortConn.WriteToAddrPort(buf, rAddr)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return n, ctxErr
+		}
+	}
+
+	return n, err
 }
 
 func (m *UDPMuxDefault) writeToContext(ctx context.Context, buf []byte, rAddr net.Addr) (n int, err error) {
