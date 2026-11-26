@@ -4,6 +4,7 @@
 package ice
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -117,6 +118,18 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 		if params.writeBufferSize > 0 {
 			_ = conn.SetWriteBuffer(params.writeBufferSize)
 		}
+		if params.trafficClass != nil {
+			if *params.trafficClass < 0 || *params.trafficClass > 255 {
+				err = errInvalidTrafficClass
+
+				break
+			}
+			if setErr := setPacketConnTrafficClass(conn, *params.trafficClass); setErr != nil {
+				err = setErr
+
+				break
+			}
+		}
 		conns = append(conns, conn)
 	}
 
@@ -144,12 +157,15 @@ func NewMultiUDPMuxFromPort(port int, opts ...UDPMuxFromPortOption) (*MultiUDPMu
 // UDPMuxFromPortOption provide options for NewMultiUDPMuxFromPort.
 type UDPMuxFromPortOption func(*multiUDPMuxFromPortParam)
 
+var errInvalidTrafficClass = errors.New("traffic class must be in range 0..255")
+
 type multiUDPMuxFromPortParam struct {
 	ifFilter        func(string) (keep bool)
 	ipFilter        func(ip net.IP) (keep bool)
 	networks        []NetworkType
 	readBufferSize  int
 	writeBufferSize int
+	trafficClass    *int
 	logger          logging.LeveledLogger
 	includeLoopback bool
 	net             transport.Net
@@ -187,6 +203,14 @@ func UDPMuxFromPortWithReadBufferSize(size int) UDPMuxFromPortOption {
 func UDPMuxFromPortWithWriteBufferSize(size int) UDPMuxFromPortOption {
 	return func(p *multiUDPMuxFromPortParam) {
 		p.writeBufferSize = size
+	}
+}
+
+// UDPMuxFromPortWithTrafficClass sets the IPv4 TOS / IPv6 traffic class
+// value for UDP packets sent by muxes created with NewMultiUDPMuxFromPort.
+func UDPMuxFromPortWithTrafficClass(trafficClass int) UDPMuxFromPortOption {
+	return func(p *multiUDPMuxFromPortParam) {
+		p.trafficClass = &trafficClass
 	}
 }
 
